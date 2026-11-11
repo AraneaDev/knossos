@@ -54,8 +54,8 @@ A name that a glob import (`use crate::components::*;`) brings in resolves
 through it, after the names the enclosing module declares. A type the module
 declares shadows the glob for a path below it too (`Widget::new()`), and a
 generic type parameter (`struct Gen<Thing>`) shadows any glob-imported type
-of its name. A glob source provides a name it declares or re-exports with a
-visible `use`, and the name resolves to where it is declared. A glob of a type
+of its name. A glob source provides a name it declares or binds with a
+`use`, and the name resolves to where it is declared. A glob of a type
 (`use Kind::*;`) brings in its variants, never its associated functions. A name two glob sources provide as
 different items is ambiguous and resolves to nothing. A glob source that
 provides no such name adds nothing, so `Vec` through `use crate::prelude::*;`
@@ -89,6 +89,37 @@ from the name: the edge is kept when the graph declares that target and
 dropped otherwise, rather than becoming an external symbol. A call into
 another crate keeps its external target.
 
+A method of a trait impl is named below its impl, so it stays apart from an
+inherent method of the same name and from another trait's:
+`impl Driver for Session` declares `crate::session::Session::<impl Driver>::receive`
+beside an inherent `crate::session::Session::receive`, and
+`impl From<u8> for Id` and `impl From<u16> for Id` declare
+`Id::<impl From<u8>>::from` and `Id::<impl From<u16>>::from`. A call names the
+method by its type, as Rust code does (`Session::receive(..)`,
+`session.receive()`): it reaches the inherent method when there is one, and
+otherwise the one trait impl method of that name, whichever file declares it.
+
+A declaration compiled only under a `cfg` other than `test` carries that
+predicate as its `cfg` attribute: the item's own (`#[cfg(target_os = "linux")]
+impl Runtime`), and every item in a file whose `mod` declaration is gated
+(`#[cfg(windows)] #[path = "svc/scm.rs"] mod scm;`). Declarations of one item
+that are all gated this way are `cfg` alternatives: no build compiles two of
+them, so they are one node, with every alternative's edges, and no
+`reconciler.duplicate_symbol_evidence` warning. The first declaration's file
+is the node's evidence, and `cfg_alternatives` lists the others with their
+lines and predicates.
+
+A `use` that binds one name under exclusive `cfg`s
+(`#[cfg(unix)] use unix as platform;` beside
+`#[cfg(windows)] use windows as platform;`, at module level or in a function
+body) binds it to each alternative, so `platform::flush_file()` is a call to
+both `crate::fs::unix::flush_file` and `crate::fs::windows::flush_file`. The
+same holds for a re-export through such a name (`pub use platform::open;`)
+and for gated re-exports of one name from different modules: a path through
+it reaches every alternative. A private `use` is a path from the module's
+descendants too, so `use super::platform;` in a child module names what the
+parent's `use` imports.
+
 A node's `local_id` and both ends of an edge are written
 `rust:<kind>:<canonical>`. `canonical_name` itself carries no prefix. A raw
 identifier is named without its `r#`: `mod r#async;` is the module
@@ -110,7 +141,7 @@ These get an attribute, so they stay off the
   `#[wasm_bindgen]` or an `extern` ABI) is `runtime_invoked`. So are the public
   methods of a `#[wasm_bindgen] impl`, and `drop` in an `impl Drop`.
 - A method of a trait impl carries `overrides`, because the trait declares it
-  and the trait may be a dependency's.
+  and the trait may be a dependency's. It is named below its impl, see above.
 - Code compiled only in a test build and `#[test]` functions (including
   `#[tokio::test]`) are marked as test code. The `cfg` predicate is evaluated:
   `cfg(test)` and `cfg(all(test, feature = "x"))` mark an item (a module, a
@@ -145,8 +176,9 @@ types they agree on.
 A path that reaches an item through a re-export (`crate::visit::collect()`
 under `pub use cfg::collect;` in `visit`) names the item where it is declared,
 `crate::visit::cfg::collect`, so the edge lands on the node the graph holds.
-Any visible `use` re-exports, `pub(crate)` and `pub(super)` included, and a
-chain of them is followed to its end, also through a module that re-exports an
+Any `use` re-exports, `pub(crate)`, `pub(super)` and a private one (which the
+module's descendants reach through `super::`) included, and a chain of them is
+followed to its end, also through a module that re-exports an
 item under its own name (`pub use parse::parse;` beside `mod parse;`). A longer
 path through such a name (`parse::helper()`) goes through the module. The
 `imports` edge still names the module the source wrote.
@@ -287,7 +319,7 @@ the files read, not from a rule. A file that does not parse has no facts and
 reads nothing beyond itself, so it stays an ordinary attributed row and is
 rescanned only when it changes. Editing a `Cargo.toml` rescans every Rust file.
 A rebuilt file reaches its readers only when its own bytes changed: what a file
-gives the index (its declarations, the names its `pub use` items re-export and
+gives the index (its declarations, the names its `use` items bind and
 its structs' field types) follows from its own bytes and the package layout, so
 no file's facts depend on what another file read. A name followed through a
 re-export or a field type is a lookup like any other, so the file declaring it
@@ -311,15 +343,14 @@ is read.
   uppercase final segment means a constructor. A crate that breaks the
   convention can produce a target that matches no declared node; inside your
   own crates that edge is dropped.
-- An import name bound to two different paths in one file resolves to nothing.
-  So does a name two `#[cfg]` alternatives re-export from different paths.
-- A private `use` re-exports nothing to the index, so a child module reaching
-  an imported name through `super::name` is not followed to its declaration.
-  A glob re-export (`pub use inner::*;`) is not followed either.
+- An import name bound to two different paths in one file resolves to nothing,
+  unless every `use` binding it is gated by a `cfg`, see above. So does a name
+  re-exported from different paths when one of those re-exports is ungated.
+- A glob re-export (`pub use inner::*;`) is not followed.
 - Re-exports are resolved through the declaring file's own `use` items, its
   own declarations and rooted paths only. A glob source provides only what it
   declares or re-exports by name: a name it brings in through a glob of its
-  own, or through a private `use`, is not followed.
+  own is not followed.
 - A type named bare that nothing in scope declares or imports (`Vec`,
   `Option`, `String`, `char`, `u8`) types no receiver, so a method called on
   one produces no edge rather than one to a made-up type of the module. A

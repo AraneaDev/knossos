@@ -83,17 +83,21 @@ impl Calls<'_, '_> {
             }
             return;
         }
-        let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, path) else {
-            return;
-        };
-        let endpoint = reference(call_kind(&target), &target);
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, path) {
+            self.call_target(&target, unconfirmed, span);
+        }
+    }
+
+    /// Emit the `calls` edge to one target [`Calls::visit_call`] resolved.
+    fn call_target(&mut self, target: &str, unconfirmed: bool, span: proc_macro2::Span) {
+        let endpoint = reference(call_kind(target), target);
         if unconfirmed {
             self.walk
                 .facts
                 .conditional_edge(&self.enclosing, &endpoint, span);
             return;
         }
-        let head = target.split("::").next().unwrap_or(&target);
+        let head = target.split("::").next().unwrap_or(target);
         if head == self.walk.crate_root() || self.walk.layout.is_project_root(head) {
             self.walk
                 .facts
@@ -111,9 +115,19 @@ impl Calls<'_, '_> {
     /// or enum and as a trait: which one it is, and whether it is declared
     /// here at all rather than being `Vec` or `String`, only the graph knows.
     fn type_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
-        let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, path) else {
-            return;
-        };
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, path) {
+            self.type_target(path, &target, unconfirmed, span);
+        }
+    }
+
+    /// Emit the references [`Calls::type_reference`] makes to one target.
+    fn type_target(
+        &mut self,
+        path: &syn::Path,
+        target: &str,
+        unconfirmed: bool,
+        span: proc_macro2::Span,
+    ) {
         // `str`, `Some`, `Option` written bare and neither declared nor
         // imported here are the standard ones, not items of this module. The
         // guess named nothing, and in a large file those edges alone could
@@ -121,12 +135,12 @@ impl Calls<'_, '_> {
         if unconfirmed
             && path.segments.len() == 1
             && is_prelude_name(&ident_name(&path.segments[0].ident))
-            && !self.walk.own_declarations.contains(&target)
+            && !self.walk.own_declarations.contains(target)
         {
             return;
         }
         for kind in ["class", "interface"] {
-            let endpoint = reference(kind, &target);
+            let endpoint = reference(kind, target);
             if endpoint != self.enclosing {
                 self.walk
                     .facts
@@ -162,11 +176,21 @@ impl Calls<'_, '_> {
     /// so an unconfirmed one counts only when this file declares a function
     /// by that name, the same deferral an unqualified call gets.
     fn value_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
-        let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, path) else {
-            return;
-        };
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, path) {
+            self.value_target(path, &target, unconfirmed, span);
+        }
+    }
+
+    /// Emit the references [`Calls::value_reference`] makes to one target.
+    fn value_target(
+        &mut self,
+        path: &syn::Path,
+        target: &str,
+        unconfirmed: bool,
+        span: proc_macro2::Span,
+    ) {
         if path.segments.len() < 2 {
-            let endpoint = reference("function", &target);
+            let endpoint = reference("function", target);
             if unconfirmed {
                 self.walk.facts.conditional_any_edge(
                     &self.enclosing,
@@ -183,7 +207,7 @@ impl Calls<'_, '_> {
             return;
         }
         for kind in ["function", "method"] {
-            let endpoint = reference(kind, &target);
+            let endpoint = reference(kind, target);
             if endpoint != self.enclosing {
                 self.walk
                     .facts
@@ -502,18 +526,17 @@ impl Calls<'_, '_> {
         if module.segments.is_empty() {
             return;
         }
-        let Some((target, false)) = self.walk.resolve_path(&self.container, &module) else {
-            return;
-        };
-        if target != self.walk.module && target != self.container {
-            let source = reference("module", &self.walk.module);
-            self.walk.import(&source, &target, span);
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, &module) {
+            if !unconfirmed && target != self.walk.module && target != self.container {
+                let source = reference("module", &self.walk.module);
+                self.walk.import(&source, &target, span);
+            }
         }
     }
 
     /// A speculative `references` edge to the function a path names.
     fn function_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
-        if let Some((target, _)) = self.walk.resolve_path(&self.container, path) {
+        for (target, _) in self.walk.resolve_paths(&self.container, path) {
             let endpoint = reference("function", &target);
             self.walk
                 .facts
@@ -606,7 +629,7 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
     }
 
     fn visit_expr_struct(&mut self, node: &syn::ExprStruct) {
-        if let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, &node.path) {
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, &node.path) {
             let endpoint = reference("class", &target);
             if unconfirmed {
                 self.walk.facts.conditional_edge(

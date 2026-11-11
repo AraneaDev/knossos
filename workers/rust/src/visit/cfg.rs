@@ -6,32 +6,92 @@
 //! readers evaluate what an attribute says structurally instead of matching
 //! its text.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use syn::Item;
 
 use super::placement::mod_child;
 use crate::layout::{modules_above, Layout};
 
-/// Canonical paths of modules the crate declared `#[cfg(test)] mod name;`
-/// without a body, so the module lives in its own file.
+/// What the crate's bodiless `mod name;` declarations say about the files
+/// they load: which modules compile only under `cfg(test)`, and which only
+/// under some other `cfg`.
 ///
-/// Rust compiles that file only under `cfg(test)`, but the file is scanned as
-/// its own contribution and carries no attribute saying so. The declaring
-/// file is the only place the fact exists, so it is collected there and
-/// handed to the walk of every file in the request.
-pub type TestModules = BTreeSet<String>;
+/// Rust compiles such a file only under its declaration's `cfg`, but the
+/// file is scanned as its own contribution and carries no attribute saying
+/// so. The declaring file is the only place the fact exists, so it is
+/// collected there and handed to the walk of every file in the request.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ModuleGates {
+    /// Canonical paths of modules declared `#[cfg(test)] mod name;`.
+    pub test: BTreeSet<String>,
+    /// Canonical paths of modules declared under a `cfg` that is not
+    /// test-only (`#[cfg(windows)] mod scm;`), with the predicate as written.
+    /// Code in one is a `cfg` alternative: a declaration another file makes
+    /// at the same path compiles in other builds, not beside it.
+    pub gated: BTreeMap<String, String>,
+}
+
+impl ModuleGates {
+    /// No module gated.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add what `other` gates. A module two declarations gate under different
+    /// predicates compiles under either.
+    pub fn extend(&mut self, other: &Self) {
+        self.test.extend(other.test.iter().cloned());
+        for (module, predicate) in &other.gated {
+            merge_gate(&mut self.gated, module, predicate);
+        }
+    }
+
+    /// The `cfg` a file placed in `module` compiles under, from the
+    /// declarations of it and of every module above it, or `None` when
+    /// nothing gates it.
+    #[must_use]
+    pub fn gate_of(&self, module: &str) -> Option<String> {
+        let mut gates: Vec<&str> = modules_above(module)
+            .into_iter()
+            .chain(std::iter::once(module))
+            .filter_map(|path| self.gated.get(path).map(String::as_str))
+            .collect();
+        gates.dedup();
+        match gates.as_slice() {
+            [] => None,
+            [one] => Some((*one).to_owned()),
+            many => Some(format!("all({})", many.join(", "))),
+        }
+    }
+}
+
+/// Record that `module` compiles under `predicate`, or under either one when
+/// an earlier declaration gated it otherwise.
+fn merge_gate(gated: &mut BTreeMap<String, String>, module: &str, predicate: &str) {
+    match gated.get(module) {
+        Some(known) if known != predicate => {
+            let merged = format!("any({known}, {predicate})");
+            gated.insert(module.to_owned(), merged);
+        }
+        Some(_) => {}
+        None => {
+            gated.insert(module.to_owned(), predicate.to_owned());
+        }
+    }
+}
 
 /// Whether `module`, or any module above it, was declared `#[cfg(test)]`.
 #[must_use]
-pub fn is_test_module_path(module: &str, test_modules: &TestModules) -> bool {
-    if test_modules.contains(module) {
+pub fn is_test_module_path(module: &str, gates: &ModuleGates) -> bool {
+    if gates.test.contains(module) {
         return true;
     }
     let mut prefix = module;
     while let Some(cut) = prefix.rfind("::") {
         prefix = &prefix[..cut];
-        if test_modules.contains(prefix) {
+        if gates.test.contains(prefix) {
             return true;
         }
     }
@@ -39,8 +99,9 @@ pub fn is_test_module_path(module: &str, test_modules: &TestModules) -> bool {
     false
 }
 
-/// Record every out-of-line `#[cfg(test)] mod name;` in one file's items, by
-/// the module its file is placed in (see [`mod_child`]).
+/// Record every out-of-line `#[cfg(..)] mod name;` in one file's items, by
+/// the module its file is placed in (see [`mod_child`]): test-only ones in
+/// [`ModuleGates::test`], any other `cfg` in [`ModuleGates::gated`].
 ///
 /// Bodiless modules only: one with a body is walked in place, where
 /// `Walk::walk_mod` opens the scope directly. A declaration counts only when
@@ -54,7 +115,7 @@ pub fn collect_test_modules(
     module: &str,
     items: &[Item],
     layout: &Layout,
-    out: &mut TestModules,
+    out: &mut ModuleGates,
 ) {
     collect_test_modules_in(relative, module, module, items, layout, out);
 }
@@ -67,30 +128,58 @@ fn collect_test_modules_in(
     container: &str,
     items: &[Item],
     layout: &Layout,
-    out: &mut TestModules,
+    out: &mut ModuleGates,
 ) {
     for item in items {
         let Item::Mod(node) = item else {
             continue;
         };
         let (canonical, _) = mod_child(relative, module, container, node, layout);
-        match &node.content {
-            Some((_, inner)) => {
-                collect_test_modules_in(relative, module, &canonical, inner, layout, out);
-            }
-            None if is_cfg_test(&node.attrs) => {
-                let read_by_it = modules_above(&canonical).iter().any(|parent| {
-                    layout
-                        .module_files(parent)
-                        .iter()
-                        .any(|file| file == relative)
-                });
-                if read_by_it {
-                    out.insert(canonical);
-                }
-            }
-            None => {}
+        if let Some((_, inner)) = &node.content {
+            collect_test_modules_in(relative, module, &canonical, inner, layout, out);
+            continue;
         }
+        let test = is_cfg_test(&node.attrs);
+        let gate = cfg_predicate(&node.attrs);
+        if !test && gate.is_none() {
+            continue;
+        }
+        let read_by_it = modules_above(&canonical).iter().any(|parent| {
+            layout
+                .module_files(parent)
+                .iter()
+                .any(|file| file == relative)
+        });
+        if !read_by_it {
+            continue;
+        }
+        if test {
+            out.test.insert(canonical);
+        } else if let Some(gate) = gate {
+            merge_gate(&mut out.gated, &canonical, &gate);
+        }
+    }
+}
+
+/// The `cfg` an item's attributes compile it under, other than one that
+/// holds only under `test` (see [`is_cfg_test`]), as its predicate is
+/// written: `target_os = "macos"`, or `all(..)` of several. `None` for an
+/// item no such `cfg` gates.
+pub(super) fn cfg_predicate(attrs: &[syn::Attribute]) -> Option<String> {
+    if is_cfg_test(attrs) {
+        return None;
+    }
+    let predicates: Vec<String> = attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg"))
+        .filter_map(|attr| attr.meta.require_list().ok())
+        .map(|list| list.tokens.to_string())
+        .filter(|predicate| !predicate.is_empty())
+        .collect();
+    match predicates.as_slice() {
+        [] => None,
+        [one] => Some(one.clone()),
+        many => Some(format!("all({})", many.join(", "))),
     }
 }
 

@@ -53,6 +53,12 @@ pub struct Facts {
     /// edges instead of scattering orphan method nodes (those nodes still
     /// live in the declaring file's contribution — nothing is duplicated).
     external: HashSet<String>,
+    /// References a deferred edge may name a declaration of this file by
+    /// besides its own: `rust:method:Widget::default` for the method an
+    /// `impl Default for Widget` declares as `Widget::<impl Default>::default`
+    /// (see [`Facts::alias`]). A pending edge to one is confirmed and keeps
+    /// the reference it names, which the core resolves.
+    aliases: HashSet<String>,
     /// Attribute values to apply to already-emitted nodes in `finish()`,
     /// keyed by canonical name. Needed when a role is only discovered after
     /// the node was pushed (an axum handler named before its `fn` appears) or
@@ -64,6 +70,11 @@ pub struct Facts {
     /// cannot recognise them; every node emitted while this is non-zero is
     /// marked test code instead.
     test_scope: usize,
+    /// The non-test `cfg` predicates the walk is inside, outermost first:
+    /// the module's own (from the `mod` declaration that loads the file) and
+    /// each gated item's. A node emitted under one is a `cfg` alternative,
+    /// and carries them as its `cfg` attribute.
+    cfg_scope: Vec<String>,
     /// Whether this file's crate-root module is an executable target — it
     /// declares a top-level `fn main`, or (for an extensionless script) a
     /// shebang. Applied to the module node in `finish()`.
@@ -90,10 +101,12 @@ impl Facts {
             declared: HashSet::new(),
             pending_edges: Vec::new(),
             external: HashSet::new(),
+            aliases: HashSet::new(),
             pending_attributes: Vec::new(),
             executable: false,
             untyped_calls: BTreeSet::new(),
             test_scope: 0,
+            cfg_scope: Vec::new(),
             content_hash: None,
         }
     }
@@ -168,11 +181,43 @@ impl Facts {
         }
     }
 
+    /// Enter the scope of an item compiled only under `predicate`, when it
+    /// has one, returning whether a scope was opened for
+    /// [`Facts::exit_cfg_scope`] to close.
+    pub fn enter_cfg_scope(&mut self, predicate: Option<String>) -> bool {
+        match predicate {
+            Some(predicate) => {
+                self.cfg_scope.push(predicate);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Leave the scope [`Facts::enter_cfg_scope`] opened, if it did.
+    pub fn exit_cfg_scope(&mut self, opened: bool) {
+        if opened {
+            self.cfg_scope.pop();
+        }
+    }
+
     /// The attributes every node emitted at the current scope carries.
     fn scope_attributes(&self) -> BTreeMap<String, Value> {
         let mut attributes = BTreeMap::new();
         if self.test_scope > 0 {
             attributes.insert("test".to_owned(), Value::Bool(true));
+        }
+        match self.cfg_scope.as_slice() {
+            [] => {}
+            [one] => {
+                attributes.insert("cfg".to_owned(), Value::String(one.clone()));
+            }
+            many => {
+                attributes.insert(
+                    "cfg".to_owned(),
+                    Value::String(format!("all({})", many.join(", "))),
+                );
+            }
         }
         attributes
     }
@@ -233,6 +278,13 @@ impl Facts {
         if !self.declared.contains(id) {
             self.external.insert(id.to_owned());
         }
+    }
+
+    /// Accept `id` as naming a declaration of this file for a deferred
+    /// edge (see [`Facts::conditional_edge`]): the path a trait impl's
+    /// method is called by, `Type::method`, beside the one it is declared at.
+    pub fn alias(&mut self, id: &str) {
+        self.aliases.insert(id.to_owned());
     }
 
     /// Mark this file as an executable script: its `fn main` or shebang makes
@@ -408,11 +460,11 @@ impl Facts {
         let declared = self.declared;
         self.edges
             .retain(|edge| declared.contains(&edge.source) || self.external.contains(&edge.source));
-        self.edges.extend(
-            self.pending_edges
-                .into_iter()
-                .filter(|edge| declared.contains(&edge.source) && declared.contains(&edge.target)),
-        );
+        self.edges
+            .extend(self.pending_edges.into_iter().filter(|edge| {
+                declared.contains(&edge.source)
+                    && (declared.contains(&edge.target) || self.aliases.contains(&edge.target))
+            }));
         // Deferred attributes land before serialisation: the module node's
         // `executable` flag and roles resolved after their node was pushed.
         if self.executable {

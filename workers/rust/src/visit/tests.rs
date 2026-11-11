@@ -1,4 +1,4 @@
-use super::{collect_test_modules, declaration_paths, walk, Declarations, TestModules};
+use super::{collect_test_modules, declaration_paths, walk, Declarations, ModuleGates};
 use crate::facts::Facts;
 use crate::layout::Layout;
 use syn::Item;
@@ -60,7 +60,7 @@ fn cfg_alternatives_in_one_file_are_one_declaration() {
         &file,
         &[],
         &declarations,
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
 
@@ -91,7 +91,7 @@ fn a_constructor_references_its_type_and_calls_nothing() {
         &file,
         &[],
         &declarations,
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
     let edges = facts.finish().edges;
@@ -165,7 +165,7 @@ fn a_call_to_an_impl_method_becomes_an_edge() {
         &file,
         &[],
         &declarations,
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
 
@@ -208,7 +208,7 @@ fn a_name_a_glob_import_brings_in_resolves_through_the_index() {
         &engine,
         &[],
         &declarations,
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
 
@@ -247,7 +247,7 @@ fn a_glob_is_scoped_to_its_module_and_expands_an_alias() {
         &engine,
         &[],
         &declarations,
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
 
@@ -308,7 +308,7 @@ fn a_glob_is_scoped_to_its_module_and_expands_an_alias() {
 fn an_out_of_line_cfg_test_module_marks_the_file_that_holds_it() {
     let declaring: syn::File =
         syn::parse_str("#[cfg(test)]\nmod tests;\nmod real;\nfn ship() {}").expect("parses");
-    let mut test_modules = TestModules::new();
+    let mut test_modules = ModuleGates::new();
 
     collect_test_modules(
         "src/lib.rs",
@@ -318,9 +318,9 @@ fn an_out_of_line_cfg_test_module_marks_the_file_that_holds_it() {
         &mut test_modules,
     );
 
-    assert!(test_modules.contains("crate::tests"));
+    assert!(test_modules.test.contains("crate::tests"));
     // A bodiless module without the attribute is ordinary source.
-    assert!(!test_modules.contains("crate::real"));
+    assert!(!test_modules.test.contains("crate::real"));
 
     // tests.rs is its own contribution, walked with its own module path.
     let held: syn::File = syn::parse_str("fn helper() {}\nstruct Rig;").expect("parses");
@@ -385,7 +385,7 @@ fn a_wasm_bindgen_impl_marks_its_public_methods_as_runtime_invoked() {
         &file,
         &[],
         &Declarations::new(),
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
     let contribution = facts.finish();
@@ -425,7 +425,7 @@ fn a_trait_impl_marks_its_methods_as_overriding() {
         &file,
         &[],
         &Declarations::new(),
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
     let contribution = facts.finish();
@@ -439,7 +439,7 @@ fn a_trait_impl_marks_its_methods_as_overriding() {
 
     // What the trait declares, reached through it: `Default::default`
     // calls it, and nothing names `Manifest::default`.
-    assert!(overrides("crate::Manifest::default"));
+    assert!(overrides("crate::Manifest::<impl Default>::default"));
     // An inherent method fulfils no trait and keeps its reference check.
     assert!(!overrides("crate::Manifest::build"));
 }
@@ -457,7 +457,7 @@ fn a_drop_impl_marks_its_method_as_runtime_invoked() {
         &file,
         &[],
         &Declarations::new(),
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
     let contribution = facts.finish();
@@ -469,17 +469,13 @@ fn a_drop_impl_marks_its_method_as_runtime_invoked() {
             .any(|node| node.attributes.contains_key("runtime_invoked"))
     };
 
-    assert!(marked("crate::Lease::drop"), "the Drop::drop impl");
+    assert!(
+        marked("crate::Lease::<impl Drop>::drop"),
+        "the Drop::drop impl"
+    );
     // An inherent method named `drop` is an ordinary method with ordinary
     // call sites, so it stays subject to the reference check.
-    assert!(
-        contribution
-            .nodes
-            .iter()
-            .filter(|node| node.canonical_name == "crate::Lease::drop")
-            .count()
-            >= 1
-    );
+    assert!(!marked("crate::Lease::drop"), "the inherent drop");
     assert!(
         !marked("crate::Lease::drop_manually"),
         "an unrelated method"
@@ -502,7 +498,7 @@ fn a_cfg_whose_text_merely_contains_test_is_not_a_test_module() {
         &file,
         &[],
         &Declarations::new(),
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
     let contribution = facts.finish();
@@ -530,7 +526,7 @@ fn a_nested_cfg_all_test_still_marks_the_module() {
         &file,
         &[],
         &Declarations::new(),
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
     let contribution = facts.finish();
@@ -561,7 +557,7 @@ fn items_under_cfg_test_carry_the_test_attribute() {
         &file,
         &[],
         &Declarations::new(),
-        &TestModules::new(),
+        &ModuleGates::new(),
         &Layout::default(),
     );
     let contribution = facts.finish();

@@ -19,7 +19,7 @@ use crate::params::ScanRequest;
 use crate::protocol::Contribution;
 use crate::reads::{read_safely, record_read};
 use crate::source_hash::sha256_hex;
-use crate::visit::{Declarations, TestModules};
+use crate::visit::{Declarations, ModuleGates};
 
 /// What one file gives the declaration index.
 #[derive(Clone, Debug)]
@@ -27,7 +27,7 @@ struct FileIndex {
     /// Every path the file declares, see [`crate::visit::declaration_paths`].
     declarations: BTreeSet<String>,
     /// Every out-of-line `#[cfg(test)] mod name;` the file declares.
-    test_modules: crate::visit::TestModules,
+    test_modules: crate::visit::ModuleGates,
     /// Every `mod name;` the file declares at a path other than the module
     /// it loads, see [`crate::visit::declared_renames`].
     renames: BTreeMap<String, Option<String>>,
@@ -40,6 +40,9 @@ struct FileIndex {
     /// The type every module-level alias of the file names, see
     /// [`crate::visit::index_facts`].
     aliases: crate::visit::TypeAliases,
+    /// The `cfg` alternatives of every name the file re-exports apart, see
+    /// [`crate::visit::ExportAlternatives`].
+    export_alternatives: crate::visit::ExportAlternatives,
 }
 
 impl FileIndex {
@@ -48,10 +51,10 @@ impl FileIndex {
     /// it, no names and no renamed modules, though its test modules still
     /// count.
     fn of(relative: &str, module: &str, items: &[syn::Item], layout: &Layout) -> Self {
-        let mut test_modules = crate::visit::TestModules::new();
+        let mut test_modules = crate::visit::ModuleGates::new();
         crate::visit::collect_test_modules(relative, module, items, layout, &mut test_modules);
         let indexed = layout.is_indexed(relative, module);
-        let (exports, fields, aliases) = if indexed {
+        let (exports, fields, aliases, export_alternatives) = if indexed {
             crate::visit::index_facts(relative, module, items, layout)
         } else {
             Default::default()
@@ -71,6 +74,7 @@ impl FileIndex {
             exports,
             fields,
             aliases,
+            export_alternatives,
         }
     }
 }
@@ -120,7 +124,7 @@ pub(crate) struct ProjectIndex {
     /// The crate-wide declaration index, see [`Declarations`].
     pub(crate) declarations: Declarations,
     /// Every out-of-line `#[cfg(test)] mod name;` any file declared.
-    pub(crate) test_modules: TestModules,
+    pub(crate) test_modules: ModuleGates,
 }
 
 /// Pass 1: read every Rust file of the project and index it, returning the
@@ -146,7 +150,7 @@ pub(crate) fn index_project(
         .collect();
     let mut prepared: Vec<Prepared> = Vec::with_capacity(request.relatives.len());
     let mut declarations = Declarations::new();
-    let mut test_modules = TestModules::new();
+    let mut test_modules = ModuleGates::new();
     let mut memo = INDEX_MEMO.with(|memo| {
         let (built_under, memo) = std::mem::take(&mut *memo.borrow_mut());
         if built_under == *layout {
@@ -169,7 +173,7 @@ pub(crate) fn index_project(
         };
         if let Some(index) = &index {
             declarations.absorb(index);
-            test_modules.extend(index.test_modules.iter().cloned());
+            test_modules.extend(&index.test_modules);
         }
         if let Some(hash) = &value {
             kept.insert((relative.to_owned(), hash.clone()), index);
@@ -243,6 +247,7 @@ impl Declarations {
         self.add_exports(&index.exports);
         self.add_fields(&index.fields);
         self.add_aliases(&index.aliases);
+        self.add_export_alternatives(&index.export_alternatives);
     }
 }
 

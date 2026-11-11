@@ -44,6 +44,11 @@ pub(super) struct Walk<'a> {
     pub(super) type_params: BTreeSet<String>,
     /// Target type of the current impl block, for resolving `Self`.
     pub(super) current_impl_target: Option<String>,
+    /// The segment a trait impl's methods are declared under below their
+    /// type, `<impl Driver>` for `impl Driver for Session`, while one is
+    /// walked: a trait's method is another item than an inherent method of
+    /// the same name, and two traits' methods of one name are two items.
+    pub(super) impl_segment: Option<String>,
     /// Frameworks the scan request asked this worker to enrich, by short name
     /// (`axum`, `actix`, `rocket`). Empty means none.
     pub(super) frameworks: &'a [String],
@@ -82,12 +87,18 @@ pub(super) struct Walk<'a> {
     /// The files this file's `mod` declarations load, whose own placement
     /// decided the module each declaration names.
     pub(super) placed: BTreeSet<String>,
-    /// Every name a visible `use` (`pub use`, `pub(crate) use`) makes a
-    /// path of the module it is written in, mapped to the path it imports:
+    /// Every name a `use` makes a path of the module it is written in
+    /// (`pub use`, and a private one, which descendants name through
+    /// `super`), mapped to the path it imports:
     /// what the declaration index follows a re-exported path through (see
     /// [`Declarations::exported`]).
     /// `None` marks a name two `use` items bind to different paths.
     pub(super) exports: BTreeMap<String, Option<String>>,
+    /// The `cfg` alternatives of a name `use` items re-export apart,
+    /// every one of them gated (`#[cfg(unix)] pub use unix::open;` beside a
+    /// Windows one): each path it may name, `None` once an ungated `use`
+    /// binds it too. See [`ExportedNames`](super::declarations::ExportedNames).
+    pub(super) export_alternatives: BTreeMap<String, Option<Vec<String>>>,
     /// Every path this file declares (see
     /// [`declaration_paths`](super::declarations::declaration_paths)), which
     /// confirms a type the file names unqualified in its own module whether

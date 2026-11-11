@@ -13,7 +13,7 @@ use crate::layout::Layout;
 use crate::params::ScanRequest;
 use crate::protocol::{Contribution, Manifest};
 use crate::reads::FileReads;
-use crate::visit::{Declarations, TestModules};
+use crate::visit::{Declarations, ModuleGates};
 
 /// Serialized bytes one `scan/input_hashes` notification carries at most, well
 /// under the core's line cap, and the same as every other worker uses: each
@@ -253,7 +253,7 @@ fn walk_one(
     content_hash: String,
     frameworks: &[String],
     declarations: &Declarations,
-    test_modules: &TestModules,
+    test_modules: &ModuleGates,
     layout: &Layout,
 ) -> (Contribution, BTreeSet<String>) {
     let display = module.rsplit("::").next().unwrap_or(module).to_owned();
@@ -265,7 +265,9 @@ fn walk_one(
     // reads as unreferenced production code.
     let file_is_test = crate::visit::is_test_module_path(module, test_modules);
     facts.enter_test_scope_if(file_is_test);
+    let file_gate = facts.enter_cfg_scope(test_modules.gate_of(module));
     facts.node("module", module, &display, span, span);
+    facts.exit_cfg_scope(file_gate);
     facts.exit_test_scope_if(file_is_test);
     let placed = crate::visit::walk(
         &mut facts,

@@ -25,11 +25,11 @@ mod state;
 mod types;
 
 use calls::{is_foreign_export, is_wasm_bindgen};
-pub use cfg::{collect_test_modules, is_test_module_path, TestModules};
-use cfg::{is_cfg_test, is_test_attribute, item_attrs};
+use cfg::{cfg_predicate, is_cfg_test, is_test_attribute, item_attrs};
+pub use cfg::{collect_test_modules, is_test_module_path, ModuleGates};
 pub use declarations::{
-    declaration_paths, declared_renames, Declarations, ExportedNames, FieldType, StructFields,
-    TypeAliases,
+    declaration_paths, declared_renames, Declarations, ExportAlternatives, ExportedNames,
+    FieldType, StructFields, TypeAliases,
 };
 use placement::mod_child;
 use state::{Calls, Walk};
@@ -42,7 +42,7 @@ pub fn walk(
     file: &syn::File,
     frameworks: &[String],
     declarations: &Declarations,
-    test_modules: &TestModules,
+    test_modules: &ModuleGates,
     layout: &Layout,
 ) -> BTreeSet<String> {
     // A file that IS an out-of-line test module is test code in its entirety,
@@ -52,6 +52,7 @@ pub fn walk(
     if file_is_test {
         facts.enter_test_scope();
     }
+    let file_gate = facts.enter_cfg_scope(test_modules.gate_of(module));
     let mut walker = Walk::new(facts, module, frameworks, declarations, layout);
     walker.own_declarations = declaration_paths(module, &file.items);
     walker.collect_uses(module, &file.items);
@@ -62,6 +63,7 @@ pub fn walk(
     walker.walk_items(module, "module", &file.items);
     walker.flush_routes();
     let placed = std::mem::take(&mut walker.placed);
+    facts.exit_cfg_scope(file_gate);
     if file_is_test {
         facts.exit_test_scope();
     }
@@ -70,7 +72,7 @@ pub fn walk(
 }
 
 /// What one file tells the declaration index beyond the paths it declares:
-/// the names its visible `use` items re-export and the field types of its
+/// the names its `use` items re-export and the field types of its
 /// structs, each resolved through the file's own imports as its walk would
 /// resolve them, before any other file is known. See [`ExportedNames`] and
 /// [`StructFields`].
@@ -80,7 +82,7 @@ pub fn index_facts(
     module: &str,
     items: &[Item],
     layout: &Layout,
-) -> (ExportedNames, StructFields, TypeAliases) {
+) -> (ExportedNames, StructFields, TypeAliases, ExportAlternatives) {
     // Nothing here is emitted: the facts and the empty index only satisfy
     // the walk's resolution, which falls back on neither for a path the
     // file roots or imports.
@@ -99,10 +101,16 @@ pub fn index_facts(
     // it names; an impl's associated type is only ever named from its impl.
     let aliases = std::mem::take(&mut walker.type_aliases);
 
+    let alternatives = std::mem::take(&mut walker.export_alternatives)
+        .into_iter()
+        .filter_map(|(name, paths)| Some((name, paths.filter(|paths| paths.len() > 1)?)))
+        .collect();
+
     (
         std::mem::take(&mut walker.exports),
         std::mem::take(&mut walker.struct_fields),
         aliases,
+        alternatives,
     )
 }
 
@@ -133,6 +141,7 @@ impl<'a> Walk<'a> {
             module_children: BTreeMap::new(),
             type_params: BTreeSet::new(),
             current_impl_target: None,
+            impl_segment: None,
             frameworks,
             declarations,
             routes: Vec::new(),
@@ -145,6 +154,7 @@ impl<'a> Walk<'a> {
             crate_module,
             placed: BTreeSet::new(),
             exports: BTreeMap::new(),
+            export_alternatives: BTreeMap::new(),
             own_declarations: BTreeSet::new(),
             type_aliases: BTreeMap::new(),
         }
@@ -167,7 +177,9 @@ impl Walk<'_> {
             if is_test {
                 self.facts.enter_test_scope();
             }
+            let gated = self.facts.enter_cfg_scope(cfg_predicate(item_attrs(item)));
             self.walk_item(container, container_kind, item);
+            self.facts.exit_cfg_scope(gated);
             if is_test {
                 self.facts.exit_test_scope();
             }
@@ -522,6 +534,14 @@ impl Walk<'_> {
         // in Rust has to.
         let exported_impl = node.attrs.iter().any(is_wasm_bindgen);
         let outer = self.enter_type_params(&node.generics);
+        // A block `impl_target` declared for a trait impl with no project
+        // type (`<impl Matcher for &M>`) already names the impl.
+        let outer_segment = self.impl_segment.take();
+        if let Some((trait_path, _)) = &node.trait_ {
+            if !target.ends_with('>') {
+                self.impl_segment = Some(format!("<impl {}>", path_label(trait_path)));
+            }
+        }
         for member in &node.items {
             if let ImplItem::Fn(method) = member {
                 let name = ident_name(&method.sig.ident);
@@ -574,6 +594,7 @@ impl Walk<'_> {
                 );
             }
         }
+        self.impl_segment = outer_segment;
         self.type_params = outer;
     }
 
@@ -597,13 +618,26 @@ impl Walk<'_> {
     ) {
         let is_test = is_cfg_test(attrs);
         self.facts.enter_test_scope_if(is_test);
-        let method_canonical = self.declare(
-            owner,
-            owner_kind,
-            &ident_name(&signature.ident),
-            "method",
-            span,
-        );
+        let gated = self.facts.enter_cfg_scope(cfg_predicate(attrs));
+        let name = ident_name(&signature.ident);
+        let method_canonical = match self.impl_segment.clone() {
+            // A trait impl's method, called as `Type::method` or through a
+            // value of the type: that path still reaches it when no
+            // inherent method of the name exists.
+            Some(segment) => {
+                self.facts
+                    .alias(&reference("method", &format!("{owner}::{name}")));
+                self.declare_as(
+                    owner,
+                    owner_kind,
+                    &format!("{segment}::{name}"),
+                    &name,
+                    "method",
+                    span,
+                )
+            }
+            None => self.declare(owner, owner_kind, &name, "method", span),
+        };
         let outer = self.enter_type_params(&signature.generics);
         annotate(self, &method_canonical);
         if let Some(block) = block {
@@ -615,6 +649,7 @@ impl Walk<'_> {
             );
         }
         self.type_params = outer;
+        self.facts.exit_cfg_scope(gated);
         self.facts.exit_test_scope_if(is_test);
     }
 
@@ -676,8 +711,22 @@ impl Walk<'_> {
         kind: &str,
         span: proc_macro2::Span,
     ) -> String {
-        let canonical = format!("{container}::{name}");
-        self.facts.node(kind, &canonical, name, span, span);
+        self.declare_as(container, container_kind, name, name, kind, span)
+    }
+
+    /// [`Walk::declare`] for a node whose path below its container is not
+    /// its display name: `<impl Driver>::receive` is shown as `receive`.
+    fn declare_as(
+        &mut self,
+        container: &str,
+        container_kind: &str,
+        below: &str,
+        display: &str,
+        kind: &str,
+        span: proc_macro2::Span,
+    ) -> String {
+        let canonical = format!("{container}::{below}");
+        self.facts.node(kind, &canonical, display, span, span);
         self.facts.edge(
             "contains",
             &reference(container_kind, container),
@@ -860,6 +909,98 @@ impl Walk<'_> {
             }
         }
         receivers
+    }
+}
+
+/// A path as its source spells it, generic arguments included, without
+/// the spaces a token stream puts between tokens: `From<u8>`,
+/// `Into<crate::Id>`, `Fn(&str) -> bool`. Only the last segment is kept
+/// when the path has several (`std::fmt::Display` is `Display`), so a
+/// trait named through different imports reads the same.
+fn path_label(path: &syn::Path) -> String {
+    let Some(segment) = path.segments.last() else {
+        return "_".to_owned();
+    };
+    let mut label = ident_name(&segment.ident);
+    match &segment.arguments {
+        syn::PathArguments::None => {}
+        syn::PathArguments::AngleBracketed(arguments) => {
+            let parts: Vec<String> = arguments
+                .args
+                .iter()
+                .map(|argument| match argument {
+                    syn::GenericArgument::Type(ty) => type_text(ty),
+                    syn::GenericArgument::Lifetime(lifetime) => format!("'{}", lifetime.ident),
+                    syn::GenericArgument::AssocType(assoc) => {
+                        format!("{}={}", ident_name(&assoc.ident), type_text(&assoc.ty))
+                    }
+                    _ => "_".to_owned(),
+                })
+                .collect();
+            label.push_str(&format!("<{}>", parts.join(",")));
+        }
+        syn::PathArguments::Parenthesized(arguments) => {
+            let inputs: Vec<String> = arguments
+                .inputs
+                .iter()
+                .map(|input| type_text(&input.ty))
+                .collect();
+            label.push_str(&format!("({})", inputs.join(",")));
+            if let syn::ReturnType::Type(_, output) = &arguments.output {
+                label.push_str(&format!("->{}", type_text(output)));
+            }
+        }
+    }
+    label
+}
+
+/// A type as its source spells it, for [`path_label`]: every segment of a
+/// path is kept, so `From<a::Id>` and `From<b::Id>` stay apart.
+fn type_text(ty: &Type) -> String {
+    match ty {
+        Type::Path(path) if path.qself.is_none() => {
+            let segments: Vec<String> = path
+                .path
+                .segments
+                .iter()
+                .map(|segment| {
+                    let mut single = syn::Path::from(segment.ident.clone());
+                    if let Some(last) = single.segments.last_mut() {
+                        last.arguments = segment.arguments.clone();
+                    }
+                    path_label(&single)
+                })
+                .collect();
+            segments.join("::")
+        }
+        Type::Reference(reference) => format!(
+            "&{}{}{}",
+            reference
+                .lifetime
+                .as_ref()
+                .map(|lifetime| format!("'{} ", lifetime.ident))
+                .unwrap_or_default(),
+            if reference.mutability.is_some() {
+                "mut "
+            } else {
+                ""
+            },
+            type_text(&reference.elem)
+        ),
+        Type::Slice(slice) => format!("[{}]", type_text(&slice.elem)),
+        Type::Array(array) => format!("[{};_]", type_text(&array.elem)),
+        Type::Tuple(tuple) => format!(
+            "({})",
+            tuple
+                .elems
+                .iter()
+                .map(type_text)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Type::Paren(paren) => type_text(&paren.elem),
+        Type::Group(group) => type_text(&group.elem),
+        _ => "_".to_owned(),
     }
 }
 

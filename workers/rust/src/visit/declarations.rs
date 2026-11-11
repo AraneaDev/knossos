@@ -35,7 +35,7 @@ pub struct Declarations {
     /// when two declarations send one path to two modules. See
     /// [`declared_renames`].
     renames: BTreeMap<String, Option<String>>,
-    /// Each name a visible `use` makes a path of its module, mapped to the
+    /// Each name a `use` makes a path of its module, mapped to the
     /// path it imports; `None` when two files map one name apart. See
     /// [`ExportedNames`].
     exports: BTreeMap<String, Option<String>>,
@@ -46,15 +46,28 @@ pub struct Declarations {
     /// The type every module-level alias names; `None` for a path two files
     /// alias apart. See [`TypeAliases`].
     aliases: BTreeMap<String, Option<String>>,
+    /// The `cfg` alternatives of each name `use` items re-export
+    /// apart, every one gated; see [`ExportAlternatives`].
+    export_alternatives: BTreeMap<String, Option<Vec<String>>>,
 }
 
-/// The names one file's visible `use` items (`pub use cfg::collect;`,
-/// `pub(crate) use self::a as b;`) add to the module they are written in, by
-/// that path, mapped to the path each imports, as the file's own imports
-/// resolve it. A glob re-export names nothing and is not here.
+/// The names one file's `use` items re-export apart under `cfg`
+/// alternatives (`#[cfg(unix)] pub use unix::open;` beside a Windows one),
+/// each with every path it may name: [`ExportedNames`] binds such a name to
+/// nothing, since no one path is certain, while code written through it
+/// reaches whichever compiles.
+pub type ExportAlternatives = BTreeMap<String, Vec<String>>;
+
+/// The names one file's `use` items (`pub use cfg::collect;`,
+/// `pub(crate) use self::a as b;`, and a private `use unix as platform;`,
+/// which the module's descendants can name as `super::platform`) add to the
+/// module they are written in, by that path, mapped to the path each
+/// imports, as the file's own imports resolve it. A glob re-export names
+/// nothing and is not here.
 ///
-/// `None` marks a name two `use` items of the file bind to different paths,
-/// such as `#[cfg]` alternatives: which one compiles is unknown.
+/// `None` marks a name two `use` items of the file bind to different paths:
+/// which one is meant is unknown, unless every one is a `cfg` alternative
+/// (see [`ExportAlternatives`]).
 pub type ExportedNames = BTreeMap<String, Option<String>>;
 
 /// The declared type of each named field of one file's structs, by the
@@ -146,7 +159,7 @@ impl Declarations {
         }
     }
 
-    /// `path` with its longest prefix that a visible `use` re-exports
+    /// `path` with its longest prefix that a `use` re-exports
     /// rewritten onto the path that `use` imports, once: `crate::visit::go`
     /// under `pub use cfg::go;` in `crate::visit` is `crate::visit::cfg::go`.
     /// `None` when no prefix is re-exported, or when the one that is maps
@@ -178,7 +191,40 @@ impl Declarations {
             .map(|target| format!("{target}{}", &path[prefix.len()..]))
     }
 
-    /// What a visible `use` binds the path `name` to, exactly: `Some(None)`
+    /// Record one file's re-export alternatives, see [`ExportAlternatives`];
+    /// a name two files re-export apart has none.
+    pub fn add_export_alternatives(&mut self, alternatives: &ExportAlternatives) {
+        for (name, paths) in alternatives {
+            let merged = match self.export_alternatives.get(name) {
+                Some(known) if known.as_ref() != Some(paths) => None,
+                _ => Some(paths.clone()),
+            };
+            self.export_alternatives.insert(name.clone(), merged);
+        }
+    }
+
+    /// `path` rewritten through the `cfg` alternatives its longest prefix is
+    /// re-exported as (see [`ExportAlternatives`]), one path per
+    /// alternative; none when no prefix is. Remembered as a lookup, like
+    /// [`Declarations::exported`].
+    pub fn exported_alternatives(&self, path: &str) -> Vec<String> {
+        self.lookups.borrow_mut().insert(path.to_owned());
+        std::iter::successors(Some(path), |prefix| {
+            prefix.rsplit_once("::").map(|(head, _)| head)
+        })
+        .find_map(|prefix| {
+            let alternatives = self.export_alternatives.get(prefix)?.as_ref()?;
+            Some(
+                alternatives
+                    .iter()
+                    .map(|target| format!("{target}{}", &path[prefix.len()..]))
+                    .collect(),
+            )
+        })
+        .unwrap_or_default()
+    }
+
+    /// What a `use` binds the path `name` to, exactly: `Some(None)`
     /// when two of them bind it apart, `None` when none binds it. Remembered
     /// as a lookup, like [`Declarations::exported`].
     #[allow(clippy::option_option)]

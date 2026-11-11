@@ -170,6 +170,20 @@ final readonly class GraphAssembler
                     // once per stable id rather than once per re-declaring file.
                     $existingPath = $nodes[$id]['evidence_path'];
                     $sharedByDesign = SharedNodeKinds::isSharedByDesign($node->kind);
+                    // Declarations a scanner marks as compiled only under a
+                    // `cfg` (Rust's per-platform impls and modules) are
+                    // alternatives of one item: no build compiles two of
+                    // them, so they re-declare nothing. The first is kept,
+                    // listing where the others are.
+                    if ($existingPath !== $node->evidence->relativePath && self::cfgAlternatives($nodes[$id], $node)) {
+                        $nodes[$id]['attributes']['cfg_alternatives'][] = [
+                            'path' => $node->evidence->relativePath,
+                            'start_line' => $node->evidence->startLine,
+                            'end_line' => $node->evidence->endLine,
+                            'cfg' => $node->attributes['cfg'],
+                        ];
+                        continue;
+                    }
                     if ($existingPath !== $node->evidence->relativePath && !$sharedByDesign && !isset($warnedIds[$id])) {
                         $warnedIds[$id] = true;
                         $warnings[] = [
@@ -343,6 +357,20 @@ final readonly class GraphAssembler
      *
      * @return array<string, mixed>
      */
+    /**
+     * Whether a kept node and a re-declaration of it are both compiled only
+     * under a `cfg` the scanner states, as alternatives of one item.
+     *
+     * @param array<string, mixed> $kept
+     */
+    private static function cfgAlternatives(array $kept, NodeFact $node): bool
+    {
+        $keptCfg = is_array($kept['attributes'] ?? null) ? ($kept['attributes']['cfg'] ?? null) : null;
+        $cfg = $node->attributes['cfg'] ?? null;
+
+        return is_string($keptCfg) && $keptCfg !== '' && is_string($cfg) && $cfg !== '';
+    }
+
     private function nodeRecord(string $id, string $language, NodeFact $node, string $owner, string $scanner): array
     {
         return [
