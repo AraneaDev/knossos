@@ -5402,3 +5402,32 @@ impl OwnedChild {
         );
     }
 }
+
+#[test]
+fn a_use_path_starting_from_a_name_a_super_glob_brings_in_resolves() {
+    // `mcp.rs` does `use super::*;` and then `use process::run_duplex;`,
+    // where `process` is the parent's own `use super::process;`.
+    let contributions = scan_fixture(
+        "use-through-super-glob",
+        &[
+            ("src/lib.rs", "pub mod runner;\n"),
+            ("src/runner/mod.rs", "pub mod docker;\nmod process;\n"),
+            ("src/runner/process.rs", "mod duplex;\npub(super) use duplex::run_duplex;\n"),
+            ("src/runner/process/duplex.rs", "pub(crate) fn run_duplex() -> u8 { 0 }\n"),
+            ("src/runner/docker.rs", "use super::process;\nmod mcp;\npub fn go() -> u8 { mcp::acquire() }\n"),
+            (
+                "src/runner/docker/mcp.rs",
+                "use super::*;\nuse process::run_duplex;\npub fn acquire() -> u8 { run_duplex() }\n",
+            ),
+        ],
+    );
+    let calls = targets_of(
+        &contributions,
+        "calls",
+        "rust:function:crate::runner::docker::mcp::acquire",
+    );
+    assert!(
+        calls.contains(&"rust:function:crate::runner::process::duplex::run_duplex".to_owned()),
+        "{calls:?}"
+    );
+}

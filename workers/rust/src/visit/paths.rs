@@ -395,8 +395,61 @@ impl Walk<'_> {
             Some(None) => return None,
             None => written.to_owned(),
         };
+        if let Some(through) = self.through_rooted_glob(container, children, unrooted, &written) {
+            return self.renamed(through);
+        }
 
         rebase(container, &self.anchor_crate(&written)).and_then(|full| self.renamed(full))
+    }
+
+    /// A `use` path whose first segment only a glob import of `container`
+    /// brings into scope, rewritten through it: `use process::run;` under
+    /// `use super::*;`, where the parent has `use super::process;`. Only a
+    /// glob rooted at `self`, `super` or `crate` is read, which needs no
+    /// other `use` of the file to place. `None` when the head is rooted, a
+    /// child or this module's own item, or no such glob provides it.
+    fn through_rooted_glob(
+        &self,
+        container: &str,
+        children: &BTreeMap<String, Option<String>>,
+        unrooted: bool,
+        written: &str,
+    ) -> Option<String> {
+        let (head, rest) = match written.split_once("::") {
+            Some((head, rest)) => (head, Some(rest)),
+            None => (written, None),
+        };
+        if !unrooted
+            || is_root(head)
+            || children.contains_key(head)
+            || self
+                .own_declarations
+                .contains(&format!("{container}::{head}"))
+        {
+            return None;
+        }
+        let mut sources: Vec<String> = self
+            .pending_globs
+            .iter()
+            .filter(|(declared_in, glob, absolute, _, _)| {
+                declared_in == container
+                    && !absolute
+                    && is_root(glob.split("::").next().unwrap_or(glob))
+            })
+            .filter_map(|(_, glob, _, _, _)| rebase(container, &self.anchor_crate(glob)))
+            .collect();
+        sources.extend(self.glob_sources(container));
+        sources.dedup();
+        if sources.is_empty() {
+            return None;
+        }
+        match self.through_globs(container, &sources, head) {
+            Globbed::One(target) => Some(match rest {
+                Some(rest) => format!("{target}::{rest}"),
+                None => target,
+            }),
+            Globbed::Absent | Globbed::Ambiguous => None,
+        }
     }
 
     /// Bring what the `use` items among a block's `statements` import into
