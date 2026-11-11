@@ -148,6 +148,9 @@ These get an attribute, so they stay off the
   methods of a `#[wasm_bindgen] impl`, and `drop` in an `impl Drop`.
 - A method of a trait impl carries `overrides`, because the trait declares it
   and the trait may be a dependency's. It is named below its impl, see above.
+  A trait impl that is a block of its own (`unsafe impl NativeValue for u32 {}`)
+  carries `trait_impl`: it is used wherever a bound on the trait is met, which
+  leaves no edge to it, so it is never a dead-code candidate on its own.
 - Code compiled only in a test build and `#[test]` functions (including
   `#[tokio::test]`) are marked as test code. The `cfg` predicate is evaluated:
   `cfg(test)` and `cfg(all(test, feature = "x"))` mark an item (a module, a
@@ -257,7 +260,12 @@ so a caller's `fetch` of `/users/42` binds to it like any other route.
 Each scan request builds a declaration index before it walks the files. The
 index lets a cross-file `impl` block attach its methods to a uniquely declared
 type, and lets a call into a child module point at a declaration in another
-file. An ambiguous declaration is dropped rather than guessed. The index holds
+file. An `impl` block's methods are indexed on the type the block's own file
+imports (`impl BrokerState` under `use super::BrokerState;` in a child module
+adds to the parent's type), so `BrokerState::accepted_owned()` reaches a method
+declared in another file. An ambiguous declaration is dropped rather than
+guessed, except that declarations of one path that each compile only under a
+`cfg` count as one. The index holds
 every discovered `.rs` file of the project, read from disk within the byte cap,
 whichever files the request names, so a file rescanned on its own resolves the
 same names a full scan resolves. A file that does not parse adds nothing to it.
@@ -350,10 +358,17 @@ is read.
 
 ## Limits
 
-- Macro bodies are not expanded, so a call a macro generates is invisible.
+- Macro bodies are not expanded. A path written as a call in a `macro_rules!`
+  body (`valid_text(stringify!($name), value)`, `$crate::x::f(..)`) is a
+  `possible` call from the module that defines the macro, and so is one in an
+  invocation whose body is not comma-separated expressions (`vec![f(x); n]`).
+  `matches!(value, pattern if guard)` is read as code. A call a macro builds
+  out of pieces, or one a procedural macro generates, is invisible.
 - `cfg`-gated code is walked in full, because the worker resolves no features. A
   symbol behind a disabled feature still appears.
-- Generic instantiation is not resolved.
+- Generic instantiation is not resolved. A type named as a generic argument,
+  in a turbofish (`size_of::<Info>()`, `Option::<Id>::default()`) or in a
+  type, is a `references` target like any other type.
 - A method call on a receiver whose type the source does not state produces no
   edge. The method name is recorded in the module's `unresolved_member_calls`,
   so a method by that name is only possibly dead.

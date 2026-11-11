@@ -47,7 +47,11 @@ An import names the module by the file it finds, so `import shop.cart` and
 `import src.shop.cart` both reach `shop.cart`. A bare import in a script, or
 in a module whose directory holds no `__init__.py` (such as a test module
 pytest runs), also finds the file beside it, because that directory is first
-on `sys.path` when it runs.
+on `sys.path` when it runs. A file that puts a directory on the path itself,
+with `sys.path.insert(..)` or `sys.path.append(..)` of a path built from
+`__file__` (`Path(__file__).resolve().parents[1]`, `.parent / "lib"`, or
+`os.path.dirname`, `abspath` and `join`), finds a bare import in that
+directory too, when no source root has the module.
 
 Two files never share a module id. When an import of a file's name finds
 another file (`utils.py` at the root and `src/utils.py`, or `mod.py` beside a

@@ -389,10 +389,13 @@ The candidate list reports its own truncation in `bounds.candidates_truncated` a
   verified it but the deletion is not yet scheduled.
 - Record `false_positive` when the component is reached in a way the scan cannot
   see. It is dropped from future candidate lists and the count moves to
-  `bounds.annotated_false_positives`.
+  `bounds.annotated_false_positives`. On a module or a class it covers every
+  member too, unless a member carries an annotation of its own.
 - Record `intentional` when the finding is true and meant: a route parked on
   purpose, a helper only tests use by design. It is dropped from future
-  candidate lists and counted under `bounds.annotated_intentional`.
+  candidate lists and counted under `bounds.annotated_intentional`, and covers
+  the members of a module or class the same way. `confirmed_dead` judges only
+  the component it is on.
 - Use `dead_code_suppressions` for whole families of such components (a
   generated namespace, a plugin directory) rather than annotating each one.
 
