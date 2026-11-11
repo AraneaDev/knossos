@@ -76,37 +76,6 @@ fn collect_mod_declarations(
     }
 }
 
-/// Every item-level `include!("path")` in `items`, inline modules
-/// included, with whether a `#[cfg(test)]` on it or on a module around it
-/// compiles it only for the tests: the file it pulls in is then test code.
-#[must_use]
-pub fn include_sites(items: &[syn::Item]) -> Vec<(String, bool)> {
-    let mut out = Vec::new();
-    collect_include_sites(items, false, &mut out);
-    out
-}
-
-/// [`include_sites`] below a scope that is test-only when `test` is set.
-fn collect_include_sites(items: &[syn::Item], test: bool, out: &mut Vec<(String, bool)>) {
-    for item in items {
-        match item {
-            syn::Item::Mod(node) => {
-                if let Some((_, inner)) = &node.content {
-                    let test = test || super::cfg::is_cfg_test(&node.attrs);
-                    collect_include_sites(inner, test, out);
-                }
-            }
-            syn::Item::Macro(node) if node.mac.path.is_ident("include") => {
-                if let Ok(literal) = node.mac.parse_body::<syn::LitStr>() {
-                    let test = test || super::cfg::is_cfg_test(&node.attrs);
-                    out.push((literal.value(), test));
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
 /// The value of a `#[path = "..."]` attribute.
 fn path_attribute(attrs: &[syn::Attribute]) -> Option<String> {
     attrs.iter().find_map(|attr| match &attr.meta {

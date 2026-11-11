@@ -25,6 +25,7 @@ mod state;
 mod types;
 
 use calls::{is_foreign_export, is_wasm_bindgen};
+pub use cfg::include_sites;
 use cfg::{cfg_predicate, is_cfg_test, is_cfg_test_support, is_test_attribute, item_attrs};
 pub use cfg::{
     collect_test_modules, is_test_module_path, is_test_support_module_path, ModuleGates,
@@ -34,7 +35,7 @@ pub use declarations::{
     ExportAlternatives, ExportedNames, FieldType, GlobImports, StructFields, TypeAliases,
 };
 use placement::mod_child;
-pub use placement::{include_sites, mod_declarations};
+pub use placement::mod_declarations;
 use state::{Calls, Walk};
 
 /// Walk every item in a parsed file, attributing each to `module`, and
