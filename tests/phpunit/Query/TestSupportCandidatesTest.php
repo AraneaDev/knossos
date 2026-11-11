@@ -69,6 +69,46 @@ final class TestSupportCandidatesTest extends KnossosTestCase
     }
 
     /**
+     * A triage page: candidates under one path only, a test-only candidate
+     * saying which test reaches it, and on request the candidates an
+     * annotation hid, with the annotation.
+     */
+    #[Group('query')]
+    public function testCandidatesFilterByPathSayWhereTestsReachThemAndShowWhatAnnotationsHid(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $suite = $this->testModule($repository, $ids, 'tests/unit/security.test.ts');
+        $tested = $this->function($repository, $ids, 'src/security.ts', 'createAuditLog');
+        $this->function($repository, $ids, 'src/security.ts', 'nobody');
+        $this->function($repository, $ids, 'src/other.ts', 'elsewhere');
+        $hidden = $this->function($repository, $ids, 'src/security.ts', 'loadedByName');
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $suite, $tested, 't:9'), $ids['project'], 'calls', $suite, $tested, $ids['file'], 9, 9, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'src/security.ts#loadedByName', 'false_positive', 'loaded by name', execute: true);
+        unset($hidden);
+        $health = $queries->services()->healthQueries;
+        $byName = static function (array $data): array {
+            $out = [];
+            foreach ($data['dead_code_candidates'] as $candidate) {
+                $out[$candidate['component']['canonical_name']] = $candidate;
+            }
+
+            return $out;
+        };
+
+        $page = $byName($health->architectureHealth($ids['project'], limit: 100, pathPrefix: 'src/security.ts')->data);
+        self::assertSame(['src/security.ts#nobody', 'src/security.ts#createAuditLog'], array_keys($page));
+        self::assertSame(['path' => 'src/Checkout.php', 'line' => 9], $page['src/security.ts#createAuditLog']['test_reference']);
+        self::assertSame(1, $page['src/security.ts#createAuditLog']['test_reference_count']);
+        self::assertArrayNotHasKey('test_reference', $page['src/security.ts#nobody']);
+
+        $all = $byName($health->architectureHealth($ids['project'], limit: 100, pathPrefix: 'src/security.ts', includeAnnotated: true)->data);
+        self::assertSame(true, $all['src/security.ts#loadedByName']['hidden_by_annotation'] ?? null);
+        self::assertSame('false_positive', $all['src/security.ts#loadedByName']['annotation']['kind'] ?? null);
+    }
+
+    /**
      * Two pages each declaring their own `StatusBadge` do not use a shared
      * component of that name: the shared one, which nothing imports, stays
      * a candidate beside the local ones that are used.

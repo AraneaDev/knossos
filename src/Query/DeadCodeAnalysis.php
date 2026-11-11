@@ -72,7 +72,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      *
      * @return array{candidates: list<array<string, mixed>>, excluded: array<string, int>}
      */
-    public function classify(string $projectId, array $provisional, CandidateGraphFacts $facts, array $edgeKinds, int $minConfidenceRank, bool $includeTests = false): array
+    public function classify(string $projectId, array $provisional, CandidateGraphFacts $facts, array $edgeKinds, int $minConfidenceRank, bool $includeTests = false, bool $includeAnnotated = false): array
     {
         $candidates = [];
         $methodNames = [];
@@ -116,7 +116,12 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             $exclusion = self::exclusionOf($candidate['row'], array_column($candidate['roles'], 'role'), $annotation, $context, $facts, $suppressions);
             if ($exclusion !== null) {
                 ++$excluded[$exclusion];
-                continue;
+                // Asked for, what an annotation hid is listed with its note,
+                // still counted under the annotation.
+                $hidden = $includeAnnotated && in_array($exclusion, ['annotated_false_positives', 'annotated_intentional'], true);
+                if (!$hidden) {
+                    continue;
+                }
             }
             // A class/module is often reached through a member call rather than
             // by a direct edge to the container. Direct in-degree alone then
@@ -148,6 +153,9 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             ];
             if ($annotation !== null) {
                 $entry['annotation'] = $annotation;
+            }
+            if ($exclusion !== null) {
+                $entry['hidden_by_annotation'] = true;
             }
             $candidates[] = $entry;
         }

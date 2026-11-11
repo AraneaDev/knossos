@@ -386,6 +386,15 @@ paging by it skips none. `bounds.candidates_total` says how many there are
 after the filter. Each candidate carries the `path` and `line` it is declared
 at.
 
+`path_prefix` (`--path-prefix=PATH`) lists only the candidates under one
+project-relative path, and the candidate counts then describe that part. A
+`test_only` candidate carries `test_reference`, the first test reference to it
+by `path` and `line`, and `test_reference_count`; a container whose members only
+tests use has no reference of its own, so its count is 0.
+`include_annotated` (`--include-annotated`) also lists the candidates a
+`false_positive` or `intentional` annotation hid, each with its `annotation`
+and `hidden_by_annotation: true`, still counted under the annotation.
+
 ### Scope and budget
 
 Candidates are found over the whole project. `max_nodes`, `max_edges` and `timeout_ms` bound
