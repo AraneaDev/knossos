@@ -345,7 +345,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         // Every qualifier below builds on what was found, so a test-only
         // candidate never reads as one nothing calls.
         $found = $reachability === 'test_only'
-            ? 'The only inbound static references come from test code'
+            ? 'The only inbound static references come from test code (or example code)'
             : 'No inbound static reference was found';
         $reason = $reachability === 'test_only'
             ? $found . ', so nothing the product runs reaches this.'

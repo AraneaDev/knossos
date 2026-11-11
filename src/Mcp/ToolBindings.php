@@ -410,7 +410,7 @@ final class ToolBindings
                     'edge_kinds' => self::as('edge-kind'), 'min_confidence' => [], 'limit' => [], 'max_nodes' => [], 'max_edges' => [],
                     'timeout_ms' => [], 'include_external' => [], 'include_tests' => [], 'candidate_confidence' => [],
                     'candidate_offset' => [], 'candidate_timeout_ms' => self::as('candidate-timeout'), 'candidate_limit' => [],
-                    'path_prefix' => [], 'include_annotated' => [],
+                    'path_prefix' => [], 'include_annotated' => [], 'include_examples' => [],
                 ],
             ],
             'check_architecture' => [

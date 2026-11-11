@@ -102,6 +102,7 @@ Usage:
                               [--include-tests] [--candidate-confidence=LEVEL]
                               [--candidate-offset=N] [--candidate-limit=N]
                               [--path-prefix=PATH] [--include-annotated]
+                              [--include-examples]
                               [--candidate-timeout=MS] [--json]
   knossos dead-code <path|project-id> [--reachability=unreferenced|test-only]
                     [--candidate-timeout=MS] [--db=PATH] [--json]

@@ -483,6 +483,7 @@ final readonly class ToolCatalog
                         'candidate_limit' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 100, 'default' => 0, 'description' => 'How many dead-code candidates one page lists; 0 means limit. Set it to page through the candidates without paging the hubs and hotspots too.'],
                         'path_prefix' => ['type' => 'string', 'maxLength' => 1000, 'default' => '', 'description' => 'Only list dead-code candidates under this project-relative path; the candidate counts then describe that part.'],
                         'include_annotated' => ['type' => 'boolean', 'default' => false, 'description' => 'Also list the candidates a false_positive or intentional annotation hid, each with its annotation and hidden_by_annotation.'],
+                        'include_examples' => ['type' => 'boolean', 'default' => false, 'description' => 'Also judge example code (examples/, example/, samples/, demo/ outside a source root, docs/**/examples/) as dead-code candidates; left out by default and counted in bounds.excluded_example_components.'],
                         'candidate_timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 60000, 'default' => 5000, 'description' => 'Time budget for finding dead-code candidates across the whole project, separate from timeout_ms, which bounds the hub walk. When it runs out, bounds.candidate_truncation_reasons holds time_limit.'],
                     ],
                     'required' => ['project_id'],

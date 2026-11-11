@@ -8,6 +8,7 @@ use Knossos\Boundary\BoundaryInference;
 use Knossos\Classification\{
     ClassificationEngine,
     EloquentConventionRule,
+    ExampleModuleRule,
     FrameworkFileConventionRule,
     LaravelPathRoleRule,
     LaravelRoleRule,
@@ -55,6 +56,7 @@ final readonly class ScanAnalysisPipeline
             new RustFrameworkRoleRule(),
             new TypeScriptFrameworkRoleRule(),
             new TestModuleRule(),
+            new ExampleModuleRule(),
             new ToolConfigModuleRule(),
             new ManifestEntryPointRule(self::manifestEntryPoints($plan)),
             FrameworkFileConventionRule::svelteKit(self::svelteKitRoots($plan)),

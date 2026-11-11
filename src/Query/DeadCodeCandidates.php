@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Classification\ExampleModuleRule;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\EdgeQueries;
@@ -42,12 +43,13 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      * @param list<string> $edgeKinds
      * @return array{candidates: list<array<string, mixed>>, total: int, test_only: int, probable: int, excluded: array<string, int>, convention_excluded: int, truncated: bool}
      */
-    public function find(string $projectId, array $edgeKinds, int $minConfidenceRank, bool $includeTests, int $deadline, string $confidence, int $offset, int $limit, ?string $pathPrefix = null, bool $includeAnnotated = false): array
+    public function find(string $projectId, array $edgeKinds, int $minConfidenceRank, bool $includeTests, int $deadline, string $confidence, int $offset, int $limit, ?string $pathPrefix = null, bool $includeAnnotated = false, bool $includeExamples = false): array
     {
         $found = [
             'kept' => ['unreferenced' => [], 'test_only' => []], 'keep' => $offset + $limit, 'confidence' => $confidence,
             'total' => 0, 'test_only' => 0, 'probable' => 0, 'excluded' => [], 'convention_excluded' => 0, 'truncated' => false,
             'path_prefix' => $pathPrefix, 'include_annotated' => $includeAnnotated,
+            'include_examples' => $includeExamples, 'example_excluded' => 0,
         ];
         $this->search($projectId, $edgeKinds, $minConfidenceRank, $includeTests, $deadline, $found);
         $page = [];
@@ -59,6 +61,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
             'candidates' => $this->hydrate($projectId, array_slice($page, $offset, $limit)),
             'total' => $found['total'], 'test_only' => $found['test_only'], 'probable' => $found['probable'], 'excluded' => $found['excluded'],
             'convention_excluded' => $found['convention_excluded'], 'truncated' => $found['truncated'],
+            'example_excluded' => $found['example_excluded'],
         ];
     }
 
@@ -146,6 +149,12 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
             if ($found['path_prefix'] !== null && !str_starts_with((string) ($row['relative_path'] ?? ''), $found['path_prefix'])) {
                 continue;
             }
+            // Example code is kept to show how the product is used, and
+            // nothing imports it by design.
+            if (!$found['include_examples'] && in_array(ExampleModuleRule::ROLE, array_column($nodeRoles, 'role'), true)) {
+                ++$found['example_excluded'];
+                continue;
+            }
             if ($analysis->isConventionExcluded($row, $nodeRoles)) {
                 ++$found['convention_excluded'];
                 continue;
@@ -224,9 +233,12 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      */
     private function testOnlyIds(string $projectId, array $edgeKinds, int $minConfidenceRank): array
     {
+        // A reference from an example counts as a test's does: it shows the
+        // product being used, which is not the product using it.
         $test = $this->pdo->quote(ReportableComponent::TEST_ROLE);
+        $example = $this->pdo->quote(ExampleModuleRule::ROLE);
         $production = $this->inbound($edgeKinds)
-            . " AND NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = e.source_id AND c.role = {$test})";
+            . " AND NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = e.source_id AND c.role IN ({$test}, {$example}))";
 
         return $this->candidateIds(
             $projectId,
@@ -277,10 +289,10 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
             'SELECT ' . EdgeEvidencePath::sql() . ' AS relative_path, e.start_line FROM edges e '
             . 'LEFT JOIN files f ON f.id = e.file_id '
             . "WHERE e.project_id = ? AND e.target_id = ? AND e.kind <> 'contains' AND " . EnrichedFacts::excludeSql('e') . ' '
-            . 'AND EXISTS (SELECT 1 FROM classifications c WHERE c.project_id = e.project_id AND c.node_id = e.source_id AND c.role = ?) '
+            . 'AND EXISTS (SELECT 1 FROM classifications c WHERE c.project_id = e.project_id AND c.node_id = e.source_id AND c.role IN (?, ?)) '
             . 'ORDER BY relative_path, e.start_line',
         );
-        $statement->execute([$projectId, $id, ReportableComponent::TEST_ROLE]);
+        $statement->execute([$projectId, $id, ReportableComponent::TEST_ROLE, ExampleModuleRule::ROLE]);
         $rows = $statement->fetchAll(\PDO::FETCH_ASSOC);
         $first = $rows[0] ?? null;
 

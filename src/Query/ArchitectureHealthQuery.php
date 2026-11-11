@@ -57,7 +57,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      *
      * @param list<string> $edgeKinds
      */
-    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000, int $candidateLimit = 0, string $pathPrefix = '', bool $includeAnnotated = false): ResultEnvelope
+    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000, int $candidateLimit = 0, string $pathPrefix = '', bool $includeAnnotated = false, bool $includeExamples = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         // The candidate page has its own size, so paging through the
@@ -84,7 +84,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         $ranked = $this->rankNodes($slice, $walk['metrics'], $cycleMembers, $includeExternal, $includeTests, $limit);
         $candidateDeadline = $this->now() + ($candidateTimeoutMs * 1_000_000);
         $pathPrefix = ltrim($pathPrefix, '/') === '' ? null : ltrim($pathPrefix, '/');
-        $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $candidateDeadline, $candidateConfidence, $candidateOffset, $candidateLimit, $pathPrefix, $includeAnnotated);
+        $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $candidateDeadline, $candidateConfidence, $candidateOffset, $candidateLimit, $pathPrefix, $includeAnnotated, $includeExamples);
         foreach (['hub_total', 'hotspot_total'] as $total) {
             if ($ranked[$total] > $limit) {
                 $truncation->add('result_limit');
@@ -93,7 +93,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
 
         return $this->healthEnvelope(
             $project,
-            ['limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs, 'candidate_confidence' => $candidateConfidence, 'candidate_offset' => $candidateOffset, 'candidate_timeout_ms' => $candidateTimeoutMs, 'candidate_limit' => $candidateLimit, 'path_prefix' => $pathPrefix, 'include_annotated' => $includeAnnotated],
+            ['limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs, 'candidate_confidence' => $candidateConfidence, 'candidate_offset' => $candidateOffset, 'candidate_timeout_ms' => $candidateTimeoutMs, 'candidate_limit' => $candidateLimit, 'path_prefix' => $pathPrefix, 'include_annotated' => $includeAnnotated, 'include_examples' => $includeExamples],
             ['slice' => $slice, 'walk' => $walk, 'ranked' => $ranked, 'found' => $found, 'cycle_members' => $cycleMembers, 'cycle_scan_truncated' => $cycleScanTruncated],
             $truncation,
         );
@@ -271,7 +271,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      * with the bounds and tallies that say how complete each list is.
      *
      * @param array<string, mixed> $project
-     * @param array{limit: int, max_nodes: int, max_edges: int, timeout_ms: int, candidate_confidence: string, candidate_offset: int, candidate_timeout_ms: int, candidate_limit: int, path_prefix: ?string, include_annotated: bool} $bounds the caller's bounds, reported first and in this order
+     * @param array{limit: int, max_nodes: int, max_edges: int, timeout_ms: int, candidate_confidence: string, candidate_offset: int, candidate_timeout_ms: int, candidate_limit: int, path_prefix: ?string, include_annotated: bool, include_examples: bool} $bounds the caller's bounds, reported first and in this order
      * @param array{slice: array<string, mixed>, walk: array{metrics: array{in: list<int>, out: list<int>, cross: list<int>}, edges_examined: int}, ranked: array<string, mixed>, found: array<string, mixed>, cycle_members: array<string, true>, cycle_scan_truncated: bool} $result
      */
     private function healthEnvelope(array $project, array $bounds, array $result, Truncation $truncation): ResultEnvelope
@@ -333,6 +333,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
                     'excluded_type_declarations' => $excluded['type_declarations'],
                     'excluded_test_support' => $excluded['test_support'],
                     'excluded_convention_discovered' => $found['convention_excluded'],
+                    'excluded_example_components' => $found['example_excluded'],
                     'suppressed_candidates' => $excluded['suppressed'],
                     'annotated_false_positives' => $excluded['annotated_false_positives'],
                     'annotated_intentional' => $excluded['annotated_intentional'],

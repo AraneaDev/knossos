@@ -159,6 +159,40 @@ final class TestSupportCandidatesTest extends KnossosTestCase
     }
 
     /**
+     * Example code is never imported by design: left out of the candidates
+     * and counted, unless asked for. What only an example uses is reached the
+     * way what only a test uses is: test-only.
+     */
+    #[Group('query')]
+    public function testExampleCodeIsLeftOutAndItsUseCountsAsATestsDoes(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $template = $this->function($repository, $ids, 'examples/custom-adapters/adapter-template.ts', 'TemplateAdapter');
+        $repository->saveClassification(StableId::classification($ids['project'], $template, 'quality.example_module', 'core.example.modules.v1'), $ids['project'], $template, 'quality.example_module', 'derived', 'probable', 'core.example.modules.v1', $ids['file'], 1, 1, [], $ids['scan']);
+        $shown = $this->function($repository, $ids, 'src/adapters.ts', 'registerAdapter');
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $template, $shown, 'x:1'), $ids['project'], 'calls', $template, $shown, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries;
+        $reachability = static function (array $data): array {
+            $out = [];
+            foreach ($data['dead_code_candidates'] as $candidate) {
+                $out[$candidate['component']['canonical_name']] = $candidate['reachability'];
+            }
+
+            return $out;
+        };
+
+        $default = $health->architectureHealth($ids['project'], limit: 100)->data;
+        self::assertArrayNotHasKey('examples/custom-adapters/adapter-template.ts#TemplateAdapter', $reachability($default));
+        self::assertSame(1, $default['bounds']['excluded_example_components']);
+        self::assertSame('test_only', $reachability($default)['src/adapters.ts#registerAdapter'] ?? null);
+
+        $all = $health->architectureHealth($ids['project'], limit: 100, includeExamples: true)->data;
+        self::assertSame('unreferenced', $reachability($all)['examples/custom-adapters/adapter-template.ts#TemplateAdapter'] ?? null);
+        self::assertSame(0, $all['bounds']['excluded_example_components']);
+    }
+
+    /**
      * Two pages each declaring their own `StatusBadge` do not use a shared
      * component of that name: the shared one, which nothing imports, stays
      * a candidate beside the local ones that are used.
