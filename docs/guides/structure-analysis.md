@@ -234,7 +234,11 @@ tested function counts as tested. An implementation a test reaches through its
 interface counts too, and so does a constructor whose class a test constructs.
 A composition root that builds the application is reached but never walked
 out of, or every service would read as tested by a test that only boots the
-app.
+app. A program a test runs as a process is reached when the test names the
+file it runs (a `launches` edge), which for Rust includes a binary named
+through `env!("CARGO_BIN_EXE_<name>")`; one whose path comes from an
+environment variable a script sets cannot be seen, and the result says so in
+its `warnings`.
 
 Test files, tool configs (`vitest.config.ts`, `conftest.py`) and TypeScript
 declaration files are left out: none holds code a test would reach. A

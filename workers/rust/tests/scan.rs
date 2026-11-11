@@ -5323,3 +5323,38 @@ fn a_trait_impl_block_of_its_own_is_marked_as_one() {
     .expect("the block is a node");
     assert_eq!(Some(true), block["attributes"]["trait_impl"].as_bool());
 }
+
+#[test]
+fn a_test_naming_a_binary_through_cargo_bin_exe_launches_it() {
+    // Cargo hands an integration test the path of each binary of its
+    // package as `CARGO_BIN_EXE_<name>`; the test spawns it, which no call
+    // records, so the binary read as untested.
+    let test = r#"
+#[test]
+fn runs_the_fixture() {
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_fixture_main")).status();
+    let _ = status;
+}
+"#;
+    let contributions = scan_fixture_with(
+        "cargo-bin-exe",
+        &[
+            ("Cargo.toml", "[workspace]\nmembers = [\"crates/helper\"]\n"),
+            ("crates/helper/Cargo.toml", "[package]\nname = \"helper\"\n"),
+            ("crates/helper/src/lib.rs", "pub fn x() {}\n"),
+            ("crates/helper/src/bin/fixture_main.rs", "fn main() {}\n"),
+            ("crates/helper/tests/spawn.rs", test),
+        ],
+        &serde_json::json!({"config_files": ["Cargo.toml", "crates/helper/Cargo.toml"]}),
+    );
+    let launches: Vec<String> = edges_of(&contributions, "launches")
+        .into_iter()
+        .map(|(source, target)| format!("{source} -> {target}"))
+        .collect();
+    assert!(
+        launches.iter().any(|edge| edge.ends_with(
+            "runs_the_fixture -> rust:launched_file:crates/helper/src/bin/fixture_main.rs"
+        )),
+        "{launches:?}"
+    );
+}

@@ -104,7 +104,9 @@ final readonly class UntestedQueryService extends AbstractArchitectureQueryServi
                 'bounds' => ['visited' => count($walk['reached']), 'max_nodes' => $maxNodes, 'truncation_reasons' => $reasons],
             ],
             [],
-            [],
+            [
+                'A program a test runs as a process is reached only when the test names its file or, in Rust, the binary through env!("CARGO_BIN_EXE_<name>"); one whose path comes from an environment variable or a script cannot be seen, so its entry point and what only it calls are listed here although the tests run them.',
+            ],
             $reasons !== [] || $offset + count($page) < $total,
         );
     }

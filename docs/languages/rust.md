@@ -434,3 +434,10 @@ the real worker process over NDJSON-RPC.
 with a script's extension. The core resolves the path to the module of the
 project file at that path, or of the one file whose path ends with it, and drops
 the edge when there is none.
+
+`env!("CARGO_BIN_EXE_tool")`, which Cargo sets for an integration test or a
+benchmark to the path of the package's binary `tool`, launches that binary: a
+speculative `launches` edge to each file that could be its root in the test's
+package (`src/bin/tool.rs`, `src/bin/tool/main.rs`, `src/main.rs`), kept for
+the ones that exist. A binary whose path a test reads from another environment
+variable is not followed.

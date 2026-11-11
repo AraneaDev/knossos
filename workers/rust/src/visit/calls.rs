@@ -639,6 +639,7 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
     }
 
     fn visit_macro(&mut self, node: &syn::Macro) {
+        self.cargo_binary(node);
         // A macro body is tokens to syn. Most invocations in ordinary code
         // (`format!`, `println!`, `assert_eq!`, `write!`) take comma-separated
         // expressions, so a body that parses as such is walked like any other
