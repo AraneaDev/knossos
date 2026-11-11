@@ -34,7 +34,7 @@ pub use declarations::{
     ExportAlternatives, ExportedNames, FieldType, GlobImports, StructFields, TypeAliases,
 };
 use placement::mod_child;
-pub use placement::mod_declarations;
+pub use placement::{include_sites, mod_declarations};
 use state::{Calls, Walk};
 
 /// Walk every item in a parsed file, attributing each to `module`, and

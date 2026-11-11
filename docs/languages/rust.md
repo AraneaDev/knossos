@@ -326,7 +326,9 @@ start at the package's `crate`. An out-of-line `#[cfg(test)] mod name;` marks
 the file it loads as test code, its module node included, when the declaring
 file sits in a module above it, or is the crate root, also when a `#[path]`
 sends it to a sibling (`src/net.rs` loading `src/net_tests.rs` as
-`crate::net::tests`).
+`crate::net::tests`). A file an `include!("..")` pulls in under
+`#[cfg(test)]` (`mod tests { include!("../shared/cases.rs"); }`) is test code
+too, and reads the file that includes it.
 
 ### What an incremental scan rescans
 

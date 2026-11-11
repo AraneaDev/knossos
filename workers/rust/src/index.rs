@@ -134,6 +134,8 @@ pub(crate) enum Prepared {
 struct Memoized {
     /// See [`crate::visit::mod_declarations`].
     mods: Vec<ModDeclaration>,
+    /// See [`crate::visit::include_sites`].
+    includes: Vec<(String, bool)>,
     /// See [`FileIndex`].
     index: Option<FileIndex>,
 }
@@ -180,6 +182,8 @@ struct Pending {
     hash: Option<String>,
     /// Its `mod` declarations, see [`crate::visit::mod_declarations`].
     mods: Vec<ModDeclaration>,
+    /// Its `include!` sites, see [`crate::visit::include_sites`].
+    includes: Vec<(String, bool)>,
     /// Its index entries as the memo holds them, under the memo's layout.
     memoized: Option<Option<FileIndex>>,
     /// Its index entries under the request's layout before any file is
@@ -226,9 +230,12 @@ pub(crate) fn index_project(
         heartbeat.beat(emit);
         let entry = if requested.contains(relative) {
             let item = prepare_one(root, relative, max_file_bytes);
-            let mods = match &item {
-                Prepared::Parsed { parsed, .. } => crate::visit::mod_declarations(&parsed.items),
-                Prepared::Err { .. } => Vec::new(),
+            let (mods, includes) = match &item {
+                Prepared::Parsed { parsed, .. } => (
+                    crate::visit::mod_declarations(&parsed.items),
+                    crate::visit::include_sites(&parsed.items),
+                ),
+                Prepared::Err { .. } => (Vec::new(), Vec::new()),
             };
             let hash = read_value(&item);
             prepared.push(item);
@@ -236,6 +243,7 @@ pub(crate) fn index_project(
                 relative: relative.to_owned(),
                 hash,
                 mods,
+                includes,
                 memoized: None,
                 tentative: None,
                 requested: Some(prepared.len() - 1),
@@ -252,7 +260,13 @@ pub(crate) fn index_project(
         .map(|entry| (entry.relative.clone(), entry.mods.clone()))
         .collect();
     let placed = layout.place_path_modules(&mods);
-    let orphans = orphan_neighbours(&placed, &mods);
+    let included = included_files(&pending, &mods);
+    let mut orphans = orphan_neighbours(&placed, &mods);
+    // A file `include!` pulls in is compiled as part of the file writing
+    // it, which decides whether it is test code: it reads that file.
+    for (file, (includers, _)) in &included {
+        orphans.insert(file.clone(), includers.clone());
+    }
     let memo_valid = built_under == placed;
     let mut indexed: Vec<(String, String, Option<FileIndex>)> = Vec::with_capacity(pending.len());
     let mut kept: IndexMemo = HashMap::new();
@@ -287,6 +301,7 @@ pub(crate) fn index_project(
                 (entry.relative.clone(), hash.clone()),
                 Memoized {
                     mods: entry.mods,
+                    includes: entry.includes,
                     index: index.clone(),
                 },
             );
@@ -297,6 +312,11 @@ pub(crate) fn index_project(
     for (_, _, index) in &indexed {
         if let Some(index) = index {
             test_modules.extend(&index.test_modules);
+        }
+    }
+    for (file, (_, test)) in &included {
+        if *test {
+            test_modules.test.insert(placed.module_of(file));
         }
     }
     let mut declarations = Declarations::new();
@@ -317,6 +337,43 @@ pub(crate) fn index_project(
         layout: placed,
         orphans,
     }
+}
+
+/// Each project file an `include!("path")` of another file pulls in, with
+/// the files that include it and whether every one of them does so only for
+/// the tests (under `#[cfg(test)]`). The path is relative to the including
+/// file's directory.
+fn included_files(
+    pending: &[Pending],
+    mods: &BTreeMap<String, Vec<ModDeclaration>>,
+) -> BTreeMap<String, (Vec<String>, bool)> {
+    let mut included: BTreeMap<String, (Vec<String>, bool)> = BTreeMap::new();
+    for entry in pending {
+        let directory = entry.relative.rsplit_once('/').map_or("", |(dir, _)| dir);
+        for (written, test) in &entry.includes {
+            if written.starts_with('/') || written.contains('\\') {
+                continue;
+            }
+            let mut segments: Vec<&str> = directory.split('/').filter(|s| !s.is_empty()).collect();
+            let mut escaped = false;
+            for part in written.split('/') {
+                match part {
+                    "" | "." => {}
+                    ".." => escaped |= segments.pop().is_none(),
+                    part => segments.push(part),
+                }
+            }
+            let target = segments.join("/");
+            if escaped || target == entry.relative || !mods.contains_key(&target) {
+                continue;
+            }
+            let (includers, all_test) = included.entry(target).or_insert((Vec::new(), true));
+            includers.push(entry.relative.clone());
+            *all_test &= *test;
+        }
+    }
+
+    included
 }
 
 /// Each project file no `mod` declaration loads (and no crate root), with
@@ -379,6 +436,7 @@ fn read_context_file(
         relative: relative.to_owned(),
         hash: None,
         mods: Vec::new(),
+        includes: Vec::new(),
         memoized: None,
         tentative: None,
         requested: None,
@@ -390,6 +448,7 @@ fn read_context_file(
     match memo.remove(&(relative.to_owned(), hash.clone())) {
         Some(memoized) => {
             entry.mods = memoized.mods;
+            entry.includes = memoized.includes;
             entry.memoized = Some(memoized.index);
         }
         None => {
@@ -397,6 +456,10 @@ fn read_context_file(
             entry.mods = parsed
                 .as_ref()
                 .map(|parsed| crate::visit::mod_declarations(&parsed.items))
+                .unwrap_or_default();
+            entry.includes = parsed
+                .as_ref()
+                .map(|parsed| crate::visit::include_sites(&parsed.items))
                 .unwrap_or_default();
             entry.tentative = Some(parsed.map(|parsed| {
                 FileIndex::of(relative, &layout.module_of(relative), &parsed.items, layout)

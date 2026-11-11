@@ -5431,3 +5431,63 @@ fn a_use_path_starting_from_a_name_a_super_glob_brings_in_resolves() {
         "{calls:?}"
     );
 }
+
+#[test]
+fn a_file_a_test_module_includes_is_test_code() {
+    // `src/tui/editor.rs` has `#[cfg(test)] mod tests { include!(
+    // "../mcp_server/evidence_allocation_tests.rs"); }`: the included file is
+    // part of that test module, though nothing declares it as a module, and
+    // it read as an unreferenced production module.
+    let editor = "pub fn edit() {}\n#[cfg(test)]\nmod tests {\n    include!(\"../mcp_server/evidence_allocation_tests.rs\");\n}\n";
+    let contributions = scan_fixture(
+        "include-in-test-module",
+        &[
+            ("src/lib.rs", "pub mod mcp_server;\npub mod tui;\n"),
+            ("src/tui/mod.rs", "pub mod editor;\n"),
+            ("src/tui/editor.rs", editor),
+            ("src/mcp_server/mod.rs", "pub fn serve() {}\n"),
+            (
+                "src/mcp_server/evidence_allocation_tests.rs",
+                "#[test]\nfn allocates() {}\nfn helper() {}\n",
+            ),
+            ("src/mcp_server/plain.rs", "pub fn plain() {}\n"),
+        ],
+    );
+    let file = "src/mcp_server/evidence_allocation_tests.rs";
+    let test_of = |canonical: &str| {
+        node_in(&contributions, file, canonical).unwrap_or_else(|| panic!("{canonical}"))
+            ["attributes"]["test"]
+            .as_bool()
+    };
+    assert_eq!(
+        Some(true),
+        test_of("crate::mcp_server::evidence_allocation_tests")
+    );
+    assert_eq!(
+        Some(true),
+        test_of("crate::mcp_server::evidence_allocation_tests::helper")
+    );
+    let reads = contributions
+        .iter()
+        .find(|c| c["owner_key"] == format!("knossos.rust:file:{file}"))
+        .map(|c| {
+            c["reads"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+    assert!(reads.contains(&"src/tui/editor.rs".to_owned()), "{reads:?}");
+    assert_eq!(
+        None,
+        node_in(
+            &contributions,
+            "src/mcp_server/plain.rs",
+            "crate::mcp_server::plain"
+        )
+        .unwrap()["attributes"]["test"]
+            .as_bool()
+    );
+}
