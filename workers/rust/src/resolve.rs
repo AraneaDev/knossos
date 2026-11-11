@@ -170,9 +170,10 @@ pub struct Aliases {
     /// every binding of it was `cfg`-gated; a name any ungated `use` binds
     /// has none.
     gated: BTreeMap<String, Option<Vec<String>>>,
-    /// The alternative a caller is resolving a poisoned name through, see
-    /// [`Aliases::choose`]: while set, the name stands for that path alone.
-    chosen: std::cell::RefCell<Option<(String, String)>>,
+    /// The alternatives callers are resolving poisoned names through,
+    /// innermost last, see [`Aliases::choose`]: while one is set, its name
+    /// stands for that path alone.
+    chosen: std::cell::RefCell<Vec<(String, String)>>,
 }
 
 impl Aliases {
@@ -247,23 +248,28 @@ impl Aliases {
         }
     }
 
-    /// Resolve `head` as `full` alone until [`Aliases::unchoose`], for a
-    /// caller walking a path through one of its alternatives.
+    /// Resolve `head` as `full` alone until the matching
+    /// [`Aliases::unchoose`], for a caller walking a path, or a whole `impl`
+    /// block, through one of its alternatives. Choices nest.
     pub fn choose(&self, head: &str, full: &str) {
-        *self.chosen.borrow_mut() = Some((head.to_owned(), full.to_owned()));
+        self.chosen
+            .borrow_mut()
+            .push((head.to_owned(), full.to_owned()));
     }
 
-    /// End the choice [`Aliases::choose`] made.
+    /// End the innermost choice [`Aliases::choose`] made.
     pub fn unchoose(&self) {
-        *self.chosen.borrow_mut() = None;
+        self.chosen.borrow_mut().pop();
     }
 
-    /// The path the current [`Aliases::choose`] gives `head`, if any.
+    /// The path the innermost [`Aliases::choose`] of `head` gives it, if any.
     fn chosen_for(&self, head: &str) -> Option<String> {
-        match &*self.chosen.borrow() {
-            Some((chosen, full)) if chosen == head => Some(full.clone()),
-            _ => None,
-        }
+        self.chosen
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(chosen, _)| chosen == head)
+            .map(|(_, full)| full.clone())
     }
 
     /// Whether `head` was bound twice apart, ignoring any choice.

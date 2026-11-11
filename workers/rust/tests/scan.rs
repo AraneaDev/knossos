@@ -5358,3 +5358,47 @@ fn runs_the_fixture() {
         "{launches:?}"
     );
 }
+
+#[test]
+fn an_impl_of_a_type_re_exported_under_exclusive_cfgs_adds_to_each_alternative() {
+    // `impl OwnedChild` where `OwnedChild` is a gated re-export of a Unix and
+    // a Windows type named nothing, so the block was skipped and every call
+    // its methods make was lost.
+    let process = r#"
+#[cfg(unix)]
+mod unix;
+#[cfg(windows)]
+mod windows;
+#[cfg(unix)]
+pub use unix::OwnedChild;
+#[cfg(windows)]
+pub use windows::OwnedChild;
+impl OwnedChild {
+    pub fn spawn() -> u8 {
+        #[cfg(unix)]
+        use unix as platform;
+        #[cfg(windows)]
+        use windows as platform;
+        (|| platform::reader())()
+    }
+}
+"#;
+    let native = "pub struct OwnedChild;\npub fn reader() -> u8 { 0 }\n";
+    let contributions = scan_fixture(
+        "impl-of-cfg-alternative-type",
+        &[
+            ("src/lib.rs", "pub mod process;\n"),
+            ("src/process/mod.rs", process),
+            ("src/process/unix.rs", native),
+            ("src/process/windows.rs", native),
+        ],
+    );
+    for os in ["unix", "windows"] {
+        let method = format!("rust:method:crate::process::{os}::OwnedChild::spawn");
+        let calls = targets_of(&contributions, "calls", &method);
+        assert!(
+            calls.contains(&format!("rust:function:crate::process::{os}::reader")),
+            "{method}: {calls:?}"
+        );
+    }
+}

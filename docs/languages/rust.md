@@ -122,7 +122,9 @@ body) binds it to each alternative, so `platform::flush_file()` is a call to
 both `crate::fs::unix::flush_file` and `crate::fs::windows::flush_file`. The
 same holds for a re-export through such a name (`pub use platform::open;`)
 and for gated re-exports of one name from different modules: a path through
-it reaches every alternative. A private `use` is a path from the module's
+it reaches every alternative, and an `impl` of such a name
+(`impl OwnedChild` under `#[cfg(unix)] pub use unix::OwnedChild;` and a Windows
+one) adds its methods to each. A private `use` is a path from the module's
 descendants too, so `use super::platform;` in a child module names what the
 parent's `use` imports.
 

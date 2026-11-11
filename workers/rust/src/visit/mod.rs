@@ -492,6 +492,40 @@ impl Walk<'_> {
         node: &syn::ItemImpl,
         span: proc_macro2::Span,
     ) {
+        // `impl OwnedChild` where `OwnedChild` is `#[cfg(unix)] pub use
+        // unix::OwnedChild;` beside a Windows one: the block adds to
+        // whichever compiles, so it is walked once per alternative.
+        let head = match node.self_ty.as_ref() {
+            Type::Path(path) if path.qself.is_none() && path.path.leading_colon.is_none() => path
+                .path
+                .segments
+                .first()
+                .map(|segment| ident_name(&segment.ident)),
+            _ => None,
+        };
+        let alternatives = head
+            .as_deref()
+            .map(|head| self.aliases.alternatives(head))
+            .unwrap_or_default();
+        if let (Some(head), false) = (head, alternatives.is_empty()) {
+            for alternative in alternatives {
+                self.aliases.choose(&head, &alternative);
+                self.walk_impl_block(container, container_kind, node, span);
+                self.aliases.unchoose();
+            }
+            return;
+        }
+        self.walk_impl_block(container, container_kind, node, span);
+    }
+
+    /// [`Walk::walk_impl`] for one reading of the block's type.
+    fn walk_impl_block(
+        &mut self,
+        container: &str,
+        container_kind: &str,
+        node: &syn::ItemImpl,
+        span: proc_macro2::Span,
+    ) {
         let Some(target) = self.impl_target(container, container_kind, node, span) else {
             return;
         };
