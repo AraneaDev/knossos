@@ -269,8 +269,9 @@ final readonly class ResultEnricher
     {
         $root = $data;
         $root[self::EVIDENCE_KEY] = $evidence;
-        foreach (['supporting', 'notes', 'payload'] as $tier) {
-            $victim = self::largestIn($root, $tier);
+        $paged = self::pagedList($data);
+        foreach (['supporting', 'notes', 'payload', 'paged'] as $tier) {
+            $victim = self::largestIn($root, $tier, $paged);
             if ($victim !== null) {
                 return $victim;
             }
@@ -290,15 +291,18 @@ final readonly class ResultEnricher
      * The largest trimmable collection in one tier, or null when that tier is
      * already exhausted.
      *
+     * The list `$paged` names (see {@see self::pagedList()}) is a tier of its
+     * own, trimmed after every other list.
+     *
      * @param array<string, mixed> $root
-     * @param 'supporting'|'notes'|'payload' $tier
+     * @param 'supporting'|'notes'|'payload'|'paged' $tier
      * @return list<string>|null
      */
-    private static function largestIn(array $root, string $tier): ?array
+    private static function largestIn(array $root, string $tier, ?string $paged = null): ?array
     {
         $victim = null;
         $victimCount = 0;
-        $walk = function (array $container, array $path, string $inTier) use (&$walk, &$victim, &$victimCount, $tier): void {
+        $walk = function (array $container, array $path, string $inTier) use (&$walk, &$victim, &$victimCount, $tier, $paged): void {
             foreach ($container as $key => $value) {
                 // A sequence is read as complete (a flow path's nodes and hops):
                 // cut, it says less than it claims, so neither
@@ -308,7 +312,11 @@ final readonly class ResultEnricher
                     continue;
                 }
                 $keyPath = [...$path, (string) $key];
-                $valueTier = $inTier !== 'payload' ? $inTier : self::tierOf((string) $key);
+                $valueTier = match (true) {
+                    $inTier !== 'payload' => $inTier,
+                    $path === [] && $paged === (string) $key => 'paged',
+                    default => self::tierOf((string) $key),
+                };
                 // A legend is a map keyed by component name rather than a list, so
                 // it is trimmable in its own right; other maps are not, because
                 // popping a named field would change the result's shape. A
@@ -329,6 +337,20 @@ final readonly class ResultEnricher
         $walk($root, [], 'payload');
 
         return $victim;
+    }
+
+    /**
+     * The top-level list an answer pages through, when it names one in
+     * `pagination.list`: what the caller asked for page by page, so the other
+     * lists give way to it, and what a cut resumes in.
+     *
+     * @param array<string, mixed> $data
+     */
+    private static function pagedList(array $data): ?string
+    {
+        $list = is_array($data['pagination'] ?? null) ? ($data['pagination']['list'] ?? null) : null;
+
+        return is_string($list) ? $list : null;
     }
 
     /**
@@ -395,6 +417,10 @@ final readonly class ResultEnricher
         $pagination = $data['pagination'] ?? null;
         if ($trimmed === [] || !is_array($pagination) || !is_int($pagination['offset'] ?? null)) {
             return;
+        }
+        $paged = self::pagedList($data);
+        if ($paged !== null) {
+            $trimmed = in_array($paged, $trimmed, true) ? [$paged] : [];
         }
         foreach ($trimmed as $key) {
             if (is_array($data[$key] ?? null) && array_is_list($data[$key])) {

@@ -57,9 +57,15 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      *
      * @param list<string> $edgeKinds
      */
-    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000): ResultEnvelope
+    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000, int $candidateLimit = 0): ResultEnvelope
     {
         $project = $this->project($projectId);
+        // The candidate page has its own size, so paging through the
+        // candidates does not also page the hubs and hotspots; 0 is `limit`.
+        if ($candidateLimit < 0 || $candidateLimit > 100) {
+            throw new InvalidArgumentException('candidate_limit must be between 0 and 100.');
+        }
+        $candidateLimit = $candidateLimit === 0 ? $limit : $candidateLimit;
         [$confidenceRank, $edgeKinds] = $this->healthArguments($edgeKinds, $minConfidence, $limit, $maxNodes, $maxEdges, $timeoutMs, $candidateConfidence, $candidateOffset, $candidateTimeoutMs);
         $minimumRank = $confidenceRank[$minConfidence];
 
@@ -77,7 +83,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
 
         $ranked = $this->rankNodes($slice, $walk['metrics'], $cycleMembers, $includeExternal, $includeTests, $limit);
         $candidateDeadline = $this->now() + ($candidateTimeoutMs * 1_000_000);
-        $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $candidateDeadline, $candidateConfidence, $candidateOffset, $limit);
+        $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $candidateDeadline, $candidateConfidence, $candidateOffset, $candidateLimit);
         foreach (['hub_total', 'hotspot_total'] as $total) {
             if ($ranked[$total] > $limit) {
                 $truncation->add('result_limit');
@@ -86,7 +92,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
 
         return $this->healthEnvelope(
             $project,
-            ['limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs, 'candidate_confidence' => $candidateConfidence, 'candidate_offset' => $candidateOffset, 'candidate_timeout_ms' => $candidateTimeoutMs],
+            ['limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs, 'candidate_confidence' => $candidateConfidence, 'candidate_offset' => $candidateOffset, 'candidate_timeout_ms' => $candidateTimeoutMs, 'candidate_limit' => $candidateLimit],
             ['slice' => $slice, 'walk' => $walk, 'ranked' => $ranked, 'found' => $found, 'cycle_members' => $cycleMembers, 'cycle_scan_truncated' => $cycleScanTruncated],
             $truncation,
         );
@@ -264,7 +270,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      * with the bounds and tallies that say how complete each list is.
      *
      * @param array<string, mixed> $project
-     * @param array{limit: int, max_nodes: int, max_edges: int, timeout_ms: int, candidate_confidence: string, candidate_offset: int, candidate_timeout_ms: int} $bounds the caller's bounds, reported first and in this order
+     * @param array{limit: int, max_nodes: int, max_edges: int, timeout_ms: int, candidate_confidence: string, candidate_offset: int, candidate_timeout_ms: int, candidate_limit: int} $bounds the caller's bounds, reported first and in this order
      * @param array{slice: array<string, mixed>, walk: array{metrics: array{in: list<int>, out: list<int>, cross: list<int>}, edges_examined: int}, ranked: array<string, mixed>, found: array<string, mixed>, cycle_members: array<string, true>, cycle_scan_truncated: bool} $result
      */
     private function healthEnvelope(array $project, array $bounds, array $result, Truncation $truncation): ResultEnvelope
@@ -290,10 +296,11 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         if ($found['truncated']) {
             $candidateTruncationReasons[] = 'time_limit';
         }
-        if ($candidatesTotal > $bounds['candidate_offset'] + $bounds['limit']) {
+        if ($candidatesTotal > $bounds['candidate_offset'] + $bounds['candidate_limit']) {
             $candidateTruncationReasons[] = 'result_limit';
         }
-        [$hubs, $hotspots, $evidence] = $this->reportedPage($ranked, $slice, $result['walk']['metrics'], $deadCandidates, $result['cycle_members']);
+        [$hubs, $hotspots, $evidence, $deadCandidates] = $this->reportedPage($ranked, $slice, $result['walk']['metrics'], $deadCandidates, $result['cycle_members']);
+        $shown = $bounds['candidate_offset'] + count($deadCandidates);
         $truncationReasons = $truncation->reasons();
 
         return new ResultEnvelope(
@@ -302,6 +309,13 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
             self::healthSummary(count($hubs), count($hotspots), $candidatesTotal, count($deadCandidates), $testOnlyCandidates, $probableCandidates, $truncationReasons, $candidateTruncationReasons),
             [
                 'hubs' => $hubs, 'static_hotspots' => $hotspots, 'dead_code_candidates' => $deadCandidates, 'in_degree_histogram' => $ranked['in_degree'],
+                // The candidates are the paged list: a page trimmed to fit a
+                // character budget resumes at the first one it left out.
+                'pagination' => [
+                    'list' => 'dead_code_candidates',
+                    'offset' => $bounds['candidate_offset'],
+                    'next_offset' => $candidatesTotal > $shown ? $shown : null,
+                ],
                 'bounds' => $bounds + [
                     'candidates_total' => $candidatesTotal,
                     'candidates_probable' => $probableCandidates,
@@ -341,9 +355,12 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      * @param array{hubs: array<int, int>, hotspots: array<int, int>} $ranked
      * @param array{ids: list<string>} $slice
      * @param array{in: list<int>, out: list<int>, cross: list<int>} $metrics
+     * Each candidate gets the `path` and `line` it is declared at, so a
+     * compact answer locates it without a lookup per candidate.
+     *
      * @param list<array<string, mixed>> $deadCandidates
      * @param array<string, true> $cycleMembers
-     * @return array{0: list<array<string, mixed>>, 1: list<array<string, mixed>>, 2: list<array<string, mixed>>}
+     * @return array{0: list<array<string, mixed>>, 1: list<array<string, mixed>>, 2: list<array<string, mixed>>, 3: list<array<string, mixed>>}
      */
     private function reportedPage(array $ranked, array $slice, array $metrics, array $deadCandidates, array $cycleMembers): array
     {
@@ -370,8 +387,13 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
                 ];
             }
         }
+        foreach ($deadCandidates as $index => $item) {
+            $row = $rows[$item['component']['id']] ?? null;
+            $deadCandidates[$index]['path'] = $row['relative_path'] ?? null;
+            $deadCandidates[$index]['line'] = isset($row['start_line']) ? (int) $row['start_line'] : null;
+        }
 
-        return [$hubs, $hotspots, $evidence];
+        return [$hubs, $hotspots, $evidence, $deadCandidates];
     }
 
     /**

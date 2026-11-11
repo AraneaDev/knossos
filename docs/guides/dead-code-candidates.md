@@ -365,8 +365,17 @@ What a library keeps private stays reportable, and so do its tests.
 A large project can have hundreds of candidates, and a framework's lifecycle methods,
 marked `possible`, can fill the first page. `candidate_confidence: "probable"`
 (CLI: `--candidate-confidence=probable`) reports only the stronger claims, and
-`candidate_offset` (`--candidate-offset=N`) pages past the first `limit`.
-`bounds.candidates_total` says how many there are after the filter.
+`candidate_offset` (`--candidate-offset=N`) pages past the first page.
+`candidate_limit` (`--candidate-limit=N`) sets how many candidates a page lists,
+up to 100; left at 0 it is `limit`, which then sizes only the hubs and
+hotspots, so a page of 100 candidates no longer brings 100 hubs and 100
+hotspots with it. `pagination.next_offset` is where the next page starts, null
+on the last one. Over MCP, an answer cut to fit `max_chars` trims the hubs,
+hotspots and other lists first and the candidates last, and
+`pagination.next_offset` then points at the first candidate it left out, so
+paging by it skips none. `bounds.candidates_total` says how many there are
+after the filter. Each candidate carries the `path` and `line` it is declared
+at.
 
 ### Scope and budget
 

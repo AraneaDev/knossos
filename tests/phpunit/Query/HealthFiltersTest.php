@@ -336,6 +336,39 @@ final class HealthFiltersTest extends KnossosTestCase
     }
 
     /**
+     * Candidates page on their own size: `candidate_limit` lists that many
+     * while `limit` sizes the hubs and hotspots, `pagination.next_offset`
+     * says where the next page starts, and each candidate says where it is
+     * declared, so a page is usable without a lookup per candidate.
+     */
+    #[Group('query')]
+    public function testCandidatesPageOnTheirOwnLimitAndCarryTheirLocation(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        foreach (['b_dead' => 3, 'c_dead' => 5, 'd_dead' => 9] as $name => $line) {
+            $id = StableId::symbol($ids['project'], 'typescript', 'function', "src/x.ts#{$name}");
+            $repository->saveNode($id, $ids['project'], 'typescript', 'function', "src/x.ts#{$name}", $name, null, $ids['file'], $line, $line + 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries;
+
+        $all = $health->architectureHealth($ids['project'], limit: 100, candidateConfidence: 'probable')->data;
+        $total = $all['bounds']['candidates_total'];
+        $page = $health->architectureHealth($ids['project'], limit: 1, candidateConfidence: 'probable', candidateLimit: 2)->data;
+
+        assertSame(2, count($page['dead_code_candidates']));
+        assertSame(true, count($page['hubs']) <= 1);
+        assertSame(['list' => 'dead_code_candidates', 'offset' => 0, 'next_offset' => $total > 2 ? 2 : null], $page['pagination']);
+        $located = [];
+        foreach ($all['dead_code_candidates'] as $candidate) {
+            $located[$candidate['component']['canonical_name']] = [$candidate['path'], $candidate['line']];
+        }
+        assertSame(['src/Checkout.php', 5], $located['src/x.ts#c_dead'] ?? null);
+        $last = $health->architectureHealth($ids['project'], limit: 1, candidateConfidence: 'probable', candidateOffset: $total - 1, candidateLimit: 2)->data;
+        assertSame(null, $last['pagination']['next_offset']);
+    }
+
+    /**
      * `declare global { interface Window { ... } }` in an ordinary file is a
      * type declaration all the same: it augments what the runtime defines.
      */

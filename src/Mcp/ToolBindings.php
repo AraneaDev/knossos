@@ -409,7 +409,7 @@ final class ToolBindings
                     'project_id' => self::at('Usage: knossos architecture-health <path|project-id> [options]'),
                     'edge_kinds' => self::as('edge-kind'), 'min_confidence' => [], 'limit' => [], 'max_nodes' => [], 'max_edges' => [],
                     'timeout_ms' => [], 'include_external' => [], 'include_tests' => [], 'candidate_confidence' => [],
-                    'candidate_offset' => [], 'candidate_timeout_ms' => self::as('candidate-timeout'),
+                    'candidate_offset' => [], 'candidate_timeout_ms' => self::as('candidate-timeout'), 'candidate_limit' => [],
                 ],
             ],
             'check_architecture' => [
