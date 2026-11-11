@@ -139,7 +139,8 @@ fn scan(params: &Value, emit: &mut dyn FnMut(&Value)) -> Result<Value, String> {
         &mut input_hashes,
     );
     let mut heartbeat = Heartbeat::new();
-    let index = index_project(&request, &layout, &mut input_hashes, &mut heartbeat, emit);
+    let mut index = index_project(&request, &layout, &mut input_hashes, &mut heartbeat, emit);
+    let layout = std::mem::take(&mut index.layout);
     let walked = walk_requested(
         &request,
         &layout,
@@ -166,6 +167,7 @@ fn walk_requested(
         prepared,
         declarations,
         test_modules,
+        ..
     } = index;
     let mut walked: Vec<(Contribution, BTreeSet<String>)> = Vec::with_capacity(prepared.len());
     for item in prepared {
@@ -265,8 +267,13 @@ fn walk_one(
     // reads as unreferenced production code.
     let file_is_test = crate::visit::is_test_module_path(module, test_modules);
     facts.enter_test_scope_if(file_is_test);
-    let file_gate = facts.enter_cfg_scope(test_modules.gate_of(module));
+    let file_gate = facts.enter_cfg_scope(test_modules.gate_of_file(relative, module));
+    let file_support = facts.enter_support_scope(crate::visit::is_test_support_module_path(
+        module,
+        test_modules,
+    ));
     facts.node("module", module, &display, span, span);
+    facts.exit_support_scope(file_support);
     facts.exit_cfg_scope(file_gate);
     facts.exit_test_scope_if(file_is_test);
     let placed = crate::visit::walk(

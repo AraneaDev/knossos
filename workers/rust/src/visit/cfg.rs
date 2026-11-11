@@ -30,6 +30,15 @@ pub struct ModuleGates {
     /// Code in one is a `cfg` alternative: a declaration another file makes
     /// at the same path compiles in other builds, not beside it.
     pub gated: BTreeMap<String, String>,
+    /// The predicate of the declaration that loads each such file, by the
+    /// file: `cfg` alternatives of one module (`#[cfg(unix)] #[path =
+    /// "unix.rs"] mod native;` beside a Windows one) are two files in one
+    /// module, each compiled under its own declaration's `cfg`.
+    pub files: BTreeMap<String, String>,
+    /// Canonical paths of modules declared under a `cfg` that holds only in
+    /// a test build or with a test-support feature on (see
+    /// [`is_cfg_test_support`]): code the tests use, not the product.
+    pub support: BTreeSet<String>,
 }
 
 impl ModuleGates {
@@ -43,8 +52,32 @@ impl ModuleGates {
     /// predicates compiles under either.
     pub fn extend(&mut self, other: &Self) {
         self.test.extend(other.test.iter().cloned());
+        self.support.extend(other.support.iter().cloned());
         for (module, predicate) in &other.gated {
             merge_gate(&mut self.gated, module, predicate);
+        }
+        for (file, predicate) in &other.files {
+            merge_gate(&mut self.files, file, predicate);
+        }
+    }
+
+    /// The `cfg` the file `relative`, placed in `module`, compiles under:
+    /// as [`ModuleGates::gate_of`] has it, with the file's own declaration's
+    /// predicate standing for its module's.
+    #[must_use]
+    pub fn gate_of_file(&self, relative: &str, module: &str) -> Option<String> {
+        let Some(own) = self.files.get(relative) else {
+            return self.gate_of(module);
+        };
+        let mut gates: Vec<&str> = modules_above(module)
+            .into_iter()
+            .filter_map(|path| self.gated.get(path).map(String::as_str))
+            .collect();
+        gates.push(own);
+        gates.dedup();
+        match gates.as_slice() {
+            [one] => Some((*one).to_owned()),
+            many => Some(format!("all({})", many.join(", "))),
         }
     }
 
@@ -80,6 +113,15 @@ fn merge_gate(gated: &mut BTreeMap<String, String>, module: &str, predicate: &st
             gated.insert(module.to_owned(), predicate.to_owned());
         }
     }
+}
+
+/// Whether `module`, or any module above it, was declared under a
+/// test-support `cfg` (see [`ModuleGates::support`]).
+#[must_use]
+pub fn is_test_support_module_path(module: &str, gates: &ModuleGates) -> bool {
+    std::iter::once(module)
+        .chain(modules_above(module))
+        .any(|path| gates.support.contains(path))
 }
 
 /// Whether `module`, or any module above it, was declared `#[cfg(test)]`.
@@ -134,12 +176,13 @@ fn collect_test_modules_in(
         let Item::Mod(node) = item else {
             continue;
         };
-        let (canonical, _) = mod_child(relative, module, container, node, layout);
+        let (canonical, file) = mod_child(relative, module, container, node, layout);
         if let Some((_, inner)) = &node.content {
             collect_test_modules_in(relative, module, &canonical, inner, layout, out);
             continue;
         }
         let test = is_cfg_test(&node.attrs);
+        let support = is_cfg_test_support(&node.attrs);
         let gate = cfg_predicate(&node.attrs);
         if !test && gate.is_none() {
             continue;
@@ -153,10 +196,16 @@ fn collect_test_modules_in(
         if !read_by_it {
             continue;
         }
+        if support {
+            out.support.insert(canonical.clone());
+        }
         if test {
             out.test.insert(canonical);
         } else if let Some(gate) = gate {
             merge_gate(&mut out.gated, &canonical, &gate);
+            if let Some(file) = file {
+                merge_gate(&mut out.files, &file, &gate);
+            }
         }
     }
 }
@@ -227,6 +276,43 @@ fn requires_test(predicate: &syn::Meta) -> bool {
     test_gate(predicate).0
 }
 
+/// Whether an attribute list compiles its item only for the tests, though
+/// not only under `test`: in a build with a test-support feature on
+/// (`cfg(feature = "test-support")`, `cfg(any(test, feature =
+/// "native-catalog-test-support"))`). A crate exports such code for its own
+/// and its dependents' tests, which are its only callers.
+pub(super) fn is_cfg_test_support(attrs: &[syn::Attribute]) -> bool {
+    !is_cfg_test(attrs)
+        && attrs.iter().any(|attr| {
+            attr.path().is_ident("cfg")
+                && attr
+                    .meta
+                    .require_list()
+                    .ok()
+                    .and_then(|list| list.parse_args::<syn::Meta>().ok())
+                    .is_some_and(|predicate| gate_with(&predicate, &is_test_or_support).0)
+        })
+}
+
+/// Whether a `cfg` leaf holds only in a test build or with a test-support
+/// feature: `test`, or a feature whose name says it supports tests.
+fn is_test_or_support(predicate: &syn::Meta) -> bool {
+    match predicate {
+        syn::Meta::Path(path) => path.is_ident("test"),
+        syn::Meta::NameValue(pair) if pair.path.is_ident("feature") => match &pair.value {
+            syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(name),
+                ..
+            }) => {
+                let name = name.value();
+                name.contains("test-support") || name.contains("test_support")
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 /// What a `cfg` predicate says about tests, as two answers: whether it can
 /// hold only when `test` is set, and whether it holds in every build without
 /// `test`.
@@ -238,13 +324,22 @@ fn requires_test(predicate: &syn::Meta) -> bool {
 /// `not(test)` holds in every build without `test`, `not(not(test))` only
 /// under it. Anything else, `unix` or `feature = "test"`, says neither.
 fn test_gate(predicate: &syn::Meta) -> (bool, bool) {
+    gate_with(
+        predicate,
+        &|leaf| matches!(leaf, syn::Meta::Path(path) if path.is_ident("test")),
+    )
+}
+
+/// [`test_gate`] with `leaf` deciding which leaf predicates hold only in
+/// the builds asked about.
+fn gate_with(predicate: &syn::Meta, leaf: &dyn Fn(&syn::Meta) -> bool) -> (bool, bool) {
     let syn::Meta::List(list) = predicate else {
-        return (
-            matches!(predicate, syn::Meta::Path(path) if path.is_ident("test")),
-            false,
-        );
+        return (leaf(predicate), false);
     };
-    let parts: Vec<(bool, bool)> = cfg_parts(list).iter().map(test_gate).collect();
+    let parts: Vec<(bool, bool)> = cfg_parts(list)
+        .iter()
+        .map(|part| gate_with(part, leaf))
+        .collect();
     if list.path.is_ident("all") {
         (
             parts.iter().any(|part| part.0),

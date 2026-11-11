@@ -53,7 +53,34 @@ pub struct Layout {
     /// a `path` (`[[bin]]`, `[[example]]`, `[[bench]]`, `[[test]]`): a crate
     /// root of its own wherever it sits, entered by Cargo.
     pub targets: BTreeSet<String>,
+    /// Each file a `#[path]` declaration loads, and each file below one,
+    /// mapped to the module the declaration names: `src/net.rs`'s
+    /// `#[cfg(test)] #[path = "net_tests.rs"] mod tests;` places
+    /// `src/net_tests.rs` in `crate::net::tests`, not in a `crate::net_tests`
+    /// its path spells. `cfg` alternatives (`#[cfg(unix)] #[path = "unix.rs"]
+    /// mod native;` beside a Windows one) place two files in one module.
+    /// Read from the project's files by [`place_path_modules`].
+    pub placements: BTreeMap<String, String>,
+    /// The files a `#[path]` declaration loads, which keep the files their
+    /// own `mod` declarations load beside them, as a `mod.rs` does.
+    pub path_loaded: BTreeSet<String>,
 }
+
+/// One bodiless `mod name;` a file declares: what [`place_path_modules`]
+/// needs to know where it sends the file it loads.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModDeclaration {
+    /// The inline `mod x { .. }` blocks it sits in, outermost first.
+    pub inline: Vec<String>,
+    /// The module's name.
+    pub name: String,
+    /// The declaration's `#[path = ".."]`, when it has one.
+    pub path: Option<String>,
+}
+
+/// How deep a chain of `#[path]`-placed files [`place_path_modules`]
+/// follows: a file below one placed file is placed in the next round.
+const MAX_PLACEMENT_DEPTH: usize = 16;
 
 impl Layout {
     /// One file's module path.
@@ -64,6 +91,9 @@ impl Layout {
     /// only when the same package also has a library root.
     #[must_use]
     pub fn module_of(&self, relative: &str) -> String {
+        if let Some(placed) = self.placements.get(relative) {
+            return placed.clone();
+        }
         let has_library = |directory: &str| {
             self.crates
                 .iter()
@@ -121,7 +151,9 @@ impl Layout {
         let (directory, file) = declaring.rsplit_once('/').unwrap_or(("", declaring));
         let mut segments: Vec<&str> = directory.split('/').filter(|s| !s.is_empty()).collect();
         let stem = file.strip_suffix(".rs").unwrap_or(file);
-        let keeps_beside = file == "mod.rs" || self.is_crate_root(declaring);
+        let keeps_beside = file == "mod.rs"
+            || self.is_crate_root(declaring)
+            || self.path_loaded.contains(declaring);
         if !(keeps_beside || path.is_some() && inline.is_empty()) {
             segments.push(stem);
         }
@@ -227,10 +259,106 @@ impl Layout {
                 .any(|(directory, name)| !directory.is_empty() && name == head)
     }
 
-    /// Every path a file placed in `module` could have, see [`module_files`].
+    /// Every path a file placed in `module` could have, see [`module_files`],
+    /// and every file a `#[path]` declaration places there (see
+    /// [`Layout::placements`]).
     #[must_use]
     pub fn module_files(&self, module: &str) -> Vec<String> {
-        module_files(module, &self.packages)
+        let mut files = module_files(module, &self.packages);
+        files.extend(
+            self.placements
+                .iter()
+                .filter(|(_, placed)| *placed == module)
+                .map(|(file, _)| file.clone()),
+        );
+        files.sort();
+        files.dedup();
+        files
+    }
+
+    /// This layout with every file a `#[path]` declaration loads placed in
+    /// the module it names (see [`Layout::placements`]), from the bodiless
+    /// `mod` declarations of every file of the project (`declarations`).
+    ///
+    /// A `#[path]` declaration places the file it loads at the declared
+    /// module when that is not where its path would put it, and a file a
+    /// placed file's `mod` declarations load is placed below it, so a whole
+    /// subtree follows its root. Only files the project holds are placed. A
+    /// file two declarations place in different modules stays where its path
+    /// puts it. A crate root's declarations place nothing: its children's
+    /// paths already are its modules, and a binary's are named after the
+    /// library's (see [`Layout::module_of`]).
+    #[must_use]
+    pub fn place_path_modules(
+        &self,
+        declarations: &BTreeMap<String, Vec<ModDeclaration>>,
+    ) -> Layout {
+        let mut placed = Layout {
+            placements: BTreeMap::new(),
+            path_loaded: BTreeSet::new(),
+            ..self.clone()
+        };
+        for _ in 0..MAX_PLACEMENT_DEPTH {
+            let mut next: BTreeMap<String, Option<String>> = BTreeMap::new();
+            let mut loaded = BTreeSet::new();
+            for (file, list) in declarations {
+                if placed.is_crate_root(file) {
+                    continue;
+                }
+                let module = placed.module_of(file);
+                let file_placed = placed.placements.contains_key(file);
+                for declaration in list {
+                    if declaration.path.is_none() && !file_placed {
+                        continue;
+                    }
+                    let Some(child) = placed.child_file(
+                        file,
+                        &declaration.inline,
+                        &declaration.name,
+                        declaration.path.as_deref(),
+                    ) else {
+                        continue;
+                    };
+                    if !declarations.contains_key(&child) {
+                        continue;
+                    }
+                    let mut declared = module.clone();
+                    for segment in declaration.inline.iter().chain([&declaration.name]) {
+                        declared.push_str("::");
+                        declared.push_str(segment);
+                    }
+                    if declaration.path.is_some() {
+                        loaded.insert(child.clone());
+                    }
+                    if self.module_of(&child) == declared {
+                        continue;
+                    }
+                    match next.get(&child) {
+                        Some(Some(known)) if *known != declared => {
+                            next.insert(child, None);
+                        }
+                        Some(_) => {}
+                        None => {
+                            next.insert(child, Some(declared));
+                        }
+                    }
+                }
+            }
+            let round = Layout {
+                placements: next
+                    .into_iter()
+                    .filter_map(|(file, module)| Some((file, module?)))
+                    .collect(),
+                path_loaded: loaded,
+                ..self.clone()
+            };
+            if round == placed {
+                break;
+            }
+            placed = round;
+        }
+
+        placed
     }
 
     /// Whether the declaration index holds what `relative` declares: the file
@@ -338,6 +466,7 @@ mod tests {
             .into_iter()
             .collect(),
             targets: ["src/build_dict.rs".to_owned()].into_iter().collect(),
+            ..Layout::default()
         }
     }
 

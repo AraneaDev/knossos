@@ -47,6 +47,28 @@ final class TestSupportCandidatesTest extends KnossosTestCase
     }
 
     /**
+     * Rust code gated by a test-support feature
+     * (`#[cfg(feature = "test-support")]`) is compiled only for the tests,
+     * which the scanner marks: it is test support whether or not a test
+     * reaches it, and counted as such rather than reported as dead.
+     */
+    #[Group('query')]
+    public function testCodeTheScannerMarksAsTestSupportIsExcludedAndCounted(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $this->function($repository, $ids, 'crates/host/src/fs.rs', 'publication_unknown_fixture_error', ['test_support' => true]);
+        $this->function($repository, $ids, 'crates/host/src/fs.rs', 'really_dead');
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $names = array_map(static fn(array $candidate): string => $candidate['component']['canonical_name'], $data['dead_code_candidates']);
+
+        self::assertNotContains('crates/host/src/fs.rs#publication_unknown_fixture_error', $names);
+        self::assertContains('crates/host/src/fs.rs#really_dead', $names);
+        self::assertSame(1, $data['bounds']['excluded_test_support']);
+    }
+
+    /**
      * Two pages each declaring their own `StatusBadge` do not use a shared
      * component of that name: the shared one, which nothing imports, stays
      * a candidate beside the local ones that are used.
@@ -75,12 +97,13 @@ final class TestSupportCandidatesTest extends KnossosTestCase
      * A TypeScript function declared in its own file.
      *
      * @param array<string, string> $ids
+     * @param array<string, mixed> $attributes
      */
-    private function function(SqliteGraphRepository $repository, array $ids, string $path, string $name): string
+    private function function(SqliteGraphRepository $repository, array $ids, string $path, string $name, array $attributes = []): string
     {
         $file = $this->file($repository, $ids, $path);
         $id = StableId::symbol($ids['project'], 'typescript', 'function', "{$path}#{$name}");
-        $repository->saveNode($id, $ids['project'], 'typescript', 'function', "{$path}#{$name}", $name, null, $file, 1, 1, 'ast', 'certain', [], "typescript:file:{$path}", $ids['scan']);
+        $repository->saveNode($id, $ids['project'], 'typescript', 'function', "{$path}#{$name}", $name, null, $file, 1, 1, 'ast', 'certain', $attributes, "typescript:file:{$path}", $ids['scan']);
 
         return $id;
     }

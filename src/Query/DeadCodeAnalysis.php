@@ -217,6 +217,11 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         if ($local === 'type_declarations') {
             return 'type_declarations';
         }
+        // Compiled only for the tests through a test-support feature: what
+        // calls it, if anything does, is a test.
+        if ($local === 'test_support') {
+            return 'test_support';
+        }
 
         return null;
     }

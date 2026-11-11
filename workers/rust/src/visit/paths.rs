@@ -138,6 +138,7 @@ impl Walk<'_> {
                             written,
                             node.leading_colon.is_some(),
                             item.span(),
+                            matches!(node.vis, syn::Visibility::Inherited),
                         ));
                     }
                 }
@@ -175,13 +176,15 @@ impl Walk<'_> {
             // A leaf placed through a name `cfg` alternatives bind
             // (`pub use platform::open;`) binds each of their paths.
             let gated = alternatives.len() > 1 || cfg_predicate(&node.attrs).is_some();
+            let private = matches!(node.vis, syn::Visibility::Inherited);
             for full in alternatives {
                 let binding = Binding {
                     leaf: leaf.clone(),
                     full,
                     gated,
+                    private,
                 };
-                self.bind_module_leaf(container, &source, node, span, binding);
+                self.bind_module_leaf(container, &source, span, binding);
             }
         }
     }
@@ -193,11 +196,15 @@ impl Walk<'_> {
         &mut self,
         container: &str,
         source: &str,
-        node: &syn::ItemUse,
         span: proc_macro2::Span,
         binding: Binding,
     ) {
-        let Binding { leaf, full, gated } = binding;
+        let Binding {
+            leaf,
+            full,
+            gated,
+            private,
+        } = binding;
         let module = if leaf.names_module {
             full.clone()
         } else {
@@ -224,6 +231,11 @@ impl Walk<'_> {
         // `use unix as platform;` imports. Compiling code only goes through
         // one where it is visible, so every binding is recorded.
         if leaf.alias != "_" {
+            if private {
+                self.private_exports.insert(name.clone());
+            } else {
+                self.public_exports.insert(name.clone());
+            }
             let alternatives = self
                 .export_alternatives
                 .entry(name.clone())
@@ -768,7 +780,7 @@ impl Walk<'_> {
                 return Some((own, true));
             }
         }
-        match self.through_globs(&self.glob_sources(container), &rendered) {
+        match self.through_globs(container, &self.glob_sources(container), &rendered) {
             Globbed::One(target) => return Some((target, false)),
             Globbed::Ambiguous => return None,
             Globbed::Absent => {}
@@ -856,7 +868,8 @@ impl Walk<'_> {
     /// comes first.
     pub(super) fn resolve_globs(&mut self) {
         let source = reference("module", &self.module);
-        for (container, written, absolute, span) in std::mem::take(&mut self.pending_globs) {
+        for (container, written, absolute, span, private) in std::mem::take(&mut self.pending_globs)
+        {
             // `::dep::*` names the external crate whatever the file calls
             // `dep`; otherwise a leading alias is one this module declares.
             let expanded = if absolute {
@@ -887,6 +900,9 @@ impl Walk<'_> {
             };
             self.import(&source, &full, span);
             let glob = (container, full);
+            if private {
+                self.private_globs.insert(glob.clone());
+            }
             if !self.globs.contains(&glob) {
                 self.globs.push(glob);
             }
@@ -949,7 +965,11 @@ impl Walk<'_> {
             if !self.in_project(&current) || !visited.insert(current.clone()) {
                 break;
             }
-            let Some(next) = self.declarations.exported(&current) else {
+            let Some(next) = self
+                .declarations
+                .exported(&current)
+                .or_else(|| self.through_glob_imports(&current))
+            else {
                 break;
             };
             match self.renamed(next) {
@@ -959,6 +979,53 @@ impl Walk<'_> {
         }
 
         current
+    }
+
+    /// `path` rewritten through the glob imports of a module it goes
+    /// through, when that module neither declares nor re-exports the name
+    /// below it: `crate::v2::Profile` under `pub use types::*;` in
+    /// `crate::v2` is `crate::v2::types::Profile`, and `super::digest` in a
+    /// child of a module with `use super::*;` reaches what the grandparent
+    /// declares. The module is the longest prefix of `path` with glob
+    /// imports; a name its sources provide apart resolves to nothing, as in
+    /// [`Walk::through_globs`]. `None` when `path` is declared as written, or
+    /// nothing provides it.
+    fn through_glob_imports(&self, path: &str) -> Option<String> {
+        if self.declarations.get(path).is_some() {
+            return None;
+        }
+        let mut module = path;
+        while let Some((prefix, _)) = module.rsplit_once("::") {
+            module = prefix;
+            // A private glob is seen only by the module that writes it and
+            // the ones below.
+            let inside = self.module == module || self.module.starts_with(&format!("{module}::"));
+            let sources: Vec<String> = self
+                .declarations
+                .globs_of(module)
+                .iter()
+                .filter(|(_, private)| !private || inside)
+                .map(|(source, _)| source.clone())
+                .collect();
+            if sources.is_empty() {
+                continue;
+            }
+            let rest = &path[module.len() + 2..];
+            let head = rest.split("::").next().unwrap_or(rest);
+            if self
+                .declarations
+                .get(&format!("{module}::{head}"))
+                .is_some()
+            {
+                return None;
+            }
+            return match self.through_globs(module, &sources, rest) {
+                Globbed::One(target) if target != path => Some(target),
+                _ => None,
+            };
+        }
+
+        None
     }
 
     /// Whether `path` is rooted in this project: at this file's crate root,
@@ -1024,7 +1091,36 @@ impl Walk<'_> {
     /// name never becomes a made-up path inside the source. Each source is
     /// taken through the project's renamed `mod` declarations first, which
     /// a source recorded before the index was known has not been.
-    pub(super) fn through_globs(&self, sources: &[String], rendered: &str) -> Globbed {
+    ///
+    /// A source's private `use` (`use super::Profile;` in a child) is
+    /// visible, and so brought in, only when `importer`, the module writing
+    /// the glob, sits inside the source (`use super::*;`): a parent's
+    /// `pub use child::*;` does not import what the child itself imports
+    /// privately.
+    pub(super) fn through_globs(
+        &self,
+        importer: &str,
+        sources: &[String],
+        rendered: &str,
+    ) -> Globbed {
+        self.through_globs_within(importer, sources, rendered, 0)
+    }
+
+    /// [`Walk::through_globs`] `depth` globs away from the module that
+    /// wrote the first one. A source that provides the name neither as a
+    /// declaration nor as a `use` provides it when its own glob imports do
+    /// (`pub use types::*;` in a module a child imports with `use
+    /// super::*;`), a private glob only to an importer inside the source.
+    fn through_globs_within(
+        &self,
+        importer: &str,
+        sources: &[String],
+        rendered: &str,
+        depth: usize,
+    ) -> Globbed {
+        /// Globs followed from one name at most, which a cycle of glob
+        /// imports cannot outrun.
+        const MAX_GLOB_DEPTH: usize = 4;
         let head = rendered.split("::").next().unwrap_or(rendered);
         let mut found: Option<String> = None;
         for source in sources {
@@ -1046,11 +1142,30 @@ impl Walk<'_> {
                     None => None,
                 },
             };
+            let hidden = self.declarations.is_private_export(&named)
+                && !importer.starts_with(&format!("{source}::"));
             let provided = match provided {
                 Some(provided) => provided,
+                None if hidden => continue,
                 None => match self.declarations.export_of(&named) {
                     Some(Some(_)) => self.exported(full),
                     Some(None) => return Globbed::Ambiguous,
+                    None if depth < MAX_GLOB_DEPTH => {
+                        let nested: Vec<String> = self
+                            .declarations
+                            .globs_of(&source)
+                            .iter()
+                            .filter(|(_, private)| {
+                                !private || importer.starts_with(&format!("{source}::"))
+                            })
+                            .map(|(nested, _)| nested.clone())
+                            .collect();
+                        match self.through_globs_within(importer, &nested, rendered, depth + 1) {
+                            Globbed::One(provided) => provided,
+                            Globbed::Ambiguous => return Globbed::Ambiguous,
+                            Globbed::Absent => continue,
+                        }
+                    }
                     None => continue,
                 },
             };
@@ -1096,6 +1211,9 @@ struct Binding {
     /// itself is gated, or it is written through a name gated `use` items
     /// bind apart.
     gated: bool,
+    /// Whether the `use` is private, visible only in its module and the
+    /// modules below it.
+    private: bool,
 }
 
 /// What glob imports bring in under one name (see [`Walk::through_globs`]).

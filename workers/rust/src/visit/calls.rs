@@ -189,6 +189,17 @@ impl Calls<'_, '_> {
         unconfirmed: bool,
         span: proc_macro2::Span,
     ) {
+        // `Unit`, `v2::Unit` or `.map(Wrapper)`: a unit struct's value, or a
+        // tuple struct's constructor, names the type. An all-capitals name
+        // (`MAX`) is a constant, which the graph holds no node for.
+        let last = path
+            .segments
+            .last()
+            .map(|segment| ident_name(&segment.ident))
+            .unwrap_or_default();
+        if last.starts_with(char::is_uppercase) && last.chars().any(char::is_lowercase) {
+            self.type_target(path, target, unconfirmed, span);
+        }
         if path.segments.len() < 2 {
             let endpoint = reference("function", target);
             if unconfirmed {

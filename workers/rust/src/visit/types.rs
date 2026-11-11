@@ -32,7 +32,7 @@ impl Walk<'_> {
                 name,
                 marks,
                 sources,
-            } => match self.through_globs(&sources, &name) {
+            } => match self.through_globs(crate::resolve::parent_module(owner), &sources, &name) {
                 Globbed::One(target) => Some(format!("{marks}{target}")),
                 Globbed::Absent | Globbed::Ambiguous => None,
             },

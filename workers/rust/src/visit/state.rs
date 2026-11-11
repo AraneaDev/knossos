@@ -28,7 +28,10 @@ pub(super) struct Walk<'a> {
     /// absolute (`::dep::*`), and span, until every `use` in the file is
     /// known: a glob's path may start with an alias declared later in the
     /// same module.
-    pub(super) pending_globs: Vec<(String, String, bool, proc_macro2::Span)>,
+    pub(super) pending_globs: Vec<(String, String, bool, proc_macro2::Span, bool)>,
+    /// The entries of [`Walk::globs`] a private `use` wrote, visible only
+    /// in its module and below it.
+    pub(super) private_globs: BTreeSet<(String, String)>,
     /// Each module's own imported names, for a glob's leading alias: a `use`
     /// is scoped to the module that declares it, so sibling modules may bind
     /// one alias to different paths. `None` marks a name bound twice.
@@ -99,6 +102,10 @@ pub(super) struct Walk<'a> {
     /// Windows one): each path it may name, `None` once an ungated `use`
     /// binds it too. See [`ExportedNames`](super::declarations::ExportedNames).
     pub(super) export_alternatives: BTreeMap<String, Option<Vec<String>>>,
+    /// The names of [`Walk::exports`] some private `use` binds.
+    pub(super) private_exports: BTreeSet<String>,
+    /// The names of [`Walk::exports`] some visible `use` binds.
+    pub(super) public_exports: BTreeSet<String>,
     /// Every path this file declares (see
     /// [`declaration_paths`](super::declarations::declaration_paths)), which
     /// confirms a type the file names unqualified in its own module whether

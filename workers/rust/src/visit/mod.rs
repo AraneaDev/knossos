@@ -25,13 +25,16 @@ mod state;
 mod types;
 
 use calls::{is_foreign_export, is_wasm_bindgen};
-use cfg::{cfg_predicate, is_cfg_test, is_test_attribute, item_attrs};
-pub use cfg::{collect_test_modules, is_test_module_path, ModuleGates};
+use cfg::{cfg_predicate, is_cfg_test, is_cfg_test_support, is_test_attribute, item_attrs};
+pub use cfg::{
+    collect_test_modules, is_test_module_path, is_test_support_module_path, ModuleGates,
+};
 pub use declarations::{
-    declaration_paths, declared_renames, Declarations, ExportAlternatives, ExportedNames,
-    FieldType, StructFields, TypeAliases,
+    declaration_paths, declared_renames, gated_declaration_paths, Declarations, ExportAlternatives,
+    ExportedNames, FieldType, GlobImports, StructFields, TypeAliases,
 };
 use placement::mod_child;
+pub use placement::mod_declarations;
 use state::{Calls, Walk};
 
 /// Walk every item in a parsed file, attributing each to `module`, and
@@ -52,7 +55,8 @@ pub fn walk(
     if file_is_test {
         facts.enter_test_scope();
     }
-    let file_gate = facts.enter_cfg_scope(test_modules.gate_of(module));
+    let file_gate = facts.enter_cfg_scope(test_modules.gate_of_file(facts.relative(), module));
+    let file_support = facts.enter_support_scope(is_test_support_module_path(module, test_modules));
     let mut walker = Walk::new(facts, module, frameworks, declarations, layout);
     walker.own_declarations = declaration_paths(module, &file.items);
     walker.collect_uses(module, &file.items);
@@ -63,6 +67,7 @@ pub fn walk(
     walker.walk_items(module, "module", &file.items);
     walker.flush_routes();
     let placed = std::mem::take(&mut walker.placed);
+    facts.exit_support_scope(file_support);
     facts.exit_cfg_scope(file_gate);
     if file_is_test {
         facts.exit_test_scope();
@@ -77,12 +82,7 @@ pub fn walk(
 /// resolve them, before any other file is known. See [`ExportedNames`] and
 /// [`StructFields`].
 #[must_use]
-pub fn index_facts(
-    relative: &str,
-    module: &str,
-    items: &[Item],
-    layout: &Layout,
-) -> (ExportedNames, StructFields, TypeAliases, ExportAlternatives) {
+pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout) -> IndexFacts {
     // Nothing here is emitted: the facts and the empty index only satisfy
     // the walk's resolution, which falls back on neither for a path the
     // file roots or imports.
@@ -106,12 +106,46 @@ pub fn index_facts(
         .filter_map(|(name, paths)| Some((name, paths.filter(|paths| paths.len() > 1)?)))
         .collect();
 
-    (
-        std::mem::take(&mut walker.exports),
-        std::mem::take(&mut walker.struct_fields),
+    let mut globs = GlobImports::new();
+    for (container, source) in std::mem::take(&mut walker.globs) {
+        let private = walker
+            .private_globs
+            .contains(&(container.clone(), source.clone()));
+        globs.entry(container).or_default().push((source, private));
+    }
+
+    let private_exports = walker
+        .private_exports
+        .difference(&walker.public_exports)
+        .cloned()
+        .collect();
+
+    IndexFacts {
+        private_exports,
+        exports: std::mem::take(&mut walker.exports),
+        fields: std::mem::take(&mut walker.struct_fields),
         aliases,
-        alternatives,
-    )
+        export_alternatives: alternatives,
+        globs,
+    }
+}
+
+/// What [`index_facts`] reads from one file for the declaration index.
+#[derive(Clone, Debug, Default)]
+pub struct IndexFacts {
+    /// See [`ExportedNames`].
+    pub exports: ExportedNames,
+    /// The names of `exports` only a private `use` binds, which a glob
+    /// brings in only below the module (see `Walk::through_globs`).
+    pub private_exports: BTreeSet<String>,
+    /// See [`StructFields`].
+    pub fields: StructFields,
+    /// See [`TypeAliases`].
+    pub aliases: TypeAliases,
+    /// See [`ExportAlternatives`].
+    pub export_alternatives: ExportAlternatives,
+    /// See [`GlobImports`].
+    pub globs: GlobImports,
 }
 
 impl<'a> Walk<'a> {
@@ -137,6 +171,7 @@ impl<'a> Walk<'a> {
             aliases: Aliases::default(),
             globs: Vec::new(),
             pending_globs: Vec::new(),
+            private_globs: BTreeSet::new(),
             module_aliases: BTreeMap::new(),
             module_children: BTreeMap::new(),
             type_params: BTreeSet::new(),
@@ -155,6 +190,8 @@ impl<'a> Walk<'a> {
             placed: BTreeSet::new(),
             exports: BTreeMap::new(),
             export_alternatives: BTreeMap::new(),
+            private_exports: BTreeSet::new(),
+            public_exports: BTreeSet::new(),
             own_declarations: BTreeSet::new(),
             type_aliases: BTreeMap::new(),
         }
@@ -178,7 +215,11 @@ impl Walk<'_> {
                 self.facts.enter_test_scope();
             }
             let gated = self.facts.enter_cfg_scope(cfg_predicate(item_attrs(item)));
+            let support = self
+                .facts
+                .enter_support_scope(is_cfg_test_support(item_attrs(item)));
             self.walk_item(container, container_kind, item);
+            self.facts.exit_support_scope(support);
             self.facts.exit_cfg_scope(gated);
             if is_test {
                 self.facts.exit_test_scope();
@@ -619,6 +660,7 @@ impl Walk<'_> {
         let is_test = is_cfg_test(attrs);
         self.facts.enter_test_scope_if(is_test);
         let gated = self.facts.enter_cfg_scope(cfg_predicate(attrs));
+        let support = self.facts.enter_support_scope(is_cfg_test_support(attrs));
         let name = ident_name(&signature.ident);
         let method_canonical = match self.impl_segment.clone() {
             // A trait impl's method, called as `Type::method` or through a
@@ -649,6 +691,7 @@ impl Walk<'_> {
             );
         }
         self.type_params = outer;
+        self.facts.exit_support_scope(support);
         self.facts.exit_cfg_scope(gated);
         self.facts.exit_test_scope_if(is_test);
     }

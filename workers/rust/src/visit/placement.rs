@@ -5,7 +5,7 @@
 //! the path the declaration is written at. Every pass that follows `mod`
 //! items asks this one function, so they all agree on one module.
 
-use crate::layout::Layout;
+use crate::layout::{Layout, ModDeclaration};
 use crate::resolve::ident_name;
 
 /// The module a `mod` item in `relative` (placed in `module`) declares, and
@@ -38,6 +38,41 @@ pub(super) fn mod_child(
     match layout.child_file(relative, &inline, &name, path.as_deref()) {
         Some(file) => (layout.module_of(&file), Some(file)),
         None => (in_place, None),
+    }
+}
+
+/// Every bodiless `mod name;` in `items`, inline modules included, as
+/// [`Layout::place_path_modules`] reads them.
+#[must_use]
+pub fn mod_declarations(items: &[syn::Item]) -> Vec<ModDeclaration> {
+    let mut out = Vec::new();
+    collect_mod_declarations(items, &mut Vec::new(), &mut out);
+    out
+}
+
+/// [`mod_declarations`] below the inline modules `inline` names.
+fn collect_mod_declarations(
+    items: &[syn::Item],
+    inline: &mut Vec<String>,
+    out: &mut Vec<ModDeclaration>,
+) {
+    for item in items {
+        let syn::Item::Mod(node) = item else {
+            continue;
+        };
+        let name = ident_name(&node.ident);
+        match &node.content {
+            Some((_, inner)) => {
+                inline.push(name);
+                collect_mod_declarations(inner, inline, out);
+                inline.pop();
+            }
+            None => out.push(ModDeclaration {
+                inline: inline.clone(),
+                name,
+                path: path_attribute(&node.attrs),
+            }),
+        }
     }
 }
 

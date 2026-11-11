@@ -4673,7 +4673,7 @@ pub fn fingerprint() -> u8 { 0 }
 use other::services::scm as host;
 pub fn check() { host::verify(); }
 "#;
-    let contributions = scan_fixture(
+    let contributions = scan_fixture_with(
         "cfg-module-alias",
         &[
             (
@@ -4691,6 +4691,7 @@ pub fn check() { host::verify(); }
             ("other/src/services.rs", "pub mod scm;\n"),
             ("other/src/services/scm.rs", "pub fn verify() {}\n"),
         ],
+        &serde_json::json!({"config_files": ["Cargo.toml", "other/Cargo.toml"]}),
     );
     let mut missing = Vec::new();
     for os in ["unix", "windows"] {
@@ -4809,4 +4810,348 @@ impl Child {
         calls.contains(&"rust:function:crate::process::windows::pipe::open".to_owned()),
         "{calls:?}"
     );
+}
+
+/// The node of `canonical` in the contribution of `file`.
+fn node_in(contributions: &[Value], file: &str, canonical: &str) -> Option<Value> {
+    contributions
+        .iter()
+        .find(|contribution| contribution["owner_key"] == format!("knossos.rust:file:{file}"))
+        .and_then(|contribution| {
+            contribution["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["canonical_name"] == canonical)
+                .cloned()
+        })
+}
+
+#[test]
+fn a_file_a_path_attribute_loads_is_the_module_its_declaration_names() {
+    // `#[cfg(test)] #[path = "budget_tests.rs"] mod tests;` makes
+    // `src/mcp/budget_tests.rs` the test module `crate::mcp::budget::tests`,
+    // not a production module `crate::mcp::budget_tests`; its `use super::*`
+    // reaches the parent's private items, and so does a production module
+    // mounted the same way.
+    let budget = r#"
+fn catalog_size() -> u8 { 1 }
+pub fn budget() -> u8 { catalog_size() }
+#[cfg(test)]
+#[path = "budget_tests.rs"]
+mod tests;
+"#;
+    let budget_tests = r#"
+use super::*;
+fn catalog() {}
+#[test]
+fn budget_works() { catalog(); budget(); }
+"#;
+    let broker = r#"
+#[path = "broker_activation.rs"]
+mod activation;
+fn descendants() -> u8 { 1 }
+pub fn run() { activation::activate(); }
+"#;
+    let activation = "use super::*;\npub fn activate() { let _ = descendants(); }\n";
+    let files = [
+        ("src/lib.rs", "pub mod broker;\npub mod mcp;\n"),
+        ("src/mcp/mod.rs", "pub mod budget;\n"),
+        ("src/mcp/budget.rs", budget),
+        ("src/mcp/budget_tests.rs", budget_tests),
+        ("src/broker.rs", broker),
+        ("src/broker_activation.rs", activation),
+    ];
+    let contributions = scan_fixture("path-placed-modules", &files);
+
+    let module = node_in(
+        &contributions,
+        "src/mcp/budget_tests.rs",
+        "crate::mcp::budget::tests",
+    )
+    .expect("the test module is named by its declaration");
+    assert_eq!(Some(true), module["attributes"]["test"].as_bool());
+    let catalog = node_in(
+        &contributions,
+        "src/mcp/budget_tests.rs",
+        "crate::mcp::budget::tests::catalog",
+    )
+    .expect("its items are below it");
+    assert_eq!(Some(true), catalog["attributes"]["test"].as_bool());
+    assert!(targets_of(
+        &contributions,
+        "calls",
+        "rust:function:crate::mcp::budget::tests::budget_works"
+    )
+    .contains(&"rust:function:crate::mcp::budget::budget".to_owned()));
+    assert!(node_in(
+        &contributions,
+        "src/broker_activation.rs",
+        "crate::broker::activation"
+    )
+    .is_some());
+    assert!(
+        targets_of(
+            &contributions,
+            "calls",
+            "rust:function:crate::broker::activation::activate"
+        )
+        .contains(&"rust:function:crate::broker::descendants".to_owned()),
+        "{:?}",
+        targets_of(
+            &contributions,
+            "calls",
+            "rust:function:crate::broker::activation::activate"
+        )
+    );
+    assert!(
+        targets_of(&contributions, "calls", "rust:function:crate::broker::run")
+            .contains(&"rust:function:crate::broker::activation::activate".to_owned())
+    );
+
+    // The placed file reads the file whose declaration placed it, so an
+    // edit to that declaration rescans it.
+    let reads = contributions
+        .iter()
+        .find(|c| c["owner_key"] == "knossos.rust:file:src/mcp/budget_tests.rs")
+        .map(|c| {
+            c["reads"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+    assert!(reads.contains(&"src/mcp/budget.rs".to_owned()), "{reads:?}");
+}
+
+#[test]
+fn one_module_name_declared_under_exclusive_cfgs_is_one_module_in_two_files() {
+    // `#[cfg(unix)] #[path = "preflight/unix.rs"] mod native;` beside a
+    // Windows declaration of the same name: both files are
+    // `crate::preflight::native`, so `native::Endpoint::standard()` and
+    // `native::restore_fault()` reach their declarations, which are `cfg`
+    // alternatives of one another.
+    let preflight = r#"
+#[cfg(unix)]
+#[path = "preflight/unix.rs"]
+mod native;
+#[cfg(windows)]
+#[path = "preflight/windows.rs"]
+mod native;
+pub fn go() {
+    native::Endpoint::standard();
+    native::restore_fault();
+}
+"#;
+    let native =
+        "pub struct Endpoint;\nimpl Endpoint { pub fn standard() {} }\npub fn restore_fault() {}\n";
+    let contributions = scan_fixture(
+        "cfg-alternative-modules",
+        &[
+            ("src/lib.rs", "pub mod preflight;\n"),
+            ("src/preflight.rs", preflight),
+            ("src/preflight/unix.rs", native),
+            ("src/preflight/windows.rs", native),
+        ],
+    );
+    for (file, cfg) in [
+        ("src/preflight/unix.rs", "unix"),
+        ("src/preflight/windows.rs", "windows"),
+    ] {
+        let endpoint = node_in(
+            &contributions,
+            file,
+            "crate::preflight::native::Endpoint::standard",
+        )
+        .unwrap_or_else(|| panic!("{file} declares native::Endpoint::standard"));
+        assert_eq!(Some(cfg), endpoint["attributes"]["cfg"].as_str());
+    }
+    let calls = targets_of(
+        &contributions,
+        "calls",
+        "rust:function:crate::preflight::go",
+    );
+    for target in [
+        "rust:method:crate::preflight::native::Endpoint::standard",
+        "rust:function:crate::preflight::native::restore_fault",
+    ] {
+        assert!(calls.contains(&target.to_owned()), "{target} in {calls:?}");
+    }
+}
+
+#[test]
+fn a_path_through_a_glob_re_export_names_the_item_where_it_is_declared() {
+    // `pub use types::*;` and `pub use integration::*;` in `v2/mod.rs` make
+    // `crate::v2::declared()`, `super::digest()`, `use super::Profile;` and
+    // `v2::Description` name items the children declare; a crate-path alias
+    // into another crate's glob facade (`host::verify()`) does too.
+    let v2 = "mod integration;\npub mod ledger;\nmod types;\npub use integration::*;\npub use types::*;\n";
+    let types = "pub struct Profile;\npub fn digest() -> u8 { 0 }\n";
+    let integration = r#"
+use super::Profile;
+pub struct Description;
+pub fn declared() -> Profile { Profile }
+"#;
+    let ledger = r#"
+pub fn replay() -> u8 {
+    let _ = crate::v2::declared();
+    super::digest()
+}
+"#;
+    let root = "pub mod v2;\npub fn describe(_: &v2::Description) {}\npub mod helper;\npub fn unit() { let _ = v2::Description; }\n";
+    let helper = "use other::scm as host;\npub fn check() { host::verify(); }\n";
+    let contributions = scan_fixture_with(
+        "glob-re-exports",
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"demo\"\n[workspace]\nmembers = [\"other\"]\n",
+            ),
+            ("src/lib.rs", root),
+            ("src/helper.rs", helper),
+            ("src/v2/mod.rs", v2),
+            ("src/v2/types.rs", types),
+            ("src/v2/integration.rs", integration),
+            ("src/v2/ledger.rs", ledger),
+            ("other/Cargo.toml", "[package]\nname = \"other\"\n"),
+            ("other/src/lib.rs", "pub mod scm;\n"),
+            ("other/src/scm/mod.rs", "mod native;\npub use native::*;\n"),
+            ("other/src/scm/native.rs", "pub fn verify() {}\n"),
+        ],
+        &serde_json::json!({"config_files": ["Cargo.toml", "other/Cargo.toml"]}),
+    );
+    let mut missing = Vec::new();
+    for (kind, from, to) in [
+        (
+            "calls",
+            "rust:function:crate::v2::ledger::replay",
+            "rust:function:crate::v2::integration::declared",
+        ),
+        (
+            "calls",
+            "rust:function:crate::v2::ledger::replay",
+            "rust:function:crate::v2::types::digest",
+        ),
+        (
+            "references",
+            "rust:function:crate::v2::integration::declared",
+            "rust:class:crate::v2::types::Profile",
+        ),
+        (
+            "references",
+            "rust:function:crate::describe",
+            "rust:class:crate::v2::integration::Description",
+        ),
+        (
+            "references",
+            "rust:function:crate::unit",
+            "rust:class:crate::v2::integration::Description",
+        ),
+        (
+            "calls",
+            "rust:function:crate::helper::check",
+            "rust:function:other::scm::native::verify",
+        ),
+    ] {
+        let targets = targets_of(&contributions, kind, from);
+        if !targets.contains(&to.to_owned()) {
+            missing.push(format!("{kind} {from} -> {to}: {targets:?}"));
+        }
+    }
+    assert!(missing.is_empty(), "{missing:#?}");
+}
+
+#[test]
+fn a_unit_struct_value_named_bare_references_its_type() {
+    let source = "pub struct Unit;\npub struct Wrap(u8);\nconst MAX: u8 = 1;\npub fn go() -> Vec<Wrap> { let _ = Unit; vec![MAX].into_iter().map(Wrap).collect() }\n";
+    let contributions = scan_fixture("unit-struct-value", &[("src/lib.rs", source)]);
+    let references = targets_of(&contributions, "references", "rust:function:crate::go");
+    for target in ["rust:class:crate::Unit", "rust:class:crate::Wrap"] {
+        assert!(
+            references.contains(&target.to_owned()),
+            "{target} in {references:?}"
+        );
+    }
+    assert!(
+        !references.iter().any(|target| target.ends_with("::MAX")),
+        "{references:?}"
+    );
+}
+
+#[test]
+fn a_name_a_super_glob_brings_in_through_the_parents_glob_re_export_resolves() {
+    // `use super::*;` in `recipe/validate.rs` brings in `Recipe`, which the
+    // parent itself only has through `pub use types::*;`.
+    let contributions = scan_fixture(
+        "glob-through-glob",
+        &[
+            ("src/lib.rs", "pub mod recipe;\n"),
+            ("src/recipe/mod.rs", "mod types;\npub(crate) mod validate;\npub use types::*;\n"),
+            ("src/recipe/types.rs", "pub struct Recipe;\n"),
+            (
+                "src/recipe/validate.rs",
+                "use super::*;\npub struct Validated { pub recipe: Recipe }\npub fn load() -> Recipe { let r: Recipe = Recipe; r }\n",
+            ),
+        ],
+    );
+    for from in [
+        "rust:class:crate::recipe::validate::Validated",
+        "rust:function:crate::recipe::validate::load",
+    ] {
+        let references = targets_of(&contributions, "references", from);
+        assert!(
+            references.contains(&"rust:class:crate::recipe::types::Recipe".to_owned()),
+            "{from}: {references:?}"
+        );
+    }
+}
+
+#[test]
+fn code_gated_by_a_test_support_feature_is_marked_test_support() {
+    // `#[cfg(feature = "test-support")]` and `#[cfg(any(test, feature =
+    // "native-catalog-test-support"))] #[doc(hidden)]` compile only for the
+    // tests, through a feature dependents' tests turn on; so does a module a
+    // gated `mod` loads. `not(feature = "test-support")` is production.
+    let lib = r#"
+pub mod fixtures_host;
+#[cfg(feature = "test-support")]
+pub mod fixtures;
+#[cfg(feature = "test-support")]
+pub fn publication_fixture_error() {}
+#[cfg(any(test, feature = "native-catalog-test-support"))]
+#[doc(hidden)]
+pub fn fixture_catalog() {}
+#[cfg(not(feature = "test-support"))]
+pub fn production_only() {}
+#[cfg(feature = "latest-api")]
+pub fn feature_gated() {}
+"#;
+    let contributions = scan_fixture(
+        "test-support-feature",
+        &[
+            ("src/lib.rs", lib),
+            ("src/fixtures.rs", "pub fn rig() {}\n"),
+            ("src/fixtures_host.rs", "pub fn plain() {}\n"),
+        ],
+    );
+    let support = |file: &str, name: &str| {
+        node_in(&contributions, file, name)
+            .unwrap_or_else(|| panic!("{name}"))
+            .get("attributes")
+            .and_then(|attributes| attributes.get("test_support"))
+            .and_then(Value::as_bool)
+            == Some(true)
+    };
+    assert!(support("src/lib.rs", "crate::publication_fixture_error"));
+    assert!(support("src/lib.rs", "crate::fixture_catalog"));
+    assert!(support("src/fixtures.rs", "crate::fixtures"));
+    assert!(support("src/fixtures.rs", "crate::fixtures::rig"));
+    assert!(!support("src/lib.rs", "crate::production_only"));
+    assert!(!support("src/lib.rs", "crate::feature_gated"));
+    assert!(!support(
+        "src/fixtures_host.rs",
+        "crate::fixtures_host::plain"
+    ));
 }

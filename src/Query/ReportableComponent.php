@@ -98,6 +98,7 @@ final readonly class ReportableComponent
             self::isRuntimeInvoked($attributes) => 'constructors',
             self::isExecutableScript($kind, $attributes) => 'entry_scripts',
             self::isTypeDeclaration($attributes) => 'type_declarations',
+            self::isTestSupport($attributes) => 'test_support',
             self::isDiscoveredByConvention($roles) => 'convention_discovered',
             default => null,
         };
@@ -176,6 +177,19 @@ final readonly class ReportableComponent
         // `declare global { ... }` or `declare module 'x' { ... }`.
         return $decoded !== null
             && (($decoded['declaration_file'] ?? false) === true || ($decoded['ambient'] ?? false) === true);
+    }
+
+    /**
+     * Code its scanner marked as compiled only for the tests through a
+     * test-support feature, which the product never builds: Rust's
+     * `#[cfg(feature = "test-support")]` fixtures, which a crate exports for
+     * its own and its dependents' tests. Reached from tests or not at all,
+     * it is no product code to delete.
+     */
+    public static function isTestSupport(mixed $attributesJson): bool
+    {
+        $decoded = self::attributes($attributesJson);
+        return $decoded !== null && ($decoded['test_support'] ?? false) === true;
     }
 
     /**

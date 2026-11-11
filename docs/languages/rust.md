@@ -55,7 +55,13 @@ through it, after the names the enclosing module declares. A type the module
 declares shadows the glob for a path below it too (`Widget::new()`), and a
 generic type parameter (`struct Gen<Thing>`) shadows any glob-imported type
 of its name. A glob source provides a name it declares or binds with a
-`use`, and the name resolves to where it is declared. A glob of a type
+`use`, or one its own glob imports bring in (`use super::*;` in a child of a
+module with `pub use types::*;`), and the name resolves to where it is
+declared. A private `use` or glob of the source is followed only for an
+importer inside the source, as Rust has it: a parent's `pub use child::*;`
+does not bring in what the child itself imports privately. A path through a
+module's glob imports (`crate::v2::Profile` under `pub use types::*;` in
+`v2`, or `super::digest()`) names the item the same way. A glob of a type
 (`use Kind::*;`) brings in its variants, never its associated functions. A name two glob sources provide as
 different items is ambiguous and resolves to nothing. A glob source that
 provides no such name adds nothing, so `Vec` through `use crate::prelude::*;`
@@ -147,6 +153,14 @@ These get an attribute, so they stay off the
   `cfg(test)` and `cfg(all(test, feature = "x"))` mark an item (a module, a
   function, an `impl`, or a single method) and everything in it, while `cfg(not(test))` and `cfg(any(test, feature = "x"))` stay production
   code, since a production build compiles them too.
+- Code compiled only for the tests through a test-support feature is marked
+  `test_support`: an item gated by a feature whose name contains
+  `test-support` or `test_support`, alone or beside `test` in an `any(..)`
+  (`#[cfg(feature = "test-support")]`), and every item in a module a `mod`
+  declaration gates that way. A crate exports such code for its own and its
+  dependents' tests, so it is never a dead-code candidate, and
+  `excluded_test_support` counts it. `cfg(not(feature = "test-support"))`
+  stays production code.
 
 ### Speculative edges
 
@@ -276,12 +290,20 @@ function `src/lib.rs` declares.
 A `mod name;` declaration names the module of the file Rust loads for it, as
 that file is placed. A crate root and a `mod.rs` keep their children beside
 them, so `mod cli;` in `src/main.rs` is `crate::cli` (`src/cli.rs`), and
-`mod common;` in `tests/it.rs` is `tests::common`. `#[path = "x.rs"]` is
-followed: the declaration names the module of `x.rs`, and a path through the
+`mod common;` in `tests/it.rs` is `tests::common`. A file a `#[path]` declaration loads, outside a crate root, is the module the
+declaration names, and so is every file below it: `src/mcp/budget.rs`'s
+`#[cfg(test)] #[path = "budget_tests.rs"] mod tests;` makes
+`src/mcp/budget_tests.rs` the test module `crate::mcp::budget::tests`, whose
+`use super::*;` reaches `budget`'s items, and `src/broker.rs`'s
+`#[path = "broker_activation.rs"] mod activation;` makes
+`src/broker_activation.rs` `crate::broker::activation`. Such a file keeps the
+files its own `mod` declarations load beside it, as a `mod.rs` does. One name
+declared under exclusive `cfg`s that loads two files
+(`#[cfg(unix)] #[path = "native/unix.rs"] mod native;` beside a Windows one)
+places both in that module, as `cfg` alternatives of each other. In a crate
+root, `#[path = "x.rs"]` names the module of `x.rs`, and a path through the
 declared name reaches it, in that file and in any other (`crate::a::x` under
-`#[path = "impl_a.rs"] mod a;` is `crate::impl_a::x`). Two declarations of one
-name that load different files (under different `cfg`s) make paths through
-that name resolve to nothing.
+`#[path = "impl_a.rs"] mod a;` is `crate::impl_a::x`).
 
 Each binary in `src/bin/`, integration test, example and benchmark is a crate
 of its own, and its `crate::` names that crate, whose root is the file itself:
@@ -292,9 +314,9 @@ Only the target's root file knows this; a module file below `src/bin/<name>/`
 could belong to that binary or to another, so its own `crate::` paths still
 start at the package's `crate`. An out-of-line `#[cfg(test)] mod name;` marks
 the file it loads as test code, its module node included, when the declaring
-file sits in a module above it, or is the crate root; a `#[path]` that sends a
-test module to a sibling (`src/net.rs` loading `src/net_tests.rs`) is not
-marked.
+file sits in a module above it, or is the crate root, also when a `#[path]`
+sends it to a sibling (`src/net.rs` loading `src/net_tests.rs` as
+`crate::net::tests`).
 
 ### What an incremental scan rescans
 
@@ -306,7 +328,8 @@ scan rescans a file only when one of those changes:
   exist yet (`src/engine/sign.rs` and `src/engine/sign/mod.rs`, a member's
   `src/lib.rs`);
 - every file of every module above the file's own, since a
-  `#[cfg(test)] mod name;` there decides whether the file is test code;
+  `#[cfg(test)] mod name;` there decides whether the file is test code, and a
+  `#[path]` declaration there where the file sits in the module tree;
 - the `src/lib.rs` and `src/main.rs` of the package whose `src/` holds the
   file, or a file one of its `mod` declarations loads, since whether they
   exist decides those module paths.
@@ -346,11 +369,13 @@ is read.
 - An import name bound to two different paths in one file resolves to nothing,
   unless every `use` binding it is gated by a `cfg`, see above. So does a name
   re-exported from different paths when one of those re-exports is ungated.
-- A glob re-export (`pub use inner::*;`) is not followed.
+- A file that existed with no `mod` declaration loading it, and that a
+  `#[path]` declaration in a file outside the modules above it then loads,
+  keeps the module its path gave it in an incremental scan until it changes
+  itself or a full scan runs: nothing it read before says it was placed.
 - Re-exports are resolved through the declaring file's own `use` items, its
-  own declarations and rooted paths only. A glob source provides only what it
-  declares or re-exports by name: a name it brings in through a glob of its
-  own is not followed.
+  own declarations and rooted paths only. Glob imports are followed four
+  levels deep at most.
 - A type named bare that nothing in scope declares or imports (`Vec`,
   `Option`, `String`, `char`, `u8`) types no receiver, so a method called on
   one produces no edge rather than one to a made-up type of the module. A

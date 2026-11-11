@@ -75,6 +75,10 @@ pub struct Facts {
     /// each gated item's. A node emitted under one is a `cfg` alternative,
     /// and carries them as its `cfg` attribute.
     cfg_scope: Vec<String>,
+    /// How many enclosing scopes compile only for the tests through a
+    /// test-support feature (`#[cfg(feature = "test-support")]`); every node
+    /// emitted inside one is marked `test_support`.
+    support_scope: usize,
     /// Whether this file's crate-root module is an executable target — it
     /// declares a top-level `fn main`, or (for an extensionless script) a
     /// shebang. Applied to the module node in `finish()`.
@@ -107,6 +111,7 @@ impl Facts {
             untyped_calls: BTreeSet::new(),
             test_scope: 0,
             cfg_scope: Vec::new(),
+            support_scope: 0,
             content_hash: None,
         }
     }
@@ -181,6 +186,22 @@ impl Facts {
         }
     }
 
+    /// Enter a test-support scope when `support` is set, returning it for
+    /// [`Facts::exit_support_scope`].
+    pub fn enter_support_scope(&mut self, support: bool) -> bool {
+        if support {
+            self.support_scope += 1;
+        }
+        support
+    }
+
+    /// Leave the scope [`Facts::enter_support_scope`] opened, if it did.
+    pub fn exit_support_scope(&mut self, opened: bool) {
+        if opened {
+            self.support_scope = self.support_scope.saturating_sub(1);
+        }
+    }
+
     /// Enter the scope of an item compiled only under `predicate`, when it
     /// has one, returning whether a scope was opened for
     /// [`Facts::exit_cfg_scope`] to close.
@@ -206,6 +227,8 @@ impl Facts {
         let mut attributes = BTreeMap::new();
         if self.test_scope > 0 {
             attributes.insert("test".to_owned(), Value::Bool(true));
+        } else if self.support_scope > 0 {
+            attributes.insert("test_support".to_owned(), Value::Bool(true));
         }
         match self.cfg_scope.as_slice() {
             [] => {}
