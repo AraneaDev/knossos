@@ -253,12 +253,21 @@ class ModuleLayout:
         no directory of its own on the path. A name the standard library owns
         is left alone, so a sibling ``json.py`` never captures ``import json``.
         """
-        parts = module.split(".")
-        if not parts or "" in parts or parts[0] in STDLIB_MODULE_NAMES:
-            return None
         directory = PurePosixPath(importer).parent
         if not directory.parts:
             return None  # the bare root is already a source root
+        return self.module_in_directory(directory, module)
+
+    def module_in_directory(self, directory: PurePosixPath, module: str) -> str | None:
+        """How to spell the module an absolute import names in the project directory ``directory``, if one is there.
+
+        What :meth:`script_sibling_module` looks for in the importer's own
+        directory, and what a ``sys.path`` entry the importer adds (see
+        ``sys_path_directories``) makes importable from another.
+        """
+        parts = module.split(".")
+        if not parts or "" in parts or parts[0] in STDLIB_MODULE_NAMES:
+            return None
         base = self.root.joinpath(*directory.parts, *parts)
         for candidate in (
             base / "__init__.py",

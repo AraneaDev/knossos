@@ -78,9 +78,11 @@ final readonly class ReportableComponent
      * These are the grounds `architecture_health` and the quality gate's
      * `unreferenced_candidates` must agree on, so both ask this one method
      * rather than each listing the predicates: a method fulfilling a
-     * supertype's member (`inherited`), one a runtime or foreign host calls
-     * (`constructors`), an executable script's module (`entry_scripts`), a
-     * type declaration (`type_declarations`), and, checked last, a component
+     * supertype's member, or a trait impl block of its own (`inherited`), one
+     * a runtime or foreign host calls (`constructors`), an executable
+     * script's module (`entry_scripts`), a type declaration
+     * (`type_declarations`), code compiled only for the tests through a
+     * test-support feature (`test_support`), and, checked last, a component
      * reached by convention (`convention_discovered`). Each has no inbound
      * edge by construction. Exclusions that need more than the node, such as
      * a contract member of a used type, stay with each caller.
@@ -94,7 +96,7 @@ final readonly class ReportableComponent
         $attributes = $node['attributes_json'] ?? null;
 
         return match (true) {
-            self::isDeclaredOverride($kind, $attributes) => 'inherited',
+            self::isDeclaredOverride($kind, $attributes), self::isTraitImplBlock($attributes) => 'inherited',
             self::isRuntimeInvoked($attributes) => 'constructors',
             self::isExecutableScript($kind, $attributes) => 'entry_scripts',
             self::isTypeDeclaration($attributes) => 'type_declarations',
@@ -177,6 +179,19 @@ final readonly class ReportableComponent
         // `declare global { ... }` or `declare module 'x' { ... }`.
         return $decoded !== null
             && (($decoded['declaration_file'] ?? false) === true || ($decoded['ambient'] ?? false) === true);
+    }
+
+    /**
+     * A trait implementation its scanner made a node of its own: a Rust
+     * `impl Trait for u32` has no project type to attach to. It is used
+     * wherever a bound on the trait is met (`fn read<T: Trait>(..)` called
+     * with a `u32`), which leaves no edge to it, so on its own it is never
+     * dead code: the trait is, when nothing bounds on it or calls it.
+     */
+    public static function isTraitImplBlock(mixed $attributesJson): bool
+    {
+        $decoded = self::attributes($attributesJson);
+        return $decoded !== null && ($decoded['trait_impl'] ?? false) === true;
     }
 
     /**

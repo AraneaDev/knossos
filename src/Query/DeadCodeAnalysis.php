@@ -89,7 +89,8 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         $annotationsByName = $facts->componentAnnotations();
         $memberReachability = $this->containerMemberReachability($projectId, $provisional, $edgeKinds, $minConfidenceRank);
         foreach ($provisional as $id => $candidate) {
-            $annotation = $annotationsByName[(string) $candidate['row']['canonical_name']] ?? null;
+            $annotation = $annotationsByName[(string) $candidate['row']['canonical_name']]
+                ?? self::enclosingAnnotation((string) $candidate['row']['canonical_name'], $annotationsByName);
             $context = $inheritance[$id] ?? [
                 'inherited' => false,
                 'implemented' => false,
@@ -139,6 +140,46 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         }
 
         return ['candidates' => $candidates, 'excluded' => $excluded];
+    }
+
+    /**
+     * The `false_positive` or `intentional` annotation of the nearest
+     * component that encloses `$canonical`, by its canonical name: a module
+     * annotated as loaded by a path the graph cannot see
+     * (`examples._client_input`) speaks for every member it holds
+     * (`examples._client_input.open_client`). A `confirmed_dead` annotation
+     * judges the one component it is on. The annotation carries the name it
+     * was made on as `covered_by`.
+     *
+     * @param array<string, array{kind: string, value: ?string}> $annotations
+     * @return ?array{kind: string, value: ?string, covered_by: string}
+     */
+    private static function enclosingAnnotation(string $canonical, array $annotations): ?array
+    {
+        if ($annotations === []) {
+            return null;
+        }
+        $end = strlen($canonical);
+        while ($end > 0) {
+            $cut = null;
+            foreach (['::', '.', '#', '\\', '/'] as $separator) {
+                $at = strrpos(substr($canonical, 0, $end), $separator);
+                if ($at !== false && $at > 0 && ($cut === null || $at > $cut)) {
+                    $cut = $at;
+                }
+            }
+            if ($cut === null) {
+                return null;
+            }
+            $enclosing = substr($canonical, 0, $cut);
+            $annotation = $annotations[$enclosing] ?? null;
+            if ($annotation !== null && in_array($annotation['kind'], ['false_positive', 'intentional'], true)) {
+                return $annotation + ['covered_by' => $enclosing];
+            }
+            $end = $cut;
+        }
+
+        return null;
     }
 
     /**

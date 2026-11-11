@@ -1030,7 +1030,7 @@ impl Walk<'_> {
 
     /// Whether `path` is rooted in this project: at this file's crate root,
     /// its target root's crate, or a workspace member's crate.
-    fn in_project(&self, path: &str) -> bool {
+    pub(super) fn in_project(&self, path: &str) -> bool {
         let head = path.split("::").next().unwrap_or(path);
         head == self.crate_root()
             || head == self.crate_module.split("::").next().unwrap_or("")

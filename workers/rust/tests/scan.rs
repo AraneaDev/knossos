@@ -5155,3 +5155,171 @@ pub fn feature_gated() {}
         "crate::fixtures_host::plain"
     ));
 }
+
+#[test]
+fn a_method_an_impl_in_a_child_file_adds_to_the_parents_type_is_reached_by_its_type() {
+    // `impl BrokerState` in `broker/owned.rs`, under `use super::BrokerState;`,
+    // adds `accepted_owned` to the parent's type; the index placed it on a
+    // `broker::owned::BrokerState`, so `BrokerState::accepted_owned()` in
+    // `broker.rs` found nothing.
+    let broker = r#"
+mod owned;
+pub struct BrokerState;
+impl BrokerState {
+    fn fresh() -> Self { BrokerState }
+}
+pub fn go() {
+    let _ = BrokerState::fresh();
+    BrokerState::accepted_owned();
+}
+"#;
+    let owned =
+        "use super::BrokerState;\nimpl BrokerState {\n    pub(super) fn accepted_owned() {}\n}\n";
+    let contributions = scan_fixture(
+        "split-inherent-impl",
+        &[
+            ("src/lib.rs", "pub mod broker;\n"),
+            ("src/broker.rs", broker),
+            ("src/broker/owned.rs", owned),
+        ],
+    );
+    let calls = targets_of(&contributions, "calls", "rust:function:crate::broker::go");
+    assert!(
+        calls.contains(&"rust:method:crate::broker::BrokerState::accepted_owned".to_owned()),
+        "{calls:?}"
+    );
+    assert!(node_in(
+        &contributions,
+        "src/broker/owned.rs",
+        "crate::broker::BrokerState::accepted_owned"
+    )
+    .is_some());
+}
+
+#[test]
+fn calls_a_macro_body_or_a_macro_guard_makes_are_edges() {
+    // `valid_text(..)` and `$crate::types::parse_hex(..)` only appear in a
+    // `macro_rules!` body, and `successful(..)` in a `matches!` guard, so
+    // all three read as unreferenced.
+    let source = r#"
+fn valid_text(_name: &str, value: &str) -> bool { !value.is_empty() }
+macro_rules! text_type {
+    ($name:ident) => {
+        pub struct $name;
+        impl $name {
+            pub fn check(value: &str) -> bool { valid_text(stringify!($name), value) }
+            pub fn hex(value: &str) -> u8 { $crate::types::parse_hex(value) }
+        }
+    };
+}
+text_type!(Title);
+fn successful(x: u8) -> bool { x > 0 }
+fn tripled(x: u8) -> u8 { x * 3 }
+pub fn any_ok(values: &[u8]) -> bool {
+    values.iter().any(|r| matches!(r, 1 | 2 if successful(*r)))
+}
+pub fn many() -> Vec<u8> { vec![tripled(1); 4] }
+"#;
+    let contributions = scan_fixture(
+        "macro-body-calls",
+        &[
+            ("src/lib.rs", "pub mod types;\npub mod text;\n"),
+            ("src/text.rs", source),
+            ("src/types.rs", "pub fn parse_hex(_: &str) -> u8 { 0 }\n"),
+        ],
+    );
+    let edges: Vec<(String, String, String)> = contributions
+        .iter()
+        .flat_map(|contribution| contribution["edges"].as_array().unwrap().clone())
+        .filter(|edge| edge["kind"] == "calls")
+        .map(|edge| {
+            (
+                edge["source"].as_str().unwrap().to_owned(),
+                edge["target"].as_str().unwrap().to_owned(),
+                edge["confidence"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    for (source, target, confidence) in [
+        (
+            "rust:module:crate::text",
+            "rust:function:crate::text::valid_text",
+            "possible",
+        ),
+        (
+            "rust:module:crate::text",
+            "rust:function:crate::types::parse_hex",
+            "possible",
+        ),
+        (
+            "rust:function:crate::text::any_ok",
+            "rust:function:crate::text::successful",
+            "probable",
+        ),
+        (
+            "rust:function:crate::text::many",
+            "rust:function:crate::text::tripled",
+            "possible",
+        ),
+    ] {
+        assert!(
+            edges.contains(&(source.to_owned(), target.to_owned(), confidence.to_owned())),
+            "{source} -> {target} ({confidence}) in {edges:?}"
+        );
+    }
+    // The declaration, the metavariable and `stringify!` are no calls.
+    assert!(!edges
+        .iter()
+        .any(|(_, target, _)| target.ends_with("::check")
+            || target.ends_with("::stringify")
+            || target.ends_with("::name")));
+}
+
+#[test]
+fn a_type_named_only_as_a_generic_argument_is_referenced() {
+    // `size_of::<PipeFdInfo>()`, `query::<VnodeFdInfo>(..)`,
+    // `Option::<StrictLogReference>::deserialize(..)` and `x.parse::<Id>()`
+    // name their types nowhere else.
+    let source = r#"
+pub struct PipeFdInfo;
+pub struct VnodeFdInfo;
+pub struct StrictLogReference;
+pub struct Id;
+fn query<T>(_: u8) -> Option<T> { None }
+pub fn sizes() -> usize { std::mem::size_of::<PipeFdInfo>() }
+pub fn read() { let _ = query::<VnodeFdInfo>(1); }
+pub fn de() { let _ = Option::<StrictLogReference>::default(); }
+pub fn parse(s: &str) { let _ = s.parse::<Id>(); }
+"#;
+    let contributions = scan_fixture("generic-arguments", &[("src/lib.rs", source)]);
+    for (from, to) in [
+        ("rust:function:crate::sizes", "rust:class:crate::PipeFdInfo"),
+        ("rust:function:crate::read", "rust:class:crate::VnodeFdInfo"),
+        (
+            "rust:function:crate::de",
+            "rust:class:crate::StrictLogReference",
+        ),
+        ("rust:function:crate::parse", "rust:class:crate::Id"),
+    ] {
+        let references = targets_of(&contributions, "references", from);
+        assert!(
+            references.contains(&to.to_owned()),
+            "{from} -> {to} in {references:?}"
+        );
+    }
+}
+
+#[test]
+fn a_trait_impl_block_of_its_own_is_marked_as_one() {
+    // `unsafe impl NativeValue for u32 {}` is used wherever `T: NativeValue`
+    // is met, which no edge records.
+    let source = "pub unsafe trait NativeValue: Copy {}\nunsafe impl NativeValue for u32 {}\npub fn read<T: NativeValue>(v: T) -> T { v }\n";
+    let contributions = scan_fixture("marker-trait-impl", &[("src/lib.rs", source)]);
+    let block = node_in(
+        &contributions,
+        "src/lib.rs",
+        "crate::<impl NativeValue for u32>",
+    )
+    .expect("the block is a node");
+    assert_eq!(Some(true), block["attributes"]["trait_impl"].as_bool());
+}

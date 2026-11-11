@@ -206,6 +206,41 @@ final class AnnotationsTest extends KnossosTestCase
         assertSame(['App\\Both', 'App\\Parked'], array_column($queries->services()->annotationQueries->listAnnotations($ids['project'], kind: 'intentional')->data['annotations'], 'canonical_name'));
     }
 
+    /**
+     * A module annotated as a false positive (loaded through a `sys.path`
+     * edit the graph cannot follow) speaks for its members: they left the
+     * report beside it. A module whose name merely starts the same way, and
+     * a member of a module confirmed dead, are not covered.
+     */
+    #[Group('query')]
+    public function testAnAnnotationOnAModuleCoversItsMembers(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        foreach ([
+            ['module', 'examples._client_input'],
+            ['function', 'examples._client_input.open_client'],
+            ['function', 'examples._client_inputs.other'],
+            ['module', 'examples.gone'],
+            ['function', 'examples.gone.helper'],
+        ] as $index => [$kind, $name]) {
+            $node = \Knossos\Store\StableId::symbol($ids['project'], 'python', $kind, $name);
+            $repository->saveNode($node, $ids['project'], 'python', $kind, $name, $name, null, $ids['file'], 50 + $index, 60 + $index, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'examples._client_input', 'false_positive', 'imported after a sys.path edit', execute: true);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'examples.gone', 'confirmed_dead', 'delete', execute: true);
+
+        $data = $queries->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
+
+        assertSame(false, in_array('examples._client_input', $names, true));
+        assertSame(false, in_array('examples._client_input.open_client', $names, true));
+        assertSame(2, $data['bounds']['annotated_false_positives']);
+        assertSame(true, in_array('examples._client_inputs.other', $names, true));
+        assertSame(true, in_array('examples.gone.helper', $names, true));
+    }
+
     #[Group('query')]
     public function testFalsePositiveTakesPrecedenceOverConfirmedDeadOnSameComponent(): void
     {

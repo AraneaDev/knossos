@@ -79,6 +79,10 @@ pub struct Facts {
     /// test-support feature (`#[cfg(feature = "test-support")]`); every node
     /// emitted inside one is marked `test_support`.
     support_scope: usize,
+    /// How many enclosing scopes read their edges off tokens rather than
+    /// parsed code (a `macro_rules!` body); every edge recorded inside one
+    /// is `possible`.
+    possible_scope: usize,
     /// Whether this file's crate-root module is an executable target — it
     /// declares a top-level `fn main`, or (for an extensionless script) a
     /// shebang. Applied to the module node in `finish()`.
@@ -112,6 +116,7 @@ impl Facts {
             test_scope: 0,
             cfg_scope: Vec::new(),
             support_scope: 0,
+            possible_scope: 0,
             content_hash: None,
         }
     }
@@ -183,6 +188,26 @@ impl Facts {
     pub fn exit_test_scope_if(&mut self, test: bool) {
         if test {
             self.exit_test_scope();
+        }
+    }
+
+    /// Enter a scope whose edges are only `possible`, see
+    /// [`Facts::possible_scope`](Self).
+    pub fn enter_possible_scope(&mut self) {
+        self.possible_scope += 1;
+    }
+
+    /// Leave the scope [`Facts::enter_possible_scope`] opened.
+    pub fn exit_possible_scope(&mut self) {
+        self.possible_scope = self.possible_scope.saturating_sub(1);
+    }
+
+    /// `confidence`, or `possible` inside a [`Facts::enter_possible_scope`].
+    fn capped(&self, confidence: &'static str) -> &'static str {
+        if self.possible_scope > 0 {
+            "possible"
+        } else {
+            confidence
         }
     }
 
@@ -342,6 +367,7 @@ impl Facts {
         span: Span,
     ) {
         let evidence = self.evidence(span, span);
+        let confidence = self.capped(confidence);
         self.edges.push(Edge {
             kind: kind.to_owned(),
             source: source.to_owned(),
@@ -387,12 +413,13 @@ impl Facts {
         let evidence = self.evidence(span, span);
         let mut attributes = BTreeMap::new();
         attributes.insert("speculative".to_owned(), Value::Bool(true));
+        let confidence = self.capped("probable");
         self.edges.push(Edge {
             kind: kind.to_owned(),
             source: source.to_owned(),
             target: target.to_owned(),
             origin: "ast",
-            confidence: "probable",
+            confidence,
             evidence,
             attributes,
         });
@@ -430,6 +457,7 @@ impl Facts {
         confidence: &'static str,
     ) {
         let evidence = self.evidence(span, span);
+        let confidence = self.capped(confidence);
         self.pending_edges.push(Edge {
             kind: kind.to_owned(),
             source: source.to_owned(),

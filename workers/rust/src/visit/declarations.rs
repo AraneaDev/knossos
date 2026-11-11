@@ -462,15 +462,28 @@ pub fn declaration_paths(module: &str, items: &[Item]) -> BTreeSet<String> {
 pub fn gated_declaration_paths(module: &str, items: &[Item]) -> BTreeSet<String> {
     let mut paths = BTreeSet::new();
     let mut gated = BTreeSet::new();
-    collect_gated_paths(module, items, false, &mut paths, &mut gated);
+    collect_gated_paths(module, items, false, true, &mut paths, &mut gated);
 
     gated
+}
+
+/// What a file declares to the declaration index apart from its `impl`
+/// blocks' methods, and which of those paths a `cfg` gates: the paths of
+/// [`declaration_paths`] and [`gated_declaration_paths`] without the methods,
+/// whose type `index_facts` places through the file's imports instead.
+#[must_use]
+pub fn indexed_item_paths(module: &str, items: &[Item]) -> (BTreeSet<String>, BTreeSet<String>) {
+    let mut paths = BTreeSet::new();
+    let mut gated = BTreeSet::new();
+    collect_gated_paths(module, items, false, false, &mut paths, &mut gated);
+
+    (paths, gated)
 }
 
 /// The paths [`declaration_paths`] returns for one file, each once.
 fn collect_declaration_paths(module: &str, items: &[Item], out: &mut BTreeSet<String>) {
     let mut gated = BTreeSet::new();
-    collect_gated_paths(module, items, false, out, &mut gated);
+    collect_gated_paths(module, items, false, true, out, &mut gated);
 }
 
 /// The paths [`declaration_paths`] returns, with the ones that compile only
@@ -479,6 +492,7 @@ fn collect_gated_paths(
     module: &str,
     items: &[Item],
     under_cfg: bool,
+    with_impls: bool,
     out: &mut BTreeSet<String>,
     gated: &mut BTreeSet<String>,
 ) {
@@ -489,7 +503,7 @@ fn collect_gated_paths(
         } else {
             BTreeSet::new()
         };
-        collect_item_paths(module, item, item_gated, out, gated);
+        collect_item_paths(module, item, item_gated, with_impls, out, gated);
         if item_gated {
             gated.extend(out.difference(&before).cloned());
         }
@@ -502,6 +516,7 @@ fn collect_item_paths(
     module: &str,
     item: &Item,
     under_cfg: bool,
+    with_impls: bool,
     out: &mut BTreeSet<String>,
     gated: &mut BTreeSet<String>,
 ) {
@@ -512,7 +527,7 @@ fn collect_item_paths(
             Item::Union(node) => record(out, module, &ident_name(&node.ident)),
             Item::Trait(node) => record(out, module, &ident_name(&node.ident)),
             Item::Fn(node) => record(out, module, &ident_name(&node.sig.ident)),
-            Item::Impl(node) => {
+            Item::Impl(node) if with_impls => {
                 // A method is declared in an `impl` block rather than beside
                 // its type, so indexing only top-level items left every method
                 // unresolvable: a call to one could never be vouched for, and
@@ -543,7 +558,7 @@ fn collect_item_paths(
             Item::Mod(node) => {
                 if let Some((_, inner)) = &node.content {
                     let nested = format!("{module}::{}", ident_name(&node.ident));
-                    collect_gated_paths(&nested, inner, under_cfg, out, gated);
+                    collect_gated_paths(&nested, inner, under_cfg, with_impls, out, gated);
                 }
             }
             _ => {}

@@ -17,6 +17,7 @@ final class ReportableComponentTest extends TestCase
         $method = static fn(array $attributes): array => ['kind' => 'method', 'attributes_json' => json_encode($attributes, JSON_THROW_ON_ERROR)];
 
         self::assertSame('inherited', ReportableComponent::graphLocalExclusion($method(['overrides' => true]), []));
+        self::assertSame('inherited', ReportableComponent::graphLocalExclusion(['kind' => 'class', 'attributes_json' => '{"trait_impl":true}'], []));
         self::assertSame('constructors', ReportableComponent::graphLocalExclusion($method(['runtime_invoked' => true]), []));
         self::assertSame('entry_scripts', ReportableComponent::graphLocalExclusion(['kind' => 'module', 'attributes_json' => '{"executable":true}'], []));
         self::assertSame('type_declarations', ReportableComponent::graphLocalExclusion($method(['declaration_file' => true]), []));

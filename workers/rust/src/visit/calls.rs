@@ -568,8 +568,16 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
             self.inline_import(&path.path, node.span());
             self.visit_call(&path.path, node.span());
             // `Action::Deny(x)` builds a variant: the enum is used. The callee
-            // itself is not walked as a value path, since it is the call.
+            // itself is not walked as a value path, since it is the call, but
+            // the types its turbofish names are used (`size_of::<Info>()`,
+            // `Option::<Reference>::deserialize(..)`).
             self.owner_reference(&path.path, node.span());
+            if let Some(qself) = &path.qself {
+                self.visit_type(&qself.ty);
+            }
+            for segment in &path.path.segments {
+                self.visit_path_arguments(&segment.arguments);
+            }
             for argument in &node.args {
                 self.visit_expr(argument);
             }
@@ -634,9 +642,21 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
         // A macro body is tokens to syn. Most invocations in ordinary code
         // (`format!`, `println!`, `assert_eq!`, `write!`) take comma-separated
         // expressions, so a body that parses as such is walked like any other
-        // arguments; one that does not (`vec![x; n]`, `json!({..})`, a DSL)
-        // contributes nothing rather than a guess.
-        self.visit_macro_tokens(node.tokens.clone());
+        // arguments. `matches!(value, pattern if guard)` is read as what it
+        // is. Whatever is left (`vec![f(x); n]`, a guard in another macro, a
+        // DSL) is searched for paths written as calls, which are `possible`.
+        if node
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "matches")
+            && self.visit_matches(node.tokens.clone())
+        {
+            return;
+        }
+        if !self.visit_macro_tokens(node.tokens.clone()) {
+            self.visit_token_calls(node.tokens.clone());
+        }
     }
 
     fn visit_expr_struct(&mut self, node: &syn::ExprStruct) {
@@ -833,10 +853,14 @@ impl Calls<'_, '_> {
     /// token runs that parse as Rust expressions are walked. The groups still
     /// to search are kept in a worklist, so the walk is one loop rather than
     /// two functions calling each other.
-    fn visit_macro_tokens(&mut self, tokens: proc_macro2::TokenStream) {
+    ///
+    /// Returns whether every token run was walked as expressions; when one
+    /// was not, the caller may search the body's tokens instead.
+    fn visit_macro_tokens(&mut self, tokens: proc_macro2::TokenStream) -> bool {
         use syn::parse::Parser;
         let parser = syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated;
         let mut pending = vec![tokens];
+        let mut whole = true;
         while let Some(tokens) = pending.pop() {
             if let Ok(arguments) = parser.parse2(tokens.clone()) {
                 for argument in &arguments {
@@ -847,10 +871,124 @@ impl Calls<'_, '_> {
             for piece in top_level_pieces(tokens) {
                 match macro_piece(piece) {
                     Ok(expression) => self.visit_expr(&expression),
-                    Err(groups) => pending.extend(groups),
+                    Err(groups) => {
+                        whole = false;
+                        pending.extend(groups);
+                    }
                 }
             }
         }
+        whole
+    }
+
+    /// Walk `matches!(value, pattern if guard)`'s arguments as the
+    /// expression, pattern and guard they are, returning whether they
+    /// parsed so.
+    fn visit_matches(&mut self, tokens: proc_macro2::TokenStream) -> bool {
+        use syn::parse::Parser;
+        let parser = |input: syn::parse::ParseStream<'_>| {
+            let value: syn::Expr = input.parse()?;
+            input.parse::<syn::Token![,]>()?;
+            let pattern = syn::Pat::parse_multi_with_leading_vert(input)?;
+            let guard = if input.peek(syn::Token![if]) {
+                input.parse::<syn::Token![if]>()?;
+                Some(input.parse::<syn::Expr>()?)
+            } else {
+                None
+            };
+            if input.peek(syn::Token![,]) {
+                input.parse::<syn::Token![,]>()?;
+            }
+            Ok((value, pattern, guard))
+        };
+        let Ok((value, pattern, guard)) = parser.parse2(tokens) else {
+            return false;
+        };
+        self.visit_expr(&value);
+        let saved = self.receivers.clone();
+        self.bind_pattern(&pattern);
+        self.visit_pat(&pattern);
+        if let Some(guard) = &guard {
+            self.visit_expr(guard);
+        }
+        self.receivers = saved;
+        true
+    }
+
+    /// Record a `possible` call to every path `tokens` write as one: a
+    /// path of identifiers followed by a parenthesised group, at any depth,
+    /// that is not a declaration (`fn f(`), a method call (`.f(`), a macro
+    /// invocation (`f!(`), a macro metavariable (`$f(`) or a keyword
+    /// (`if (`). `$crate::` is this crate. Read from tokens no parse turned
+    /// into code, so none of it is certain.
+    pub(super) fn visit_token_calls(&mut self, tokens: proc_macro2::TokenStream) {
+        let mut calls = Vec::new();
+        token_calls(tokens, &mut calls);
+        self.walk.facts.enter_possible_scope();
+        for (path, span) in calls {
+            self.visit_call(&path, span);
+        }
+        self.walk.facts.exit_possible_scope();
+    }
+}
+
+/// The paths `tokens` write as calls, with where each is, for
+/// [`Calls::visit_token_calls`].
+fn token_calls(tokens: proc_macro2::TokenStream, out: &mut Vec<(syn::Path, proc_macro2::Span)>) {
+    use proc_macro2::TokenTree;
+    /// Words a path written as a call never starts with.
+    const NOT_CALLS: [&str; 22] = [
+        "if", "while", "match", "return", "for", "in", "fn", "let", "loop", "move", "as", "else",
+        "unsafe", "async", "await", "where", "impl", "dyn", "ref", "mut", "break", "yield",
+    ];
+    let tokens: Vec<TokenTree> = tokens.into_iter().collect();
+    let mut index = 0;
+    while index < tokens.len() {
+        if let TokenTree::Group(group) = &tokens[index] {
+            token_calls(group.stream(), out);
+            index += 1;
+            continue;
+        }
+        let TokenTree::Ident(first) = &tokens[index] else {
+            index += 1;
+            continue;
+        };
+        let before = index.checked_sub(1).map(|at| &tokens[at]);
+        let dollar = matches!(before, Some(TokenTree::Punct(p)) if p.as_char() == '$');
+        let excluded = match before {
+            Some(TokenTree::Punct(p)) => p.as_char() == '.' || (dollar && *first != "crate"),
+            Some(TokenTree::Ident(word)) => *word == "fn",
+            _ => false,
+        };
+        let mut segments = vec![first.clone()];
+        let mut end = index + 1;
+        while end + 2 < tokens.len() {
+            match (&tokens[end], &tokens[end + 1], &tokens[end + 2]) {
+                (TokenTree::Punct(a), TokenTree::Punct(b), TokenTree::Ident(next))
+                    if a.as_char() == ':' && b.as_char() == ':' =>
+                {
+                    segments.push(next.clone());
+                    end += 3;
+                }
+                _ => break,
+            }
+        }
+        let called = matches!(
+            tokens.get(end),
+            Some(TokenTree::Group(group)) if group.delimiter() == proc_macro2::Delimiter::Parenthesis
+        );
+        let keyword = segments.len() == 1 && NOT_CALLS.contains(&first.to_string().as_str());
+        if called && !excluded && !keyword {
+            let mut path = syn::Path {
+                leading_colon: None,
+                segments: syn::punctuated::Punctuated::new(),
+            };
+            for segment in &segments {
+                path.segments.push(syn::PathSegment::from(segment.clone()));
+            }
+            out.push((path, first.span()));
+        }
+        index = end;
     }
 }
 

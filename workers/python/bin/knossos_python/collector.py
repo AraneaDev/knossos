@@ -43,6 +43,92 @@ def assigned_self_attributes(node: ast.ClassDef) -> frozenset[str]:
     return frozenset(names)
 
 
+def sys_path_directories(tree: ast.Module, relative: str) -> list[PurePosixPath]:
+    """The project directories ``tree``'s ``sys.path.insert(i, d)`` and ``sys.path.append(d)`` calls add, in order.
+
+    Only a directory the call spells from ``__file__`` counts, through
+    ``Path(__file__)``, ``.resolve()``, ``.parent``, ``.parents[n]`` and ``/``,
+    or ``os.path.dirname``, ``abspath``, ``realpath`` and ``join``, wrapped in
+    ``str()`` or ``os.fspath()`` or not: that is a directory of the project
+    relative to the file. One that climbs out of the project names none.
+    """
+    found: list[PurePosixPath] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if dotted(node.func.value) != "sys.path" or node.func.attr not in ("insert", "append"):
+            continue
+        argument = node.args[-1] if node.args else None
+        directory = file_relative_path(argument, relative) if argument is not None else None
+        if directory is not None and directory not in found:
+            found.append(directory)
+    return found
+
+
+def file_relative_path(node: ast.AST, relative: str) -> PurePosixPath | None:
+    """The project path ``node`` computes from ``__file__``, see :func:`sys_path_directories`."""
+    parts = file_relative_parts(node, list(PurePosixPath(relative).parts))
+    return PurePosixPath(*parts) if parts is not None else None
+
+
+def file_relative_parts(node: ast.AST, file: list[str]) -> list[str] | None:
+    """The path segments ``node`` evaluates to below the project root, or None."""
+    if isinstance(node, ast.Name) and node.id == "__file__":
+        return list(file)
+    if isinstance(node, ast.Call):
+        name = dotted(node.func)
+        if (
+            name in ("Path", "pathlib.Path", "str", "os.fspath", "os.path.abspath", "os.path.realpath")
+            and len(node.args) == 1
+        ):
+            return file_relative_parts(node.args[0], file)
+        if name == "os.path.dirname" and len(node.args) == 1:
+            inner = file_relative_parts(node.args[0], file)
+            return inner[:-1] if inner else None
+        if name == "os.path.join" and node.args:
+            base = file_relative_parts(node.args[0], file)
+            rest = [arg.value for arg in node.args[1:] if isinstance(arg, ast.Constant) and isinstance(arg.value, str)]
+            if base is None or len(rest) != len(node.args) - 1:
+                return None
+            return joined(base, rest)
+        if isinstance(node.func, ast.Attribute) and node.func.attr in ("resolve", "absolute") and not node.args:
+            return file_relative_parts(node.func.value, file)
+        return None
+    if isinstance(node, ast.Attribute) and node.attr == "parent":
+        inner = file_relative_parts(node.value, file)
+        return inner[:-1] if inner else None
+    if (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "parents"
+        and isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, int)
+    ):
+        inner = file_relative_parts(node.value.value, file)
+        levels = node.slice.value + 1
+        return inner[:-levels] if inner is not None and 0 < levels <= len(inner) else None
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        base = file_relative_parts(node.left, file)
+        if base is None or not isinstance(node.right, ast.Constant) or not isinstance(node.right.value, str):
+            return None
+        return joined(base, [node.right.value])
+    return None
+
+
+def joined(base: list[str], rest: list[str]) -> list[str] | None:
+    """``base`` with the segments of ``rest`` appended, or None when that leaves the project."""
+    parts = list(base)
+    for piece in rest:
+        for segment in PurePosixPath(piece).parts:
+            if segment == "..":
+                if not parts:
+                    return None
+                parts.pop()
+            elif segment not in (".", "/"):
+                parts.append(segment)
+    return parts
+
+
 class PythonAstFactCollector(ast.NodeVisitor):
     """Coordinate one AST traversal and delegate fact enrichment."""
 
@@ -62,6 +148,10 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # there is read by the type checker and skipped at runtime.
         self.type_checking_depth = 0
         self.executable = has_shebang or names_main_guard(tree)
+        # The project directories this file's `sys.path.insert(..)` and
+        # `sys.path.append(..)` calls put on the path, which its bare imports
+        # can then load from.
+        self.path_directories = sys_path_directories(tree, relative)
         # `029_seed.py` names no module an import statement can reach, so a
         # loader reads it by path and calls the public names it exposes.
         self.loaded_by_path = not PurePosixPath(relative).stem.isidentifier()
@@ -227,9 +317,19 @@ class PythonAstFactCollector(ast.NodeVisitor):
 
         Only when that directory is on ``sys.path`` (:meth:`runs_from_own_directory`).
         """
-        if self.index.layout.module_file(module) is not None or not self.runs_from_own_directory():
+        if self.index.layout.module_file(module) is not None:
             return module
-        return self.index.layout.script_sibling_module(self.relative, module) or module
+        if self.runs_from_own_directory():
+            sibling = self.index.layout.script_sibling_module(self.relative, module)
+            if sibling is not None:
+                return sibling
+        # `sys.path.insert(0, str(Path(__file__).resolve().parents[1]))`
+        # makes a module of that directory importable by its bare name.
+        for directory in self.path_directories:
+            found = self.index.layout.module_in_directory(directory, module)
+            if found is not None:
+                return found
+        return module
 
     def runs_from_own_directory(self) -> bool:
         """Whether this file's own directory is first on ``sys.path`` when it runs.

@@ -63,6 +63,8 @@ impl FileIndex {
         crate::visit::collect_test_modules(relative, module, items, layout, &mut test_modules);
         let indexed = layout.is_indexed(relative, module);
         let crate::visit::IndexFacts {
+            impl_methods,
+            gated_impl_methods,
             private_exports,
             exports,
             fields,
@@ -74,17 +76,16 @@ impl FileIndex {
         } else {
             Default::default()
         };
+        let (mut declarations, mut gated) = if indexed {
+            crate::visit::indexed_item_paths(module, items)
+        } else {
+            Default::default()
+        };
+        declarations.extend(impl_methods);
+        gated.extend(gated_impl_methods);
         Self {
-            declarations: if indexed {
-                crate::visit::declaration_paths(module, items)
-            } else {
-                BTreeSet::new()
-            },
-            gated: if indexed {
-                crate::visit::gated_declaration_paths(module, items)
-            } else {
-                BTreeSet::new()
-            },
+            declarations,
+            gated,
             test_modules,
             renames: if indexed {
                 crate::visit::declared_renames(relative, module, items, layout)
