@@ -454,6 +454,7 @@ final readonly class ToolCatalog
                         'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 5000, 'default' => 1000],
                         'include_self_loops' => ['type' => 'boolean', 'default' => false, 'description' => 'Include single-symbol self-recursion; excluded by default because recursion is not an architectural cycle.'],
                         'within_type' => ['type' => 'boolean', 'default' => false, 'description' => 'Also list cycles whose members all sit in one class, interface, trait or enum, after the others, each marked within_type with its type; single-symbol recursion stays out.'],
+                        'include_facades' => ['type' => 'boolean', 'default' => false, 'description' => 'Keep the edges a re-export facade adds: re_exports edges and imports between a module and its own ancestor (a parent re-exporting its children while they import shared items back through it). Left out by default, so a real cycle between siblings stands out.'],
                     ],
                     'required' => ['project_id'],
                     'additionalProperties' => false,

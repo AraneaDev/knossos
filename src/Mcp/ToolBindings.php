@@ -396,11 +396,11 @@ final class ToolBindings
             'dependency_cycles' => [
                 // within_type is passed by name: the method takes a parameter
                 // no tool argument sets between it and the others.
-                'call' => static fn(ArchitectureQueryService $q, array $v, array $a): ResultEnvelope => $q->services()->cycleQueries->dependencyCycles(...[...array_slice($v, 0, -1), 'withinType' => $a['within_type']]),
+                'call' => static fn(ArchitectureQueryService $q, array $v, array $a): ResultEnvelope => $q->services()->cycleQueries->dependencyCycles(...[...array_slice($v, 0, -2), 'withinType' => $a['within_type'], 'includeFacades' => $a['include_facades']]),
                 'arguments' => [
                     'project_id' => self::at('Usage: knossos dependency-cycles <path|project-id> [options]'),
                     'edge_kinds' => self::as('edge-kind'), 'min_confidence' => [], 'limit' => [], 'max_nodes' => [], 'max_edges' => [],
-                    'timeout_ms' => [], 'include_self_loops' => [], 'within_type' => [],
+                    'timeout_ms' => [], 'include_self_loops' => [], 'within_type' => [], 'include_facades' => [],
                 ],
             ],
             'architecture_health' => [
