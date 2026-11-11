@@ -613,6 +613,33 @@ JSON;
         }
     }
 
+    public function testLoaderReadsDiagnosticSuppressionsAndRejectsMalformedOnes(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-config-' . bin2hex(random_bytes(6));
+        mkdir($root, 0755, true);
+        try {
+            file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'diagnostic_suppressions' => [
+                ['code' => 'TS5101', 'reason' => 'our tsc 5.9 does not deprecate it'],
+                ['code' => 'TS2688', 'path' => 'examples/*'],
+            ]]));
+            $config = \Knossos\Configuration\ProjectConfigurationLoader::load($root, [$root]);
+            assertSame([
+                ['code' => 'TS5101', 'path' => null, 'reason' => 'our tsc 5.9 does not deprecate it'],
+                ['code' => 'TS2688', 'path' => 'examples/*', 'reason' => null],
+            ], $config->diagnosticSuppressions);
+            foreach ([[['path' => 'src/a.ts']], [['code' => '']], [['code' => 'X', 'line' => 3]], ['TS5101']] as $bad) {
+                file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'diagnostic_suppressions' => $bad]));
+                assertThrows(
+                    static fn() => \Knossos\Configuration\ProjectConfigurationLoader::load($root, [$root]),
+                    \Knossos\Discovery\DiscoveryException::class,
+                );
+            }
+        } finally {
+            @unlink($root . '/knossos.json');
+            @rmdir($root);
+        }
+    }
+
     /**
      * The declared limits are behaviour, not decoration.
      *

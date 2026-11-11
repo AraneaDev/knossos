@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Store\ProjectRepository;
 use PDO;
 
 /** The active graph's scan diagnostics: by file and line, filtered by severity and path. */
@@ -35,6 +36,17 @@ final readonly class DiagnosticsQueryService extends AbstractArchitectureQuerySe
             $where .= ' AND substr(f.relative_path, 1, length(:prefix)) = :prefix';
             $parameters['prefix'] = $pathPrefix;
         }
+        // What the project's `diagnostic_suppressions` mark as not worth
+        // reporting is left out, and counted.
+        [$suppressed, $suppressionParameters] = $this->suppressionCondition($projectId);
+        $suppressedCount = 0;
+        if ($suppressed !== null) {
+            $hidden = $this->pdo->prepare("SELECT COUNT(*) FROM diagnostics d LEFT JOIN files f ON f.id = d.file_id WHERE {$where} AND ({$suppressed})");
+            $hidden->execute($parameters + $suppressionParameters);
+            $suppressedCount = (int) $hidden->fetchColumn();
+            $where .= " AND NOT ({$suppressed})";
+            $parameters += $suppressionParameters;
+        }
         $count = $this->pdo->prepare("SELECT COUNT(*) FROM diagnostics d LEFT JOIN files f ON f.id = d.file_id WHERE {$where}");
         $count->execute($parameters);
         $total = (int) $count->fetchColumn();
@@ -61,11 +73,48 @@ final readonly class DiagnosticsQueryService extends AbstractArchitectureQuerySe
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
-            sprintf('%d diagnostic%s.', $total, $total === 1 ? '' : 's'),
-            ['diagnostics' => $rows, 'total' => $total, 'pagination' => ['offset' => $offset, 'next_offset' => $next]],
+            sprintf('%d diagnostic%s.', $total, $total === 1 ? '' : 's')
+                . ($suppressedCount > 0 ? sprintf(' %d more the project suppresses.', $suppressedCount) : ''),
+            ['diagnostics' => $rows, 'total' => $total, 'suppressed' => $suppressedCount, 'pagination' => ['offset' => $offset, 'next_offset' => $next]],
             [],
             [],
             $next !== null,
         );
+    }
+
+    /**
+     * The SQL condition a diagnostic the project's `diagnostic_suppressions`
+     * cover meets, with its parameters, or null when it suppresses none. A
+     * suppression names a code and optionally a file, exactly or by a prefix
+     * with a trailing `*`.
+     *
+     * @return array{0: ?string, 1: array<string, string>}
+     */
+    private function suppressionCondition(string $projectId): array
+    {
+        $config = (new ProjectRepository($this->pdo))->config($projectId);
+        $list = is_array($config['diagnostic_suppressions'] ?? null) ? $config['diagnostic_suppressions'] : [];
+        $conditions = [];
+        $parameters = [];
+        foreach (array_values($list) as $index => $suppression) {
+            if (!is_array($suppression) || !is_string($suppression['code'] ?? null)) {
+                continue;
+            }
+            $parameters["suppressed_code_{$index}"] = $suppression['code'];
+            $condition = "d.code = :suppressed_code_{$index}";
+            $path = $suppression['path'] ?? null;
+            if (is_string($path) && $path !== '') {
+                if (str_ends_with($path, '*')) {
+                    $parameters["suppressed_path_{$index}"] = substr($path, 0, -1);
+                    $condition .= " AND substr(f.relative_path, 1, length(:suppressed_path_{$index})) = :suppressed_path_{$index}";
+                } else {
+                    $parameters["suppressed_path_{$index}"] = $path;
+                    $condition .= " AND f.relative_path = :suppressed_path_{$index}";
+                }
+            }
+            $conditions[] = "({$condition})";
+        }
+
+        return [$conditions === [] ? null : implode(' OR ', $conditions), $parameters];
     }
 }
