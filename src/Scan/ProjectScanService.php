@@ -485,6 +485,7 @@ final class ProjectScanService implements ProjectScanner
             'ignores' => $preparation->configuration->ignores,
             'snapshot_retention' => $preparation->snapshotRetention,
             'dead_code_suppressions' => $preparation->configuration->deadCodeSuppressions,
+            'diagnostic_suppressions' => $preparation->configuration->diagnosticSuppressions,
         ];
     }
 

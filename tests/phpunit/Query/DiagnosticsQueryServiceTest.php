@@ -38,4 +38,32 @@ final class DiagnosticsQueryServiceTest extends KnossosTestCase
         $this->expectException(InvalidArgumentException::class);
         $queries->services()->diagnosticsQueries->listDiagnostics($ids['project'], severity: 'fatal');
     }
+
+    /**
+     * A diagnostic the project's `diagnostic_suppressions` mark as not worth
+     * reporting (by code, by code and file, or by code under a path) is left
+     * out of the list and counted, so a false positive can be put aside.
+     */
+    public function testSuppressedDiagnosticsAreLeftOutAndCounted(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $insert = $pdo->prepare("INSERT INTO diagnostics (id, project_id, scan_id, file_id, severity, code, message, start_line, end_line, owner_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'test')");
+        $insert->execute(['d1', $ids['project'], $ids['scan'], $ids['file'], 'error', 'TS5101', 'deprecated option', 1, 1]);
+        $insert->execute(['d2', $ids['project'], $ids['scan'], $ids['file'], 'error', 'TS2322', 'wrong type', 3, 3]);
+        $insert->execute(['d3', $ids['project'], $ids['scan'], $ids['file'], 'warning', 'TS6133', 'unused', 9, 9]);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $diagnostics = ArchitectureQueryService::forDatabase($pdo)->services()->diagnosticsQueries;
+        $suppress = static function (array $suppressions) use ($pdo, $ids): void {
+            $pdo->prepare('UPDATE projects SET config_json = ? WHERE id = ?')->execute([json_encode(['diagnostic_suppressions' => $suppressions], JSON_THROW_ON_ERROR), $ids['project']]);
+        };
+
+        $suppress([['code' => 'TS5101'], ['code' => 'TS6133', 'path' => 'src/*'], ['code' => 'TS2322', 'path' => 'src/Other.php']]);
+        $listed = $diagnostics->listDiagnostics($ids['project']);
+        self::assertSame(['TS2322'], array_column($listed->data['diagnostics'], 'code'));
+        self::assertSame([1, 2], [$listed->data['total'], $listed->data['suppressed']]);
+        self::assertStringContainsString('2 more the project suppresses', $listed->summary);
+
+        $suppress([]);
+        self::assertSame(0, $diagnostics->listDiagnostics($ids['project'])->data['suppressed']);
+    }
 }

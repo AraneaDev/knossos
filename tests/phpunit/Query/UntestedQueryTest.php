@@ -51,6 +51,8 @@ final class UntestedQueryTest extends KnossosTestCase
             self::assertSame(['src/Mailer.php', 'src/Report.php', 'src/Services.php'], self::sorted(array_column($result->data['files'], 'path')));
             self::assertSame(3, $result->data['total']);
             self::assertStringContainsString('3 of 10 source files', $result->summary);
+            // A program the tests run as a process is reached only when they name it.
+            self::assertStringContainsString('CARGO_BIN_EXE_', $result->warnings[0] ?? '');
         } finally {
             $this->removeTempTree($root);
         }

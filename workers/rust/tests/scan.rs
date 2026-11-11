@@ -3114,9 +3114,10 @@ fn a_re_export_of_a_child_item_under_its_own_name_does_not_grow_paths() {
 }
 
 #[test]
-fn cfg_alternative_re_exports_in_one_file_resolve_to_nothing() {
-    // Two `#[cfg]` alternatives re-export `run` from different modules; which
-    // one compiles is unknown, so neither is chosen.
+fn cfg_alternative_re_exports_in_one_file_reach_every_alternative() {
+    // Two `#[cfg]` alternatives re-export `run` from different modules.
+    // Exactly one compiles in any build, and a call through `x::run` reaches
+    // whichever does, so each takes the edge; neither is guessed alone.
     let files = [
         ("src/lib.rs", "pub mod user;\npub mod x;\n"),
         (
@@ -3128,12 +3129,38 @@ fn cfg_alternative_re_exports_in_one_file_resolve_to_nothing() {
         ("src/user.rs", "pub fn go() {\n    crate::x::run();\n}\n"),
     ];
     let contributions = scan_fixture("re-export-cfg-alternatives", &files);
-    let calls = method_calls(&contributions, "rust:function:crate::user::go");
+    let calls = targets_of(&contributions, "calls", "rust:function:crate::user::go");
+
+    assert_eq!(
+        vec![
+            "rust:function:crate::x::a::run".to_owned(),
+            "rust:function:crate::x::b::run".to_owned()
+        ],
+        calls
+    );
+}
+
+#[test]
+fn re_exports_of_one_name_that_are_not_all_cfg_gated_resolve_to_nothing() {
+    // An ungated re-export beside a gated one of the same name does not
+    // compile in the gated build; nothing says which the code means.
+    let files = [
+        ("src/lib.rs", "pub mod user;\npub mod x;\n"),
+        (
+            "src/x/mod.rs",
+            "mod a;\nmod b;\npub use a::run;\n#[cfg(not(unix))]\npub use b::run;\n",
+        ),
+        ("src/x/a.rs", "pub fn run() {}\n"),
+        ("src/x/b.rs", "pub fn run() {}\n"),
+        ("src/user.rs", "pub fn go() {\n    crate::x::run();\n}\n"),
+    ];
+    let contributions = scan_fixture("re-export-partly-gated", &files);
+    let calls = targets_of(&contributions, "calls", "rust:function:crate::user::go");
 
     assert!(
         !calls
             .iter()
-            .any(|(target, _)| target.ends_with("x::a::run") || target.ends_with("x::b::run")),
+            .any(|target| target.ends_with("x::a::run") || target.ends_with("x::b::run")),
         "{calls:?}"
     );
 }
@@ -4225,7 +4252,7 @@ pub fn by_scope() { std::thread::scope(|s| { s.spawn(|| helper()); }); }
             "rust:function:crate::helper",
         ),
         (
-            "rust:method:crate::Car::drive",
+            "rust:method:crate::Car::<impl Driver>::drive",
             "rust:method:crate::Engine::run",
         ),
     ] {
@@ -4459,4 +4486,1026 @@ fn start() {
             ),
         ]
     );
+}
+
+/// Every node's canonical name across the contributions.
+fn canonical_names(contributions: &[Value]) -> Vec<String> {
+    contributions
+        .iter()
+        .flat_map(|contribution| contribution["nodes"].as_array().unwrap().clone())
+        .map(|node| node["canonical_name"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn a_trait_method_and_an_inherent_method_of_one_name_are_two_nodes() {
+    // `impl Driver for Session` beside `impl Session` declares two items
+    // named `receive`; both used to be `Session::receive`, so the reconciler
+    // kept one and dropped the other's evidence. The trait impl's method now
+    // names its impl, and `Session::receive` stays the inherent one.
+    let session = r#"
+pub struct Session;
+impl Session {
+    pub fn receive(&mut self) -> u8 { 1 }
+}
+"#;
+    let driver = r#"
+use crate::session::Session;
+pub trait Driver { fn receive(&mut self) -> u8; }
+impl Driver for Session {
+    fn receive(&mut self) -> u8 { Session::receive(self) }
+}
+impl From<u8> for Session { fn from(_: u8) -> Self { Session } }
+impl From<u16> for Session { fn from(_: u16) -> Self { Session } }
+"#;
+    let contributions = scan_fixture(
+        "trait-and-inherent-method",
+        &[
+            ("src/lib.rs", "pub mod driver;\npub mod session;\n"),
+            ("src/session.rs", session),
+            ("src/driver.rs", driver),
+        ],
+    );
+    let names = canonical_names(&contributions);
+    for name in [
+        "crate::session::Session::receive",
+        "crate::session::Session::<impl Driver>::receive",
+        "crate::session::Session::<impl From<u8>>::from",
+        "crate::session::Session::<impl From<u16>>::from",
+    ] {
+        assert_eq!(
+            1,
+            names.iter().filter(|known| *known == name).count(),
+            "{name} in {names:?}"
+        );
+    }
+    assert!(targets_of(
+        &contributions,
+        "calls",
+        "rust:method:crate::session::Session::<impl Driver>::receive"
+    )
+    .contains(&"rust:method:crate::session::Session::receive".to_owned()));
+    assert!(targets_of(
+        &contributions,
+        "contains",
+        "rust:class:crate::session::Session"
+    )
+    .contains(&"rust:method:crate::session::Session::<impl Driver>::receive".to_owned()));
+}
+
+#[test]
+fn a_same_file_call_to_a_trait_impl_method_by_its_type_is_kept() {
+    // `Widget::default()` names the method `impl Default for Widget` declares
+    // in this file, which is now `Widget::<impl Default>::default`: the call
+    // is confirmed against that declaration and keeps the path it wrote.
+    let source = r#"
+pub struct Widget;
+impl Default for Widget { fn default() -> Self { Widget } }
+pub fn make() -> Widget { Widget::default() }
+"#;
+    let contributions = scan_fixture("trait-impl-same-file-call", &[("src/lib.rs", source)]);
+    assert!(canonical_names(&contributions)
+        .contains(&"crate::Widget::<impl Default>::default".to_owned()));
+    assert!(
+        targets_of(&contributions, "calls", "rust:function:crate::make")
+            .contains(&"rust:method:crate::Widget::default".to_owned()),
+        "{:?}",
+        targets_of(&contributions, "calls", "rust:function:crate::make")
+    );
+}
+
+#[test]
+fn a_cfg_gated_declaration_carries_its_cfg_down_to_a_file_its_mod_loads() {
+    // `#[cfg(target_os = "macos")] #[path = "svc/launchd.rs"] mod launchd;`
+    // compiles that file only on macOS, so its `impl Runtime` is a cfg
+    // alternative of the Linux one beside the type: the reconciler must not
+    // read the two as one item declared twice.
+    let svc = r#"
+pub struct Runtime;
+#[cfg(target_os = "linux")]
+impl Runtime { pub fn inspect(&self) -> u8 { 1 } }
+#[cfg(target_os = "macos")]
+#[path = "svc/launchd.rs"]
+mod launchd;
+pub fn plain() {}
+"#;
+    let launchd = "use super::Runtime;\nimpl Runtime { pub fn inspect(&self) -> u8 { 2 } }\n";
+    let contributions = scan_fixture(
+        "cfg-alternatives",
+        &[
+            ("src/lib.rs", "pub mod svc;\n"),
+            ("src/svc.rs", svc),
+            ("src/svc/launchd.rs", launchd),
+        ],
+    );
+    let cfg_of = |file: &str, name: &str| -> Option<String> {
+        contributions
+            .iter()
+            .find(|contribution| contribution["owner_key"] == format!("knossos.rust:file:{file}"))
+            .and_then(|contribution| {
+                contribution["nodes"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|node| node["canonical_name"] == name)
+                    .map(|node| node["attributes"]["cfg"].as_str().map(str::to_owned))
+            })
+            .flatten()
+    };
+    assert_eq!(
+        Some("target_os = \"linux\"".to_owned()),
+        cfg_of("src/svc.rs", "crate::svc::Runtime::inspect")
+    );
+    assert_eq!(
+        Some("target_os = \"macos\"".to_owned()),
+        cfg_of("src/svc/launchd.rs", "crate::svc::Runtime::inspect")
+    );
+    assert_eq!(
+        Some("target_os = \"macos\"".to_owned()),
+        cfg_of("src/svc/launchd.rs", "crate::svc::launchd")
+    );
+    assert_eq!(None, cfg_of("src/svc.rs", "crate::svc::plain"));
+    assert_eq!(None, cfg_of("src/svc.rs", "crate::svc::Runtime"));
+}
+
+#[test]
+fn a_call_through_a_cfg_gated_module_alias_reaches_every_alternative() {
+    // `use unix as platform;` and `use windows as platform;` under exclusive
+    // `cfg`s bind one name twice; the name was poisoned, so every platform
+    // function read as unreferenced. Each alternative now takes the edge,
+    // through calls, re-exports, a body-level alias and a method used as a
+    // value, and a crate-path alias reaches a workspace member's module.
+    let fs = r#"
+#[cfg(unix)]
+mod unix;
+#[cfg(windows)]
+mod windows;
+#[cfg(unix)]
+use unix as platform;
+#[cfg(windows)]
+use windows as platform;
+
+pub use platform::fingerprint;
+
+pub fn flush() {
+    platform::flush_file();
+}
+
+pub fn listen() -> Vec<u8> {
+    #[cfg(unix)]
+    use self::unix::Stream as Native;
+    #[cfg(windows)]
+    use self::windows::Stream as Native;
+    vec![Native::open()].into_iter().map(platform::Stream::identity).collect()
+}
+"#;
+    let platform = r#"
+pub struct Stream;
+impl Stream {
+    pub fn open() -> Self { Stream }
+    pub fn identity(self) -> u8 { 0 }
+}
+pub fn flush_file() {}
+pub fn fingerprint() -> u8 { 0 }
+"#;
+    let caller = "pub fn go() -> u8 { crate::fs::fingerprint() }\n";
+    let scm = r#"
+use other::services::scm as host;
+pub fn check() { host::verify(); }
+"#;
+    let contributions = scan_fixture_with(
+        "cfg-module-alias",
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"demo\"\n[workspace]\nmembers = [\"other\"]\n",
+            ),
+            ("src/lib.rs", "pub mod caller;\npub mod fs;\npub mod scm;\n"),
+            ("src/fs/mod.rs", fs),
+            ("src/fs/unix.rs", platform),
+            ("src/fs/windows.rs", platform),
+            ("src/caller.rs", caller),
+            ("src/scm.rs", scm),
+            ("other/Cargo.toml", "[package]\nname = \"other\"\n"),
+            ("other/src/lib.rs", "pub mod services;\n"),
+            ("other/src/services.rs", "pub mod scm;\n"),
+            ("other/src/services/scm.rs", "pub fn verify() {}\n"),
+        ],
+        &serde_json::json!({"config_files": ["Cargo.toml", "other/Cargo.toml"]}),
+    );
+    let mut missing = Vec::new();
+    for os in ["unix", "windows"] {
+        for (from, to) in [
+            (
+                "rust:function:crate::fs::flush",
+                format!("rust:function:crate::fs::{os}::flush_file"),
+            ),
+            (
+                "rust:function:crate::caller::go",
+                format!("rust:function:crate::fs::{os}::fingerprint"),
+            ),
+            (
+                "rust:function:crate::fs::listen",
+                format!("rust:method:crate::fs::{os}::Stream::open"),
+            ),
+        ] {
+            if !targets_of(&contributions, "calls", from).contains(&to) {
+                missing.push(format!(
+                    "calls {from} -> {to}: {:?}",
+                    targets_of(&contributions, "calls", from)
+                ));
+            }
+        }
+        let to = format!("rust:method:crate::fs::{os}::Stream::identity");
+        if !targets_of(
+            &contributions,
+            "references",
+            "rust:function:crate::fs::listen",
+        )
+        .contains(&to)
+        {
+            missing.push(format!("references listen -> {to}"));
+        }
+    }
+    let scm_calls = targets_of(&contributions, "calls", "rust:function:crate::scm::check");
+    if !scm_calls.contains(&"rust:function:other::services::scm::verify".to_owned()) {
+        missing.push(format!(
+            "calls check -> other::services::scm::verify: {scm_calls:?}"
+        ));
+    }
+    assert!(missing.is_empty(), "{missing:#?}");
+}
+
+#[test]
+fn a_cfg_alias_in_a_method_body_reaches_every_alternative_inside_a_closure() {
+    // `#[cfg(unix)] use unix as platform;` beside `#[cfg(windows)] use
+    // windows::pipe as platform;` in a method body, called from a closure
+    // in it, and a child module importing the parent's private alias with
+    // `use super::platform;`.
+    let process = r#"
+#[cfg(unix)]
+mod unix;
+#[cfg(windows)]
+mod windows;
+#[cfg(unix)]
+use unix as platform;
+#[cfg(windows)]
+use windows::pipe as platform;
+mod ledger;
+pub struct Child;
+impl Child {
+    pub fn acquire(&self) -> u8 {
+        #[cfg(unix)]
+        use unix as platform;
+        #[cfg(windows)]
+        use windows::pipe as platform;
+        let result = (|| platform::reader())();
+        result
+    }
+}
+"#;
+    let contributions = scan_fixture(
+        "cfg-alias-method-body",
+        &[
+            ("src/lib.rs", "pub mod process;\n"),
+            ("src/process/mod.rs", process),
+            (
+                "src/process/unix.rs",
+                "pub fn reader() -> u8 { 0 }\npub fn open() {}\n",
+            ),
+            ("src/process/windows/mod.rs", "pub mod pipe;\n"),
+            (
+                "src/process/windows/pipe.rs",
+                "pub fn reader() -> u8 { 0 }\npub fn open() {}\n",
+            ),
+            (
+                "src/process/ledger.rs",
+                "use super::platform;\npub fn go() { platform::open(); }\n",
+            ),
+        ],
+    );
+    let calls = targets_of(
+        &contributions,
+        "calls",
+        "rust:method:crate::process::Child::acquire",
+    );
+    assert!(
+        calls.contains(&"rust:function:crate::process::unix::reader".to_owned()),
+        "{calls:?}"
+    );
+    assert!(
+        calls.contains(&"rust:function:crate::process::windows::pipe::reader".to_owned()),
+        "{calls:?}"
+    );
+    let calls = targets_of(
+        &contributions,
+        "calls",
+        "rust:function:crate::process::ledger::go",
+    );
+    assert!(
+        calls.contains(&"rust:function:crate::process::unix::open".to_owned()),
+        "{calls:?}"
+    );
+    assert!(
+        calls.contains(&"rust:function:crate::process::windows::pipe::open".to_owned()),
+        "{calls:?}"
+    );
+}
+
+/// The node of `canonical` in the contribution of `file`.
+fn node_in(contributions: &[Value], file: &str, canonical: &str) -> Option<Value> {
+    contributions
+        .iter()
+        .find(|contribution| contribution["owner_key"] == format!("knossos.rust:file:{file}"))
+        .and_then(|contribution| {
+            contribution["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["canonical_name"] == canonical)
+                .cloned()
+        })
+}
+
+#[test]
+fn a_file_a_path_attribute_loads_is_the_module_its_declaration_names() {
+    // `#[cfg(test)] #[path = "budget_tests.rs"] mod tests;` makes
+    // `src/mcp/budget_tests.rs` the test module `crate::mcp::budget::tests`,
+    // not a production module `crate::mcp::budget_tests`; its `use super::*`
+    // reaches the parent's private items, and so does a production module
+    // mounted the same way.
+    let budget = r#"
+fn catalog_size() -> u8 { 1 }
+pub fn budget() -> u8 { catalog_size() }
+#[cfg(test)]
+#[path = "budget_tests.rs"]
+mod tests;
+"#;
+    let budget_tests = r#"
+use super::*;
+fn catalog() {}
+#[test]
+fn budget_works() { catalog(); budget(); }
+"#;
+    let broker = r#"
+#[path = "broker_activation.rs"]
+mod activation;
+fn descendants() -> u8 { 1 }
+pub fn run() { activation::activate(); }
+"#;
+    let activation = "use super::*;\npub fn activate() { let _ = descendants(); }\n";
+    let files = [
+        ("src/lib.rs", "pub mod broker;\npub mod mcp;\n"),
+        ("src/mcp/mod.rs", "pub mod budget;\n"),
+        ("src/mcp/budget.rs", budget),
+        ("src/mcp/budget_tests.rs", budget_tests),
+        ("src/broker.rs", broker),
+        ("src/broker_activation.rs", activation),
+    ];
+    let contributions = scan_fixture("path-placed-modules", &files);
+
+    let module = node_in(
+        &contributions,
+        "src/mcp/budget_tests.rs",
+        "crate::mcp::budget::tests",
+    )
+    .expect("the test module is named by its declaration");
+    assert_eq!(Some(true), module["attributes"]["test"].as_bool());
+    let catalog = node_in(
+        &contributions,
+        "src/mcp/budget_tests.rs",
+        "crate::mcp::budget::tests::catalog",
+    )
+    .expect("its items are below it");
+    assert_eq!(Some(true), catalog["attributes"]["test"].as_bool());
+    assert!(targets_of(
+        &contributions,
+        "calls",
+        "rust:function:crate::mcp::budget::tests::budget_works"
+    )
+    .contains(&"rust:function:crate::mcp::budget::budget".to_owned()));
+    assert!(node_in(
+        &contributions,
+        "src/broker_activation.rs",
+        "crate::broker::activation"
+    )
+    .is_some());
+    assert!(
+        targets_of(
+            &contributions,
+            "calls",
+            "rust:function:crate::broker::activation::activate"
+        )
+        .contains(&"rust:function:crate::broker::descendants".to_owned()),
+        "{:?}",
+        targets_of(
+            &contributions,
+            "calls",
+            "rust:function:crate::broker::activation::activate"
+        )
+    );
+    assert!(
+        targets_of(&contributions, "calls", "rust:function:crate::broker::run")
+            .contains(&"rust:function:crate::broker::activation::activate".to_owned())
+    );
+
+    // The placed file reads the file whose declaration placed it, so an
+    // edit to that declaration rescans it.
+    let reads = contributions
+        .iter()
+        .find(|c| c["owner_key"] == "knossos.rust:file:src/mcp/budget_tests.rs")
+        .map(|c| {
+            c["reads"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+    assert!(reads.contains(&"src/mcp/budget.rs".to_owned()), "{reads:?}");
+}
+
+#[test]
+fn one_module_name_declared_under_exclusive_cfgs_is_one_module_in_two_files() {
+    // `#[cfg(unix)] #[path = "preflight/unix.rs"] mod native;` beside a
+    // Windows declaration of the same name: both files are
+    // `crate::preflight::native`, so `native::Endpoint::standard()` and
+    // `native::restore_fault()` reach their declarations, which are `cfg`
+    // alternatives of one another.
+    let preflight = r#"
+#[cfg(unix)]
+#[path = "preflight/unix.rs"]
+mod native;
+#[cfg(windows)]
+#[path = "preflight/windows.rs"]
+mod native;
+pub fn go() {
+    native::Endpoint::standard();
+    native::restore_fault();
+}
+"#;
+    let native =
+        "pub struct Endpoint;\nimpl Endpoint { pub fn standard() {} }\npub fn restore_fault() {}\n";
+    let contributions = scan_fixture(
+        "cfg-alternative-modules",
+        &[
+            ("src/lib.rs", "pub mod preflight;\n"),
+            ("src/preflight.rs", preflight),
+            ("src/preflight/unix.rs", native),
+            ("src/preflight/windows.rs", native),
+        ],
+    );
+    for (file, cfg) in [
+        ("src/preflight/unix.rs", "unix"),
+        ("src/preflight/windows.rs", "windows"),
+    ] {
+        let endpoint = node_in(
+            &contributions,
+            file,
+            "crate::preflight::native::Endpoint::standard",
+        )
+        .unwrap_or_else(|| panic!("{file} declares native::Endpoint::standard"));
+        assert_eq!(Some(cfg), endpoint["attributes"]["cfg"].as_str());
+    }
+    let calls = targets_of(
+        &contributions,
+        "calls",
+        "rust:function:crate::preflight::go",
+    );
+    for target in [
+        "rust:method:crate::preflight::native::Endpoint::standard",
+        "rust:function:crate::preflight::native::restore_fault",
+    ] {
+        assert!(calls.contains(&target.to_owned()), "{target} in {calls:?}");
+    }
+}
+
+#[test]
+fn a_path_through_a_glob_re_export_names_the_item_where_it_is_declared() {
+    // `pub use types::*;` and `pub use integration::*;` in `v2/mod.rs` make
+    // `crate::v2::declared()`, `super::digest()`, `use super::Profile;` and
+    // `v2::Description` name items the children declare; a crate-path alias
+    // into another crate's glob facade (`host::verify()`) does too.
+    let v2 = "mod integration;\npub mod ledger;\nmod types;\npub use integration::*;\npub use types::*;\n";
+    let types = "pub struct Profile;\npub fn digest() -> u8 { 0 }\n";
+    let integration = r#"
+use super::Profile;
+pub struct Description;
+pub fn declared() -> Profile { Profile }
+"#;
+    let ledger = r#"
+pub fn replay() -> u8 {
+    let _ = crate::v2::declared();
+    super::digest()
+}
+"#;
+    let root = "pub mod v2;\npub fn describe(_: &v2::Description) {}\npub mod helper;\npub fn unit() { let _ = v2::Description; }\n";
+    let helper = "use other::scm as host;\npub fn check() { host::verify(); }\n";
+    let contributions = scan_fixture_with(
+        "glob-re-exports",
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"demo\"\n[workspace]\nmembers = [\"other\"]\n",
+            ),
+            ("src/lib.rs", root),
+            ("src/helper.rs", helper),
+            ("src/v2/mod.rs", v2),
+            ("src/v2/types.rs", types),
+            ("src/v2/integration.rs", integration),
+            ("src/v2/ledger.rs", ledger),
+            ("other/Cargo.toml", "[package]\nname = \"other\"\n"),
+            ("other/src/lib.rs", "pub mod scm;\n"),
+            ("other/src/scm/mod.rs", "mod native;\npub use native::*;\n"),
+            ("other/src/scm/native.rs", "pub fn verify() {}\n"),
+        ],
+        &serde_json::json!({"config_files": ["Cargo.toml", "other/Cargo.toml"]}),
+    );
+    let mut missing = Vec::new();
+    for (kind, from, to) in [
+        (
+            "calls",
+            "rust:function:crate::v2::ledger::replay",
+            "rust:function:crate::v2::integration::declared",
+        ),
+        (
+            "calls",
+            "rust:function:crate::v2::ledger::replay",
+            "rust:function:crate::v2::types::digest",
+        ),
+        (
+            "references",
+            "rust:function:crate::v2::integration::declared",
+            "rust:class:crate::v2::types::Profile",
+        ),
+        (
+            "references",
+            "rust:function:crate::describe",
+            "rust:class:crate::v2::integration::Description",
+        ),
+        (
+            "references",
+            "rust:function:crate::unit",
+            "rust:class:crate::v2::integration::Description",
+        ),
+        (
+            "calls",
+            "rust:function:crate::helper::check",
+            "rust:function:other::scm::native::verify",
+        ),
+    ] {
+        let targets = targets_of(&contributions, kind, from);
+        if !targets.contains(&to.to_owned()) {
+            missing.push(format!("{kind} {from} -> {to}: {targets:?}"));
+        }
+    }
+    assert!(missing.is_empty(), "{missing:#?}");
+}
+
+#[test]
+fn a_unit_struct_value_named_bare_references_its_type() {
+    let source = "pub struct Unit;\npub struct Wrap(u8);\nconst MAX: u8 = 1;\npub fn go() -> Vec<Wrap> { let _ = Unit; vec![MAX].into_iter().map(Wrap).collect() }\n";
+    let contributions = scan_fixture("unit-struct-value", &[("src/lib.rs", source)]);
+    let references = targets_of(&contributions, "references", "rust:function:crate::go");
+    for target in ["rust:class:crate::Unit", "rust:class:crate::Wrap"] {
+        assert!(
+            references.contains(&target.to_owned()),
+            "{target} in {references:?}"
+        );
+    }
+    assert!(
+        !references.iter().any(|target| target.ends_with("::MAX")),
+        "{references:?}"
+    );
+}
+
+#[test]
+fn a_name_a_super_glob_brings_in_through_the_parents_glob_re_export_resolves() {
+    // `use super::*;` in `recipe/validate.rs` brings in `Recipe`, which the
+    // parent itself only has through `pub use types::*;`.
+    let contributions = scan_fixture(
+        "glob-through-glob",
+        &[
+            ("src/lib.rs", "pub mod recipe;\n"),
+            ("src/recipe/mod.rs", "mod types;\npub(crate) mod validate;\npub use types::*;\n"),
+            ("src/recipe/types.rs", "pub struct Recipe;\n"),
+            (
+                "src/recipe/validate.rs",
+                "use super::*;\npub struct Validated { pub recipe: Recipe }\npub fn load() -> Recipe { let r: Recipe = Recipe; r }\n",
+            ),
+        ],
+    );
+    for from in [
+        "rust:class:crate::recipe::validate::Validated",
+        "rust:function:crate::recipe::validate::load",
+    ] {
+        let references = targets_of(&contributions, "references", from);
+        assert!(
+            references.contains(&"rust:class:crate::recipe::types::Recipe".to_owned()),
+            "{from}: {references:?}"
+        );
+    }
+}
+
+#[test]
+fn code_gated_by_a_test_support_feature_is_marked_test_support() {
+    // `#[cfg(feature = "test-support")]` and `#[cfg(any(test, feature =
+    // "native-catalog-test-support"))] #[doc(hidden)]` compile only for the
+    // tests, through a feature dependents' tests turn on; so does a module a
+    // gated `mod` loads. `not(feature = "test-support")` is production.
+    let lib = r#"
+pub mod fixtures_host;
+#[cfg(feature = "test-support")]
+pub mod fixtures;
+#[cfg(feature = "test-support")]
+pub fn publication_fixture_error() {}
+#[cfg(any(test, feature = "native-catalog-test-support"))]
+#[doc(hidden)]
+pub fn fixture_catalog() {}
+#[cfg(not(feature = "test-support"))]
+pub fn production_only() {}
+#[cfg(feature = "latest-api")]
+pub fn feature_gated() {}
+"#;
+    let contributions = scan_fixture(
+        "test-support-feature",
+        &[
+            ("src/lib.rs", lib),
+            ("src/fixtures.rs", "pub fn rig() {}\n"),
+            ("src/fixtures_host.rs", "pub fn plain() {}\n"),
+        ],
+    );
+    let support = |file: &str, name: &str| {
+        node_in(&contributions, file, name)
+            .unwrap_or_else(|| panic!("{name}"))
+            .get("attributes")
+            .and_then(|attributes| attributes.get("test_support"))
+            .and_then(Value::as_bool)
+            == Some(true)
+    };
+    assert!(support("src/lib.rs", "crate::publication_fixture_error"));
+    assert!(support("src/lib.rs", "crate::fixture_catalog"));
+    assert!(support("src/fixtures.rs", "crate::fixtures"));
+    assert!(support("src/fixtures.rs", "crate::fixtures::rig"));
+    assert!(!support("src/lib.rs", "crate::production_only"));
+    assert!(!support("src/lib.rs", "crate::feature_gated"));
+    assert!(!support(
+        "src/fixtures_host.rs",
+        "crate::fixtures_host::plain"
+    ));
+}
+
+#[test]
+fn a_method_an_impl_in_a_child_file_adds_to_the_parents_type_is_reached_by_its_type() {
+    // `impl BrokerState` in `broker/owned.rs`, under `use super::BrokerState;`,
+    // adds `accepted_owned` to the parent's type; the index placed it on a
+    // `broker::owned::BrokerState`, so `BrokerState::accepted_owned()` in
+    // `broker.rs` found nothing.
+    let broker = r#"
+mod owned;
+pub struct BrokerState;
+impl BrokerState {
+    fn fresh() -> Self { BrokerState }
+}
+pub fn go() {
+    let _ = BrokerState::fresh();
+    BrokerState::accepted_owned();
+}
+"#;
+    let owned =
+        "use super::BrokerState;\nimpl BrokerState {\n    pub(super) fn accepted_owned() {}\n}\n";
+    let contributions = scan_fixture(
+        "split-inherent-impl",
+        &[
+            ("src/lib.rs", "pub mod broker;\n"),
+            ("src/broker.rs", broker),
+            ("src/broker/owned.rs", owned),
+        ],
+    );
+    let calls = targets_of(&contributions, "calls", "rust:function:crate::broker::go");
+    assert!(
+        calls.contains(&"rust:method:crate::broker::BrokerState::accepted_owned".to_owned()),
+        "{calls:?}"
+    );
+    assert!(node_in(
+        &contributions,
+        "src/broker/owned.rs",
+        "crate::broker::BrokerState::accepted_owned"
+    )
+    .is_some());
+}
+
+#[test]
+fn calls_a_macro_body_or_a_macro_guard_makes_are_edges() {
+    // `valid_text(..)` and `$crate::types::parse_hex(..)` only appear in a
+    // `macro_rules!` body, and `successful(..)` in a `matches!` guard, so
+    // all three read as unreferenced.
+    let source = r#"
+fn valid_text(_name: &str, value: &str) -> bool { !value.is_empty() }
+macro_rules! text_type {
+    ($name:ident) => {
+        pub struct $name;
+        impl $name {
+            pub fn check(value: &str) -> bool { valid_text(stringify!($name), value) }
+            pub fn hex(value: &str) -> u8 { $crate::types::parse_hex(value) }
+        }
+    };
+}
+text_type!(Title);
+fn successful(x: u8) -> bool { x > 0 }
+fn tripled(x: u8) -> u8 { x * 3 }
+pub fn any_ok(values: &[u8]) -> bool {
+    values.iter().any(|r| matches!(r, 1 | 2 if successful(*r)))
+}
+pub fn many() -> Vec<u8> { vec![tripled(1); 4] }
+"#;
+    let contributions = scan_fixture(
+        "macro-body-calls",
+        &[
+            ("src/lib.rs", "pub mod types;\npub mod text;\n"),
+            ("src/text.rs", source),
+            ("src/types.rs", "pub fn parse_hex(_: &str) -> u8 { 0 }\n"),
+        ],
+    );
+    let edges: Vec<(String, String, String)> = contributions
+        .iter()
+        .flat_map(|contribution| contribution["edges"].as_array().unwrap().clone())
+        .filter(|edge| edge["kind"] == "calls")
+        .map(|edge| {
+            (
+                edge["source"].as_str().unwrap().to_owned(),
+                edge["target"].as_str().unwrap().to_owned(),
+                edge["confidence"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    for (source, target, confidence) in [
+        (
+            "rust:module:crate::text",
+            "rust:function:crate::text::valid_text",
+            "possible",
+        ),
+        (
+            "rust:module:crate::text",
+            "rust:function:crate::types::parse_hex",
+            "possible",
+        ),
+        (
+            "rust:function:crate::text::any_ok",
+            "rust:function:crate::text::successful",
+            "probable",
+        ),
+        (
+            "rust:function:crate::text::many",
+            "rust:function:crate::text::tripled",
+            "possible",
+        ),
+    ] {
+        assert!(
+            edges.contains(&(source.to_owned(), target.to_owned(), confidence.to_owned())),
+            "{source} -> {target} ({confidence}) in {edges:?}"
+        );
+    }
+    // The declaration, the metavariable and `stringify!` are no calls.
+    assert!(!edges
+        .iter()
+        .any(|(_, target, _)| target.ends_with("::check")
+            || target.ends_with("::stringify")
+            || target.ends_with("::name")));
+}
+
+#[test]
+fn a_type_named_only_as_a_generic_argument_is_referenced() {
+    // `size_of::<PipeFdInfo>()`, `query::<VnodeFdInfo>(..)`,
+    // `Option::<StrictLogReference>::deserialize(..)` and `x.parse::<Id>()`
+    // name their types nowhere else.
+    let source = r#"
+pub struct PipeFdInfo;
+pub struct VnodeFdInfo;
+pub struct StrictLogReference;
+pub struct Id;
+fn query<T>(_: u8) -> Option<T> { None }
+pub fn sizes() -> usize { std::mem::size_of::<PipeFdInfo>() }
+pub fn read() { let _ = query::<VnodeFdInfo>(1); }
+pub fn de() { let _ = Option::<StrictLogReference>::default(); }
+pub fn parse(s: &str) { let _ = s.parse::<Id>(); }
+"#;
+    let contributions = scan_fixture("generic-arguments", &[("src/lib.rs", source)]);
+    for (from, to) in [
+        ("rust:function:crate::sizes", "rust:class:crate::PipeFdInfo"),
+        ("rust:function:crate::read", "rust:class:crate::VnodeFdInfo"),
+        (
+            "rust:function:crate::de",
+            "rust:class:crate::StrictLogReference",
+        ),
+        ("rust:function:crate::parse", "rust:class:crate::Id"),
+    ] {
+        let references = targets_of(&contributions, "references", from);
+        assert!(
+            references.contains(&to.to_owned()),
+            "{from} -> {to} in {references:?}"
+        );
+    }
+}
+
+#[test]
+fn a_trait_impl_block_of_its_own_is_marked_as_one() {
+    // `unsafe impl NativeValue for u32 {}` is used wherever `T: NativeValue`
+    // is met, which no edge records.
+    let source = "pub unsafe trait NativeValue: Copy {}\nunsafe impl NativeValue for u32 {}\npub fn read<T: NativeValue>(v: T) -> T { v }\n";
+    let contributions = scan_fixture("marker-trait-impl", &[("src/lib.rs", source)]);
+    let block = node_in(
+        &contributions,
+        "src/lib.rs",
+        "crate::<impl NativeValue for u32>",
+    )
+    .expect("the block is a node");
+    assert_eq!(Some(true), block["attributes"]["trait_impl"].as_bool());
+}
+
+#[test]
+fn a_test_naming_a_binary_through_cargo_bin_exe_launches_it() {
+    // Cargo hands an integration test the path of each binary of its
+    // package as `CARGO_BIN_EXE_<name>`; the test spawns it, which no call
+    // records, so the binary read as untested.
+    let test = r#"
+#[test]
+fn runs_the_fixture() {
+    let status = std::process::Command::new(env!("CARGO_BIN_EXE_fixture_main")).status();
+    let _ = status;
+}
+"#;
+    let contributions = scan_fixture_with(
+        "cargo-bin-exe",
+        &[
+            ("Cargo.toml", "[workspace]\nmembers = [\"crates/helper\"]\n"),
+            ("crates/helper/Cargo.toml", "[package]\nname = \"helper\"\n"),
+            ("crates/helper/src/lib.rs", "pub fn x() {}\n"),
+            ("crates/helper/src/bin/fixture_main.rs", "fn main() {}\n"),
+            ("crates/helper/tests/spawn.rs", test),
+        ],
+        &serde_json::json!({"config_files": ["Cargo.toml", "crates/helper/Cargo.toml"]}),
+    );
+    let launches: Vec<String> = edges_of(&contributions, "launches")
+        .into_iter()
+        .map(|(source, target)| format!("{source} -> {target}"))
+        .collect();
+    assert!(
+        launches.iter().any(|edge| edge.ends_with(
+            "runs_the_fixture -> rust:launched_file:crates/helper/src/bin/fixture_main.rs"
+        )),
+        "{launches:?}"
+    );
+}
+
+#[test]
+fn an_impl_of_a_type_re_exported_under_exclusive_cfgs_adds_to_each_alternative() {
+    // `impl OwnedChild` where `OwnedChild` is a gated re-export of a Unix and
+    // a Windows type named nothing, so the block was skipped and every call
+    // its methods make was lost.
+    let process = r#"
+#[cfg(unix)]
+mod unix;
+#[cfg(windows)]
+mod windows;
+#[cfg(unix)]
+pub use unix::OwnedChild;
+#[cfg(windows)]
+pub use windows::OwnedChild;
+impl OwnedChild {
+    pub fn spawn() -> u8 {
+        #[cfg(unix)]
+        use unix as platform;
+        #[cfg(windows)]
+        use windows as platform;
+        (|| platform::reader())()
+    }
+}
+"#;
+    let native = "pub struct OwnedChild;\npub fn reader() -> u8 { 0 }\n";
+    let contributions = scan_fixture(
+        "impl-of-cfg-alternative-type",
+        &[
+            ("src/lib.rs", "pub mod process;\n"),
+            ("src/process/mod.rs", process),
+            ("src/process/unix.rs", native),
+            ("src/process/windows.rs", native),
+        ],
+    );
+    for os in ["unix", "windows"] {
+        let method = format!("rust:method:crate::process::{os}::OwnedChild::spawn");
+        let calls = targets_of(&contributions, "calls", &method);
+        assert!(
+            calls.contains(&format!("rust:function:crate::process::{os}::reader")),
+            "{method}: {calls:?}"
+        );
+    }
+}
+
+#[test]
+fn a_use_path_starting_from_a_name_a_super_glob_brings_in_resolves() {
+    // `mcp.rs` does `use super::*;` and then `use process::run_duplex;`,
+    // where `process` is the parent's own `use super::process;`.
+    let contributions = scan_fixture(
+        "use-through-super-glob",
+        &[
+            ("src/lib.rs", "pub mod runner;\n"),
+            ("src/runner/mod.rs", "pub mod docker;\nmod process;\n"),
+            ("src/runner/process.rs", "mod duplex;\npub(super) use duplex::run_duplex;\n"),
+            ("src/runner/process/duplex.rs", "pub(crate) fn run_duplex() -> u8 { 0 }\n"),
+            ("src/runner/docker.rs", "use super::process;\nmod mcp;\npub fn go() -> u8 { mcp::acquire() }\n"),
+            (
+                "src/runner/docker/mcp.rs",
+                "use super::*;\nuse process::run_duplex;\npub fn acquire() -> u8 { run_duplex() }\n",
+            ),
+        ],
+    );
+    let calls = targets_of(
+        &contributions,
+        "calls",
+        "rust:function:crate::runner::docker::mcp::acquire",
+    );
+    assert!(
+        calls.contains(&"rust:function:crate::runner::process::duplex::run_duplex".to_owned()),
+        "{calls:?}"
+    );
+}
+
+#[test]
+fn a_file_a_test_module_includes_is_test_code() {
+    // `src/tui/editor.rs` has `#[cfg(test)] mod tests { include!(
+    // "../mcp_server/evidence_allocation_tests.rs"); }`: the included file is
+    // part of that test module, though nothing declares it as a module, and
+    // it read as an unreferenced production module.
+    let editor = "pub fn edit() {}\n#[cfg(test)]\nmod tests {\n    include!(\"../mcp_server/evidence_allocation_tests.rs\");\n}\n";
+    let contributions = scan_fixture(
+        "include-in-test-module",
+        &[
+            ("src/lib.rs", "pub mod mcp_server;\npub mod tui;\n"),
+            ("src/tui/mod.rs", "pub mod editor;\n"),
+            ("src/tui/editor.rs", editor),
+            ("src/mcp_server/mod.rs", "pub fn serve() {}\n"),
+            (
+                "src/mcp_server/evidence_allocation_tests.rs",
+                "#[test]\nfn allocates() {}\nfn helper() {}\n",
+            ),
+            ("src/mcp_server/plain.rs", "pub fn plain() {}\n"),
+        ],
+    );
+    let file = "src/mcp_server/evidence_allocation_tests.rs";
+    let test_of = |canonical: &str| {
+        node_in(&contributions, file, canonical).unwrap_or_else(|| panic!("{canonical}"))
+            ["attributes"]["test"]
+            .as_bool()
+    };
+    assert_eq!(
+        Some(true),
+        test_of("crate::mcp_server::evidence_allocation_tests")
+    );
+    assert_eq!(
+        Some(true),
+        test_of("crate::mcp_server::evidence_allocation_tests::helper")
+    );
+    let reads = contributions
+        .iter()
+        .find(|c| c["owner_key"] == format!("knossos.rust:file:{file}"))
+        .map(|c| {
+            c["reads"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+    assert!(reads.contains(&"src/tui/editor.rs".to_owned()), "{reads:?}");
+    assert_eq!(
+        None,
+        node_in(
+            &contributions,
+            "src/mcp_server/plain.rs",
+            "crate::mcp_server::plain"
+        )
+        .unwrap()["attributes"]["test"]
+            .as_bool()
+    );
+}
+
+#[test]
+fn a_method_called_on_a_dyn_or_impl_trait_value_is_the_traits() {
+    let source = r#"
+pub trait Driver { fn receive(&mut self) -> u8; }
+pub fn drive(driver: &mut dyn Driver) -> u8 { driver.receive() }
+pub fn boxed(driver: Box<dyn Driver>) -> Box<dyn Driver> { driver }
+pub fn later(mut driver: impl Driver) -> u8 { driver.receive() }
+"#;
+    let contributions = scan_fixture("dyn-trait-receiver", &[("src/lib.rs", source)]);
+    for from in ["rust:function:crate::drive", "rust:function:crate::later"] {
+        let calls = targets_of(&contributions, "calls", from);
+        assert!(
+            calls.contains(&"rust:method:crate::Driver::receive".to_owned()),
+            "{from}: {calls:?}"
+        );
+    }
 }

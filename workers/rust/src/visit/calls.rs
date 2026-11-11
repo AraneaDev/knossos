@@ -83,17 +83,21 @@ impl Calls<'_, '_> {
             }
             return;
         }
-        let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, path) else {
-            return;
-        };
-        let endpoint = reference(call_kind(&target), &target);
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, path) {
+            self.call_target(&target, unconfirmed, span);
+        }
+    }
+
+    /// Emit the `calls` edge to one target [`Calls::visit_call`] resolved.
+    fn call_target(&mut self, target: &str, unconfirmed: bool, span: proc_macro2::Span) {
+        let endpoint = reference(call_kind(target), target);
         if unconfirmed {
             self.walk
                 .facts
                 .conditional_edge(&self.enclosing, &endpoint, span);
             return;
         }
-        let head = target.split("::").next().unwrap_or(&target);
+        let head = target.split("::").next().unwrap_or(target);
         if head == self.walk.crate_root() || self.walk.layout.is_project_root(head) {
             self.walk
                 .facts
@@ -111,9 +115,19 @@ impl Calls<'_, '_> {
     /// or enum and as a trait: which one it is, and whether it is declared
     /// here at all rather than being `Vec` or `String`, only the graph knows.
     fn type_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
-        let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, path) else {
-            return;
-        };
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, path) {
+            self.type_target(path, &target, unconfirmed, span);
+        }
+    }
+
+    /// Emit the references [`Calls::type_reference`] makes to one target.
+    fn type_target(
+        &mut self,
+        path: &syn::Path,
+        target: &str,
+        unconfirmed: bool,
+        span: proc_macro2::Span,
+    ) {
         // `str`, `Some`, `Option` written bare and neither declared nor
         // imported here are the standard ones, not items of this module. The
         // guess named nothing, and in a large file those edges alone could
@@ -121,12 +135,12 @@ impl Calls<'_, '_> {
         if unconfirmed
             && path.segments.len() == 1
             && is_prelude_name(&ident_name(&path.segments[0].ident))
-            && !self.walk.own_declarations.contains(&target)
+            && !self.walk.own_declarations.contains(target)
         {
             return;
         }
         for kind in ["class", "interface"] {
-            let endpoint = reference(kind, &target);
+            let endpoint = reference(kind, target);
             if endpoint != self.enclosing {
                 self.walk
                     .facts
@@ -162,11 +176,32 @@ impl Calls<'_, '_> {
     /// so an unconfirmed one counts only when this file declares a function
     /// by that name, the same deferral an unqualified call gets.
     fn value_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
-        let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, path) else {
-            return;
-        };
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, path) {
+            self.value_target(path, &target, unconfirmed, span);
+        }
+    }
+
+    /// Emit the references [`Calls::value_reference`] makes to one target.
+    fn value_target(
+        &mut self,
+        path: &syn::Path,
+        target: &str,
+        unconfirmed: bool,
+        span: proc_macro2::Span,
+    ) {
+        // `Unit`, `v2::Unit` or `.map(Wrapper)`: a unit struct's value, or a
+        // tuple struct's constructor, names the type. An all-capitals name
+        // (`MAX`) is a constant, which the graph holds no node for.
+        let last = path
+            .segments
+            .last()
+            .map(|segment| ident_name(&segment.ident))
+            .unwrap_or_default();
+        if last.starts_with(char::is_uppercase) && last.chars().any(char::is_lowercase) {
+            self.type_target(path, target, unconfirmed, span);
+        }
         if path.segments.len() < 2 {
-            let endpoint = reference("function", &target);
+            let endpoint = reference("function", target);
             if unconfirmed {
                 self.walk.facts.conditional_any_edge(
                     &self.enclosing,
@@ -183,7 +218,7 @@ impl Calls<'_, '_> {
             return;
         }
         for kind in ["function", "method"] {
-            let endpoint = reference(kind, &target);
+            let endpoint = reference(kind, target);
             if endpoint != self.enclosing {
                 self.walk
                     .facts
@@ -502,18 +537,17 @@ impl Calls<'_, '_> {
         if module.segments.is_empty() {
             return;
         }
-        let Some((target, false)) = self.walk.resolve_path(&self.container, &module) else {
-            return;
-        };
-        if target != self.walk.module && target != self.container {
-            let source = reference("module", &self.walk.module);
-            self.walk.import(&source, &target, span);
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, &module) {
+            if !unconfirmed && target != self.walk.module && target != self.container {
+                let source = reference("module", &self.walk.module);
+                self.walk.import(&source, &target, span);
+            }
         }
     }
 
     /// A speculative `references` edge to the function a path names.
     fn function_reference(&mut self, path: &syn::Path, span: proc_macro2::Span) {
-        if let Some((target, _)) = self.walk.resolve_path(&self.container, path) {
+        for (target, _) in self.walk.resolve_paths(&self.container, path) {
             let endpoint = reference("function", &target);
             self.walk
                 .facts
@@ -534,8 +568,16 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
             self.inline_import(&path.path, node.span());
             self.visit_call(&path.path, node.span());
             // `Action::Deny(x)` builds a variant: the enum is used. The callee
-            // itself is not walked as a value path, since it is the call.
+            // itself is not walked as a value path, since it is the call, but
+            // the types its turbofish names are used (`size_of::<Info>()`,
+            // `Option::<Reference>::deserialize(..)`).
             self.owner_reference(&path.path, node.span());
+            if let Some(qself) = &path.qself {
+                self.visit_type(&qself.ty);
+            }
+            for segment in &path.path.segments {
+                self.visit_path_arguments(&segment.arguments);
+            }
             for argument in &node.args {
                 self.visit_expr(argument);
             }
@@ -597,16 +639,29 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
     }
 
     fn visit_macro(&mut self, node: &syn::Macro) {
+        self.cargo_binary(node);
         // A macro body is tokens to syn. Most invocations in ordinary code
         // (`format!`, `println!`, `assert_eq!`, `write!`) take comma-separated
         // expressions, so a body that parses as such is walked like any other
-        // arguments; one that does not (`vec![x; n]`, `json!({..})`, a DSL)
-        // contributes nothing rather than a guess.
-        self.visit_macro_tokens(node.tokens.clone());
+        // arguments. `matches!(value, pattern if guard)` is read as what it
+        // is. Whatever is left (`vec![f(x); n]`, a guard in another macro, a
+        // DSL) is searched for paths written as calls, which are `possible`.
+        if node
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "matches")
+            && self.visit_matches(node.tokens.clone())
+        {
+            return;
+        }
+        if !self.visit_macro_tokens(node.tokens.clone()) {
+            self.visit_token_calls(node.tokens.clone());
+        }
     }
 
     fn visit_expr_struct(&mut self, node: &syn::ExprStruct) {
-        if let Some((target, unconfirmed)) = self.walk.resolve_path(&self.container, &node.path) {
+        for (target, unconfirmed) in self.walk.resolve_paths(&self.container, &node.path) {
             let endpoint = reference("class", &target);
             if unconfirmed {
                 self.walk.facts.conditional_edge(
@@ -799,10 +854,14 @@ impl Calls<'_, '_> {
     /// token runs that parse as Rust expressions are walked. The groups still
     /// to search are kept in a worklist, so the walk is one loop rather than
     /// two functions calling each other.
-    fn visit_macro_tokens(&mut self, tokens: proc_macro2::TokenStream) {
+    ///
+    /// Returns whether every token run was walked as expressions; when one
+    /// was not, the caller may search the body's tokens instead.
+    fn visit_macro_tokens(&mut self, tokens: proc_macro2::TokenStream) -> bool {
         use syn::parse::Parser;
         let parser = syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated;
         let mut pending = vec![tokens];
+        let mut whole = true;
         while let Some(tokens) = pending.pop() {
             if let Ok(arguments) = parser.parse2(tokens.clone()) {
                 for argument in &arguments {
@@ -813,10 +872,124 @@ impl Calls<'_, '_> {
             for piece in top_level_pieces(tokens) {
                 match macro_piece(piece) {
                     Ok(expression) => self.visit_expr(&expression),
-                    Err(groups) => pending.extend(groups),
+                    Err(groups) => {
+                        whole = false;
+                        pending.extend(groups);
+                    }
                 }
             }
         }
+        whole
+    }
+
+    /// Walk `matches!(value, pattern if guard)`'s arguments as the
+    /// expression, pattern and guard they are, returning whether they
+    /// parsed so.
+    fn visit_matches(&mut self, tokens: proc_macro2::TokenStream) -> bool {
+        use syn::parse::Parser;
+        let parser = |input: syn::parse::ParseStream<'_>| {
+            let value: syn::Expr = input.parse()?;
+            input.parse::<syn::Token![,]>()?;
+            let pattern = syn::Pat::parse_multi_with_leading_vert(input)?;
+            let guard = if input.peek(syn::Token![if]) {
+                input.parse::<syn::Token![if]>()?;
+                Some(input.parse::<syn::Expr>()?)
+            } else {
+                None
+            };
+            if input.peek(syn::Token![,]) {
+                input.parse::<syn::Token![,]>()?;
+            }
+            Ok((value, pattern, guard))
+        };
+        let Ok((value, pattern, guard)) = parser.parse2(tokens) else {
+            return false;
+        };
+        self.visit_expr(&value);
+        let saved = self.receivers.clone();
+        self.bind_pattern(&pattern);
+        self.visit_pat(&pattern);
+        if let Some(guard) = &guard {
+            self.visit_expr(guard);
+        }
+        self.receivers = saved;
+        true
+    }
+
+    /// Record a `possible` call to every path `tokens` write as one: a
+    /// path of identifiers followed by a parenthesised group, at any depth,
+    /// that is not a declaration (`fn f(`), a method call (`.f(`), a macro
+    /// invocation (`f!(`), a macro metavariable (`$f(`) or a keyword
+    /// (`if (`). `$crate::` is this crate. Read from tokens no parse turned
+    /// into code, so none of it is certain.
+    pub(super) fn visit_token_calls(&mut self, tokens: proc_macro2::TokenStream) {
+        let mut calls = Vec::new();
+        token_calls(tokens, &mut calls);
+        self.walk.facts.enter_possible_scope();
+        for (path, span) in calls {
+            self.visit_call(&path, span);
+        }
+        self.walk.facts.exit_possible_scope();
+    }
+}
+
+/// The paths `tokens` write as calls, with where each is, for
+/// [`Calls::visit_token_calls`].
+fn token_calls(tokens: proc_macro2::TokenStream, out: &mut Vec<(syn::Path, proc_macro2::Span)>) {
+    use proc_macro2::TokenTree;
+    /// Words a path written as a call never starts with.
+    const NOT_CALLS: [&str; 22] = [
+        "if", "while", "match", "return", "for", "in", "fn", "let", "loop", "move", "as", "else",
+        "unsafe", "async", "await", "where", "impl", "dyn", "ref", "mut", "break", "yield",
+    ];
+    let tokens: Vec<TokenTree> = tokens.into_iter().collect();
+    let mut index = 0;
+    while index < tokens.len() {
+        if let TokenTree::Group(group) = &tokens[index] {
+            token_calls(group.stream(), out);
+            index += 1;
+            continue;
+        }
+        let TokenTree::Ident(first) = &tokens[index] else {
+            index += 1;
+            continue;
+        };
+        let before = index.checked_sub(1).map(|at| &tokens[at]);
+        let dollar = matches!(before, Some(TokenTree::Punct(p)) if p.as_char() == '$');
+        let excluded = match before {
+            Some(TokenTree::Punct(p)) => p.as_char() == '.' || (dollar && *first != "crate"),
+            Some(TokenTree::Ident(word)) => *word == "fn",
+            _ => false,
+        };
+        let mut segments = vec![first.clone()];
+        let mut end = index + 1;
+        while end + 2 < tokens.len() {
+            match (&tokens[end], &tokens[end + 1], &tokens[end + 2]) {
+                (TokenTree::Punct(a), TokenTree::Punct(b), TokenTree::Ident(next))
+                    if a.as_char() == ':' && b.as_char() == ':' =>
+                {
+                    segments.push(next.clone());
+                    end += 3;
+                }
+                _ => break,
+            }
+        }
+        let called = matches!(
+            tokens.get(end),
+            Some(TokenTree::Group(group)) if group.delimiter() == proc_macro2::Delimiter::Parenthesis
+        );
+        let keyword = segments.len() == 1 && NOT_CALLS.contains(&first.to_string().as_str());
+        if called && !excluded && !keyword {
+            let mut path = syn::Path {
+                leading_colon: None,
+                segments: syn::punctuated::Punctuated::new(),
+            };
+            for segment in &segments {
+                path.segments.push(syn::PathSegment::from(segment.clone()));
+            }
+            out.push((path, first.span()));
+        }
+        index = end;
     }
 }
 

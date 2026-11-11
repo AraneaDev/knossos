@@ -72,6 +72,9 @@ final class EdgeTargetResolver
     /** @var array<string, string>|null project-relative path => the reference of that file's module, built on first use */
     private ?array $modulesByPath = null;
 
+    /** @var ?array<string, ?string> `rust:method:Type::m` => the one trait impl method `Type::<impl Trait>::m`, null when several; built on first use */
+    private ?array $traitImplMembers = null;
+
     /** The same lookups over the case-insensitive matching keys, built with {@see $caseless}'s first retry. */
     private ?self $caselessTargets = null;
 
@@ -190,6 +193,7 @@ final class EdgeTargetResolver
 
         return [$reference, $reference === null ? null : (self::implementationTarget($reference, $this->nodeMap)
             ?? $this->nodeMap[$reference]
+            ?? $this->traitImplMemberTarget($reference)
             ?? $this->aliasedTypeTarget($reference)
             ?? $this->inheritedMemberTarget($reference)
             ?? $this->localScopeTarget($reference)
@@ -465,6 +469,61 @@ final class EdgeTargetResolver
         }
 
         return $nodeMap[$implementation] ?? null;
+    }
+
+    /**
+     * The trait impl method a Rust `Type::m` reference names when the type has
+     * no inherent `m`.
+     *
+     * The Rust worker declares a trait impl's method under its impl,
+     * `Session::<impl Driver>::receive`, so it stays apart from an inherent
+     * `Session::receive` and from another trait's method of the same name.
+     * A call names it as Rust code does, `Session::receive(..)` or
+     * `session.receive()`, which an inherent method answers first (the exact
+     * match above). Otherwise the one trait impl declaring `m` for the type
+     * does; when several do, the call names none of them for certain, and the
+     * search goes on to the trait itself.
+     */
+    private function traitImplMemberTarget(string $reference): ?string
+    {
+        if (!str_starts_with($reference, 'rust:method:')) {
+            return null;
+        }
+        if ($this->traitImplMembers === null) {
+            $this->traitImplMembers = [];
+            foreach ($this->nodeMap as $known => $id) {
+                $alias = self::traitImplAlias($known);
+                if ($alias !== null) {
+                    $this->traitImplMembers[$alias] = array_key_exists($alias, $this->traitImplMembers) ? null : $id;
+                }
+            }
+        }
+
+        return $this->traitImplMembers[$reference] ?? null;
+    }
+
+    /**
+     * `rust:method:Type::m` for a trait impl method's reference
+     * `rust:method:Type::<impl Trait>::m`, or null for any other reference. A
+     * block with no project type to attach to (`<impl Trait for Type>`) is a
+     * node of its own, whose members are named through it.
+     */
+    private static function traitImplAlias(string $reference): ?string
+    {
+        if (!str_starts_with($reference, 'rust:method:') || !str_contains($reference, '::<impl ')) {
+            return null;
+        }
+        $separator = strrpos($reference, '::');
+        if ($separator === false) {
+            return null;
+        }
+        $owner = substr($reference, 0, $separator);
+        $impl = strrpos($owner, '::<impl ');
+        if ($impl === false || !str_ends_with($owner, '>') || str_contains(substr($owner, $impl), ' for ')) {
+            return null;
+        }
+
+        return substr($owner, 0, $impl) . substr($reference, $separator);
     }
 
     /**

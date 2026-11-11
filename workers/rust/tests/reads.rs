@@ -235,7 +235,13 @@ fn the_manifest_is_read_by_the_whole_request_and_the_rest_of_the_crate_by_nobody
     // looked inside have contributions of their own that name their reads.
     let unattributed = &answer.result["unattributed_reads"];
     assert_eq!(sha256_hex(ENGINE_SIGN), unattributed["src/engine/sign.rs"]);
-    assert_eq!(sha256_hex(SIGN), unattributed["src/sign.rs"]);
+    // No `mod` declaration loads `other.rs`, so a `#[path]` added beside it
+    // would place it: it reads the files of its own directory.
+    assert_eq!(
+        sha256_hex(SIGN),
+        answer.of("src/other.rs")["reads"]["src/sign.rs"]
+    );
+    assert!(unattributed.get("src/sign.rs").is_none());
     // The crate root is above `other.rs`, so `other.rs` reads it.
     assert_eq!(
         sha256_hex(LIB),
@@ -416,4 +422,35 @@ fn a_later_request_indexes_the_bytes_on_disk_not_the_ones_it_saw_before() {
         sha256_hex("pub fn renamed() -> u32 {\n    1\n}\n"),
         edited.of("src/lib.rs")["reads"]["src/sign.rs"]
     );
+}
+
+#[test]
+fn a_file_nothing_loads_reads_the_files_a_path_declaration_beside_it_is_written_in() {
+    // `impl_two.rs` is loaded by no `mod`; when `parse.rs` retargets its
+    // `#[path]` to it, the file moves into `crate::parse::a`, which only a
+    // read of `parse.rs` lets an incremental scan see.
+    let files = vec![
+        ("Cargo.toml", "[package]\nname = \"demo\"\n"),
+        ("src/lib.rs", "pub mod parse;\n"),
+        ("src/parse.rs", "#[path = \"impl_one.rs\"]\npub mod a;\n"),
+        ("src/impl_one.rs", "pub fn x() {}\n"),
+        ("src/impl_two.rs", "pub fn x() {}\n"),
+        ("src/deep/far.rs", "pub fn y() {}\n"),
+    ];
+    let root = project("orphan-neighbours", &files);
+    let answer = scan(
+        &root,
+        &["src/impl_two.rs", "src/impl_one.rs"],
+        &serde_json::json!({"config_files": ["Cargo.toml"], "source_files": sources(&files)}),
+    );
+    let _ = std::fs::remove_dir_all(&root);
+
+    let orphan = &answer.of("src/impl_two.rs")["reads"];
+    assert!(orphan.get("src/parse.rs").is_some(), "{orphan}");
+    assert!(orphan.get("src/deep/far.rs").is_none(), "{orphan}");
+    // A file a declaration loads reads that declaration's file as before,
+    // and nothing beside it on that account.
+    let loaded = &answer.of("src/impl_one.rs")["reads"];
+    assert!(loaded.get("src/parse.rs").is_some(), "{loaded}");
+    assert!(loaded.get("src/impl_two.rs").is_none(), "{loaded}");
 }

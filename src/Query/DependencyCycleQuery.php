@@ -50,10 +50,19 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
      * that cycles between types were cut, and `bounds.within_type_truncated`
      * whether these were. A self-loop asked for too is one of these.
      *
+     * includeFacades keeps the edges a re-export facade adds, which are left
+     * out by default: a `re_exports` edge, and an `imports` edge between a
+     * module and one of its own ancestors. A parent that re-exports its
+     * children (`pub use child::Item;`, an `__init__.py`, an `index.ts`)
+     * while they import what they share back through it (`use super::Shared;`)
+     * is the idiomatic layout, not a tangle; with those edges every such
+     * parent and child read as one cycle, and a real one between siblings
+     * could not be told apart. `bounds.facade_edges_ignored` counts them.
+     *
      * @param list<string> $edgeKinds
      * @param list<string> $touchingIds
      */
-    public function dependencyCycles(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeSelfLoops = false, array $touchingIds = [], bool $withinType = false): ResultEnvelope
+    public function dependencyCycles(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeSelfLoops = false, array $touchingIds = [], bool $withinType = false, bool $includeFacades = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         self::assertLimit($limit);
@@ -69,7 +78,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         // between cannot take away a row the search counted on.
         $own = !$this->pdo->inTransaction() && $this->pdo->beginTransaction();
         try {
-            $search = $this->cycleSearch($projectId, $edgeKinds, $confidenceRank, $minConfidence, $limit, $maxNodes, $maxEdges, $deadline, $includeSelfLoops, $touchingIds, $withinType);
+            $search = $this->cycleSearch($projectId, $edgeKinds, $confidenceRank, $minConfidence, $limit, $maxNodes, $maxEdges, $deadline, $includeSelfLoops, $touchingIds, $withinType, $includeFacades);
         } finally {
             if ($own) {
                 $this->pdo->commit();
@@ -97,12 +106,14 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
                     'limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges,
                     'timeout_ms' => $timeoutMs, 'nodes_examined' => $search['nodes_examined'],
                     'edges_examined' => $search['edges_examined'], 'truncation_reasons' => $truncationReasons,
+                    'include_facades' => $includeFacades, 'facade_edges_ignored' => $search['facade_edges_ignored'],
                 ] + ($withinType ? ['within_type_truncated' => $search['within_type_truncated']] : []),
             ],
             $search['evidence'],
             [
                 'Cycles are derived from the selected static dependency relationships and confidence threshold.',
                 'Imports and re-exports that carry only types are erased at compile time and are not treated as dependencies, so a loop closed by nothing but `import type` is not reported.',
+                ...($includeFacades ? [] : ['Re-export facades are left out: `re_exports` edges and imports between a module and its own ancestor (a parent re-exporting its children while they import shared items back through it). Pass include_facades to keep them.']),
             ],
             $truncationReasons !== [],
         );
@@ -115,11 +126,11 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
      * @param list<string> $edgeKinds
      * @param array<string, int> $confidenceRank
      * @param list<string> $touchingIds
-     * @return array{nodes_examined: int, edges_examined: int, truncation_reasons: list<string>, cycles: list<array<string, mixed>>, evidence: list<array<string, mixed>>, within_type_truncated: bool}
+     * @return array{nodes_examined: int, edges_examined: int, truncation_reasons: list<string>, cycles: list<array<string, mixed>>, evidence: list<array<string, mixed>>, within_type_truncated: bool, facade_edges_ignored: int}
      */
-    private function cycleSearch(string $projectId, array $edgeKinds, array $confidenceRank, string $minConfidence, int $limit, int $maxNodes, int $maxEdges, int $deadline, bool $includeSelfLoops, array $touchingIds, bool $withinType = false): array
+    private function cycleSearch(string $projectId, array $edgeKinds, array $confidenceRank, string $minConfidence, int $limit, int $maxNodes, int $maxEdges, int $deadline, bool $includeSelfLoops, array $touchingIds, bool $withinType = false, bool $includeFacades = false): array
     {
-        $graph = $this->cycleSearchGraph($projectId, $edgeKinds, $confidenceRank[$minConfidence], $maxNodes, $maxEdges, $deadline);
+        $graph = $this->cycleSearchGraph($projectId, $edgeKinds, $confidenceRank[$minConfidence], $maxNodes, $maxEdges, $deadline, $includeFacades ? null : $this->moduleParents($projectId));
         $truncation = new Truncation();
         $truncation->add(...$graph['truncation_reasons']);
         $componentScan = $this->stronglyConnectedComponents($graph['adjacency'], $graph['reverse'], $deadline);
@@ -196,7 +207,7 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
             'nodes_examined' => count($nodeIds), 'edges_examined' => count($graph['edge_ids']),
             'truncation_reasons' => $truncation->reasons(),
             'cycles' => $detail['cycles'], 'evidence' => $detail['evidence'],
-            'within_type_truncated' => $insideCut,
+            'within_type_truncated' => $insideCut, 'facade_edges_ignored' => $graph['facade_edges'],
         ];
     }
 
@@ -211,11 +222,16 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
      * The walk stops at the first edge whose new node would exceed max_nodes;
      * that edge's source still counts when it was new, as it always has.
      *
+     * With `$moduleParents`, the edges a re-export facade adds are left out
+     * and counted (see {@see self::dependencyCycles()}).
+     *
      * @param list<string> $edgeKinds
-     * @return array{node_ids: list<string>, node_index: array<string, int>, adjacency: list<list<int>>, reverse: list<list<int>>, self_loops: array<int, true>, edge_ids: list<string>, edge_sources: list<int>, edge_targets: list<int>, truncation_reasons: list<string>}
+     * @param ?array<string, string> $moduleParents module id => the module containing it, when facades are left out
+     * @return array{node_ids: list<string>, node_index: array<string, int>, adjacency: list<list<int>>, reverse: list<list<int>>, self_loops: array<int, true>, edge_ids: list<string>, edge_sources: list<int>, edge_targets: list<int>, truncation_reasons: list<string>, facade_edges: int}
      */
-    private function cycleSearchGraph(string $projectId, array $edgeKinds, int $minimumRank, int $maxNodes, int $maxEdges, int $deadline): array
+    private function cycleSearchGraph(string $projectId, array $edgeKinds, int $minimumRank, int $maxNodes, int $maxEdges, int $deadline, ?array $moduleParents = null): array
     {
+        $facadeEdges = 0;
         $placeholders = implode(',', array_fill(0, count($edgeKinds), '?'));
         // Only what the search and the erased-import test read: the attributes
         // of any other kind are never decoded, so they are not read either.
@@ -237,12 +253,17 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
             $statement,
             $maxEdges,
             $deadline,
-            static function (array $row) use (&$nodeIds, &$nodeIndex, &$adjacency, &$reverse, &$selfLoops, &$edgeIds, &$edgeSources, &$edgeTargets, &$nodeLimitHit, $maxNodes): bool {
+            static function (array $row) use (&$nodeIds, &$nodeIndex, &$adjacency, &$reverse, &$selfLoops, &$edgeIds, &$edgeSources, &$edgeTargets, &$nodeLimitHit, &$facadeEdges, $maxNodes, $moduleParents): bool {
                 // Dropped before the node cap sees it, so a pair joined by
                 // nothing but erased type imports contributes neither the edge
                 // nor the two nodes it would have introduced. Only imports
                 // carry attributes here, so any other edge is kept unread.
                 if ($row['attributes_json'] !== null && self::isErasedTypeEdge($row)) {
+                    return true;
+                }
+                if ($moduleParents !== null && self::isFacadeEdge($row, $moduleParents)) {
+                    ++$facadeEdges;
+
                     return true;
                 }
                 $sourceId = (string) $row['source_id'];
@@ -292,7 +313,73 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
         return [
             'node_ids' => $nodeIds, 'node_index' => $nodeIndex, 'adjacency' => $adjacency, 'reverse' => $reverse, 'self_loops' => $selfLoops,
             'edge_ids' => $edgeIds, 'edge_sources' => $edgeSources, 'edge_targets' => $edgeTargets, 'truncation_reasons' => $reasons,
+            'facade_edges' => $facadeEdges,
         ];
+    }
+
+    /**
+     * Each module of the project with the module that contains it, from the
+     * `contains` edges between two modules.
+     *
+     * @return array<string, string>
+     */
+    private function moduleParents(string $projectId): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT e.target_id, e.source_id FROM edges e JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id '
+            . "WHERE e.project_id = ? AND e.kind = 'contains' AND s.kind = 'module' AND t.kind = 'module' AND " . EnrichedFacts::excludeSql('e'),
+        );
+        $statement->execute([$projectId]);
+        $parents = [];
+        foreach ($statement->fetchAll(\PDO::FETCH_NUM) as [$child, $parent]) {
+            $parents[(string) $child] ??= (string) $parent;
+        }
+
+        return $parents;
+    }
+
+    /**
+     * Whether an edge is one a re-export facade adds: a `re_exports` edge, or
+     * an `imports` edge between a module and one of its own ancestors.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, string> $moduleParents
+     */
+    private static function isFacadeEdge(array $row, array $moduleParents): bool
+    {
+        if ($row['kind'] === 're_exports') {
+            return true;
+        }
+        if ($row['kind'] !== 'imports') {
+            return false;
+        }
+        $source = (string) $row['source_id'];
+        $target = (string) $row['target_id'];
+
+        return self::isAncestor($target, $source, $moduleParents) || self::isAncestor($source, $target, $moduleParents);
+    }
+
+    /**
+     * Whether `$ancestor` contains `$module`, directly or through modules
+     * between them; bounded, so a malformed containment loop ends.
+     *
+     * @param array<string, string> $moduleParents
+     */
+    private static function isAncestor(string $ancestor, string $module, array $moduleParents): bool
+    {
+        $current = $module;
+        for ($depth = 0; $depth < 64; ++$depth) {
+            $parent = $moduleParents[$current] ?? null;
+            if ($parent === null) {
+                return false;
+            }
+            if ($parent === $ancestor) {
+                return true;
+            }
+            $current = $parent;
+        }
+
+        return false;
     }
 
     /**
@@ -372,6 +459,9 @@ final readonly class DependencyCycleQuery extends AbstractArchitectureQueryServi
                 $cycleEdges[] = [
                     'id' => $edge['id'], 'kind' => $edge['kind'], 'source_id' => $edge['source_id'],
                     'target_id' => $edge['target_id'], 'origin' => $edge['origin'], 'confidence' => $edge['confidence'],
+                    // Where the edge is, so the relationship that closes the
+                    // cycle can be found without a lookup per edge.
+                    'path' => $edge['relative_path'], 'line' => $edge['start_line'] === null ? null : (int) $edge['start_line'],
                 ];
                 if ($edge['relative_path'] !== null && count($evidence) < 500) {
                     $evidence[] = [

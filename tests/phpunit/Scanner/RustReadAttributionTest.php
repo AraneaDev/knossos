@@ -339,7 +339,9 @@ final class RustReadAttributionTest extends KnossosTestCase
 
         $this->write('src/uses_orphan.rs', "use crate::orphan::*;\n\npub fn u() -> u32 {\n    lonely() + 1\n}\n");
         $this->scan($pdo);
-        assertSame(['src/uses_orphan.rs'], $this->rescannedFiles($pdo));
+        // No `mod` loads either file, so each reads the other: a `#[path]`
+        // written in one could place the other in a module.
+        assertSame(['src/orphan.rs', 'src/uses_orphan.rs'], $this->rescannedFiles($pdo));
         $this->assertMatchesAFullScan($pdo);
         $this->stampCacheRows($pdo);
 

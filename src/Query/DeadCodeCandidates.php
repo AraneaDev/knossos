@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Knossos\Classification\ExampleModuleRule;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\EdgeQueries;
@@ -42,11 +43,13 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      * @param list<string> $edgeKinds
      * @return array{candidates: list<array<string, mixed>>, total: int, test_only: int, probable: int, excluded: array<string, int>, convention_excluded: int, truncated: bool}
      */
-    public function find(string $projectId, array $edgeKinds, int $minConfidenceRank, bool $includeTests, int $deadline, string $confidence, int $offset, int $limit): array
+    public function find(string $projectId, array $edgeKinds, int $minConfidenceRank, bool $includeTests, int $deadline, string $confidence, int $offset, int $limit, ?string $pathPrefix = null, bool $includeAnnotated = false, bool $includeExamples = false): array
     {
         $found = [
             'kept' => ['unreferenced' => [], 'test_only' => []], 'keep' => $offset + $limit, 'confidence' => $confidence,
             'total' => 0, 'test_only' => 0, 'probable' => 0, 'excluded' => [], 'convention_excluded' => 0, 'truncated' => false,
+            'path_prefix' => $pathPrefix, 'include_annotated' => $includeAnnotated,
+            'include_examples' => $includeExamples, 'example_excluded' => 0,
         ];
         $this->search($projectId, $edgeKinds, $minConfidenceRank, $includeTests, $deadline, $found);
         $page = [];
@@ -55,9 +58,10 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
         }
 
         return [
-            'candidates' => $this->hydrate(array_slice($page, $offset, $limit)),
+            'candidates' => $this->hydrate($projectId, array_slice($page, $offset, $limit)),
             'total' => $found['total'], 'test_only' => $found['test_only'], 'probable' => $found['probable'], 'excluded' => $found['excluded'],
             'convention_excluded' => $found['convention_excluded'], 'truncated' => $found['truncated'],
+            'example_excluded' => $found['example_excluded'],
         ];
     }
 
@@ -140,6 +144,17 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
                 continue;
             }
             $nodeRoles = $roles[$id] ?? [];
+            // Asked about one part of the project, the rest is not counted
+            // either: the totals describe the part.
+            if ($found['path_prefix'] !== null && !str_starts_with((string) ($row['relative_path'] ?? ''), $found['path_prefix'])) {
+                continue;
+            }
+            // Example code is kept to show how the product is used, and
+            // nothing imports it by design.
+            if (!$found['include_examples'] && in_array(ExampleModuleRule::ROLE, array_column($nodeRoles, 'role'), true)) {
+                ++$found['example_excluded'];
+                continue;
+            }
             if ($analysis->isConventionExcluded($row, $nodeRoles)) {
                 ++$found['convention_excluded'];
                 continue;
@@ -160,7 +175,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
                 'row' => $row, 'roles' => $nodeRoles, 'out_degree' => $facts->outDegree((string) $id), 'reachability' => $reachability,
             ];
         }
-        $classified = $analysis->classify($projectId, $provisional, $facts, $edgeKinds, $minConfidenceRank, $includeTests);
+        $classified = $analysis->classify($projectId, $provisional, $facts, $edgeKinds, $minConfidenceRank, $includeTests, $found['include_annotated']);
         foreach ($classified['candidates'] as $candidate) {
             // A large project's page of 100 filled with framework methods
             // marked only possible, hiding every probable candidate behind
@@ -218,9 +233,12 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      */
     private function testOnlyIds(string $projectId, array $edgeKinds, int $minConfidenceRank): array
     {
+        // A reference from an example counts as a test's does: it shows the
+        // product being used, which is not the product using it.
         $test = $this->pdo->quote(ReportableComponent::TEST_ROLE);
+        $example = $this->pdo->quote(ExampleModuleRule::ROLE);
         $production = $this->inbound($edgeKinds)
-            . " AND NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = e.source_id AND c.role = {$test})";
+            . " AND NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = e.source_id AND c.role IN ({$test}, {$example}))";
 
         return $this->candidateIds(
             $projectId,
@@ -238,7 +256,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      * @param list<array<string, mixed>> $candidates
      * @return list<array<string, mixed>>
      */
-    private function hydrate(array $candidates): array
+    private function hydrate(string $projectId, array $candidates): array
     {
         $ids = array_map(static fn(array $candidate): string => (string) $candidate['component']['id'], $candidates);
         $rows = $this->rows($ids);
@@ -249,9 +267,42 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
             if (isset($rows[$id])) {
                 $candidates[$index]['component'] = self::component($id, $rows[$id], $roles[$id] ?? [], $boundaries[$id] ?? []);
             }
+            if ($candidate['reachability'] === 'test_only') {
+                $candidates[$index] += $this->testReach($projectId, $id);
+            }
         }
 
         return $candidates;
+    }
+
+    /**
+     * Where the tests reach a test-only candidate: the first test reference
+     * to it, by file and line, and how many there are. A container whose
+     * members only tests use has none of its own, and says so with a count
+     * of 0.
+     *
+     * @return array{test_reference: ?array{path: ?string, line: ?int}, test_reference_count: int}
+     */
+    private function testReach(string $projectId, string $id): array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT ' . EdgeEvidencePath::sql() . ' AS relative_path, e.start_line FROM edges e '
+            . 'LEFT JOIN files f ON f.id = e.file_id '
+            . "WHERE e.project_id = ? AND e.target_id = ? AND e.kind <> 'contains' AND " . EnrichedFacts::excludeSql('e') . ' '
+            . 'AND EXISTS (SELECT 1 FROM classifications c WHERE c.project_id = e.project_id AND c.node_id = e.source_id AND c.role IN (?, ?)) '
+            . 'ORDER BY relative_path, e.start_line',
+        );
+        $statement->execute([$projectId, $id, ReportableComponent::TEST_ROLE, ExampleModuleRule::ROLE]);
+        $rows = $statement->fetchAll(\PDO::FETCH_ASSOC);
+        $first = $rows[0] ?? null;
+
+        return [
+            'test_reference' => $first === null ? null : [
+                'path' => $first['relative_path'] === null ? null : (string) $first['relative_path'],
+                'line' => $first['start_line'] === null ? null : (int) $first['start_line'],
+            ],
+            'test_reference_count' => count($rows),
+        ];
     }
 
     /**

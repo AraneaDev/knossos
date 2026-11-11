@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use syn::{Item, Type};
 
+use super::cfg::cfg_predicate;
 use super::placement::mod_child;
 use crate::layout::Layout;
 use crate::resolve::{ident_name, is_standard_type};
@@ -28,6 +29,10 @@ use crate::resolve::{ident_name, is_standard_type};
 pub struct Declarations {
     /// Canonical name to the number of files declaring it.
     counts: BTreeMap<String, usize>,
+    /// The names every file declaring them so far declares under a `cfg`
+    /// other than `test`: `cfg` alternatives, of which one build compiles
+    /// one, so they count as one declaration.
+    gated_only: BTreeSet<String>,
     /// Every name asked about since the last [`Declarations::take_lookups`].
     lookups: RefCell<BTreeSet<String>>,
     /// Each `mod name;` whose module is not the path it is declared at
@@ -35,7 +40,7 @@ pub struct Declarations {
     /// when two declarations send one path to two modules. See
     /// [`declared_renames`].
     renames: BTreeMap<String, Option<String>>,
-    /// Each name a visible `use` makes a path of its module, mapped to the
+    /// Each name a `use` makes a path of its module, mapped to the
     /// path it imports; `None` when two files map one name apart. See
     /// [`ExportedNames`].
     exports: BTreeMap<String, Option<String>>,
@@ -46,15 +51,41 @@ pub struct Declarations {
     /// The type every module-level alias names; `None` for a path two files
     /// alias apart. See [`TypeAliases`].
     aliases: BTreeMap<String, Option<String>>,
+    /// The `cfg` alternatives of each name `use` items re-export
+    /// apart, every one gated; see [`ExportAlternatives`].
+    export_alternatives: BTreeMap<String, Option<Vec<String>>>,
+    /// The modules each module's glob imports import from, see
+    /// [`GlobImports`].
+    globs: BTreeMap<String, Vec<(String, bool)>>,
+    /// The names of `exports` only a private `use` binds.
+    private_exports: BTreeSet<String>,
 }
 
-/// The names one file's visible `use` items (`pub use cfg::collect;`,
-/// `pub(crate) use self::a as b;`) add to the module they are written in, by
-/// that path, mapped to the path each imports, as the file's own imports
-/// resolve it. A glob re-export names nothing and is not here.
+/// The modules each module of one file imports every name of with a glob
+/// (`pub use types::*;`, `use super::*;`), by the importing module, in the
+/// order written, as the file's own imports place them. A path through the
+/// importing module (`crate::v2::Profile`, `super::digest`) names what a
+/// source provides when the module itself does not. Each source says whether
+/// a private `use` imports it, which only the module and those below it see.
+pub type GlobImports = BTreeMap<String, Vec<(String, bool)>>;
+
+/// The names one file's `use` items re-export apart under `cfg`
+/// alternatives (`#[cfg(unix)] pub use unix::open;` beside a Windows one),
+/// each with every path it may name: [`ExportedNames`] binds such a name to
+/// nothing, since no one path is certain, while code written through it
+/// reaches whichever compiles.
+pub type ExportAlternatives = BTreeMap<String, Vec<String>>;
+
+/// The names one file's `use` items (`pub use cfg::collect;`,
+/// `pub(crate) use self::a as b;`, and a private `use unix as platform;`,
+/// which the module's descendants can name as `super::platform`) add to the
+/// module they are written in, by that path, mapped to the path each
+/// imports, as the file's own imports resolve it. A glob re-export names
+/// nothing and is not here.
 ///
-/// `None` marks a name two `use` items of the file bind to different paths,
-/// such as `#[cfg]` alternatives: which one compiles is unknown.
+/// `None` marks a name two `use` items of the file bind to different paths:
+/// which one is meant is unknown, unless every one is a `cfg` alternative
+/// (see [`ExportAlternatives`]).
 pub type ExportedNames = BTreeMap<String, Option<String>>;
 
 /// The declared type of each named field of one file's structs, by the
@@ -107,8 +138,35 @@ impl Declarations {
 
     /// Count one file's declarations, as [`declaration_paths`] returned them.
     pub fn add_file(&mut self, paths: &BTreeSet<String>) {
+        self.add_gated_file(paths, &BTreeSet::new(), false);
+    }
+
+    /// Count one file's declarations, of which the ones in `gated` (see
+    /// [`gated_declaration_paths`]), or all of them when the file itself is
+    /// (`file_gated`), compile only under a `cfg`. A name every declaring
+    /// file gates is one declaration in several `cfg` alternatives, and
+    /// counts once.
+    pub fn add_gated_file(
+        &mut self,
+        paths: &BTreeSet<String>,
+        gated: &BTreeSet<String>,
+        file_gated: bool,
+    ) {
         for path in paths {
-            *self.counts.entry(path.clone()).or_insert(0) += 1;
+            let is_gated = file_gated || gated.contains(path);
+            match self.counts.get_mut(path) {
+                None => {
+                    self.counts.insert(path.clone(), 1);
+                    if is_gated {
+                        self.gated_only.insert(path.clone());
+                    }
+                }
+                Some(_) if is_gated && self.gated_only.contains(path) => {}
+                Some(count) => {
+                    *count += 1;
+                    self.gated_only.remove(path);
+                }
+            }
         }
     }
 
@@ -146,7 +204,7 @@ impl Declarations {
         }
     }
 
-    /// `path` with its longest prefix that a visible `use` re-exports
+    /// `path` with its longest prefix that a `use` re-exports
     /// rewritten onto the path that `use` imports, once: `crate::visit::go`
     /// under `pub use cfg::go;` in `crate::visit` is `crate::visit::cfg::go`.
     /// `None` when no prefix is re-exported, or when the one that is maps
@@ -178,7 +236,73 @@ impl Declarations {
             .map(|target| format!("{target}{}", &path[prefix.len()..]))
     }
 
-    /// What a visible `use` binds the path `name` to, exactly: `Some(None)`
+    /// Record the names of one file's `use` bindings that only a private
+    /// `use` makes, visible in their module and below it alone.
+    pub fn add_private_exports(&mut self, names: &BTreeSet<String>) {
+        self.private_exports.extend(names.iter().cloned());
+    }
+
+    /// Whether only a private `use` binds `name`, see
+    /// [`Declarations::add_private_exports`].
+    #[must_use]
+    pub fn is_private_export(&self, name: &str) -> bool {
+        self.private_exports.contains(name)
+    }
+
+    /// Record one file's glob imports, see [`GlobImports`].
+    pub fn add_globs(&mut self, globs: &GlobImports) {
+        for (module, sources) in globs {
+            let known = self.globs.entry(module.clone()).or_default();
+            for source in sources {
+                if !known.contains(source) {
+                    known.push(source.clone());
+                }
+            }
+        }
+    }
+
+    /// The modules `module`'s glob imports import from, see
+    /// [`GlobImports`]. Remembered as a lookup of `module`'s own path below
+    /// it is the caller's: the importing file sits in `module`.
+    #[must_use]
+    pub fn globs_of(&self, module: &str) -> &[(String, bool)] {
+        self.globs.get(module).map_or(&[], Vec::as_slice)
+    }
+
+    /// Record one file's re-export alternatives, see [`ExportAlternatives`];
+    /// a name two files re-export apart has none.
+    pub fn add_export_alternatives(&mut self, alternatives: &ExportAlternatives) {
+        for (name, paths) in alternatives {
+            let merged = match self.export_alternatives.get(name) {
+                Some(known) if known.as_ref() != Some(paths) => None,
+                _ => Some(paths.clone()),
+            };
+            self.export_alternatives.insert(name.clone(), merged);
+        }
+    }
+
+    /// `path` rewritten through the `cfg` alternatives its longest prefix is
+    /// re-exported as (see [`ExportAlternatives`]), one path per
+    /// alternative; none when no prefix is. Remembered as a lookup, like
+    /// [`Declarations::exported`].
+    pub fn exported_alternatives(&self, path: &str) -> Vec<String> {
+        self.lookups.borrow_mut().insert(path.to_owned());
+        std::iter::successors(Some(path), |prefix| {
+            prefix.rsplit_once("::").map(|(head, _)| head)
+        })
+        .find_map(|prefix| {
+            let alternatives = self.export_alternatives.get(prefix)?.as_ref()?;
+            Some(
+                alternatives
+                    .iter()
+                    .map(|target| format!("{target}{}", &path[prefix.len()..]))
+                    .collect(),
+            )
+        })
+        .unwrap_or_default()
+    }
+
+    /// What a `use` binds the path `name` to, exactly: `Some(None)`
     /// when two of them bind it apart, `None` when none binds it. Remembered
     /// as a lookup, like [`Declarations::exported`].
     #[allow(clippy::option_option)]
@@ -331,16 +455,86 @@ pub fn declaration_paths(module: &str, items: &[Item]) -> BTreeSet<String> {
     paths
 }
 
+/// The paths of [`declaration_paths`] whose declaration compiles only under
+/// a `cfg` other than `test`, its own or an enclosing inline module's or
+/// `impl` block's: `cfg` alternatives of what another file may declare too.
+#[must_use]
+pub fn gated_declaration_paths(module: &str, items: &[Item]) -> BTreeSet<String> {
+    let mut paths = BTreeSet::new();
+    let mut gated = BTreeSet::new();
+    collect_gated_paths(module, items, false, true, &mut paths, &mut gated);
+
+    gated
+}
+
+/// What a file declares to the declaration index apart from its `impl`
+/// blocks' methods, and which of those paths a `cfg` gates: the paths of
+/// [`declaration_paths`] and [`gated_declaration_paths`] without the methods,
+/// whose type `index_facts` places through the file's imports instead.
+#[must_use]
+pub fn indexed_item_paths(module: &str, items: &[Item]) -> (BTreeSet<String>, BTreeSet<String>) {
+    let mut paths = BTreeSet::new();
+    let mut gated = BTreeSet::new();
+    collect_gated_paths(module, items, false, false, &mut paths, &mut gated);
+
+    (paths, gated)
+}
+
 /// The paths [`declaration_paths`] returns for one file, each once.
 fn collect_declaration_paths(module: &str, items: &[Item], out: &mut BTreeSet<String>) {
+    let mut gated = BTreeSet::new();
+    collect_gated_paths(module, items, false, true, out, &mut gated);
+}
+
+/// The paths [`declaration_paths`] returns, with the ones that compile only
+/// under a `cfg` (`under_cfg`, or an item's own) also in `gated`.
+fn collect_gated_paths(
+    module: &str,
+    items: &[Item],
+    under_cfg: bool,
+    with_impls: bool,
+    out: &mut BTreeSet<String>,
+    gated: &mut BTreeSet<String>,
+) {
     for item in items {
+        let item_gated = under_cfg || cfg_predicate(super::cfg::item_attrs(item)).is_some();
+        let before: BTreeSet<String> = if item_gated {
+            out.clone()
+        } else {
+            BTreeSet::new()
+        };
+        // An inline module's items are walked here, so only this function
+        // recurses.
+        if let Some((nested, inner)) =
+            collect_item_paths(module, item, item_gated, with_impls, out, gated)
+        {
+            collect_gated_paths(&nested, inner, item_gated, with_impls, out, gated);
+        }
+        if item_gated {
+            gated.extend(out.difference(&before).cloned());
+        }
+    }
+}
+
+/// The paths one item adds to [`declaration_paths`], see
+/// [`collect_gated_paths`], or for an inline module its path and items, for
+/// the caller to walk.
+fn collect_item_paths<'a>(
+    module: &str,
+    item: &'a Item,
+    under_cfg: bool,
+    with_impls: bool,
+    out: &mut BTreeSet<String>,
+    gated: &mut BTreeSet<String>,
+) -> Option<(String, &'a [Item])> {
+    {
         match item {
             Item::Struct(node) => record(out, module, &ident_name(&node.ident)),
             Item::Enum(node) => record(out, module, &ident_name(&node.ident)),
             Item::Union(node) => record(out, module, &ident_name(&node.ident)),
             Item::Trait(node) => record(out, module, &ident_name(&node.ident)),
             Item::Fn(node) => record(out, module, &ident_name(&node.sig.ident)),
-            Item::Impl(node) => {
+            Item::Impl(node) if with_impls => {
                 // A method is declared in an `impl` block rather than beside
                 // its type, so indexing only top-level items left every method
                 // unresolvable: a call to one could never be vouched for, and
@@ -361,19 +555,22 @@ fn collect_declaration_paths(module: &str, items: &[Item], out: &mut BTreeSet<St
                     for member in &node.items {
                         if let syn::ImplItem::Fn(method) = member {
                             record(out, &owner, &ident_name(&method.sig.ident));
+                            if under_cfg || cfg_predicate(&method.attrs).is_some() {
+                                gated.insert(format!("{owner}::{}", ident_name(&method.sig.ident)));
+                            }
                         }
                     }
                 }
             }
             Item::Mod(node) => {
                 if let Some((_, inner)) = &node.content {
-                    let nested = format!("{module}::{}", ident_name(&node.ident));
-                    collect_declaration_paths(&nested, inner, out);
+                    return Some((format!("{module}::{}", ident_name(&node.ident)), inner));
                 }
             }
             _ => {}
         }
     }
+    None
 }
 
 /// The bare type name of an `impl` block's target, or `None` when the target

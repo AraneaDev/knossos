@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::spanned::Spanned;
 use syn::Item;
 
+use super::cfg::cfg_predicate;
 use super::placement::mod_child;
 use super::state::Walk;
 use crate::facts::reference;
@@ -137,6 +138,7 @@ impl Walk<'_> {
                             written,
                             node.leading_colon.is_some(),
                             item.span(),
+                            matches!(node.vis, syn::Visibility::Inherited),
                         ));
                     }
                 }
@@ -153,7 +155,11 @@ impl Walk<'_> {
             .iter()
             .map(|((leaf, unrooted), _, _)| (leaf.clone(), *unrooted))
             .collect();
-        let placed = self.place_scope_leaves(&leaves, |leaf, unrooted| {
+        let gated: Vec<bool> = written
+            .iter()
+            .map(|(_, node, _)| cfg_predicate(&node.attrs).is_some())
+            .collect();
+        let placed = self.place_scope_leaves(&leaves, &gated, |leaf, unrooted| {
             let head = leaf.full.split("::").next().unwrap_or(&leaf.full);
             let own = format!("{container}::{head}");
             if unrooted
@@ -166,11 +172,20 @@ impl Walk<'_> {
             self.imported_path(container, &children, unrooted, &leaf.full)
         });
         let source = reference("module", &self.module);
-        for (((leaf, _), node, span), full) in written.into_iter().zip(placed) {
-            let Some(full) = full else {
-                continue;
-            };
-            self.bind_module_leaf(container, &source, node, span, leaf, full);
+        for (((leaf, _), node, span), alternatives) in written.into_iter().zip(placed) {
+            // A leaf placed through a name `cfg` alternatives bind
+            // (`pub use platform::open;`) binds each of their paths.
+            let gated = alternatives.len() > 1 || cfg_predicate(&node.attrs).is_some();
+            let private = matches!(node.vis, syn::Visibility::Inherited);
+            for full in alternatives {
+                let binding = Binding {
+                    leaf: leaf.clone(),
+                    full,
+                    gated,
+                    private,
+                };
+                self.bind_module_leaf(container, &source, span, binding);
+            }
         }
     }
 
@@ -181,11 +196,15 @@ impl Walk<'_> {
         &mut self,
         container: &str,
         source: &str,
-        node: &syn::ItemUse,
         span: proc_macro2::Span,
-        leaf: UseLeaf,
-        full: String,
+        binding: Binding,
     ) {
+        let Binding {
+            leaf,
+            full,
+            gated,
+            private,
+        } = binding;
         let module = if leaf.names_module {
             full.clone()
         } else {
@@ -207,7 +226,28 @@ impl Walk<'_> {
             self.exports.insert(name, None);
             return;
         }
-        if !matches!(node.vis, syn::Visibility::Inherited) && leaf.alias != "_" {
+        // A private `use` is a path too, from the module's descendants:
+        // `use super::platform;` in a child names what the parent's own
+        // `use unix as platform;` imports. Compiling code only goes through
+        // one where it is visible, so every binding is recorded.
+        if leaf.alias != "_" {
+            if private {
+                self.private_exports.insert(name.clone());
+            } else {
+                self.public_exports.insert(name.clone());
+            }
+            let alternatives = self
+                .export_alternatives
+                .entry(name.clone())
+                .or_insert_with(|| Some(Vec::new()));
+            match alternatives {
+                Some(known) if gated => {
+                    if !known.contains(&full) {
+                        known.push(full.clone());
+                    }
+                }
+                _ => *alternatives = None,
+            }
             match self.exports.get(&name) {
                 Some(Some(existing)) if *existing != full => {
                     self.exports.insert(name, None);
@@ -229,7 +269,7 @@ impl Walk<'_> {
                 self.module_aliases.insert(key, Some(full.clone()));
             }
         }
-        self.aliases.insert(leaf.alias, full);
+        self.aliases.insert_gated(leaf.alias, full, gated);
     }
 
     /// Where each `use` leaf of one scope (a module's items, or a block's)
@@ -246,11 +286,16 @@ impl Walk<'_> {
     /// other leaf's head: that head is the outer name its own path starts
     /// from. A head two leaves bind apart, or a chain of leaves that never
     /// settles, places nothing.
+    ///
+    /// Each leaf is placed at no path, at one, or, when the head it starts
+    /// from is bound apart only by `use` items `gated` marks as gated by a
+    /// `cfg`, at one path per alternative binding.
     fn place_scope_leaves(
         &self,
         leaves: &[(UseLeaf, bool)],
+        gated: &[bool],
         mut place: impl FnMut(&UseLeaf, bool) -> Option<String>,
-    ) -> Vec<Option<String>> {
+    ) -> Vec<Vec<String>> {
         let binders: Vec<Vec<usize>> = leaves
             .iter()
             .enumerate()
@@ -271,10 +316,14 @@ impl Walk<'_> {
                     .collect()
             })
             .collect();
-        let mut placed: Vec<Option<Option<String>>> = leaves
+        let mut placed: Vec<Option<Vec<String>>> = leaves
             .iter()
             .zip(&binders)
-            .map(|((leaf, unrooted), binders)| binders.is_empty().then(|| place(leaf, *unrooted)))
+            .map(|((leaf, unrooted), binders)| {
+                binders
+                    .is_empty()
+                    .then(|| place(leaf, *unrooted).into_iter().collect())
+            })
             .collect();
         for _ in 0..leaves.len() {
             let mut progress = false;
@@ -286,23 +335,38 @@ impl Walk<'_> {
                 {
                     continue;
                 }
-                let mut meanings = binders[index].iter().map(|&binder| {
-                    placed[binder]
-                        .clone()
-                        .flatten()
-                        .map(|full| self.exported(full))
-                });
-                let first = meanings.next().flatten();
-                let bound =
-                    first.filter(|first| meanings.all(|other| other.as_ref() == Some(first)));
+                let mut meanings: Vec<String> = Vec::new();
+                let mut unplaced = false;
+                for &binder in &binders[index] {
+                    let binder_placed = placed[binder].clone().unwrap_or_default();
+                    unplaced |= binder_placed.is_empty();
+                    for full in binder_placed {
+                        let full = self.exported(full);
+                        if !meanings.contains(&full) {
+                            meanings.push(full);
+                        }
+                    }
+                }
+                // Binders that agree bind one meaning; binders that differ
+                // bind none, unless every one of them is a `cfg` alternative.
+                let alternatives = binders[index].iter().all(|&binder| gated[binder]);
+                let bound: Vec<String> = match meanings.len() {
+                    _ if unplaced => Vec::new(),
+                    1 => meanings,
+                    _ if alternatives => meanings,
+                    _ => Vec::new(),
+                };
                 let full = &leaves[index].0.full;
                 placed[index] = Some(
                     bound
-                        .map(|bound| match full.split_once("::") {
-                            Some((_, rest)) => format!("{bound}::{rest}"),
-                            None => bound,
+                        .into_iter()
+                        .filter_map(|bound| {
+                            self.renamed(match full.split_once("::") {
+                                Some((_, rest)) => format!("{bound}::{rest}"),
+                                None => bound,
+                            })
                         })
-                        .and_then(|path| self.renamed(path)),
+                        .collect(),
                 );
                 progress = true;
             }
@@ -311,7 +375,7 @@ impl Walk<'_> {
             }
         }
 
-        placed.into_iter().map(Option::flatten).collect()
+        placed.into_iter().map(Option::unwrap_or_default).collect()
     }
 
     /// The path one `use` leaf written in `container` imports, before
@@ -331,8 +395,61 @@ impl Walk<'_> {
             Some(None) => return None,
             None => written.to_owned(),
         };
+        if let Some(through) = self.through_rooted_glob(container, children, unrooted, &written) {
+            return self.renamed(through);
+        }
 
         rebase(container, &self.anchor_crate(&written)).and_then(|full| self.renamed(full))
+    }
+
+    /// A `use` path whose first segment only a glob import of `container`
+    /// brings into scope, rewritten through it: `use process::run;` under
+    /// `use super::*;`, where the parent has `use super::process;`. Only a
+    /// glob rooted at `self`, `super` or `crate` is read, which needs no
+    /// other `use` of the file to place. `None` when the head is rooted, a
+    /// child or this module's own item, or no such glob provides it.
+    fn through_rooted_glob(
+        &self,
+        container: &str,
+        children: &BTreeMap<String, Option<String>>,
+        unrooted: bool,
+        written: &str,
+    ) -> Option<String> {
+        let (head, rest) = match written.split_once("::") {
+            Some((head, rest)) => (head, Some(rest)),
+            None => (written, None),
+        };
+        if !unrooted
+            || is_root(head)
+            || children.contains_key(head)
+            || self
+                .own_declarations
+                .contains(&format!("{container}::{head}"))
+        {
+            return None;
+        }
+        let mut sources: Vec<String> = self
+            .pending_globs
+            .iter()
+            .filter(|(declared_in, glob, absolute, _, _)| {
+                declared_in == container
+                    && !absolute
+                    && is_root(glob.split("::").next().unwrap_or(glob))
+            })
+            .filter_map(|(_, glob, _, _, _)| rebase(container, &self.anchor_crate(glob)))
+            .collect();
+        sources.extend(self.glob_sources(container));
+        sources.dedup();
+        if sources.is_empty() {
+            return None;
+        }
+        match self.through_globs(container, &sources, head) {
+            Globbed::One(target) => Some(match rest {
+                Some(rest) => format!("{target}::{rest}"),
+                None => target,
+            }),
+            Globbed::Absent | Globbed::Ambiguous => None,
+        }
     }
 
     /// Bring what the `use` items among a block's `statements` import into
@@ -378,16 +495,19 @@ impl Walk<'_> {
                 _ => None,
             })
             .collect();
-        let mut written: Vec<((UseLeaf, bool), proc_macro2::Span)> = Vec::new();
+        let mut written: Vec<((UseLeaf, bool), proc_macro2::Span, bool)> = Vec::new();
         for node in uses {
             let mut leaves = Vec::new();
             flatten_use(&node.tree, "", &mut leaves);
+            let gated = cfg_predicate(&node.attrs).is_some();
             for leaf in leaves {
-                written.push(((leaf, node.leading_colon.is_none()), node.span()));
+                written.push(((leaf, node.leading_colon.is_none()), node.span(), gated));
             }
         }
-        let leaves: Vec<(UseLeaf, bool)> = written.iter().map(|(leaf, _)| leaf.clone()).collect();
-        let placed = self.place_scope_leaves(&leaves, |leaf, unrooted| {
+        let leaves: Vec<(UseLeaf, bool)> =
+            written.iter().map(|(leaf, _, _)| leaf.clone()).collect();
+        let gated: Vec<bool> = written.iter().map(|(_, _, gated)| *gated).collect();
+        let placed = self.place_scope_leaves(&leaves, &gated, |leaf, unrooted| {
             let head = leaf.full.split("::").next().unwrap_or(&leaf.full);
             if unrooted && !is_root(head) && local.contains(head) {
                 return None;
@@ -395,34 +515,45 @@ impl Walk<'_> {
             self.block_use_path(container, &children, unrooted, &leaf.full)
         });
         let source = reference("module", &self.module);
-        let mut bound: BTreeMap<String, Option<String>> = BTreeMap::new();
-        for (((leaf, _), span), full) in written.into_iter().zip(placed) {
+        // Each name, with the paths it binds and whether every `use`
+        // binding it is gated, so `cfg` alternatives keep all of theirs.
+        let mut bound: BTreeMap<String, (Vec<String>, bool, bool)> = BTreeMap::new();
+        for (((leaf, _), span, gated), alternatives) in written.into_iter().zip(placed) {
             // A leaf that places nothing still shadows the outer binding of
             // its name, which it hides in this block.
-            let full = full.map(|full| {
-                let module = if leaf.names_module {
-                    full.clone()
-                } else {
-                    parent_module(&full).to_owned()
-                };
-                self.import(&source, &module, span);
-                self.exported(full)
-            });
+            let fulls: Vec<String> = alternatives
+                .into_iter()
+                .map(|full| {
+                    let module = if leaf.names_module {
+                        full.clone()
+                    } else {
+                        parent_module(&full).to_owned()
+                    };
+                    self.import(&source, &module, span);
+                    self.exported(full)
+                })
+                .collect();
             if leaf.alias == "_" {
                 continue;
             }
-            match (bound.get(&leaf.alias), full) {
-                (Some(Some(existing)), Some(full)) if *existing == full => {}
-                (Some(_), _) | (None, None) => {
-                    bound.insert(leaf.alias, None);
-                }
-                (None, Some(full)) => {
-                    bound.insert(leaf.alias, Some(full));
+            let entry = bound
+                .entry(leaf.alias)
+                .or_insert_with(|| (Vec::new(), true, false));
+            entry.1 &= gated;
+            entry.2 |= fulls.is_empty();
+            for full in fulls {
+                if !entry.0.contains(&full) {
+                    entry.0.push(full);
                 }
             }
         }
-        for (alias, full) in bound {
-            self.aliases.shadow(alias, full);
+        for (alias, (fulls, gated, unplaced)) in bound {
+            match fulls.len() {
+                _ if unplaced => self.aliases.shadow(alias, None),
+                1 => self.aliases.shadow(alias, fulls.into_iter().next()),
+                _ if gated => self.aliases.shadow_alternatives(alias, fulls),
+                _ => self.aliases.shadow(alias, None),
+            }
         }
 
         Some(outer)
@@ -549,6 +680,68 @@ impl Walk<'_> {
             .map(|(target, unconfirmed)| (self.exported(target), unconfirmed))
     }
 
+    /// Every target [`Walk::resolve_path`] gives `path` across its `cfg`
+    /// alternatives: once per alternative a `use` binds its head to
+    /// (`platform::flush()` under `use unix as platform;` and
+    /// `use windows as platform;`), and once per alternative a re-export it
+    /// is written through names (`crate::fs::open` under a gated
+    /// `pub use unix::open;` and a Windows one). Only one compiles in any
+    /// build, so an edge to each is what the code means; a path with no
+    /// alternatives gives what `resolve_path` does.
+    pub(super) fn resolve_paths(&self, container: &str, path: &syn::Path) -> Vec<(String, bool)> {
+        let head = path
+            .segments
+            .first()
+            .map(|segment| ident_name(&segment.ident))
+            .unwrap_or_default();
+        let alternatives = if path.leading_colon.is_none() {
+            self.aliases.alternatives(&head)
+        } else {
+            Vec::new()
+        };
+        let written: Vec<(String, bool)> = if alternatives.is_empty() {
+            self.resolve_written(container, path).into_iter().collect()
+        } else {
+            alternatives
+                .iter()
+                .filter_map(|alternative| {
+                    self.aliases.choose(&head, alternative);
+                    let target = self.resolve_written(container, path);
+                    self.aliases.unchoose();
+                    target
+                })
+                .collect()
+        };
+        let mut targets: Vec<(String, bool)> = Vec::new();
+        for (target, unconfirmed) in written {
+            for exported in self.exported_all(target) {
+                if !targets.iter().any(|(known, _)| *known == exported) {
+                    targets.push((exported, unconfirmed));
+                }
+            }
+        }
+
+        targets
+    }
+
+    /// [`Walk::exported`], once per `cfg` alternative a re-export of `path`
+    /// or a module above it names (see
+    /// [`Declarations::exported_alternatives`](super::declarations::Declarations::exported_alternatives)).
+    fn exported_all(&self, path: String) -> Vec<String> {
+        if !self.in_project(&path) {
+            return vec![path];
+        }
+        let alternatives = self.declarations.exported_alternatives(&path);
+        if alternatives.is_empty() {
+            return vec![self.exported(path)];
+        }
+        alternatives
+            .into_iter()
+            .filter_map(|alternative| self.renamed(alternative))
+            .map(|alternative| self.exported(alternative))
+            .collect()
+    }
+
     /// [`Walk::resolve_path`] before re-exports are followed: the path as
     /// the file's imports, roots and `mod` declarations place it.
     pub(super) fn resolve_written(
@@ -640,7 +833,7 @@ impl Walk<'_> {
                 return Some((own, true));
             }
         }
-        match self.through_globs(&self.glob_sources(container), &rendered) {
+        match self.through_globs(container, &self.glob_sources(container), &rendered) {
             Globbed::One(target) => return Some((target, false)),
             Globbed::Ambiguous => return None,
             Globbed::Absent => {}
@@ -728,7 +921,8 @@ impl Walk<'_> {
     /// comes first.
     pub(super) fn resolve_globs(&mut self) {
         let source = reference("module", &self.module);
-        for (container, written, absolute, span) in std::mem::take(&mut self.pending_globs) {
+        for (container, written, absolute, span, private) in std::mem::take(&mut self.pending_globs)
+        {
             // `::dep::*` names the external crate whatever the file calls
             // `dep`; otherwise a leading alias is one this module declares.
             let expanded = if absolute {
@@ -759,6 +953,9 @@ impl Walk<'_> {
             };
             self.import(&source, &full, span);
             let glob = (container, full);
+            if private {
+                self.private_globs.insert(glob.clone());
+            }
             if !self.globs.contains(&glob) {
                 self.globs.push(glob);
             }
@@ -821,7 +1018,11 @@ impl Walk<'_> {
             if !self.in_project(&current) || !visited.insert(current.clone()) {
                 break;
             }
-            let Some(next) = self.declarations.exported(&current) else {
+            let Some(next) = self
+                .declarations
+                .exported(&current)
+                .or_else(|| self.through_glob_imports(&current))
+            else {
                 break;
             };
             match self.renamed(next) {
@@ -833,9 +1034,56 @@ impl Walk<'_> {
         current
     }
 
+    /// `path` rewritten through the glob imports of a module it goes
+    /// through, when that module neither declares nor re-exports the name
+    /// below it: `crate::v2::Profile` under `pub use types::*;` in
+    /// `crate::v2` is `crate::v2::types::Profile`, and `super::digest` in a
+    /// child of a module with `use super::*;` reaches what the grandparent
+    /// declares. The module is the longest prefix of `path` with glob
+    /// imports; a name its sources provide apart resolves to nothing, as in
+    /// [`Walk::through_globs`]. `None` when `path` is declared as written, or
+    /// nothing provides it.
+    fn through_glob_imports(&self, path: &str) -> Option<String> {
+        if self.declarations.get(path).is_some() {
+            return None;
+        }
+        let mut module = path;
+        while let Some((prefix, _)) = module.rsplit_once("::") {
+            module = prefix;
+            // A private glob is seen only by the module that writes it and
+            // the ones below.
+            let inside = self.module == module || self.module.starts_with(&format!("{module}::"));
+            let sources: Vec<String> = self
+                .declarations
+                .globs_of(module)
+                .iter()
+                .filter(|(_, private)| !private || inside)
+                .map(|(source, _)| source.clone())
+                .collect();
+            if sources.is_empty() {
+                continue;
+            }
+            let rest = &path[module.len() + 2..];
+            let head = rest.split("::").next().unwrap_or(rest);
+            if self
+                .declarations
+                .get(&format!("{module}::{head}"))
+                .is_some()
+            {
+                return None;
+            }
+            return match self.through_globs(module, &sources, rest) {
+                Globbed::One(target) if target != path => Some(target),
+                _ => None,
+            };
+        }
+
+        None
+    }
+
     /// Whether `path` is rooted in this project: at this file's crate root,
     /// its target root's crate, or a workspace member's crate.
-    fn in_project(&self, path: &str) -> bool {
+    pub(super) fn in_project(&self, path: &str) -> bool {
         let head = path.split("::").next().unwrap_or(path);
         head == self.crate_root()
             || head == self.crate_module.split("::").next().unwrap_or("")
@@ -896,7 +1144,36 @@ impl Walk<'_> {
     /// name never becomes a made-up path inside the source. Each source is
     /// taken through the project's renamed `mod` declarations first, which
     /// a source recorded before the index was known has not been.
-    pub(super) fn through_globs(&self, sources: &[String], rendered: &str) -> Globbed {
+    ///
+    /// A source's private `use` (`use super::Profile;` in a child) is
+    /// visible, and so brought in, only when `importer`, the module writing
+    /// the glob, sits inside the source (`use super::*;`): a parent's
+    /// `pub use child::*;` does not import what the child itself imports
+    /// privately.
+    pub(super) fn through_globs(
+        &self,
+        importer: &str,
+        sources: &[String],
+        rendered: &str,
+    ) -> Globbed {
+        self.through_globs_within(importer, sources, rendered, 0)
+    }
+
+    /// [`Walk::through_globs`] `depth` globs away from the module that
+    /// wrote the first one. A source that provides the name neither as a
+    /// declaration nor as a `use` provides it when its own glob imports do
+    /// (`pub use types::*;` in a module a child imports with `use
+    /// super::*;`), a private glob only to an importer inside the source.
+    fn through_globs_within(
+        &self,
+        importer: &str,
+        sources: &[String],
+        rendered: &str,
+        depth: usize,
+    ) -> Globbed {
+        /// Globs followed from one name at most, which a cycle of glob
+        /// imports cannot outrun.
+        const MAX_GLOB_DEPTH: usize = 4;
         let head = rendered.split("::").next().unwrap_or(rendered);
         let mut found: Option<String> = None;
         for source in sources {
@@ -918,11 +1195,30 @@ impl Walk<'_> {
                     None => None,
                 },
             };
+            let hidden = self.declarations.is_private_export(&named)
+                && !importer.starts_with(&format!("{source}::"));
             let provided = match provided {
                 Some(provided) => provided,
+                None if hidden => continue,
                 None => match self.declarations.export_of(&named) {
                     Some(Some(_)) => self.exported(full),
                     Some(None) => return Globbed::Ambiguous,
+                    None if depth < MAX_GLOB_DEPTH => {
+                        let nested: Vec<String> = self
+                            .declarations
+                            .globs_of(&source)
+                            .iter()
+                            .filter(|(_, private)| {
+                                !private || importer.starts_with(&format!("{source}::"))
+                            })
+                            .map(|(nested, _)| nested.clone())
+                            .collect();
+                        match self.through_globs_within(importer, &nested, rendered, depth + 1) {
+                            Globbed::One(provided) => provided,
+                            Globbed::Ambiguous => return Globbed::Ambiguous,
+                            Globbed::Absent => continue,
+                        }
+                    }
                     None => continue,
                 },
             };
@@ -956,6 +1252,21 @@ fn block_item_name(item: &Item) -> Option<String> {
     };
 
     Some(ident_name(ident))
+}
+
+/// One path a module-level `use` leaf binds its name to.
+struct Binding {
+    /// The leaf as written.
+    leaf: UseLeaf,
+    /// The path it imports.
+    full: String,
+    /// Whether that path is one `cfg` alternative of the name: the `use`
+    /// itself is gated, or it is written through a name gated `use` items
+    /// bind apart.
+    gated: bool,
+    /// Whether the `use` is private, visible only in its module and the
+    /// modules below it.
+    private: bool,
 }
 
 /// What glob imports bring in under one name (see [`Walk::through_globs`]).

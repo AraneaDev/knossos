@@ -68,6 +68,61 @@ final class CyclesTest extends KnossosTestCase
     }
 
     /**
+     * A parent module that re-exports its children while they import what
+     * they share back through it (`pub use integration::*;` beside
+     * `use super::HelperProfile;`), or a barrel's `re_exports`, is the
+     * idiomatic layout: those edges are left out by default, so the one real
+     * cycle, between two siblings, stands out. Kept on request.
+     */
+    #[Group('cycles')]
+    public function testReExportFacadesAreLeftOutUnlessAskedFor(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $module = function (string $name) use ($repository, $ids): string {
+            $id = StableId::symbol($ids['project'], 'rust', 'module', $name);
+            $repository->saveNode($id, $ids['project'], 'rust', 'module', $name, $name, null, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+
+            return $id;
+        };
+        $edge = function (string $kind, string $source, string $target) use ($repository, $ids): void {
+            $repository->saveEdge(StableId::edge($ids['project'], $kind, $source, $target, 'x'), $ids['project'], $kind, $source, $target, $ids['file'], 7, 7, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        };
+        $v2 = $module('crate::v2');
+        $integration = $module('crate::v2::integration');
+        $engine = $module('crate::engine');
+        $stages = $module('crate::engine::stages');
+        $plugin = $module('crate::engine::plugin');
+        $barrel = $module('web/index.ts');
+        $button = $module('web/button.ts');
+        foreach ([[$v2, $integration], [$engine, $stages], [$engine, $plugin]] as [$parent, $child]) {
+            $edge('contains', $parent, $child);
+        }
+        $edge('imports', $v2, $integration);
+        $edge('imports', $integration, $v2);
+        $edge('imports', $stages, $plugin);
+        $edge('imports', $plugin, $stages);
+        $edge('re_exports', $barrel, $button);
+        $edge('imports', $button, $barrel);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $cycles = ArchitectureQueryService::forDatabase($pdo)->services()->cycleQueries;
+
+        $default = $cycles->dependencyCycles($ids['project'])->data;
+        $members = array_map(static fn(array $cycle): array => array_column($cycle['members'], 'canonical_name'), $default['cycles']);
+        assertSame([['crate::engine::plugin', 'crate::engine::stages']], array_map(static function (array $names): array {
+            sort($names);
+
+            return $names;
+        }, $members));
+        assertSame(3, $default['bounds']['facade_edges_ignored']);
+        $relationship = $default['cycles'][0]['relationships'][0];
+        assertSame(['src/Checkout.php', 7], [$relationship['path'], $relationship['line']]);
+
+        $all = $cycles->dependencyCycles($ids['project'], includeFacades: true)->data;
+        assertSame(3, count($all['cycles']));
+        assertSame(0, $all['bounds']['facade_edges_ignored']);
+    }
+
+    /**
      * One value import among several statements between the same two modules is
      * enough to make the dependency real.
      *

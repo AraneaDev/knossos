@@ -32,7 +32,7 @@ impl Walk<'_> {
                 name,
                 marks,
                 sources,
-            } => match self.through_globs(&sources, &name) {
+            } => match self.through_globs(crate::resolve::parent_module(owner), &sources, &name) {
                 Globbed::One(target) => Some(format!("{marks}{target}")),
                 Globbed::Absent | Globbed::Ambiguous => None,
             },
@@ -148,8 +148,26 @@ impl Walk<'_> {
                     None => self.stated_type(container, &path.path),
                 },
             },
+            // `&mut dyn Driver` and `impl Driver` hold some type of the
+            // trait: a method called on one is the trait's, which its
+            // implementations fulfil.
+            Type::TraitObject(object) => self.bound_type(container, &object.bounds),
+            Type::ImplTrait(implemented) => self.bound_type(container, &implemented.bounds),
             _ => None,
         }
+    }
+
+    /// The trait the first trait bound of a `dyn` or `impl` type names, when
+    /// something vouches for it.
+    fn bound_type(
+        &self,
+        container: &str,
+        bounds: &syn::punctuated::Punctuated<syn::TypeParamBound, syn::Token![+]>,
+    ) -> Option<String> {
+        bounds.iter().find_map(|bound| match bound {
+            syn::TypeParamBound::Trait(bound) => self.stated_type(container, &bound.path),
+            _ => None,
+        })
     }
 
     /// The canonical path of the type a path names, when something vouches

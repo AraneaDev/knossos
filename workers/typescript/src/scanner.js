@@ -216,6 +216,7 @@ function noteDeclarationFiles(answer, files) {
  * @property {boolean} [fallbackOrphaned] whether the project has a config at all, so the fallback program's files are left out of every TypeScript project
  * @property {string} [owner] the config whose program is being built
  * @property {string} [program] the key of the program being built
+ * @property {Set<string>} [programConfigs] the absolute path of every config the request builds a program of
  */
 
 /**
@@ -431,6 +432,12 @@ export class TypeScriptScanner {
             parsedConfigs,
             emit,
         });
+        // The configs this request builds a program of: an option one of
+        // them sets is reported by its own program, not by every program
+        // that extends it.
+        request.programConfigs = new Set(
+            parsedConfigs.map(([configPath]) => path.resolve(root, configPath)),
+        );
         let programs = 0;
         let programsReused = 0;
         this.programCache.beginRequest();
@@ -667,6 +674,7 @@ export class TypeScriptScanner {
                 maxFileBytes,
                 fallback,
                 fallback && request.fallbackOrphaned === true,
+                request.programConfigs ?? new Set(),
             );
         // A bundler config the program's options were read from counts as
         // its configuration: what could not be read of it applies to all.

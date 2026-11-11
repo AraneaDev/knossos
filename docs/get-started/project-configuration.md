@@ -29,18 +29,19 @@ with ignores, boundaries and deny policies.
 
 Unknown keys are an error. These are the keys:
 
-| Key                      | Shape                           | What it does                                                  |
-| ------------------------ | ------------------------------- | ------------------------------------------------------------- |
-| `ignores`                | up to 100 strings               | Relative patterns to skip, on top of the built-in exclusions. |
-| `limits`                 | object                          | Discovery and worker bounds, below.                           |
-| `boundaries`             | up to 50 objects                | Named groups of components, by path or by PHP namespace.      |
-| `frameworks`             | up to 20 strings                | Hints for static analysis of a supported framework.           |
-| `snapshot_retention`     | integer, 0 to 20                | How many historical snapshots to keep.                        |
-| `policies`               | up to 50 objects                | Architecture rules between boundaries.                        |
-| `quality_budgets`        | object of integers, 0 to 100000 | Allowed regressions for the quality gate.                     |
-| `dead_code_suppressions` | up to 200 strings               | Components to leave out of the dead-code candidates.          |
-| `web_roots`              | object, up to 50 entries        | URL prefixes a web server maps to project folders.            |
-| `enrichers`              | up to 32 names                  | Installed enrichers whose facts this project wants.           |
+| Key                       | Shape                           | What it does                                                  |
+| ------------------------- | ------------------------------- | ------------------------------------------------------------- |
+| `ignores`                 | up to 100 strings               | Relative patterns to skip, on top of the built-in exclusions. |
+| `limits`                  | object                          | Discovery and worker bounds, below.                           |
+| `boundaries`              | up to 50 objects                | Named groups of components, by path or by PHP namespace.      |
+| `frameworks`              | up to 20 strings                | Hints for static analysis of a supported framework.           |
+| `snapshot_retention`      | integer, 0 to 20                | How many historical snapshots to keep.                        |
+| `policies`                | up to 50 objects                | Architecture rules between boundaries.                        |
+| `quality_budgets`         | object of integers, 0 to 100000 | Allowed regressions for the quality gate.                     |
+| `dead_code_suppressions`  | up to 200 strings               | Components to leave out of the dead-code candidates.          |
+| `diagnostic_suppressions` | up to 200 objects               | Diagnostics not to report, by `code` and optionally `path`.   |
+| `web_roots`               | object, up to 50 entries        | URL prefixes a web server maps to project folders.            |
+| `enrichers`               | up to 32 names                  | Installed enrichers whose facts this project wants.           |
 
 ### Ignores
 
@@ -93,8 +94,8 @@ the scanner configuration fingerprint: changing `ignores`, `frameworks`,
 contributions, so the next scan reads every file again. The other settings
 reuse every cached file.
 
-Some settings are frozen at scan time: `ignores`, `snapshot_retention` and
-`dead_code_suppressions` take effect when the next scan runs, and until then
+Some settings are frozen at scan time: `ignores`, `snapshot_retention`,
+`dead_code_suppressions` and `diagnostic_suppressions` take effect when the next scan runs, and until then
 the graph answers as the last scan left it. Others are read on every call:
 `policies`, `quality_budgets`, `limits.refresh_budget_ms` and
 `limits.watch_scan_timeout_ms` apply to the next query without a scan.
@@ -272,3 +273,23 @@ diagnostic prefix:
 | `PROJECT_CONFIG_UNREADABLE`          | The file exists and cannot be read.                                                           |
 
 The file is never executed.
+
+## Diagnostic suppressions
+
+A diagnostic that is wrong for your project, such as a deprecation your own
+compiler does not report, can be put aside. Each entry names its `code`, and
+optionally the `path` of the file it is reported on, exactly or as a prefix
+with a trailing `*`, and a `reason`:
+
+```json
+{
+    "version": 1,
+    "diagnostic_suppressions": [
+        { "code": "TS5101", "reason": "our tsc 5.9 does not deprecate it" },
+        { "code": "TS2688", "path": "examples/*" }
+    ]
+}
+```
+
+`list_diagnostics` leaves the matching diagnostics out of its list and its
+`total`, and counts them in `suppressed`.

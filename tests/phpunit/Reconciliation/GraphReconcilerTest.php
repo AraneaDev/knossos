@@ -372,6 +372,61 @@ final class GraphReconcilerTest extends TestCase
         $this->assertStringContainsString('src/Duplicate.php', $diagnostic[6]);
     }
 
+    /**
+     * Two declarations of one Rust item that each compile only under a `cfg`
+     * (`#[cfg(target_os = "linux")]` beside the type, a macOS file its `mod`
+     * declaration gates) are alternatives: only one is ever compiled, so
+     * neither is a re-declaration. The first is kept and lists where the
+     * others are. A declaration no `cfg` gates compiles beside any other, so
+     * a second one of the same item is still reported.
+     */
+    public function testCfgAlternativesOfOneRustItemAreKeptWithoutADuplicateWarning(): void
+    {
+        $declaration = static fn(string $path, int $line, ?string $cfg): NodeFact => new NodeFact(
+            localId: 'rust:method:crate::svc::Runtime::inspect',
+            kind: 'method',
+            canonicalName: 'crate::svc::Runtime::inspect',
+            displayName: 'inspect',
+            origin: Origin::Ast,
+            confidence: Confidence::Certain,
+            evidence: new Evidence($path, $line, $line + 2),
+            attributes: $cfg === null ? [] : ['cfg' => $cfg],
+        );
+        $files = ['src/svc.rs', 'src/svc/launchd.rs', 'src/svc/scm.rs'];
+        $request = $this->buildRequest([
+            'discovery' => $this->minimalDiscovery(array_map(fn(string $path): DiscoveredFile => $this->minimalDiscoveredFile($path, 'rust'), $files)),
+            'contributions' => [
+                $this->minimalContribution([$declaration('src/svc.rs', 4, 'target_os = "linux"')]),
+                $this->minimalContribution([$declaration('src/svc/launchd.rs', 3, 'target_os = "macos"')]),
+                $this->minimalContribution([$declaration('src/svc/scm.rs', 7, 'windows')]),
+            ],
+        ]);
+
+        $result = (new GraphReconciler($this->repo))->reconcile($request);
+
+        assertSame(1, $result->nodes);
+        assertSame(0, $result->diagnostics);
+        $attributes = $this->repo->nodes[0][12];
+        assertSame('target_os = "linux"', $attributes['cfg']);
+        assertSame([
+            ['path' => 'src/svc/launchd.rs', 'start_line' => 3, 'end_line' => 5, 'cfg' => 'target_os = "macos"'],
+            ['path' => 'src/svc/scm.rs', 'start_line' => 7, 'end_line' => 9, 'cfg' => 'windows'],
+        ], $attributes['cfg_alternatives']);
+
+        $this->repo = new FakeGraphRepository();
+        $ungated = $this->buildRequest([
+            'discovery' => $this->minimalDiscovery(array_map(fn(string $path): DiscoveredFile => $this->minimalDiscoveredFile($path, 'rust'), $files)),
+            'contributions' => [
+                $this->minimalContribution([$declaration('src/svc.rs', 4, null)]),
+                $this->minimalContribution([$declaration('src/svc/launchd.rs', 3, 'target_os = "macos"')]),
+            ],
+        ]);
+        $result = (new GraphReconciler($this->repo))->reconcile($ungated);
+
+        assertSame(1, $result->diagnostics);
+        assertSame('reconciler.duplicate_symbol_evidence', $this->repo->diagnostics[0][5]);
+    }
+
     public function testCollectNodesPackageReDeclaredAcrossFilesEmitsNoDuplicateWarning(): void
     {
         // Two files both importing the same package produce two NodeFacts with
@@ -1907,6 +1962,56 @@ final class GraphReconcilerTest extends TestCase
         assertSame(2, $result->nodes);
         assertSame(1, $result->edges);
         assertSame(0, $result->unresolvedNodes);
+    }
+
+    /**
+     * A Rust trait impl's method is declared under its impl
+     * (`Session::<impl Driver>::receive`), so it stays apart from an inherent
+     * method of the same name. A call names it by its type, which reaches the
+     * inherent method when there is one and otherwise the one trait impl
+     * declaring the name; two traits declaring it leave the call unresolved.
+     */
+    #[Group('reconciliation')]
+    public function testARustCallByTypeReachesTheInherentMethodElseTheOneTraitImplMethod(): void
+    {
+        $caller = $this->minimalNode('rust:function:crate::go', 'crate::go');
+        $nodes = [$caller];
+        foreach ([
+            'crate::Session::receive',
+            'crate::Session::<impl Driver>::receive',
+            'crate::Session::<impl Driver>::close',
+            'crate::Pair::<impl Display>::fmt',
+            'crate::Pair::<impl Debug>::fmt',
+            'crate::<impl Shout for str>::shout',
+        ] as $canonical) {
+            $nodes[] = $this->minimalNode('rust:method:' . $canonical, $canonical);
+        }
+        $edges = [];
+        foreach (['crate::Session::receive', 'crate::Session::close', 'crate::Pair::fmt', 'crate::shout'] as $index => $target) {
+            $edges[] = new EdgeFact(
+                kind: 'calls',
+                sourceReference: $caller->localId,
+                targetReference: 'rust:method:' . $target,
+                origin: Origin::Ast,
+                confidence: Confidence::Probable,
+                evidence: new Evidence('src/Foo.php', $index + 1, $index + 1),
+                attributes: ['speculative' => true],
+            );
+        }
+        $request = $this->buildRequest([
+            'discovery' => $this->minimalDiscovery([$this->minimalDiscoveredFile('src/Foo.php')]),
+            'contributions' => [$this->minimalContribution($nodes, $edges)],
+        ]);
+
+        (new GraphReconciler($this->repo))->reconcile($request);
+
+        $canonical = [];
+        foreach ($this->repo->nodes as $row) {
+            $canonical[$row[0]] = $row[4];
+        }
+        $targets = array_map(static fn(array $row): string => $canonical[$row[4]], $this->repo->edges);
+        sort($targets);
+        assertSame(['crate::Session::<impl Driver>::close', 'crate::Session::receive'], $targets);
     }
 
     /**

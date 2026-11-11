@@ -160,6 +160,16 @@ TypeScript `import type`, is erased at runtime and does not count, so a loop
 closed only by such imports is not reported. The result says so in its
 `warnings`.
 
+A re-export facade is left out too, unless you pass `--include-facades`
+(`include_facades` over MCP): a `re_exports` edge, and an `imports` edge
+between a module and one of its own ancestors. A parent that re-exports its
+children (Rust's `pub use child::Item;`, a package `__init__.py`, an
+`index.ts` barrel) while they import what they share back through it
+(`use super::Shared;`) is the ordinary layout, and with those edges every such
+parent and child read as one cycle, hiding a real one between siblings among
+them. `bounds.facade_edges_ignored` counts the edges left out. Each listed
+relationship carries the `path` and `line` it was found at.
+
 The default bounds cover the whole graph of most projects: `max_nodes`
 (default 200,000) counts only the symbols that take part in a selected
 relationship, and `max_edges` defaults to 500,000. The search reads bare
@@ -224,7 +234,11 @@ tested function counts as tested. An implementation a test reaches through its
 interface counts too, and so does a constructor whose class a test constructs.
 A composition root that builds the application is reached but never walked
 out of, or every service would read as tested by a test that only boots the
-app.
+app. A program a test runs as a process is reached when the test names the
+file it runs (a `launches` edge), which for Rust includes a binary named
+through `env!("CARGO_BIN_EXE_<name>")`; one whose path comes from an
+environment variable a script sets cannot be seen, and the result says so in
+its `warnings`.
 
 Test files, tool configs (`vitest.config.ts`, `conftest.py`) and TypeScript
 declaration files are left out: none holds code a test would reach. A

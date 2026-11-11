@@ -28,6 +28,19 @@ use Knossos\Store\EnrichedFacts;
 final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
 {
     /**
+     * Methods a JavaScript runtime calls implicitly: `JSON.stringify` calls
+     * `toJSON`, string and number conversion `toString`, `valueOf` and
+     * `[Symbol.toPrimitive]`, `await` a `then`, `for ... of` and `for await`
+     * the iterators, `using` the disposers, and Node's `util.inspect` an
+     * `inspect` hook.
+     */
+    private const IMPLICIT_PROTOCOL_METHODS = [
+        'toJSON', 'toString', 'valueOf', 'then', 'inspect',
+        '[Symbol.iterator]', '[Symbol.asyncIterator]', '[Symbol.dispose]', '[Symbol.asyncDispose]',
+        '[Symbol.toPrimitive]', '[util.inspect.custom]', '[inspect.custom]',
+    ];
+
+    /**
      * The TypeScript/JavaScript constructor. PHP and Python both spell their
      * engine-dispatched members with a leading `__` instead, which
      * `isEngineInvokedMemberOfReferencedType` matches by prefix.
@@ -59,7 +72,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      *
      * @return array{candidates: list<array<string, mixed>>, excluded: array<string, int>}
      */
-    public function classify(string $projectId, array $provisional, CandidateGraphFacts $facts, array $edgeKinds, int $minConfidenceRank, bool $includeTests = false): array
+    public function classify(string $projectId, array $provisional, CandidateGraphFacts $facts, array $edgeKinds, int $minConfidenceRank, bool $includeTests = false, bool $includeAnnotated = false): array
     {
         $candidates = [];
         $methodNames = [];
@@ -88,10 +101,13 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         $suppressions = $facts->deadCodeSuppressions();
         $annotationsByName = $facts->componentAnnotations();
         $memberReachability = $this->containerMemberReachability($projectId, $provisional, $edgeKinds, $minConfidenceRank);
+        $memberReachability += $this->fileMemberReachability($projectId, $provisional, $memberReachability, $edgeKinds, $minConfidenceRank);
         foreach ($provisional as $id => $candidate) {
-            $annotation = $annotationsByName[(string) $candidate['row']['canonical_name']] ?? null;
+            $annotation = $annotationsByName[(string) $candidate['row']['canonical_name']]
+                ?? self::enclosingAnnotation((string) $candidate['row']['canonical_name'], $annotationsByName);
             $context = $inheritance[$id] ?? [
                 'inherited' => false,
+                'contracts' => [],
                 'implemented' => false,
                 'implementations' => [],
                 'declaring_kind' => null,
@@ -102,7 +118,12 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             $exclusion = self::exclusionOf($candidate['row'], array_column($candidate['roles'], 'role'), $annotation, $context, $facts, $suppressions);
             if ($exclusion !== null) {
                 ++$excluded[$exclusion];
-                continue;
+                // Asked for, what an annotation hid is listed with its note,
+                // still counted under the annotation.
+                $hidden = $includeAnnotated && in_array($exclusion, ['annotated_false_positives', 'annotated_intentional'], true);
+                if (!$hidden) {
+                    continue;
+                }
             }
             // A class/module is often reached through a member call rather than
             // by a direct edge to the container. Direct in-degree alone then
@@ -135,10 +156,53 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             if ($annotation !== null) {
                 $entry['annotation'] = $annotation;
             }
+            if ($exclusion !== null) {
+                $entry['hidden_by_annotation'] = true;
+            }
             $candidates[] = $entry;
         }
 
         return ['candidates' => $candidates, 'excluded' => $excluded];
+    }
+
+    /**
+     * The `false_positive` or `intentional` annotation of the nearest
+     * component that encloses `$canonical`, by its canonical name: a module
+     * annotated as loaded by a path the graph cannot see
+     * (`examples._client_input`) speaks for every member it holds
+     * (`examples._client_input.open_client`). A `confirmed_dead` annotation
+     * judges the one component it is on. The annotation carries the name it
+     * was made on as `covered_by`.
+     *
+     * @param array<string, array{kind: string, value: ?string}> $annotations
+     * @return ?array{kind: string, value: ?string, covered_by: string}
+     */
+    private static function enclosingAnnotation(string $canonical, array $annotations): ?array
+    {
+        if ($annotations === []) {
+            return null;
+        }
+        $end = strlen($canonical);
+        while ($end > 0) {
+            $cut = null;
+            foreach (['::', '.', '#', '\\', '/'] as $separator) {
+                $at = strrpos(substr($canonical, 0, $end), $separator);
+                if ($at !== false && $at > 0 && ($cut === null || $at > $cut)) {
+                    $cut = $at;
+                }
+            }
+            if ($cut === null) {
+                return null;
+            }
+            $enclosing = substr($canonical, 0, $cut);
+            $annotation = $annotations[$enclosing] ?? null;
+            if ($annotation !== null && in_array($annotation['kind'], ['false_positive', 'intentional'], true)) {
+                return $annotation + ['covered_by' => $enclosing];
+            }
+            $end = $cut;
+        }
+
+        return null;
     }
 
     /**
@@ -155,7 +219,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * @param array<string, mixed> $row
      * @param list<string> $roles
      * @param array<string, mixed>|null $annotation
-     * @param array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @param array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      * @param list<string> $suppressions
      */
     private static function exclusionOf(array $row, array $roles, ?array $annotation, array $context, CandidateGraphFacts $facts, array $suppressions): ?string
@@ -174,8 +238,16 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         // The scanner saw the supertype member this one fulfils, which may
         // live outside the graph, where the walk above cannot look.
         $local = ReportableComponent::graphLocalExclusion($row, $roles);
+        // A method fulfilling a contract is reached through it, so it is out
+        // of the report while the contract is reached. One whose every
+        // contract is the project's own and reached by nothing (an interface
+        // member nobody calls through) is reached by nothing either, and is
+        // judged on its own callers, a test's included.
         if ($context['inherited'] || $local === 'inherited') {
-            return 'inherited';
+            $contracts = $context['contracts'] ?? [];
+            if ($contracts === [] || $context['external_ancestor'] !== null || self::anyReached($contracts, $facts)) {
+                return 'inherited';
+            }
         }
         // A contract an implementation carries. Gated on the declaring type
         // being referenced for the same reason constructors are: when
@@ -217,8 +289,30 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         if ($local === 'type_declarations') {
             return 'type_declarations';
         }
+        // Compiled only for the tests through a test-support feature: what
+        // calls it, if anything does, is a test.
+        if ($local === 'test_support') {
+            return 'test_support';
+        }
 
         return null;
+    }
+
+    /**
+     * Whether any of `$members` has an inbound edge other than inheritance.
+     *
+     * @param list<string> $members
+     */
+    private static function anyReached(array $members, CandidateGraphFacts $facts): bool
+    {
+        $facts->degrees($members);
+        foreach ($members as $member) {
+            if ($facts->inDegree($member) - $facts->inheritanceInDegree($member) > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -226,7 +320,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * an interface, or one its scanner marked abstract.
      *
      * @param array<string, mixed> $row
-     * @param array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @param array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      */
     private static function isBodiless(array $row, array $context): bool
     {
@@ -242,7 +336,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * How sure the report is that a candidate is dead, and why.
      *
      * @param array{component: array<string, mixed>, row: array<string, mixed>, roles: list<array<string, mixed>>, out_degree: int, reachability: string} $candidate
-     * @param array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
+     * @param array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      * @return array{0: string, 1: string}
      */
     private function confidenceAndReason(array $candidate, string $reachability, array $context, CandidateGraphFacts $facts): array
@@ -252,7 +346,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         // Every qualifier below builds on what was found, so a test-only
         // candidate never reads as one nothing calls.
         $found = $reachability === 'test_only'
-            ? 'The only inbound static references come from test code'
+            ? 'The only inbound static references come from test code (or example code)'
             : 'No inbound static reference was found';
         $reason = $reachability === 'test_only'
             ? $found . ', so nothing the product runs reaches this.'
@@ -286,6 +380,14 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 $found,
                 $context['external_ancestor'],
             );
+        }
+        // The runtime calls these by name or symbol with no call site naming
+        // them (`JSON.stringify` calls `toJSON`, `await` calls `then`, `for
+        // ... of` calls `[Symbol.iterator]`), whatever the class extends.
+        $name = (string) $candidate['row']['display_name'];
+        if ($candidate['row']['kind'] === 'method' && in_array($name, self::IMPLICIT_PROTOCOL_METHODS, true)) {
+            $confidence = 'possible';
+            $reason = sprintf('%s, but the runtime calls `%s` implicitly (serialising, converting, awaiting, iterating, disposing or inspecting a value), with no call site that names it.', $found, $name);
         }
 
         return [$confidence, $reason];
@@ -426,7 +528,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * An object literal handed around as a value with no type at all is the
      * third way: the code it is handed to calls its methods unseen.
      *
-     * @return array<string, array{inherited: bool, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool}>
+     * @return array<string, array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool}>
      */
     private function inheritedMethodContext(string $projectId, array $methodIds, array $methodNames): array
     {
@@ -464,6 +566,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             }
             $result[$methodId] = [
                 'inherited' => $inherited,
+                'contracts' => $classId === null ? [] : self::contractMembers($graph, $ancestors, $methodNames[$methodId], $methodId),
                 'implemented' => $classId !== null
                     && $graph->isImplementedBySubtype($classId, $methodNames[$methodId]),
                 'implementations' => $classId === null ? [] : $graph->implementingMembers($classId, $methodNames[$methodId]),
@@ -480,6 +583,32 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             ];
         }
         return $result;
+    }
+
+    /**
+     * The members of the project's own ancestors among `$ancestors` that a
+     * method named `$name` fulfils: an interface's or trait's declaration, a
+     * base class's method it overrides. Empty when only an external type, a
+     * framework hook or a subtype's contract makes the method inherited.
+     *
+     * @param list<string> $ancestors
+     * @return list<string>
+     */
+    private static function contractMembers(InheritanceGraph $graph, array $ancestors, string $name, string $methodId): array
+    {
+        $members = [];
+        foreach ($ancestors as $ancestorId) {
+            if ($graph->isExternal($ancestorId)) {
+                continue;
+            }
+            foreach ($graph->memberIds($ancestorId, $name) as $member) {
+                if ($member !== $methodId) {
+                    $members[] = $member;
+                }
+            }
+        }
+
+        return $members;
     }
 
     /**
@@ -641,6 +770,49 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 'any' => (int) $row['any_reference'] > 0,
                 'production' => (int) $row['production_reference'] > 0,
             ];
+        }
+
+        return $reachability;
+    }
+
+    /**
+     * For each module candidate whose own members nothing reaches, whether
+     * something outside its file reaches a declaration the file makes for a
+     * container elsewhere: a Rust file holding only `impl Parent { .. }` for
+     * its parent's type contains nothing, though the methods it adds are
+     * called. A module is used when what its file declares is.
+     *
+     * @param array<string, array<string, mixed>> $provisional
+     * @param array<string, array{any: bool, production: bool}> $known
+     * @param list<string> $edgeKinds
+     * @return array<string, array{any: bool, production: bool}>
+     */
+    private function fileMemberReachability(string $projectId, array $provisional, array $known, array $edgeKinds, int $minConfidenceRank): array
+    {
+        $statement = null;
+        $reachability = [];
+        foreach ($provisional as $id => $candidate) {
+            $path = $candidate['row']['relative_path'] ?? null;
+            if ($candidate['row']['kind'] !== 'module' || isset($known[$id]) || !is_string($path)) {
+                continue;
+            }
+            $statement ??= $this->pdo->prepare(
+                'SELECT COUNT(*) AS any_reference, '
+                . 'MAX(CASE WHEN NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = usage.source_id AND c.role = ?) THEN 1 ELSE 0 END) AS production_reference '
+                . 'FROM files f JOIN nodes n ON n.project_id = f.project_id AND n.file_id = f.id '
+                . 'JOIN edges usage ON usage.project_id = n.project_id AND usage.target_id = n.id '
+                . 'AND ' . EdgeQueries::kindFilteredIn('usage.kind', $edgeKinds) . ' AND ' . EnrichedFacts::excludeSql('usage') . ' '
+                . 'AND ' . ConfidenceRank::atLeast('usage.confidence') . ' '
+                . 'LEFT JOIN nodes source ON source.id = usage.source_id '
+                . 'WHERE f.project_id = ? AND f.relative_path = ? AND n.id <> ? '
+                . 'AND (source.file_id IS NULL OR source.file_id <> f.id)',
+            );
+            $statement->execute([ReportableComponent::TEST_ROLE, ...$edgeKinds, $minConfidenceRank, $projectId, $path, (string) $id]);
+            $row = $statement->fetch(\PDO::FETCH_ASSOC);
+            $statement->closeCursor();
+            if (is_array($row) && (int) $row['any_reference'] > 0) {
+                $reachability[(string) $id] = ['any' => true, 'production' => (int) $row['production_reference'] > 0];
+            }
         }
 
         return $reachability;
