@@ -73,7 +73,7 @@ pub(super) struct Walk<'a> {
     /// The type each function and method this file declares returns, as
     /// [`Walk::receiver_type`] states it, by canonical path: what a binding
     /// of a call's result holds (`let trie = sample_trie();`).
-    pub(super) function_returns: BTreeMap<String, String>,
+    pub(super) function_returns: super::declarations::FunctionReturns,
     /// Where the project's crates are, which names each `mod` declaration's
     /// module (see [`mod_child`](super::placement::mod_child)).
     pub(super) layout: &'a Layout,

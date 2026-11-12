@@ -107,8 +107,10 @@ pub type TypeAliases = BTreeMap<String, String>;
 /// path, as `Walk::receiver_type` states it through the file's own imports:
 /// what a binding of a call's result holds in another file
 /// (`let store = report::open_existing(root)?;`). A function whose return
-/// type the file cannot resolve is not here.
-pub type FunctionReturns = BTreeMap<String, String>;
+/// type the file cannot resolve is not here; a path the file declares twice
+/// with different return types (an inherent method and a trait's of one
+/// name, or two `#[cfg]` variants) returns `None`, no one type.
+pub type FunctionReturns = BTreeMap<String, Option<String>>;
 
 /// The declared type of one struct field, as far as its own file can tell.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -350,8 +352,8 @@ impl Declarations {
             self.returns.insert(
                 function.clone(),
                 match known {
-                    Some(earlier) if earlier.as_deref() != Some(returned.as_str()) => None,
-                    _ => Some(returned.clone()),
+                    Some(earlier) if earlier != *returned => None,
+                    _ => returned.clone(),
                 },
             );
         }

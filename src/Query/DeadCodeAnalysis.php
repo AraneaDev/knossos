@@ -340,8 +340,9 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      * @param array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
      * The third element names the reason in a word, for a caller that
      * sorts or tallies by it: `unreferenced` or `test_only` alone,
-     * `untyped_receiver`, `shape_contract`, `uncontracted_literal`,
-     * `external_ancestor` or `implicit_protocol`.
+     * `framework_role`, `dynamic_origin`, `untyped_receiver`,
+     * `shape_contract`, `uncontracted_literal`, `external_ancestor` or
+     * `implicit_protocol`.
      *
      * @return array{0: string, 1: string, 2: string}
      */
@@ -357,7 +358,13 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         $reason = $reachability === 'test_only'
             ? $found . ', so nothing the product runs reaches this.'
             : $found . ' among the selected edge kinds.';
-        $code = $reachability;
+        // A framework's role or a non-AST origin (a regex fallback, a
+        // convention) is why such a candidate starts `possible`.
+        $code = match (true) {
+            !$dynamicRisk => $reachability,
+            $this->hasFrameworkRole($candidate['roles']) => 'framework_role',
+            default => 'dynamic_origin',
+        };
         // A call by this name on a receiver its scanner could not type may
         // be the one that reaches it, so the absence of an edge proves less.
         if ($confidence === 'probable'

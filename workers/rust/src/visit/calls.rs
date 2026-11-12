@@ -615,7 +615,14 @@ impl Calls<'_, '_> {
             syn::Pat::Slice(inner) => {
                 let element = held.as_deref().and_then(element_of).map(str::to_owned);
                 for item in &inner.elems {
-                    self.bind_against(item, element.clone());
+                    // `rest @ ..` is the rest of the slice, not one element.
+                    let rest = matches!(
+                        item,
+                        syn::Pat::Ident(ident)
+                            if matches!(ident.subpat.as_ref().map(|(_, p)| p.as_ref()), Some(syn::Pat::Rest(_)))
+                    );
+                    let bound = if rest { held.clone() } else { element.clone() };
+                    self.bind_against(item, bound);
                 }
             }
             syn::Pat::Reference(inner) => self.bind_against(&inner.pat, held),

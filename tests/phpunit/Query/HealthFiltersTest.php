@@ -362,6 +362,10 @@ final class HealthFiltersTest extends KnossosTestCase
             static fn(string $n): bool => str_starts_with($n, 'src/x.ts#'),
         ));
         assertSame(true, in_array('src/x.ts#a_possible', $names($all), true));
+        // Possible only for its origin, it says so in its code.
+        $codes = array_column(array_map(static fn(array $c): array => ['name' => $c['component']['canonical_name'], 'code' => $c['reason_code']], $all['dead_code_candidates']), 'code', 'name');
+        assertSame('dynamic_origin', $codes['src/x.ts#a_possible']);
+        assertSame('unreferenced', $codes['src/x.ts#b_probable']);
 
         $page = $service->services()->healthQueries->architectureHealth($ids['project'], limit: 1, candidateConfidence: 'probable', candidateOffset: 1)->data;
         $probable = $service->services()->healthQueries->architectureHealth($ids['project'], limit: 100, candidateConfidence: 'probable')->data;

@@ -5690,6 +5690,120 @@ pub fn plain<T: Clone>(value: &T) {
 }
 
 #[test]
+fn a_rest_binding_in_a_slice_pattern_is_the_slice_not_an_element() {
+    // In `[first, rest @ ..]`, `first` is one element and `rest` is the
+    // rest of the slice: `rest.len()` is the slice's, not `Item::len`.
+    let source = r#"
+pub struct Item;
+impl Item {
+    pub fn len(&self) -> usize { 0 }
+    pub fn name(&self) {}
+}
+pub fn split(items: &[Item]) {
+    if let [first, rest @ ..] = items {
+        first.name();
+        let _ = rest.len();
+    }
+}
+"#;
+    let contributions = scan_fixture("slice-rest", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec![("rust:method:crate::Item::name".to_owned(), true)],
+        method_calls(&contributions, "rust:function:crate::split")
+    );
+}
+
+#[test]
+fn a_path_declared_twice_with_different_return_types_types_no_binding() {
+    // Two `#[cfg]` variants of one function return different types, so a
+    // binding of a call to it holds neither for certain, whichever comes
+    // last, and whether or not the other states a return type at all. The
+    // same function declared once still types the binding.
+    let source = r#"
+mod other;
+pub struct A;
+impl A { pub fn hit(&self) {} }
+pub struct B;
+impl B { pub fn hit(&self) {} }
+#[cfg(unix)]
+pub fn open() -> A { A }
+#[cfg(not(unix))]
+pub fn open() -> B { B }
+#[cfg(unix)]
+pub fn bare() -> A { A }
+#[cfg(not(unix))]
+pub fn bare() {}
+pub fn single() -> B { B }
+pub fn run() {
+    let v = open();
+    v.hit();
+}
+pub fn run_bare() {
+    let v = bare();
+    v.hit();
+}
+pub fn run_single() {
+    let v = single();
+    v.hit();
+}
+"#;
+    let other = r#"
+pub fn elsewhere() {
+    let v = crate::open();
+    v.hit();
+}
+"#;
+    let contributions = scan_fixture(
+        "ambiguous-returns",
+        &[("src/lib.rs", source), ("src/other.rs", other)],
+    );
+
+    let hits = |source: &str| -> Vec<(String, bool)> {
+        method_calls(&contributions, source)
+            .into_iter()
+            .filter(|(target, _)| target.starts_with("rust:method:"))
+            .collect()
+    };
+    assert!(hits("rust:function:crate::run").is_empty());
+    assert!(hits("rust:function:crate::run_bare").is_empty());
+    assert!(hits("rust:function:crate::other::elsewhere").is_empty());
+    assert_eq!(
+        vec![("rust:method:crate::B::hit".to_owned(), true)],
+        hits("rust:function:crate::run_single")
+    );
+}
+
+#[test]
+fn a_bound_naming_another_type_parameter_does_not_loop() {
+    // `T: U, U: T` is not valid Rust, but it parses, and a bound that names
+    // a type parameter must not be followed back to where it started, with
+    // or without arguments (`A: B<A>, B: A<B>`). The receiver stays untyped.
+    let source = r#"
+pub trait Driver {
+    fn written(&mut self);
+}
+pub fn bare<T: U, U: T>(value: &T) {
+    value.written();
+}
+pub fn argued<A: B<A>, B: A<B>>(value: &A) {
+    value.written();
+}
+pub fn mixed<D: E + Driver, E: D>(value: &D) {
+    value.written();
+}
+"#;
+    let contributions = scan_fixture("cyclic-bounds", &[("src/lib.rs", source)]);
+
+    assert!(method_calls(&contributions, "rust:function:crate::bare").is_empty());
+    assert!(method_calls(&contributions, "rust:function:crate::argued").is_empty());
+    assert_eq!(
+        vec![("rust:method:crate::Driver::written".to_owned(), true)],
+        method_calls(&contributions, "rust:function:crate::mixed")
+    );
+}
+
+#[test]
 fn a_field_declared_as_a_type_parameter_takes_the_receivers_type_argument() {
     // `ScenarioContext<'a, E>` declares `environment: &'a mut E` and leaves
     // `E` unbounded; `impl<E: Environment> ScenarioContext<'_, E>` and

@@ -86,15 +86,20 @@ impl Walk<'_> {
     /// re-exports (`report::open_existing` under `pub use store::open_existing;`)
     /// is looked up where the item is declared.
     pub(super) fn returned_type(&self, callee: &str) -> Option<String> {
+        // A path this file declares answers for itself, ambiguous or not:
+        // another file's return type at that path is not this one's.
         if let Some(local) = self.function_returns.get(callee) {
-            return Some(local.clone());
+            return local.clone();
         }
         let declared = self.declarations.return_of(callee).or_else(|| {
             let placed = self.exported(callee.to_owned());
-            (placed != callee)
-                .then(|| self.function_returns.get(&placed).cloned())
-                .flatten()
-                .or_else(|| self.declarations.return_of(&placed))
+            if placed == callee {
+                return None;
+            }
+            match self.function_returns.get(&placed) {
+                Some(local) => local.clone(),
+                None => self.declarations.return_of(&placed),
+            }
         })?;
         let (marks, held) = split_marks(&declared);
 
@@ -260,10 +265,19 @@ impl Walk<'_> {
             // a method called on it is the trait's, which its implementations
             // fulfil. Only a trait of this project counts (`Send + Driver`):
             // a dependency's bound leaves the receiver as untyped as before.
+            // A bound naming a type parameter (`T: U, U: T`, which parses
+            // though it does not compile) is not followed: it could lead
+            // back here.
             if let Some(bounds) = self.type_params.get(&name) {
                 return bounds
                     .iter()
-                    .filter(|bound| !bound.is_ident(&name))
+                    .filter(|bound| {
+                        bound.leading_colon.is_some()
+                            || bound.segments.len() != 1
+                            || !self
+                                .type_params
+                                .contains_key(&ident_name(&bound.segments[0].ident))
+                    })
                     .filter_map(|bound| self.stated_type(container, bound))
                     .find(|bound| self.in_project(bound));
             }
@@ -359,6 +373,7 @@ impl Walk<'_> {
         owner: Option<&str>,
     ) {
         let syn::ReturnType::Type(_, returned) = &signature.output else {
+            self.record_returned(canonical, None);
             return;
         };
         let outer = self.enter_type_params(&signature.generics);
@@ -370,9 +385,18 @@ impl Walk<'_> {
         let stated = self.receiver_type(container, returned);
         self.current_impl_target = outer_target;
         self.type_params = outer;
-        if let Some(stated) = stated {
-            self.function_returns.insert(canonical, stated);
-        }
+        self.record_returned(canonical, stated);
+    }
+
+    /// Record that the declaration at `canonical` returns `stated`. A second
+    /// declaration at the same path with another return type, or one this
+    /// file cannot resolve, leaves the path ambiguous.
+    fn record_returned(&mut self, canonical: String, stated: Option<String>) {
+        let returned = match self.function_returns.get(&canonical) {
+            Some(earlier) if *earlier != stated => None,
+            _ => stated,
+        };
+        self.function_returns.insert(canonical, returned);
     }
 
     /// Record the `type` aliases a file declares at module level, and in its

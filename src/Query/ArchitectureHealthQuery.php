@@ -386,7 +386,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         $compact = [];
         foreach ($found['candidates'] as $candidate) {
             $row = $rows[(string) $candidate['component']['id']] ?? [];
-            $compact[] = [
+            $entry = [
                 'component' => $candidate['component']['canonical_name'],
                 'kind' => $candidate['component']['kind'] ?? null,
                 'path' => $row['relative_path'] ?? null,
@@ -395,6 +395,14 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
                 'confidence' => $candidate['confidence'],
                 'reason_code' => $candidate['reason_code'] ?? null,
             ];
+            // An annotated candidate `include_annotated` brought back says so
+            // here as it does in the full answer.
+            foreach (['annotation', 'hidden_by_annotation'] as $marker) {
+                if (array_key_exists($marker, $candidate)) {
+                    $entry[$marker] = $candidate[$marker];
+                }
+            }
+            $compact[] = $entry;
         }
         $shown = $bounds['candidate_offset'] + count($compact);
         $summary = sprintf(
@@ -441,7 +449,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
             [],
             [
                 'Dead-code results are candidates only; reflection, configuration, templates, registry arrays, callbacks, dispatch tables, and framework conventions may reference a component without a visible static edge.',
-                'reason_code names why a candidate is only possible: `untyped_receiver`, `shape_contract`, `uncontracted_literal`, `external_ancestor` or `implicit_protocol`; `unreferenced` or `test_only` when nothing qualifies it. inspect_component or the full answer gives the reason in words.',
+                'reason_code names why a candidate is only possible: `framework_role` (a framework role may reach it by convention), `dynamic_origin` (it was found by a fallback, not the syntax tree), `untyped_receiver`, `shape_contract`, `uncontracted_literal`, `external_ancestor` or `implicit_protocol`; `unreferenced` or `test_only` when nothing qualifies it. inspect_component or the full answer gives the reason in words.',
             ],
             $found['truncated'] || $candidateTruncationReasons !== [],
         );
