@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.4](https://github.com/AraneaDev/knossos/compare/v0.44.3...v0.44.4) (2026-11-12)
+
+
+### Refactoring
+
+* remove three items Knossos reports dead in its own code ([#463](https://github.com/AraneaDev/knossos/issues/463)) ([a0bd75f](https://github.com/AraneaDev/knossos/commit/a0bd75fa570ed728713aa78acad8e82e6ebc8cb7))
+
 ## [0.44.3](https://github.com/AraneaDev/knossos/compare/v0.44.2...v0.44.3) (2026-11-12)
 
 
