@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.3](https://github.com/AraneaDev/knossos/compare/v0.44.2...v0.44.3) (2026-11-12)
+
+
+### Fixes
+
+* type Rust receivers through returns, patterns and bounds, and rank untyped-only dead-code candidates last ([#461](https://github.com/AraneaDev/knossos/issues/461)) ([d4ac828](https://github.com/AraneaDev/knossos/commit/d4ac828a29bcfea1c51de69ad52af19535eef7f3))
+
 ## [0.44.2](https://github.com/AraneaDev/knossos/compare/v0.44.1...v0.44.2) (2026-11-12)
 
 
