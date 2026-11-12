@@ -12,7 +12,7 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 
 use super::state::Calls;
-use super::types::{element_of, pointee_of, ELEMENT_MARK, POINTER_MARK};
+use super::types::{element_of, pointee_of, unwrapped, ELEMENT_MARK, POINTER_MARK, WRAP_MARK};
 use crate::facts::reference;
 use crate::resolve::{ident_name, is_prelude_name};
 
@@ -282,10 +282,25 @@ impl Calls<'_, '_> {
             };
             // A field access derefs a smart pointer to what it holds.
             let owner = self.receiver_owner(&field.base)?;
-            return self.walk.field_type(pointee_of(&owner), &ident_name(name));
+            let member = ident_name(name);
+            if let Some(stated) = self.walk.field_type(pointee_of(&owner), &member) {
+                return Some(stated);
+            }
+            // `self.environment` declared `&'a mut E`: what the receiver's
+            // type argument for `E` is (`impl<E: Environment> Context<'_, E>`).
+            let position = self.walk.field_param(pointee_of(&owner), &member)?;
+            let base = receiver_name(&field.base)?;
+            let (typed, arguments) = self.receiver_arguments.get(&base)?;
+            return if *typed == owner {
+                arguments.get(position).cloned().flatten()
+            } else {
+                None
+            };
         }
+        // `open(root)?.load()`, `make().unwrap().run()`: what the
+        // expression evaluates to, when the source states it.
         let syn::Expr::Path(path) = current else {
-            return None;
+            return self.value_type(current);
         };
         if path.qself.is_some() || path.path.segments.len() < 2 {
             return None;
@@ -298,18 +313,87 @@ impl Calls<'_, '_> {
 
     /// The type a `let` initializer gives its binding, when the source
     /// states it: a value it constructs (see [`constructed_type`]), a local,
-    /// field or element of known type it copies, or what a call returns when
-    /// this file declares the function (`let trie = sample_trie();`).
+    /// field or element of known type it copies, or what a call returns
+    /// (`let trie = sample_trie();`), whichever file declares the function.
+    /// `?`, `.unwrap()` and `.expect(..)` open an `Option` or a `Result` to
+    /// what it holds. A `match`, an `if` or a block has the type of the arm
+    /// or tail whose type is stated: Rust makes every arm agree.
     fn value_type(&self, expression: &syn::Expr) -> Option<String> {
+        match expression {
+            syn::Expr::Paren(inner) => return self.value_type(&inner.expr),
+            syn::Expr::Reference(inner) => return self.value_type(&inner.expr),
+            syn::Expr::Try(inner) => {
+                if let Some(held) = self.value_type(&inner.expr) {
+                    return unwrapped(&held).map(str::to_owned);
+                }
+            }
+            syn::Expr::MethodCall(call) if call.turbofish.is_none() && opens_wrapper(call) => {
+                if let Some(held) = self.value_type(&call.receiver) {
+                    return unwrapped(&held).map(str::to_owned);
+                }
+            }
+            syn::Expr::Match(node) => {
+                return node.arms.iter().find_map(|arm| {
+                    self.unwrapping_arm(arm, &node.expr)
+                        .or_else(|| self.value_type(&arm.body))
+                });
+            }
+            syn::Expr::If(node) => {
+                return self.block_type(&node.then_branch).or_else(|| {
+                    let (_, otherwise) = node.else_branch.as_ref()?;
+                    self.value_type(otherwise)
+                });
+            }
+            syn::Expr::Block(node) => return self.block_type(&node.block),
+            syn::Expr::Unsafe(node) => return self.block_type(&node.block),
+            _ => {}
+        }
         if let Some(callee) = self.returning_call(expression) {
-            if let Some(returned) = self.walk.function_returns.get(&callee) {
-                return Some(returned.clone());
+            if let Some(returned) = self.walk.returned_type(&callee) {
+                return Some(returned);
             }
         }
         match constructed_type(expression) {
             Some(path) => self.walk.stated_type(&self.container, &path),
             None if is_place(expression) => self.receiver_owner(expression),
             None => None,
+        }
+    }
+
+    /// The type of an arm that hands back what `Ok(c)` or `Some(c)` binds
+    /// (`Ok(c) => c`): what the `Result` or `Option` matched holds. Asked
+    /// before the arm's body is typed, since `c` is the arm's own binding
+    /// and not one outside the `match`.
+    fn unwrapping_arm(&self, arm: &syn::Arm, scrutinee: &syn::Expr) -> Option<String> {
+        let syn::Pat::TupleStruct(pattern) = &arm.pat else {
+            return None;
+        };
+        let last = ident_name(&pattern.path.segments.last()?.ident);
+        if pattern.qself.is_some() || !matches!(last.as_str(), "Some" | "Ok") {
+            return None;
+        }
+        let [syn::Pat::Ident(binding)] = pattern.elems.iter().collect::<Vec<_>>()[..] else {
+            return None;
+        };
+        let body = match arm.body.as_ref() {
+            syn::Expr::Block(block) => match block.block.stmts.last()? {
+                syn::Stmt::Expr(tail, None) if block.block.stmts.len() == 1 => tail,
+                _ => return None,
+            },
+            other => other,
+        };
+        if binding.subpat.is_some() || receiver_name(body)? != ident_name(&binding.ident) {
+            return None;
+        }
+
+        unwrapped(&self.receiver_owner(scrutinee)?).map(str::to_owned)
+    }
+
+    /// The type a block evaluates to: its tail expression's.
+    fn block_type(&self, block: &syn::Block) -> Option<String> {
+        match block.stmts.last()? {
+            syn::Stmt::Expr(tail, None) => self.value_type(tail),
+            _ => None,
         }
     }
 
@@ -336,66 +420,142 @@ impl Calls<'_, '_> {
     }
 
     /// The element a `for` loop binds when it walks a collection of known
-    /// type: the collection itself, a reference to it, or its `iter()`,
-    /// `iter_mut()` or `into_iter()`.
+    /// type: the collection itself, a reference to it, an `Option`, or an
+    /// iterator over one (see [`Calls::iterator_element`]).
     fn iterated_element(&self, expression: &syn::Expr) -> Option<String> {
-        let collection = match expression {
-            syn::Expr::MethodCall(call)
-                if call.args.is_empty()
-                    && matches!(
-                        ident_name(&call.method).as_str(),
-                        "iter" | "iter_mut" | "into_iter"
-                    ) =>
-            {
-                &call.receiver
-            }
-            other => other,
-        };
-
-        element_of(&self.receiver_owner(collection)?).map(str::to_owned)
+        self.iterator_element(expression)
+            .or_else(|| self.held_element(expression))
     }
 
-    /// The bindings a struct pattern makes (`let Index { store, .. } = x;`),
-    /// each with the type of the field it takes, when the struct's
-    /// declaration states one. The field patterns that are not a plain name
-    /// (`inner: Inner { store }`, `pair: (a, b)`) are returned for the caller
-    /// to bind, see [`Calls::bind_pattern`].
-    fn destructured_receivers<'p>(&mut self, pattern: &'p syn::PatStruct) -> Vec<&'p syn::Pat> {
-        let mut nested = Vec::new();
-        let owner = if pattern.qself.is_none() {
-            self.walk
-                .resolve_path(&self.container, &pattern.path)
-                .map(|(target, _)| target)
-        } else {
-            None
+    /// The element an iterator chain yields, when it starts from a
+    /// collection or an `Option` of known type: its `iter()`, `iter_mut()`
+    /// or `into_iter()`, followed by any adapters that keep the element
+    /// (`filter`, `rev`, `take`, ..). None for anything else, which is no
+    /// iterator the walk can name.
+    fn iterator_element(&self, expression: &syn::Expr) -> Option<String> {
+        let syn::Expr::MethodCall(call) = strip_place(expression) else {
+            return None;
         };
-        for field in &pattern.fields {
-            let syn::Pat::Ident(binding) = field.pat.as_ref() else {
-                nested.push(field.pat.as_ref());
-                continue;
-            };
-            if binding.subpat.is_some() {
-                nested.push(field.pat.as_ref());
-                continue;
+        match ident_name(&call.method).as_str() {
+            "iter" | "iter_mut" | "into_iter" if call.args.is_empty() => {
+                self.held_element(&call.receiver)
             }
-            let name = ident_name(&binding.ident);
+            "filter" | "skip" | "take" | "rev" | "peekable" | "skip_while" | "take_while"
+            | "inspect" | "cloned" | "copied" | "by_ref" | "step_by" | "fuse" => {
+                self.iterator_element(&call.receiver)
+            }
+            _ => None,
+        }
+    }
+
+    /// What iterating a value of known type yields: a collection's element,
+    /// or the value an `Option` or a `Result` holds.
+    fn held_element(&self, expression: &syn::Expr) -> Option<String> {
+        let owner = self.receiver_owner(expression)?;
+
+        element_of(&owner)
+            .or_else(|| unwrapped(&owner))
+            .map(str::to_owned)
+    }
+
+    /// The argument of an adapter call that is a closure taking what the
+    /// receiver yields, with that type: `any`, `map`, `find` and the rest
+    /// on an iterator over a known element, and `map`, `and_then`,
+    /// `is_some_and` and the rest on an `Option` or a `Result` of known
+    /// type, whose closure takes the value.
+    fn closure_argument(&self, call: &syn::ExprMethodCall) -> Option<(usize, String)> {
+        let method = ident_name(&call.method);
+        if let Some(element) = self.iterator_element(&call.receiver) {
+            let takes_element = matches!(
+                method.as_str(),
+                "any"
+                    | "all"
+                    | "map"
+                    | "filter"
+                    | "for_each"
+                    | "find"
+                    | "filter_map"
+                    | "flat_map"
+                    | "find_map"
+                    | "position"
+                    | "inspect"
+                    | "take_while"
+                    | "skip_while"
+                    | "map_while"
+                    | "max_by_key"
+                    | "min_by_key"
+                    | "partition"
+                    | "try_for_each"
+            );
+            return takes_element.then_some((0, element));
+        }
+        let position = match method.as_str() {
+            "map" | "and_then" | "is_some_and" | "is_ok_and" | "is_none_or" | "filter"
+            | "inspect" | "take_if" => 0,
+            "map_or" | "map_or_else" => 1,
+            _ => return None,
+        };
+        let owner = self.receiver_owner(&call.receiver)?;
+
+        unwrapped(&owner).map(|held| (position, held.to_owned()))
+    }
+
+    /// The bindings a struct pattern makes (`let Index { store, .. } = x;`,
+    /// `Shape::Circle { radius }`), each field's pattern bound against the
+    /// type the struct's or variant's declaration states for it.
+    fn bind_struct(&mut self, pattern: &syn::PatStruct) {
+        let owner = self.pattern_owner(pattern.qself.as_ref(), &pattern.path);
+        for field in &pattern.fields {
             let stated = match (&owner, &field.member) {
                 (Some(owner), syn::Member::Named(member)) => {
                     self.walk.field_type(owner, &ident_name(member))
                 }
+                (Some(owner), syn::Member::Unnamed(index)) => {
+                    self.walk.field_type(owner, &index.index.to_string())
+                }
                 _ => None,
             };
-            match stated {
-                Some(target) => {
-                    self.receivers.insert(name, target);
-                }
-                None => {
-                    self.receivers.remove(&name);
-                }
-            }
+            self.bind_against(&field.pat, stated);
         }
+    }
 
-        nested
+    /// The bindings a tuple struct or tuple variant pattern makes: `Some(x)`
+    /// or `Ok(x)` against an `Option` or a `Result` of known type binds what
+    /// it holds, and any other path its declared fields, by position.
+    fn bind_tuple_struct(&mut self, pattern: &syn::PatTupleStruct, held: Option<String>) {
+        let last = pattern
+            .path
+            .segments
+            .last()
+            .map(|segment| ident_name(&segment.ident))
+            .unwrap_or_default();
+        if pattern.qself.is_none() && matches!(last.as_str(), "Some" | "Ok" | "Err" | "None") {
+            let value = match last.as_str() {
+                "Some" | "Ok" => held.as_deref().and_then(unwrapped).map(str::to_owned),
+                _ => None,
+            };
+            for (position, element) in pattern.elems.iter().enumerate() {
+                self.bind_against(element, if position == 0 { value.clone() } else { None });
+            }
+            return;
+        }
+        let owner = self.pattern_owner(pattern.qself.as_ref(), &pattern.path);
+        for (position, element) in pattern.elems.iter().enumerate() {
+            let stated = owner
+                .as_ref()
+                .and_then(|owner| self.walk.field_type(owner, &position.to_string()));
+            self.bind_against(element, stated);
+        }
+    }
+
+    /// The struct or variant a pattern's path names, when it resolves.
+    fn pattern_owner(&self, qself: Option<&syn::QSelf>, path: &syn::Path) -> Option<String> {
+        if qself.is_some() {
+            return None;
+        }
+        self.walk
+            .resolve_path(&self.container, path)
+            .map(|(target, _)| target)
     }
 
     /// Walk an `if` or `while` condition, binding each `let` pattern of a
@@ -406,7 +566,8 @@ impl Calls<'_, '_> {
             syn::Expr::Let(binding) => {
                 self.visit_expr(&binding.expr);
                 self.visit_pat(&binding.pat);
-                self.bind_pattern(&binding.pat);
+                let held = self.receiver_owner(&binding.expr);
+                self.bind_against(&binding.pat, held);
             }
             syn::Expr::Binary(binary) if matches!(binary.op, syn::BinOp::And(_)) => {
                 self.visit_condition(&binary.left);
@@ -421,45 +582,59 @@ impl Calls<'_, '_> {
     /// otherwise, so an outer binding of the same name lends it no type.
     /// The alternatives of an or-pattern keep only the types they agree on.
     fn bind_pattern(&mut self, pattern: &syn::Pat) {
+        self.bind_against(pattern, None);
+    }
+
+    /// Bind a pattern matched against a value of type `held`, when that is
+    /// known: a plain name takes it, `Some(x)` or `Ok(x)` what an `Option`
+    /// or a `Result` holds, a slice pattern the element. What the pattern
+    /// itself states (a struct's fields, `name: Type`) is taken over it.
+    fn bind_against(&mut self, pattern: &syn::Pat, held: Option<String>) {
         match pattern {
             syn::Pat::Ident(ident) => {
-                self.receivers.remove(&ident_name(&ident.ident));
-                if let Some((_, inner)) = &ident.subpat {
-                    self.bind_pattern(inner);
-                }
-            }
-            syn::Pat::Type(typed) => match typed.pat.as_ref() {
-                syn::Pat::Ident(ident) if ident.subpat.is_none() => {
-                    let name = ident_name(&ident.ident);
-                    match self.walk.receiver_type(&self.container, &typed.ty) {
-                        Some(target) => {
-                            self.receivers.insert(name, target);
-                        }
-                        None => {
-                            self.receivers.remove(&name);
-                        }
+                let name = ident_name(&ident.ident);
+                match &held {
+                    Some(target) => {
+                        self.receivers.insert(name, target.clone());
+                    }
+                    None => {
+                        self.receivers.remove(&name);
                     }
                 }
-                inner => self.bind_pattern(inner),
-            },
-            syn::Pat::Struct(inner) => {
-                for nested in self.destructured_receivers(inner) {
-                    self.bind_pattern(nested);
+                if let Some((_, inner)) = &ident.subpat {
+                    self.bind_against(inner, held);
                 }
             }
+            syn::Pat::Type(typed) => {
+                let stated = self.walk.receiver_type(&self.container, &typed.ty);
+                self.bind_against(&typed.pat, stated);
+            }
+            syn::Pat::Struct(inner) => self.bind_struct(inner),
             syn::Pat::Tuple(inner) => inner.elems.iter().for_each(|e| self.bind_pattern(e)),
-            syn::Pat::TupleStruct(inner) => inner.elems.iter().for_each(|e| self.bind_pattern(e)),
-            syn::Pat::Slice(inner) => inner.elems.iter().for_each(|e| self.bind_pattern(e)),
-            syn::Pat::Reference(inner) => self.bind_pattern(&inner.pat),
-            syn::Pat::Paren(inner) => self.bind_pattern(&inner.pat),
+            syn::Pat::TupleStruct(inner) => self.bind_tuple_struct(inner, held),
+            syn::Pat::Slice(inner) => {
+                let element = held.as_deref().and_then(element_of).map(str::to_owned);
+                for item in &inner.elems {
+                    // `rest @ ..` is the rest of the slice, not one element.
+                    let rest = matches!(
+                        item,
+                        syn::Pat::Ident(ident)
+                            if matches!(ident.subpat.as_ref().map(|(_, p)| p.as_ref()), Some(syn::Pat::Rest(_)))
+                    );
+                    let bound = if rest { held.clone() } else { element.clone() };
+                    self.bind_against(item, bound);
+                }
+            }
+            syn::Pat::Reference(inner) => self.bind_against(&inner.pat, held),
+            syn::Pat::Paren(inner) => self.bind_against(&inner.pat, held),
             // A match arm's guard wraps the arm's pattern; the guard binds nothing.
-            syn::Pat::Guard(inner) => self.bind_pattern(&inner.pat),
+            syn::Pat::Guard(inner) => self.bind_against(&inner.pat, held),
             syn::Pat::Or(inner) => {
                 let before = self.receivers.clone();
                 let mut agreed: Option<BTreeMap<String, String>> = None;
                 for case in &inner.cases {
                     self.receivers = before.clone();
-                    self.bind_pattern(case);
+                    self.bind_against(case, held.clone());
                     agreed = Some(match agreed {
                         None => self.receivers.clone(),
                         Some(known) => known
@@ -692,12 +867,18 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
         // `State::new().mode()`. The inner call's owner is known here; its
         // return type may be declared in another file, so the member is named
         // through the call and the core resolves it, or drops the edge.
+        let method = ident_name(&node.method);
         let returning = self.returning_call(&node.receiver);
+        // Any other receiver whose type the walk can state: a binding, a
+        // field, or what `open(root)?` evaluates to.
+        let owner = if returning.is_none() {
+            self.receiver_owner(&node.receiver)
+                .and_then(|owner| dispatch(&owner, &method))
+        } else {
+            None
+        };
         if let Some(callee) = &returning {
-            let endpoint = reference(
-                "method_of_return",
-                &format!("{callee}::{}", ident_name(&node.method)),
-            );
+            let endpoint = reference("method_of_return", &format!("{callee}::{method}"));
             self.walk.facts.edge(
                 "calls",
                 &self.enclosing,
@@ -706,10 +887,6 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
                 node.method.span(),
             );
         }
-        let method = ident_name(&node.method);
-        let owner = self
-            .receiver_owner(&node.receiver)
-            .and_then(|owner| dispatch(&owner, &method));
         if let Some(target) = owner {
             let endpoint = reference("method", &format!("{target}::{method}"));
             self.walk.facts.speculative_edge(
@@ -719,7 +896,7 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
                 node.method.span(),
             );
         } else if returning.is_none() {
-            self.walk.facts.untyped_call(ident_name(&node.method));
+            self.walk.facts.untyped_call(method);
         }
         self.mount_router(node);
         // A `nest(...)` or scoped `service(...)` serves the routes its
@@ -731,6 +908,23 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
                 self.visit_expr(argument);
             }
             self.prefixes.pop();
+            return;
+        }
+        if let Some((position, element)) = self.closure_argument(node) {
+            for attr in &node.attrs {
+                self.visit_attribute(attr);
+            }
+            self.visit_expr(&node.receiver);
+            if let Some(turbofish) = &node.turbofish {
+                self.visit_angle_bracketed_generic_arguments(turbofish);
+            }
+            for (index, argument) in node.args.iter().enumerate() {
+                if index == position && matches!(argument, syn::Expr::Closure(_)) {
+                    self.closure_element = Some(element.clone());
+                }
+                self.visit_expr(argument);
+                self.closure_element = None;
+            }
             return;
         }
         syn::visit::visit_expr_method_call(self, node);
@@ -751,8 +945,13 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
                     return;
                 }
             },
+            // `let Some(store) = open(root) else { .. };`, `let Index { store, .. } = x;`
             pattern => {
-                self.bind_pattern(pattern);
+                let held = node
+                    .init
+                    .as_ref()
+                    .and_then(|init| self.receiver_owner(&init.expr));
+                self.bind_against(pattern, held);
                 if let (syn::Pat::Tuple(names), Some(init)) = (pattern, &node.init) {
                     self.bind_tuple(names, &init.expr);
                 }
@@ -781,9 +980,13 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
         // A closure parameter shadows any outer binding of the same name, and
         // says nothing about its own type, so it is forgotten while inside.
         // A parameter whose type is written (`|s: &Store|`) is typed.
+        // A closure handed to an iterator or `Option` adapter takes what the
+        // adapter yields (`values.iter().any(|v| v.valid())`): see
+        // [`Calls::closure_element`].
         let saved = self.receivers.clone();
+        let mut element = self.closure_element.take();
         for input in &node.inputs {
-            self.bind_pattern(input);
+            self.bind_against(input, element.take());
         }
         syn::visit::visit_expr_closure(self, node);
         self.receivers = saved;
@@ -800,11 +1003,26 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
     }
 
     fn visit_arm(&mut self, node: &syn::Arm) {
-        // An arm's bindings live for the arm only.
+        // An arm's bindings live for the arm only, typed against the value
+        // matched when its type is known (`Some(store) => store.load()`).
         let saved = self.receivers.clone();
-        self.bind_pattern(&node.pat);
+        let held = self.scrutinee.take();
+        self.bind_against(&node.pat, held);
         syn::visit::visit_arm(self, node);
         self.receivers = saved;
+    }
+
+    fn visit_expr_match(&mut self, node: &syn::ExprMatch) {
+        for attr in &node.attrs {
+            self.visit_attribute(attr);
+        }
+        self.visit_expr(&node.expr);
+        let held = self.receiver_owner(&node.expr);
+        for arm in &node.arms {
+            self.scrutinee.clone_from(&held);
+            self.visit_arm(arm);
+        }
+        self.scrutinee = None;
     }
 
     fn visit_expr_if(&mut self, node: &syn::ExprIf) {
@@ -829,15 +1047,9 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
         self.visit_expr(&node.expr);
         let saved = self.receivers.clone();
         self.visit_pat(&node.pat);
-        self.bind_pattern(&node.pat);
         // `for tile in &tiles` binds each element of a collection.
-        if let syn::Pat::Ident(ident) = node.pat.as_ref() {
-            if ident.subpat.is_none() {
-                if let Some(element) = self.iterated_element(&node.expr) {
-                    self.receivers.insert(ident_name(&ident.ident), element);
-                }
-            }
-        }
+        let element = self.iterated_element(&node.expr);
+        self.bind_against(&node.pat, element);
         self.visit_block(&node.body);
         self.receivers = saved;
     }
@@ -1095,7 +1307,8 @@ pub(super) fn is_foreign_export(node: &syn::ItemFn) -> bool {
 /// a call is left untyped rather than guessed, and so is a call on a
 /// collection, whose methods are its own and not its element's.
 fn dispatch(owner: &str, method: &str) -> Option<String> {
-    if pointee_of(owner).starts_with(ELEMENT_MARK) {
+    let held = pointee_of(owner);
+    if held.starts_with(ELEMENT_MARK) || held.starts_with(WRAP_MARK) {
         return None;
     }
     let Some(held) = owner.strip_prefix(POINTER_MARK) else {
@@ -1130,6 +1343,15 @@ fn dispatch(owner: &str, method: &str) -> Option<String> {
     (!pointer_own).then(|| held.to_owned())
 }
 
+/// Whether a method call opens an `Option` or a `Result` to the value it
+/// holds: `.unwrap()`, `.expect(..)` and the defaulting `unwrap_or*`.
+fn opens_wrapper(call: &syn::ExprMethodCall) -> bool {
+    matches!(
+        ident_name(&call.method).as_str(),
+        "unwrap" | "expect" | "unwrap_or" | "unwrap_or_else" | "unwrap_or_default"
+    )
+}
+
 /// Whether an expression names a place whose type a receiver can carry: a
 /// local, a field or an element, seen through `&` and parentheses. A path
 /// of more than one segment is a constant or a variant, not a copy.
@@ -1140,6 +1362,15 @@ fn is_place(expression: &syn::Expr) -> bool {
         syn::Expr::Field(_) | syn::Expr::Index(_) => true,
         syn::Expr::Path(path) => path.qself.is_none() && path.path.get_ident().is_some(),
         _ => false,
+    }
+}
+
+/// An expression seen through `&` and parentheses.
+fn strip_place(expression: &syn::Expr) -> &syn::Expr {
+    match expression {
+        syn::Expr::Paren(inner) => strip_place(&inner.expr),
+        syn::Expr::Reference(reference) => strip_place(&reference.expr),
+        other => other,
     }
 }
 

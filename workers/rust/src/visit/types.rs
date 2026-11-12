@@ -36,7 +36,75 @@ impl Walk<'_> {
                 Globbed::One(target) => Some(format!("{marks}{target}")),
                 Globbed::Absent | Globbed::Ambiguous => None,
             },
+            FieldType::Param(_) => None,
         }
+    }
+
+    /// The position among `owner`'s type parameters of the one its field
+    /// `field` is declared as (see [`FieldType::Param`]), from this file or
+    /// the declaration index.
+    pub(super) fn field_param(&self, owner: &str, field: &str) -> Option<usize> {
+        let declared = match self.struct_fields.get(owner) {
+            Some(fields) => fields.get(field)?.clone(),
+            None => self.declarations.field_type(owner, field)?,
+        };
+        match declared {
+            FieldType::Param(position) => Some(position),
+            _ => None,
+        }
+    }
+
+    /// The type each type argument of a written type names (`Context<'_,
+    /// D, F>` under `D: Driver` gives the driver trait, then None), seen
+    /// through `&` and parentheses, as [`Walk::receiver_type`] states each.
+    pub(super) fn type_arguments(&self, container: &str, ty: &Type) -> Vec<Option<String>> {
+        match ty {
+            Type::Reference(reference) => self.type_arguments(container, &reference.elem),
+            Type::Paren(inner) => self.type_arguments(container, &inner.elem),
+            Type::Path(path) if path.qself.is_none() => {
+                let Some(syn::PathArguments::AngleBracketed(arguments)) =
+                    path.path.segments.last().map(|segment| &segment.arguments)
+                else {
+                    return Vec::new();
+                };
+                arguments
+                    .args
+                    .iter()
+                    .filter_map(|argument| match argument {
+                        syn::GenericArgument::Type(ty) => Some(self.receiver_type(container, ty)),
+                        _ => None,
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// The type the function or method at `callee` returns: from this file
+    /// when it declares it, else from the declaration index, which holds
+    /// what the declaring file's own imports resolved it to. A path a `use`
+    /// re-exports (`report::open_existing` under `pub use store::open_existing;`)
+    /// is looked up where the item is declared.
+    pub(super) fn returned_type(&self, callee: &str) -> Option<String> {
+        // A path this file declares answers for itself, ambiguous or not:
+        // another file's return type at that path is not this one's.
+        if let Some(local) = self.function_returns.get(callee) {
+            return local.clone();
+        }
+        let declared = self.declarations.return_of(callee).or_else(|| {
+            let placed = self.exported(callee.to_owned());
+            if placed == callee {
+                return None;
+            }
+            match self.function_returns.get(&placed) {
+                Some(local) => local.clone(),
+                None => self.declarations.return_of(&placed),
+            }
+        })?;
+        let (marks, held) = split_marks(&declared);
+
+        self.renamed(held.to_owned())
+            .map(|target| format!("{marks}{}", self.exported(target)))
     }
 
     /// The type a struct field declares, as [`Walk::receiver_type`] states
@@ -76,6 +144,9 @@ impl Walk<'_> {
                 Some(inner) => self
                     .glob_named(container, inner)
                     .map(|(name, marks)| (name, pointed(&marks))),
+                None if wrapped(&path.path).is_some() => self
+                    .glob_named(container, wrapped(&path.path)?)
+                    .map(|(name, marks)| (name, format!("{WRAP_MARK}{marks}"))),
                 None if element(&path.path).is_some() => self
                     .glob_named(container, element(&path.path)?)
                     .map(|(name, marks)| (name, format!("{ELEMENT_MARK}{marks}"))),
@@ -85,7 +156,8 @@ impl Walk<'_> {
                         return None;
                     }
                     let name = ident_name(&path.segments[0].ident);
-                    if is_primitive(&name) || name == "Self" || self.type_params.contains(&name) {
+                    if is_primitive(&name) || name == "Self" || self.type_params.contains_key(&name)
+                    {
                         return None;
                     }
                     match self.resolve_written(container, path)? {
@@ -125,8 +197,11 @@ impl Walk<'_> {
     /// they hold (`Box<T>`, `Rc<T>`, `Arc<T>`), or None for anything that is
     /// not a plain path. An array, a slice, a `Vec<T>` or a `VecDeque<T>` is
     /// marked as a collection of its element (see [`ELEMENT_MARK`]): its own
-    /// methods are not `T`'s, but indexing it gives a `T`. Any other generic
-    /// (`Option<T>`, `HashMap<K, V>`) is the type itself.
+    /// methods are not `T`'s, but indexing it gives a `T`. An `Option<T>` or
+    /// a `Result<T, _>`, however qualified or aliased by name
+    /// (`anyhow::Result<T>`), is marked as wrapping `T` (see [`WRAP_MARK`]):
+    /// `?`, `.unwrap()` or a `Some(x)` pattern gives the `T`. Any other
+    /// generic (`HashMap<K, V>`) is the type itself.
     pub(super) fn receiver_type(&self, container: &str, ty: &Type) -> Option<String> {
         match ty {
             Type::Reference(reference) => self.receiver_type(container, &reference.elem),
@@ -141,6 +216,9 @@ impl Walk<'_> {
                 Some(inner) => self
                     .receiver_type(container, inner)
                     .map(|held| pointed(&held)),
+                None if wrapped(&path.path).is_some() => self
+                    .receiver_type(container, wrapped(&path.path)?)
+                    .map(|held| format!("{WRAP_MARK}{held}")),
                 None => match element(&path.path) {
                     Some(inner) => self
                         .receiver_type(container, inner)
@@ -180,8 +258,28 @@ impl Walk<'_> {
         // generic type parameter in scope shadows any type of its name.
         if path.leading_colon.is_none() && path.segments.len() == 1 {
             let name = ident_name(&path.segments[0].ident);
-            if is_primitive(&name) || self.type_params.contains(&name) {
+            if is_primitive(&name) {
                 return None;
+            }
+            // `D` of `fn run<D: Driver>(d: &mut D)` is some type of `Driver`:
+            // a method called on it is the trait's, which its implementations
+            // fulfil. Only a trait of this project counts (`Send + Driver`):
+            // a dependency's bound leaves the receiver as untyped as before.
+            // A bound naming a type parameter (`T: U, U: T`, which parses
+            // though it does not compile) is not followed: it could lead
+            // back here.
+            if let Some(bounds) = self.type_params.get(&name) {
+                return bounds
+                    .iter()
+                    .filter(|bound| {
+                        bound.leading_colon.is_some()
+                            || bound.segments.len() != 1
+                            || !self
+                                .type_params
+                                .contains_key(&ident_name(&bound.segments[0].ident))
+                    })
+                    .filter_map(|bound| self.stated_type(container, bound))
+                    .find(|bound| self.in_project(bound));
             }
         }
         // `Self` is the impl's type, however `resolve_path` flags it for calls.
@@ -275,21 +373,30 @@ impl Walk<'_> {
         owner: Option<&str>,
     ) {
         let syn::ReturnType::Type(_, returned) = &signature.output else {
+            self.record_returned(canonical, None);
             return;
         };
         let outer = self.enter_type_params(&signature.generics);
-        let stated = match (returned.as_ref(), owner) {
-            (Type::Path(path), Some(owner))
-                if path.qself.is_none() && path.path.is_ident("Self") =>
-            {
-                Some(owner.to_owned())
-            }
-            _ => self.receiver_type(container, returned),
-        };
-        self.type_params = outer;
-        if let Some(stated) = stated {
-            self.function_returns.insert(canonical, stated);
+        // `Self`, bare or wrapped (`Result<Self>`), is the impl's type.
+        let outer_target = self.current_impl_target.clone();
+        if let Some(owner) = owner {
+            self.current_impl_target = Some(owner.to_owned());
         }
+        let stated = self.receiver_type(container, returned);
+        self.current_impl_target = outer_target;
+        self.type_params = outer;
+        self.record_returned(canonical, stated);
+    }
+
+    /// Record that the declaration at `canonical` returns `stated`. A second
+    /// declaration at the same path with another return type, or one this
+    /// file cannot resolve, leaves the path ambiguous.
+    fn record_returned(&mut self, canonical: String, stated: Option<String>) {
+        let returned = match self.function_returns.get(&canonical) {
+            Some(earlier) if *earlier != stated => None,
+            _ => stated,
+        };
+        self.function_returns.insert(canonical, returned);
     }
 
     /// Record the `type` aliases a file declares at module level, and in its
@@ -334,11 +441,12 @@ pub(super) fn element_of(owner: &str) -> Option<&str> {
 }
 
 /// The class a receiver type names, seen through a smart pointer, or None
-/// for a collection, which names no class of this crate.
+/// for a collection or an `Option`/`Result`, which name no class of this
+/// crate.
 pub(super) fn class_of(owner: &str) -> Option<&str> {
     let class = pointee_of(owner);
 
-    (!class.starts_with(ELEMENT_MARK)).then_some(class)
+    (!class.starts_with(ELEMENT_MARK) && !class.starts_with(WRAP_MARK)).then_some(class)
 }
 
 /// A receiver type split into the marks leading it and the path they hold.
@@ -348,6 +456,8 @@ pub(super) fn split_marks(owner: &str) -> (&str, &str) {
         if let Some(rest) = held.strip_prefix(POINTER_MARK) {
             held = rest;
         } else if let Some(rest) = held.strip_prefix(ELEMENT_MARK) {
+            held = rest;
+        } else if let Some(rest) = held.strip_prefix(WRAP_MARK) {
             held = rest;
         } else {
             break;
@@ -371,6 +481,36 @@ pub(super) const POINTER_MARK: &str = "*";
 /// the type after it: its own methods are the collection's, and indexing
 /// or iterating it gives the element.
 pub(super) const ELEMENT_MARK: &str = "[]";
+
+/// Marks a receiver type that is an `Option` or a `Result` of the type
+/// after it: its own methods are the wrapper's, and `?`, `.unwrap()`,
+/// `.expect(..)` or a `Some(x)`/`Ok(x)` pattern gives the type.
+pub(super) const WRAP_MARK: &str = "?";
+
+/// The value an `Option` or `Result` receiver (see [`Walk::receiver_type`])
+/// holds once unwrapped, seen through a smart pointer holding it, or None
+/// for any other receiver.
+pub(super) fn unwrapped(owner: &str) -> Option<&str> {
+    pointee_of(owner).strip_prefix(WRAP_MARK)
+}
+
+/// The value an `Option<T>` or a `Result<T, _>` holds, however its path is
+/// qualified (`anyhow::Result<T>`, `io::Result<T>`), or None for any other
+/// type.
+fn wrapped(path: &syn::Path) -> Option<&Type> {
+    let last = path.segments.last()?;
+    if !matches!(ident_name(&last.ident).as_str(), "Option" | "Result") {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(arguments) = &last.arguments else {
+        return None;
+    };
+
+    arguments.args.iter().find_map(|argument| match argument {
+        syn::GenericArgument::Type(ty) => Some(ty),
+        _ => None,
+    })
+}
 
 /// The type a `Box<T>`, `Rc<T>` or `Arc<T>` holds, however its path is
 /// qualified (`std::sync::Arc<T>`), or None for any other type.

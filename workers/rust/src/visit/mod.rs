@@ -32,7 +32,8 @@ pub use cfg::{
 };
 pub use declarations::{
     declaration_paths, declared_renames, gated_declaration_paths, indexed_item_paths, Declarations,
-    ExportAlternatives, ExportedNames, FieldType, GlobImports, StructFields, TypeAliases,
+    ExportAlternatives, ExportedNames, FieldType, FunctionReturns, GlobImports, StructFields,
+    TypeAliases,
 };
 use placement::mod_child;
 pub use placement::mod_declarations;
@@ -97,6 +98,7 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
     walker.resolve_globs();
     walker.collect_type_aliases(module, items);
     walker.collect_struct_fields(module, items);
+    walker.collect_function_returns(module, items);
 
     // Each module-level alias, as this file's own imports resolve the type
     // it names; an impl's associated type is only ever named from its impl.
@@ -136,6 +138,7 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
         private_exports,
         exports: std::mem::take(&mut walker.exports),
         fields: std::mem::take(&mut walker.struct_fields),
+        returns: std::mem::take(&mut walker.function_returns),
         aliases,
         export_alternatives: alternatives,
         globs,
@@ -160,6 +163,8 @@ pub struct IndexFacts {
     pub private_exports: BTreeSet<String>,
     /// See [`StructFields`].
     pub fields: StructFields,
+    /// See [`FunctionReturns`].
+    pub returns: FunctionReturns,
     /// See [`TypeAliases`].
     pub aliases: TypeAliases,
     /// See [`ExportAlternatives`].
@@ -194,8 +199,9 @@ impl<'a> Walk<'a> {
             private_globs: BTreeSet::new(),
             module_aliases: BTreeMap::new(),
             module_children: BTreeMap::new(),
-            type_params: BTreeSet::new(),
+            type_params: BTreeMap::new(),
             current_impl_target: None,
+            current_impl_self: None,
             impl_segment: None,
             frameworks,
             declarations,
@@ -547,10 +553,12 @@ impl Walk<'_> {
                 .external_unless_declared(&reference("class", &target));
         }
         let old_target = self.current_impl_target.replace(target.clone());
+        let old_self = self.current_impl_self.replace((*node.self_ty).clone());
         self.record_associated_types(container, &target, node);
         self.record_implements(container, &target, node, span);
         self.walk_impl_methods(container, &target, node);
         self.current_impl_target = old_target;
+        self.current_impl_self = old_self;
     }
 
     /// The canonical path an `impl` block's members attach to, or `None` for
@@ -941,12 +949,16 @@ impl Walk<'_> {
         block: &syn::Block,
     ) {
         let receivers = self.signature_receivers(container, signature);
+        let receiver_arguments = self.signature_arguments(container, signature, &receivers);
         let mut visitor = Calls {
             walk: self,
             enclosing: enclosing.to_owned(),
             container: container.to_owned(),
             receivers,
+            receiver_arguments,
             prefixes: Vec::new(),
+            scrutinee: None,
+            closure_element: None,
         };
         visitor.visit_signature(signature);
         let outer = visitor.walk.enter_block_uses(container, &block.stmts);
@@ -972,7 +984,10 @@ impl Walk<'_> {
             enclosing: enclosing.to_owned(),
             container: container.to_owned(),
             receivers: BTreeMap::new(),
+            receiver_arguments: BTreeMap::new(),
             prefixes: Vec::new(),
+            scrutinee: None,
+            closure_element: None,
         };
         visitor.serde_references(attrs);
         for fields in fields {
@@ -1005,7 +1020,10 @@ impl Walk<'_> {
             enclosing: reference("module", container),
             container: container.to_owned(),
             receivers: BTreeMap::new(),
+            receiver_arguments: BTreeMap::new(),
             prefixes: Vec::new(),
+            scrutinee: None,
+            closure_element: None,
         };
         visitor.visit_token_calls(tokens.clone());
     }
@@ -1018,7 +1036,10 @@ impl Walk<'_> {
             enclosing: reference("module", container),
             container: container.to_owned(),
             receivers: BTreeMap::new(),
+            receiver_arguments: BTreeMap::new(),
             prefixes: Vec::new(),
+            scrutinee: None,
+            closure_element: None,
         };
         visitor.visit_type(ty);
         visitor.visit_expr(expr);
@@ -1033,27 +1054,23 @@ impl Walk<'_> {
             match item {
                 Item::Struct(node) => {
                     let outer = self.enter_type_params(&node.generics);
-                    let mut fields = BTreeMap::new();
-                    for field in &node.fields {
-                        if let Some(ident) = &field.ident {
-                            if let Some(target) = self.declared_field_type(container, &field.ty) {
-                                fields.insert(ident_name(ident), target);
-                            }
-                        }
+                    let mut fields = self.declared_fields(container, &node.fields);
+                    param_fields(&node.generics, &node.fields, &mut fields);
+                    self.type_params = outer;
+                    let owner = format!("{container}::{}", ident_name(&node.ident));
+                    self.record_fields(owner, fields);
+                }
+                // A variant's fields, under the variant's path, are what a
+                // pattern of it binds (`Shape::Circle { radius }`).
+                Item::Enum(node) => {
+                    let outer = self.enter_type_params(&node.generics);
+                    let enumeration = format!("{container}::{}", ident_name(&node.ident));
+                    for variant in &node.variants {
+                        let fields = self.declared_fields(container, &variant.fields);
+                        let owner = format!("{enumeration}::{}", ident_name(&variant.ident));
+                        self.record_fields(owner, fields);
                     }
                     self.type_params = outer;
-                    // A struct with no typed field is recorded too, and `#[cfg]`
-                    // alternatives of one struct keep only the fields they
-                    // agree on: which one compiles is unknown.
-                    let owner = format!("{container}::{}", ident_name(&node.ident));
-                    match self.struct_fields.get_mut(&owner) {
-                        Some(known) => {
-                            known.retain(|name, target| fields.get(name) == Some(target));
-                        }
-                        None => {
-                            self.struct_fields.insert(owner, fields);
-                        }
-                    }
                 }
                 Item::Mod(node) => {
                     if let Some((_, inner)) = &node.content {
@@ -1068,13 +1085,100 @@ impl Walk<'_> {
         }
     }
 
+    /// The declared type of each field, by name, or by position (`0`, `1`)
+    /// for a tuple struct's or tuple variant's.
+    fn declared_fields(
+        &self,
+        container: &str,
+        fields: &syn::Fields,
+    ) -> BTreeMap<String, FieldType> {
+        let mut types = BTreeMap::new();
+        for (position, field) in fields.iter().enumerate() {
+            let name = field
+                .ident
+                .as_ref()
+                .map_or_else(|| position.to_string(), ident_name);
+            if let Some(target) = self.declared_field_type(container, &field.ty) {
+                types.insert(name, target);
+            }
+        }
+        types
+    }
+
+    /// Record the field types of one struct or variant. One with no typed
+    /// field is recorded too, and `#[cfg]` alternatives of one keep only the
+    /// fields they agree on: which one compiles is unknown.
+    fn record_fields(&mut self, owner: String, fields: BTreeMap<String, FieldType>) {
+        match self.struct_fields.get_mut(&owner) {
+            Some(known) => {
+                known.retain(|name, target| fields.get(name) == Some(target));
+            }
+            None => {
+                self.struct_fields.insert(owner, fields);
+            }
+        }
+    }
+
     /// Bring the type parameters `generics` declares into scope, returning
     /// the ones in scope before, for the caller to restore.
-    pub(super) fn enter_type_params(&mut self, generics: &syn::Generics) -> BTreeSet<String> {
+    pub(super) fn enter_type_params(
+        &mut self,
+        generics: &syn::Generics,
+    ) -> BTreeMap<String, Vec<syn::Path>> {
         let outer = self.type_params.clone();
-        self.type_params
-            .extend(generics.type_params().map(|param| ident_name(&param.ident)));
+        for param in generics.type_params() {
+            self.type_params
+                .insert(ident_name(&param.ident), trait_paths(&param.bounds));
+        }
+        // `where D: Driver` bounds a parameter declared above.
+        for predicate in generics.where_clause.iter().flat_map(|w| &w.predicates) {
+            let syn::WherePredicate::Type(typed) = predicate else {
+                continue;
+            };
+            let syn::Type::Path(bounded) = &typed.bounded_ty else {
+                continue;
+            };
+            let Some(name) = bounded.path.get_ident().map(ident_name) else {
+                continue;
+            };
+            if let Some(bounds) = self.type_params.get_mut(&name) {
+                bounds.extend(trait_paths(&typed.bounds));
+            }
+        }
         outer
+    }
+
+    /// The type arguments of each receiver [`Walk::signature_receivers`]
+    /// typed, with the type they were read for: `self` takes the `impl`
+    /// block's (`impl<E: Environment> Context<'_, E>`), and a parameter
+    /// the ones written in its type.
+    fn signature_arguments(
+        &self,
+        container: &str,
+        signature: &syn::Signature,
+        receivers: &BTreeMap<String, String>,
+    ) -> BTreeMap<String, (String, Vec<Option<String>>)> {
+        let mut arguments = BTreeMap::new();
+        for input in &signature.inputs {
+            let (name, ty) = match input {
+                syn::FnArg::Receiver(_) => match &self.current_impl_self {
+                    Some(ty) => ("self".to_owned(), ty),
+                    None => continue,
+                },
+                syn::FnArg::Typed(typed) => match typed.pat.as_ref() {
+                    syn::Pat::Ident(ident) => (ident_name(&ident.ident), typed.ty.as_ref()),
+                    _ => continue,
+                },
+            };
+            let Some(owner) = receivers.get(&name) else {
+                continue;
+            };
+            let written = self.type_arguments(container, ty);
+            if written.iter().any(Option::is_some) {
+                arguments.insert(name, (owner.clone(), written));
+            }
+        }
+        arguments
     }
 
     /// The receiver types a signature states: `self` as the `impl` block's
@@ -1249,3 +1353,49 @@ fn type_label(ty: &Type) -> String {
 
 #[cfg(test)]
 mod tests;
+
+/// Record each field of a generic struct declared as one of the struct's
+/// own type parameters, behind any `&`, by that parameter's position (see
+/// [`FieldType::Param`]).
+fn param_fields(
+    generics: &syn::Generics,
+    fields: &syn::Fields,
+    types: &mut BTreeMap<String, FieldType>,
+) {
+    let params: Vec<String> = generics
+        .type_params()
+        .map(|param| ident_name(&param.ident))
+        .collect();
+    for field in fields {
+        let Some(ident) = &field.ident else {
+            continue;
+        };
+        let mut ty = &field.ty;
+        while let syn::Type::Reference(reference) = ty {
+            ty = &reference.elem;
+        }
+        let syn::Type::Path(path) = ty else {
+            continue;
+        };
+        let Some(name) = path.path.get_ident().map(ident_name) else {
+            continue;
+        };
+        if let Some(position) = params.iter().position(|param| *param == name) {
+            types.insert(ident_name(ident), FieldType::Param(position));
+        }
+    }
+}
+
+/// The traits a list of bounds names (`Driver + Send`), lifetimes and
+/// `?Sized` left out.
+fn trait_paths(
+    bounds: &syn::punctuated::Punctuated<syn::TypeParamBound, syn::Token![+]>,
+) -> Vec<syn::Path> {
+    bounds
+        .iter()
+        .filter_map(|bound| match bound {
+            syn::TypeParamBound::Trait(bound) if bound.maybe.is_none() => Some(bound.path.clone()),
+            _ => None,
+        })
+        .collect()
+}

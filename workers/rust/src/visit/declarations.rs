@@ -51,6 +51,9 @@ pub struct Declarations {
     /// The type every module-level alias names; `None` for a path two files
     /// alias apart. See [`TypeAliases`].
     aliases: BTreeMap<String, Option<String>>,
+    /// The type every function and method returns; `None` for a path two
+    /// files declare apart. See [`FunctionReturns`].
+    returns: BTreeMap<String, Option<String>>,
     /// The `cfg` alternatives of each name `use` items re-export
     /// apart, every one gated; see [`ExportAlternatives`].
     export_alternatives: BTreeMap<String, Option<Vec<String>>>,
@@ -100,6 +103,15 @@ pub type StructFields = BTreeMap<String, BTreeMap<String, FieldType>>;
 /// cannot resolve is not here.
 pub type TypeAliases = BTreeMap<String, String>;
 
+/// The type each function and method of one file returns, by its canonical
+/// path, as `Walk::receiver_type` states it through the file's own imports:
+/// what a binding of a call's result holds in another file
+/// (`let store = report::open_existing(root)?;`). A function whose return
+/// type the file cannot resolve is not here; a path the file declares twice
+/// with different return types (an inherent method and a trait's of one
+/// name, or two `#[cfg]` variants) returns `None`, no one type.
+pub type FunctionReturns = BTreeMap<String, Option<String>>;
+
 /// The declared type of one struct field, as far as its own file can tell.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FieldType {
@@ -121,6 +133,11 @@ pub enum FieldType {
         /// The modules the globs import from, in the order written.
         sources: Vec<String>,
     },
+    /// One of the struct's own type parameters, by its position among
+    /// them, seen through `&` (`environment: &'a mut E` of
+    /// `Context<'a, E, F>` is position 0): a receiver of the struct holds
+    /// what its type argument there is.
+    Param(usize),
 }
 
 impl Declarations {
@@ -324,6 +341,29 @@ impl Declarations {
                 },
             );
         }
+    }
+
+    /// Record one file's function return types, as
+    /// [`index_facts`](super::index_facts) returned them. A path another
+    /// file declares a different return type at returns no one type.
+    pub fn add_returns(&mut self, returns: &FunctionReturns) {
+        for (function, returned) in returns {
+            let known = self.returns.get(function).cloned();
+            self.returns.insert(
+                function.clone(),
+                match known {
+                    Some(earlier) if earlier != *returned => None,
+                    _ => returned.clone(),
+                },
+            );
+        }
+    }
+
+    /// The type the function at `path` returns, as its own file resolved
+    /// it, remembering that `path` was asked about.
+    pub fn return_of(&self, path: &str) -> Option<String> {
+        self.lookups.borrow_mut().insert(path.to_owned());
+        self.returns.get(path)?.clone()
     }
 
     /// The type the alias at `path` names, as its own file resolved it,

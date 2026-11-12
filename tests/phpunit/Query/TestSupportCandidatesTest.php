@@ -106,6 +106,16 @@ final class TestSupportCandidatesTest extends KnossosTestCase
         $all = $byName($health->architectureHealth($ids['project'], limit: 100, pathPrefix: 'src/security.ts', includeAnnotated: true)->data);
         self::assertSame(true, $all['src/security.ts#loadedByName']['hidden_by_annotation'] ?? null);
         self::assertSame('false_positive', $all['src/security.ts#loadedByName']['annotation']['kind'] ?? null);
+
+        // The compact page keeps both markers, and a row nothing hid has neither.
+        $compact = [];
+        foreach ($health->architectureHealth($ids['project'], limit: 100, pathPrefix: 'src/security.ts', includeAnnotated: true, candidatesOnly: true)->data['dead_code_candidates'] as $row) {
+            $compact[$row['component']] = $row;
+        }
+        self::assertSame(true, $compact['src/security.ts#loadedByName']['hidden_by_annotation'] ?? null);
+        self::assertSame('false_positive', $compact['src/security.ts#loadedByName']['annotation']['kind'] ?? null);
+        self::assertArrayNotHasKey('annotation', $compact['src/security.ts#nobody']);
+        self::assertArrayNotHasKey('hidden_by_annotation', $compact['src/security.ts#nobody']);
     }
 
     /**

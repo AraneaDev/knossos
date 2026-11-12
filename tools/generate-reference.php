@@ -55,7 +55,7 @@ $mcp = "# MCP tool reference\n\nThis file is generated from the live `ToolServic
 foreach ($tools->definitions() as $definition) {
     $schema = $definition['inputSchema'];
     $required = array_fill_keys($schema['required'] ?? [], true);
-    $mcp .= sprintf("## `%s`\n\n%s\n\n| Input | Type | Required | Constraints/default |\n| --- | --- | --- | --- |\n", $definition['name'], $definition['description']);
+    $mcp .= sprintf("## `%s`\n\n%s\n\n| Input | Type | Required | Constraints/default | Description |\n| --- | --- | --- | --- | --- |\n", $definition['name'], $definition['description']);
     foreach ($schema['properties'] ?? [] as $name => $property) {
         $type = is_array($property['type'] ?? null) ? implode(' or ', $property['type']) : ($property['type'] ?? 'any');
         $details = [];
@@ -67,10 +67,13 @@ foreach ($tools->definitions() as $definition) {
         if (isset($property['enum'])) {
             $details[] = 'enum=' . implode(', ', array_map('strval', $property['enum']));
         }
-        $mcp .= sprintf("| `%s` | %s | %s | %s |\n", $name, $type, isset($required[$name]) ? 'yes' : 'no', $details === [] ? 'none' : implode('; ', $details));
+        // The description carries what the constraints cannot say, such as
+        // a maximum that depends on another input.
+        $description = str_replace(['|', "\n"], ['\\|', ' '], (string) ($property['description'] ?? ''));
+        $mcp .= sprintf("| `%s` | %s | %s | %s | %s |\n", $name, $type, isset($required[$name]) ? 'yes' : 'no', $details === [] ? 'none' : implode('; ', $details), $description === '' ? 'none' : $description);
     }
     if (($schema['properties'] ?? []) === []) {
-        $mcp .= "| none | none | none | No inputs |\n";
+        $mcp .= "| none | none | none | No inputs | none |\n";
     }
     $annotations = $definition['annotations'] ?? [];
     $mcp .= sprintf("\nAnnotations: read-only `%s`; destructive `%s`; idempotent `%s`; open-world `%s`.\n\n", $annotations['readOnlyHint'] ? 'yes' : 'no', $annotations['destructiveHint'] ? 'yes' : 'no', $annotations['idempotentHint'] ? 'yes' : 'no', $annotations['openWorldHint'] ? 'yes' : 'no');

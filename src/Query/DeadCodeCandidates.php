@@ -32,7 +32,9 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      * search short.
      *
      * Report order is reachability class, `unreferenced` first, then canonical
-     * name and id. `$confidence` `probable` leaves out the `possible` ones
+     * name and id; the candidates only an untyped receiver makes possible
+     * (`reason_code` `untyped_receiver`) follow all the others, in the same
+     * order among themselves. `$confidence` `probable` leaves out the `possible` ones
      * before anything is counted or paged.
      *
      * Memory follows the page, not the project: the searches return ids only,
@@ -41,13 +43,14 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      * exhausted PHP's default memory on a project of 50,000 of them.
      *
      * @param list<string> $edgeKinds
-     * @return array{candidates: list<array<string, mixed>>, total: int, test_only: int, probable: int, excluded: array<string, int>, convention_excluded: int, truncated: bool}
+     * @return array{candidates: list<array<string, mixed>>, total: int, test_only: int, probable: int, untyped_receiver: int, excluded: array<string, int>, convention_excluded: int, truncated: bool}
      */
     public function find(string $projectId, array $edgeKinds, int $minConfidenceRank, bool $includeTests, int $deadline, string $confidence, int $offset, int $limit, ?string $pathPrefix = null, bool $includeAnnotated = false, bool $includeExamples = false): array
     {
         $found = [
-            'kept' => ['unreferenced' => [], 'test_only' => []], 'keep' => $offset + $limit, 'confidence' => $confidence,
-            'total' => 0, 'test_only' => 0, 'probable' => 0, 'excluded' => [], 'convention_excluded' => 0, 'truncated' => false,
+            'kept' => ['unreferenced' => [], 'test_only' => [], 'untyped_unreferenced' => [], 'untyped_test_only' => []],
+            'keep' => $offset + $limit, 'confidence' => $confidence,
+            'total' => 0, 'test_only' => 0, 'probable' => 0, 'untyped_receiver' => 0, 'excluded' => [], 'convention_excluded' => 0, 'truncated' => false,
             'path_prefix' => $pathPrefix, 'include_annotated' => $includeAnnotated,
             'include_examples' => $includeExamples, 'example_excluded' => 0,
         ];
@@ -59,7 +62,8 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
 
         return [
             'candidates' => $this->hydrate($projectId, array_slice($page, $offset, $limit)),
-            'total' => $found['total'], 'test_only' => $found['test_only'], 'probable' => $found['probable'], 'excluded' => $found['excluded'],
+            'total' => $found['total'], 'test_only' => $found['test_only'], 'probable' => $found['probable'],
+            'untyped_receiver' => $found['untyped_receiver'], 'excluded' => $found['excluded'],
             'convention_excluded' => $found['convention_excluded'], 'truncated' => $found['truncated'],
             'example_excluded' => $found['example_excluded'],
         ];
@@ -192,6 +196,14 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
             $class = $candidate['reachability'] === 'test_only' ? 'test_only' : 'unreferenced';
             if ($class === 'test_only') {
                 ++$found['test_only'];
+            }
+            // Possible only because some untyped receiver calls a member of
+            // its name: on a Rust workspace nearly every method name is, and
+            // nearly every such candidate had a caller. They follow every
+            // other candidate, so the page leads with the stronger claims.
+            if (($candidate['reason_code'] ?? null) === 'untyped_receiver') {
+                ++$found['untyped_receiver'];
+                $class = 'untyped_' . $class;
             }
             if ($candidate['confidence'] === 'probable') {
                 ++$found['probable'];

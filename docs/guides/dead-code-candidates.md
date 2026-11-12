@@ -94,6 +94,8 @@ A PHP class name built at runtime from a namespace literal, `new ('App\Cards\' .
 or the same string held in a variable first, references every class directly in that
 namespace: any of them may be the one built.
 
+A candidate demoted only by the untyped-call ground is listed after every other candidate, `unreferenced` and `test_only` alike, and counted in `bounds.candidates_untyped_receiver`: on a Rust workspace nearly every method name is called on some receiver the scan cannot type, and nearly every such candidate turned out to have a caller. Each candidate's `reason_code` names its ground in a word (`framework_role` when a framework role may reach it by convention, `dynamic_origin` when it was found by a fallback rather than the syntax tree, `untyped_receiver`, `shape_contract`, `uncontracted_literal`, `external_ancestor`, `implicit_protocol`, or `unreferenced`/`test_only` when nothing qualifies it). A Rust inherent method is never demoted for an external trait its type implements: `Debug`, `Drop` or `Serialize` dispatch only to the methods of their own `impl` block.
+
 The `reason` field names the ground for three of the cases: an untyped call, an object literal with no contract, and an external ancestor. A demotion for a non-`ast` origin or a framework role keeps the generic reason, so read `origin` and `roles` on the component for those.
 
 ## What is excluded before reporting
@@ -383,6 +385,8 @@ A large project can have hundreds of candidates, and a framework's lifecycle met
 marked `possible`, can fill the first page. `candidate_confidence: "probable"`
 (CLI: `--candidate-confidence=probable`) reports only the stronger claims, and
 `candidate_offset` (`--candidate-offset=N`) pages past the first page.
+`candidates_only` (`--candidates-only`) answers with the candidates alone, each as `component`, `kind`, `path`, `line`, `reachability`, `confidence` and `reason_code`, with no hubs or hotspots computed or sent, and lets `candidate_limit` go to 1000: one call lists what took several full pages.
+
 `candidate_limit` (`--candidate-limit=N`) sets how many candidates a page lists,
 up to 100; left at 0 it is `limit`, which then sizes only the hubs and
 hotspots, so a page of 100 candidates no longer brings 100 hubs and 100
