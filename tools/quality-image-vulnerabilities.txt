@@ -8,6 +8,10 @@
 # lane still reported after the dependency update (`trivy image --ignore-unfixed
 # --severity HIGH,CRITICAL --format json knossos:quality`), with Trivy 0.76.1.
 CVE-2026-78669	golang.org/x/net
+# First reported by the release lane on 2026-11-11, in the same golang.org/x/net the
+# pinned Trivy and cosign binaries are built with. A release of those tools with a fixed
+# x/net clears it, as for CVE-2026-78669 above.
+CVE-2026-78661	golang.org/x/net
 # Trivy 0.76.1 itself is built with go-jose v4.1.5; the fix is v4.1.6 (GHSA-mgcc-cww5-fp2q,
 # published 2026-10-27) and no Trivy release carries it yet. Cosign 3.1.4 already has it.
 CVE-2026-116587	github.com/go-jose/go-jose/v4
