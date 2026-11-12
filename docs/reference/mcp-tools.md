@@ -28,9 +28,9 @@ Start here to find a project_id. Lists scanned projects with freshness and graph
 | --- | --- | --- | --- | --- |
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
-| `limit` | integer | no | minimum=1; maximum=100; default=50 |  |
-| `offset` | integer | no | minimum=0; maximum=100000; default=0 |  |
-| `include_roots` | boolean | no | default=false |  |
+| `limit` | integer | no | minimum=1; maximum=100; default=50 | none |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
+| `include_roots` | boolean | no | default=false | none |
 
 Annotations: read-only `yes`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -41,13 +41,13 @@ Build or refresh a project's architecture graph. Run this first for a new projec
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
 | `path` | string | yes | minLength=1 | Absolute path under a configured allowed root. |
-| `name` | string | no | minLength=1 |  |
-| `mode` | string | no | default="auto"; enum=auto, full, incremental |  |
-| `max_files` | integer | no | minimum=1; maximum=100000 |  |
-| `max_file_bytes` | integer | no | minimum=1; maximum=100000000 |  |
+| `name` | string | no | minLength=1 | none |
+| `mode` | string | no | default="auto"; enum=auto, full, incremental | none |
+| `max_files` | integer | no | minimum=1; maximum=100000 | none |
+| `max_file_bytes` | integer | no | minimum=1; maximum=100000000 | none |
 | `worker_timeout_ms` | integer | no | minimum=1000; maximum=120000 | How long a language worker may stay silent during one request, in milliseconds; every file it reports and every heartbeat restarts the wait, up to 120000 per request. Omit to use the project's knossos.json setting, or the built-in default (30000) when it is unset. |
 | `snapshot_retention` | integer | no | minimum=0; maximum=20 | How many historical snapshots to keep. Omit to use the project's knossos.json setting, or the built-in default (5) when it is unset. |
-| `boundaries` | array | no | maxItems=50 |  |
+| `boundaries` | array | no | maxItems=50 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -60,9 +60,9 @@ See a project's scan history. Use to find an older snapshot id to diff against o
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=20 |  |
-| `offset` | integer | no | minimum=0; maximum=100000; default=0 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=20 | none |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -75,10 +75,10 @@ See what changed architecturally between two scans. Use after a rescan to review
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `from_snapshot` | string | yes | minLength=1 |  |
-| `to_snapshot` | string | no | minLength=1; default="active" |  |
-| `max_changes` | integer | no | minimum=1; maximum=1000; default=25 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `from_snapshot` | string | yes | minLength=1 | none |
+| `to_snapshot` | string | no | minLength=1; default="active" | none |
+| `max_changes` | integer | no | minimum=1; maximum=1000; default=25 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -91,12 +91,12 @@ Check architecture budgets against a baseline in CI. Use to fail a build on regr
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `baseline_snapshot` | string | yes | minLength=1 |  |
-| `budgets` | object | yes | none |  |
-| `policies` | array | no | maxItems=50 |  |
-| `sarif` | boolean | no | default=false |  |
-| `propose_baseline` | boolean | no | default=false |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `baseline_snapshot` | string | yes | minLength=1 | none |
+| `budgets` | object | yes | none | none |
+| `policies` | array | no | maxItems=50 | none |
+| `sarif` | boolean | no | default=false | none |
+| `propose_baseline` | boolean | no | default=false | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -109,9 +109,9 @@ See how architecture metrics moved over recent scans. Use for release notes or t
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `limit` | integer | no | minimum=2; maximum=20; default=10 |  |
-| `release_from` | string | no | minLength=1 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `limit` | integer | no | minimum=2; maximum=20; default=10 | none |
+| `release_from` | string | no | minLength=1 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -124,9 +124,9 @@ Locate a component by name when you are unsure of its exact canonical path, or b
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `name` | string | yes | minLength=1 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=20 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `name` | string | yes | minLength=1 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=20 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -139,11 +139,11 @@ Get the full dossier for one component (its roles, boundary, containment, relati
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `component` | string | yes | minLength=1 |  |
-| `max_relationships` | integer | no | minimum=1; maximum=100; default=25 |  |
-| `max_children` | integer | no | minimum=1; maximum=100; default=25 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `component` | string | yes | minLength=1 | none |
+| `max_relationships` | integer | no | minimum=1; maximum=100; default=25 | none |
+| `max_children` | integer | no | minimum=1; maximum=100; default=25 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -156,11 +156,11 @@ List every usage site of a symbol with file:line evidence: one row per occurrenc
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `symbol` | string | yes | minLength=1 |  |
-| `edge_kinds` | array | no | maxItems=23 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `limit` | integer | no | minimum=1; maximum=500; default=100 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `symbol` | string | yes | minLength=1 | none |
+| `edge_kinds` | array | no | maxItems=23 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `limit` | integer | no | minimum=1; maximum=500; default=100 | none |
 | `exclude_tests` | boolean | no | default=false | Leave out usages from test code. |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
@@ -174,8 +174,8 @@ Get a one-call overview of the codebase by language, node kind, and relationship
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=50 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=50 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -188,7 +188,7 @@ Render a compact markdown orientation brief (boundaries, entry points, key hubs)
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=1000; maximum=20000; default=4000 | Brief size budget; whole sections are omitted (and reported) to fit. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
+| `project_id` | string | yes | minLength=1 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -201,13 +201,13 @@ Find the largest or longest files. Use to spot refactor targets without shelling
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `path_contains` | string | no | minLength=1; maxLength=1000 |  |
-| `language` | string | no | minLength=1; maxLength=100 |  |
-| `sort_by` | string | no | default="line_count"; enum=path, line_count |  |
-| `order` | string | no | default="desc"; enum=asc, desc |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=50 |  |
-| `offset` | integer | no | minimum=0; maximum=100000; default=0 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `path_contains` | string | no | minLength=1; maxLength=1000 | none |
+| `language` | string | no | minLength=1; maxLength=100 | none |
+| `sort_by` | string | no | default="line_count"; enum=path, line_count | none |
+| `order` | string | no | default="desc"; enum=asc, desc | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=50 | none |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -220,13 +220,13 @@ List the files, or the classes and functions, no test reaches through the graph:
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
+| `project_id` | string | yes | minLength=1 | none |
 | `granularity` | string | no | default="files"; enum=files, components | files lists whole files no test reaches, largest first; components lists each class, function and method. |
 | `path_prefix` | string | no | minLength=1; maxLength=1000 | Only list what sits under this project-relative path. |
-| `limit` | integer | no | minimum=1; maximum=100; default=50 |  |
-| `offset` | integer | no | minimum=0; maximum=100000; default=0 |  |
+| `limit` | integer | no | minimum=1; maximum=100; default=50 | none |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 | `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 | Most components the walk from the tests visits. |
-| `timeout_ms` | integer | no | minimum=1; maximum=60000; default=5000 |  |
+| `timeout_ms` | integer | no | minimum=1; maximum=60000; default=5000 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -239,7 +239,7 @@ One file's architectural context in one short answer: its boundary and the decla
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
+| `project_id` | string | yes | minLength=1 | none |
 | `path` | string | yes | minLength=1 | The file, relative to the project root or absolute under it. |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
@@ -253,11 +253,11 @@ The scan diagnostics of the active graph (compiler and worker errors, warnings, 
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `severity` | string | no | enum=error, warning, info |  |
-| `path_prefix` | string | no | minLength=1 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=100 |  |
-| `offset` | integer | no | minimum=0; maximum=100000; default=0 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `severity` | string | no | enum=error, warning, info | none |
+| `path_prefix` | string | no | minLength=1 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=100 | none |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -270,11 +270,11 @@ List durable annotations recorded on components, each with its author (user or m
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `component` | string | no | minLength=1 |  |
-| `kind` | string | no | enum=intended_boundary, confirmed_dead, false_positive, intentional, note, check |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=100 |  |
-| `offset` | integer | no | minimum=0; maximum=100000; default=0 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `component` | string | no | minLength=1 | none |
+| `kind` | string | no | enum=intended_boundary, confirmed_dead, false_positive, intentional, note, check | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=100 | none |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -287,14 +287,14 @@ Answer 'how does A reach B?' Traces evidence-backed static paths between two com
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `from` | string | yes | minLength=1 |  |
-| `to` | string | yes | minLength=1 |  |
-| `max_depth` | integer | no | minimum=1; maximum=12; default=6 |  |
-| `max_paths` | integer | no | minimum=1; maximum=20; default=5 |  |
-| `edge_kinds` | array | no | maxItems=23 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=3000 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `from` | string | yes | minLength=1 | none |
+| `to` | string | yes | minLength=1 | none |
+| `max_depth` | integer | no | minimum=1; maximum=12; default=6 | none |
+| `max_paths` | integer | no | minimum=1; maximum=20; default=5 | none |
+| `edge_kinds` | array | no | maxItems=23 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=3000 | none |
 | `both_directions` | boolean | no | default=false | When from reaches to by no route, look from to to from as well; the answer then says reversed. |
 | `profile` | string | no | none | Follow only paths valid in this profile (an enricher edge attribute, such as a brand): an enricher edge tagged only with other profiles is not followed, and unprofiled edges always are. Without it, the first profiled edge a path crosses binds that path. |
 
@@ -309,13 +309,13 @@ Before editing a symbol, find everything that depends on it. Answers 'what break
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `symbol` | string | yes | minLength=1 |  |
-| `max_depth` | integer | no | minimum=1; maximum=8; default=6 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=100 |  |
-| `edge_kinds` | array | no | maxItems=23 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `symbol` | string | yes | minLength=1 | none |
+| `max_depth` | integer | no | minimum=1; maximum=8; default=6 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=100 | none |
+| `edge_kinds` | array | no | maxItems=23 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 | none |
 | `seed_members` | boolean | no | default=true | Start from a class's or module's members too, so a caller of a static method counts; each dependant found that way names the member as via_member. |
 | `rings` | boolean | no | default=false | Add rings: the dependants counted one hop out, two, and three or more, tests counted apart, by path confidence. |
 
@@ -330,13 +330,13 @@ Find circular dependencies. Use before a refactor to see which modules are tangl
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `edge_kinds` | array | no | maxItems=23 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=20 |  |
-| `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 |  |
-| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `edge_kinds` | array | no | maxItems=23 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=20 | none |
+| `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 | none |
+| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 | none |
 | `include_self_loops` | boolean | no | default=false | Include single-symbol self-recursion; excluded by default because recursion is not an architectural cycle. |
 | `within_type` | boolean | no | default=false | Also list cycles whose members all sit in one class, interface, trait or enum, after the others, each marked within_type with its type; single-symbol recursion stays out. |
 | `include_facades` | boolean | no | default=false | Keep the edges a re-export facade adds: re_exports edges and imports between a module and its own ancestor (a parent re-exporting its children while they import shared items back through it). Left out by default, so a real cycle between siblings stands out. |
@@ -352,13 +352,13 @@ Rank the structural hotspots, hubs, and likely-dead code. Use to decide where cl
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `edge_kinds` | array | no | maxItems=23 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=20 |  |
-| `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 |  |
-| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `edge_kinds` | array | no | maxItems=23 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=20 | none |
+| `max_nodes` | integer | no | minimum=1; maximum=200000; default=200000 | none |
+| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 | none |
 | `include_external` | boolean | no | default=false | Include external/unresolved symbols (builtins, vendor targets) in hubs and hotspots. |
 | `include_tests` | boolean | no | default=false | Include test-role components in hubs and hotspots. |
 | `candidate_confidence` | string | no | default="possible"; enum=probable, possible | Report only dead-code candidates at this confidence or above; probable leaves out framework-invoked members. |
@@ -381,12 +381,12 @@ Verify declared boundary rules still hold. Use to confirm a change did not intro
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `policies` | array | no | maxItems=50 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=100 |  |
-| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `policies` | array | no | maxItems=50 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=100 | none |
+| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -399,13 +399,13 @@ Decide where new code for a feature belongs. Ranks existing boundaries by lexica
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `feature_description` | string | yes | minLength=1; maxLength=2000 |  |
-| `limit` | integer | no | minimum=1; maximum=20; default=5 |  |
-| `max_members` | integer | no | minimum=1; maximum=50000; default=20000 |  |
-| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |  |
-| `ranking_mode` | string | no | default="deterministic"; enum=deterministic, semantic_if_available |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `feature_description` | string | yes | minLength=1; maxLength=2000 | none |
+| `limit` | integer | no | minimum=1; maximum=20; default=5 | none |
+| `max_members` | integer | no | minimum=1; maximum=50000; default=20000 | none |
+| `max_edges` | integer | no | minimum=1; maximum=500000; default=500000 | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 | none |
+| `ranking_mode` | string | no | default="deterministic"; enum=deterministic, semantic_if_available | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -418,15 +418,15 @@ Blend static blast radius with recent Git churn to prioritize review. Use when y
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `symbol` | string | yes | minLength=1 |  |
-| `since_days` | integer | no | minimum=1; maximum=3650; default=90 |  |
-| `max_commits` | integer | no | minimum=1; maximum=5000; default=500 |  |
-| `max_depth` | integer | no | minimum=1; maximum=8; default=4 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=100 |  |
-| `edge_kinds` | array | no | maxItems=23 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `symbol` | string | yes | minLength=1 | none |
+| `since_days` | integer | no | minimum=1; maximum=3650; default=90 | none |
+| `max_commits` | integer | no | minimum=1; maximum=5000; default=500 | none |
+| `max_depth` | integer | no | minimum=1; maximum=8; default=4 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=100 | none |
+| `edge_kinds` | array | no | maxItems=23 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -439,15 +439,15 @@ Map changed files to the components they affect, to scope review or tests to wha
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
+| `project_id` | string | yes | minLength=1 | none |
 | `files` | array | no | maxItems=50 | Explicit changed paths (repo-relative). Mutually exclusive with working_tree. |
 | `working_tree` | boolean | no | default=false | Take the change set from Git instead of files. Required to use base_ref. |
 | `base_ref` | string | no | minLength=1; maxLength=200 | Git ref to diff the working tree against. Requires working_tree: true. |
-| `max_depth` | integer | no | minimum=1; maximum=8; default=4 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=100 |  |
-| `edge_kinds` | array | no | maxItems=23 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |  |
+| `max_depth` | integer | no | minimum=1; maximum=8; default=4 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=100 | none |
+| `edge_kinds` | array | no | maxItems=23 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -460,15 +460,15 @@ Map a change set to the test files that statically exercise it, ranked by distan
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `files` | array | no | maxItems=50 |  |
-| `working_tree` | boolean | no | default=false |  |
-| `base_ref` | string | no | minLength=1; maxLength=200 |  |
-| `max_depth` | integer | no | minimum=1; maximum=12; default=4 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=100 |  |
-| `edge_kinds` | array | no | maxItems=23 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `files` | array | no | maxItems=50 | none |
+| `working_tree` | boolean | no | default=false | none |
+| `base_ref` | string | no | minLength=1; maxLength=200 | none |
+| `max_depth` | integer | no | minimum=1; maximum=12; default=4 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=100 | none |
+| `edge_kinds` | array | no | maxItems=23 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -481,16 +481,16 @@ One-call architectural review of a change set: blast radius, boundary-policy vio
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `base_ref` | string | no | minLength=1; maxLength=200 |  |
-| `files` | array | no | maxItems=50 |  |
-| `policies` | array | no | maxItems=50 |  |
-| `budgets` | object | no | none |  |
-| `baseline_snapshot` | string | no | minLength=1 |  |
-| `max_depth` | integer | no | minimum=1; maximum=8; default=4 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=100 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `base_ref` | string | no | minLength=1; maxLength=200 | none |
+| `files` | array | no | maxItems=50 | none |
+| `policies` | array | no | maxItems=50 | none |
+| `budgets` | object | no | none | none |
+| `baseline_snapshot` | string | no | minLength=1 | none |
+| `max_depth` | integer | no | minimum=1; maximum=8; default=4 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=100 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1000 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -501,11 +501,11 @@ Assemble a bounded, task-shaped evidence bundle (summary + likely location + imp
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
 | `verbosity` | string | no | default="compact"; enum=compact, full | compact (default) trims evidence to a preview; full returns all evidence. |
-| `project_id` | string | yes | minLength=1 |  |
-| `task_description` | string | no | maxLength=2000 |  |
-| `files` | array | no | maxItems=50 |  |
-| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 |  |
-| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1500 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `task_description` | string | no | maxLength=2000 | none |
+| `files` | array | no | maxItems=50 | none |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=5000; default=1500 | none |
 | `include_source` | boolean | no | default=false | Inline bounded source snippets (≤40 lines each) for the included dossiers, read from the working tree. |
 
 Annotations: read-only `yes`; destructive `no`; idempotent `yes`; open-world `no`.
@@ -519,14 +519,14 @@ Render the current graph as Mermaid or PlantUML source. Use to embed an up-to-da
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `format` | string | no | default="mermaid"; enum=mermaid, plantuml |  |
-| `boundary` | string | no | minLength=1 |  |
-| `edge_kinds` | array | no | maxItems=23 |  |
-| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible |  |
-| `direction` | string | no | default="LR"; enum=LR, TB |  |
-| `max_nodes` | integer | no | minimum=1; maximum=400; default=200 |  |
-| `max_edges` | integer | no | minimum=1; maximum=1000; default=500 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `format` | string | no | default="mermaid"; enum=mermaid, plantuml | none |
+| `boundary` | string | no | minLength=1 | none |
+| `edge_kinds` | array | no | maxItems=23 | none |
+| `min_confidence` | string | no | default="possible"; enum=certain, probable, possible | none |
+| `direction` | string | no | default="LR"; enum=LR, TB | none |
+| `max_nodes` | integer | no | minimum=1; maximum=400; default=200 | none |
+| `max_edges` | integer | no | minimum=1; maximum=1000; default=500 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -539,10 +539,10 @@ List the architecture boundaries and sample members. Use to learn how the codeba
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `source` | string | no | enum=explicit, inferred |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=50 |  |
-| `offset` | integer | no | minimum=0; maximum=100000; default=0 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `source` | string | no | enum=explicit, inferred | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=50 | none |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -555,14 +555,14 @@ Search components by name, attribute, role, or the text of a note on them, with 
 | `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 | `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
-| `project_id` | string | yes | minLength=1 |  |
-| `query` | string | yes | minLength=1 |  |
-| `kinds` | array | no | maxItems=20 |  |
-| `roles` | array | no | maxItems=20 |  |
-| `boundary_ids` | array | no | maxItems=20 |  |
-| `confidences` | array | no | maxItems=20 |  |
-| `limit` | integer | no | minimum=1; maximum=100; default=20 |  |
-| `offset` | integer | no | minimum=0; maximum=100000; default=0 |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `query` | string | yes | minLength=1 | none |
+| `kinds` | array | no | maxItems=20 | none |
+| `roles` | array | no | maxItems=20 | none |
+| `boundary_ids` | array | no | maxItems=20 | none |
+| `confidences` | array | no | maxItems=20 | none |
+| `limit` | integer | no | minimum=1; maximum=100; default=20 | none |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 | `files` | boolean | no | default=false | Also list the project files whose path holds every term, and when the query names a file no component matches, what that file declares. |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
@@ -573,16 +573,16 @@ Record, extend, confirm, move or remove your own (model) annotation on a compone
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
-| `project_id` | string | yes | minLength=1 |  |
-| `component` | string | yes | minLength=1 |  |
-| `kind` | string | yes | enum=intended_boundary, confirmed_dead, false_positive, intentional, note |  |
-| `value` | string | no | maxLength=2000; default="" |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `component` | string | yes | minLength=1 | none |
+| `kind` | string | yes | enum=intended_boundary, confirmed_dead, false_positive, intentional, note | none |
+| `value` | string | no | maxLength=2000; default="" | none |
 | `evidence_paths` | array | no | maxItems=5 | Files your note rests on besides the component's own, scanned or not (a CI script counts); it is marked stale when one changes. |
-| `remove` | boolean | no | default=false |  |
+| `remove` | boolean | no | default=false | none |
 | `replace` | boolean | no | default=false | Replace a different model note stored here; without it such a write is refused and the stored note returned, so you can extend it instead. |
 | `confirm` | boolean | no | default=false | You checked a stale note and it still holds: rest it on its files as they are now, keeping its text and cited files. Takes no value, evidence_paths, remove or replace. |
 | `move_to` | string | no | minLength=1; maxLength=1000 | Move your note from component, a name the graph lost (list_annotations says missing, often with a suggested_component), to this component, keeping its text and the basis it was written against, so it reads stale when its component's code changed; check it and confirm it. Takes no value, evidence_paths, remove, replace or confirm. |
-| `execute` | boolean | no | default=false |  |
+| `execute` | boolean | no | default=false | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -592,8 +592,8 @@ Delete a project and its stored graph. Preview by default; pass execute to actua
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
-| `project_id` | string | yes | minLength=1 |  |
-| `execute` | boolean | no | default=false |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `execute` | boolean | no | default=false | none |
 
 Annotations: read-only `no`; destructive `yes`; idempotent `no`; open-world `no`.
 
@@ -603,9 +603,9 @@ Carry a moved checkout's notes to the project its new root scans as, then remove
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
-| `from` | string | yes | minLength=1 |  |
-| `to` | string | yes | minLength=1 |  |
-| `execute` | boolean | no | default=false |  |
+| `from` | string | yes | minLength=1 | none |
+| `to` | string | yes | minLength=1 | none |
+| `execute` | boolean | no | default=false | none |
 
 Annotations: read-only `no`; destructive `yes`; idempotent `no`; open-world `no`.
 
@@ -615,8 +615,8 @@ Write every annotation of the project at path to knossos-notes.json in its root 
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
-| `path` | string | yes | minLength=1 |  |
-| `file` | string | no | minLength=1 |  |
+| `path` | string | yes | minLength=1 | none |
+| `file` | string | no | minLength=1 | none |
 
 Annotations: read-only `no`; destructive `no`; idempotent `no`; open-world `no`.
 
@@ -626,9 +626,9 @@ Import a knossos-notes.json into the project path scans as, later edit winning. 
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
-| `path` | string | yes | minLength=1 |  |
-| `file` | string | no | minLength=1 |  |
-| `execute` | boolean | no | default=false |  |
+| `path` | string | yes | minLength=1 | none |
+| `file` | string | no | minLength=1 | none |
+| `execute` | boolean | no | default=false | none |
 
 Annotations: read-only `no`; destructive `yes`; idempotent `no`; open-world `no`.
 
@@ -638,9 +638,9 @@ Remove failed, cancelled, or abandoned scan records. Preview by default. Use for
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
-| `project_id` | string | yes | minLength=1 |  |
-| `older_than_hours` | integer | no | minimum=1; maximum=8760; default=24 |  |
-| `execute` | boolean | no | default=false |  |
+| `project_id` | string | yes | minLength=1 | none |
+| `older_than_hours` | integer | no | minimum=1; maximum=8760; default=24 | none |
+| `execute` | boolean | no | default=false | none |
 
 Annotations: read-only `no`; destructive `yes`; idempotent `yes`; open-world `no`.
 
@@ -650,8 +650,8 @@ Check integrity, or run a checkpoint, optimize, vacuum or backup of the graph st
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
-| `action` | string | yes | enum=integrity, checkpoint, optimize, vacuum, backup |  |
-| `execute` | boolean | no | default=false |  |
+| `action` | string | yes | enum=integrity, checkpoint, optimize, vacuum, backup | none |
+| `execute` | boolean | no | default=false | none |
 | `backup_name` | string | no | minLength=8; maxLength=127 | A plain filename ending in .sqlite, with no directory part; the backup is written inside the server's data directory. |
 
 Annotations: read-only `no`; destructive `no`; idempotent `no`; open-world `no`.
