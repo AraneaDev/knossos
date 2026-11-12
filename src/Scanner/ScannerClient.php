@@ -27,15 +27,6 @@ interface ScannerClient
      */
     public function scan(array $request): iterable;
 
-    /**
-     * Send an advisory cancel for an in-flight scan request. A worker busy inside the scan cannot read it, so the host ends the process.
-     *
-     * @param int|string $requestId Widened to match the id the session sends
-     * verbatim: an int scan id must not be stringified, or a type-strict worker
-     * will never match the in-flight request.
-     */
-    public function cancel(int|string $requestId): void;
-
     /** Shut down the worker and release its complete process tree. */
     public function shutdown(): void;
 }

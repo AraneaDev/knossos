@@ -31,9 +31,8 @@ pub use cfg::{
     collect_test_modules, is_test_module_path, is_test_support_module_path, ModuleGates,
 };
 pub use declarations::{
-    declaration_paths, declared_renames, gated_declaration_paths, indexed_item_paths, Declarations,
-    ExportAlternatives, ExportedNames, FieldType, FunctionReturns, GlobImports, StructFields,
-    TypeAliases,
+    declaration_paths, declared_renames, indexed_item_paths, Declarations, ExportAlternatives,
+    ExportedNames, FieldType, FunctionReturns, GlobImports, StructFields, TypeAliases,
 };
 use placement::mod_child;
 pub use placement::mod_declarations;

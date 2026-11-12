@@ -27,7 +27,7 @@ struct FileIndex {
     /// Every path the file declares, see [`crate::visit::declaration_paths`].
     declarations: BTreeSet<String>,
     /// The ones a `cfg` other than `test` gates, see
-    /// [`crate::visit::gated_declaration_paths`].
+    /// [`crate::visit::indexed_item_paths`].
     gated: BTreeSet<String>,
     /// Every out-of-line `#[cfg(test)] mod name;` the file declares.
     test_modules: crate::visit::ModuleGates,
