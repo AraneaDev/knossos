@@ -63,7 +63,8 @@ final class ProjectScanServiceContractTest extends KnossosTestCase
             // 'ignores' is in the set because the staleness probe reconstructs
             // the scan's exclusions from it: a key dropped here is a probe
             // counting paths this scan deliberately skipped.
-            assertSame(['configuration_hash', 'dead_code_suppressions', 'ignores', 'input_hash', 'snapshot_retention'], array_keys($stored));
+            assertSame(['configuration_hash', 'dead_code_suppressions', 'diagnostic_suppressions',
+                'ignores', 'input_hash', 'snapshot_retention'], array_keys($stored));
             assertSame(true, is_string($stored['input_hash']) && $stored['input_hash'] !== '');
         } finally {
             $this->removeTempTree($root);

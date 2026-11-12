@@ -25,13 +25,17 @@ mod state;
 mod types;
 
 use calls::{is_foreign_export, is_wasm_bindgen};
-pub use cfg::{collect_test_modules, is_test_module_path, TestModules};
-use cfg::{is_cfg_test, is_test_attribute, item_attrs};
+pub use cfg::include_sites;
+use cfg::{cfg_predicate, is_cfg_test, is_cfg_test_support, is_test_attribute, item_attrs};
+pub use cfg::{
+    collect_test_modules, is_test_module_path, is_test_support_module_path, ModuleGates,
+};
 pub use declarations::{
-    declaration_paths, declared_renames, Declarations, ExportedNames, FieldType, StructFields,
-    TypeAliases,
+    declaration_paths, declared_renames, gated_declaration_paths, indexed_item_paths, Declarations,
+    ExportAlternatives, ExportedNames, FieldType, GlobImports, StructFields, TypeAliases,
 };
 use placement::mod_child;
+pub use placement::mod_declarations;
 use state::{Calls, Walk};
 
 /// Walk every item in a parsed file, attributing each to `module`, and
@@ -42,7 +46,7 @@ pub fn walk(
     file: &syn::File,
     frameworks: &[String],
     declarations: &Declarations,
-    test_modules: &TestModules,
+    test_modules: &ModuleGates,
     layout: &Layout,
 ) -> BTreeSet<String> {
     // A file that IS an out-of-line test module is test code in its entirety,
@@ -52,6 +56,8 @@ pub fn walk(
     if file_is_test {
         facts.enter_test_scope();
     }
+    let file_gate = facts.enter_cfg_scope(test_modules.gate_of_file(facts.relative(), module));
+    let file_support = facts.enter_support_scope(is_test_support_module_path(module, test_modules));
     let mut walker = Walk::new(facts, module, frameworks, declarations, layout);
     walker.own_declarations = declaration_paths(module, &file.items);
     walker.collect_uses(module, &file.items);
@@ -62,6 +68,8 @@ pub fn walk(
     walker.walk_items(module, "module", &file.items);
     walker.flush_routes();
     let placed = std::mem::take(&mut walker.placed);
+    facts.exit_support_scope(file_support);
+    facts.exit_cfg_scope(file_gate);
     if file_is_test {
         facts.exit_test_scope();
     }
@@ -70,17 +78,12 @@ pub fn walk(
 }
 
 /// What one file tells the declaration index beyond the paths it declares:
-/// the names its visible `use` items re-export and the field types of its
+/// the names its `use` items re-export and the field types of its
 /// structs, each resolved through the file's own imports as its walk would
 /// resolve them, before any other file is known. See [`ExportedNames`] and
 /// [`StructFields`].
 #[must_use]
-pub fn index_facts(
-    relative: &str,
-    module: &str,
-    items: &[Item],
-    layout: &Layout,
-) -> (ExportedNames, StructFields, TypeAliases) {
+pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout) -> IndexFacts {
     // Nothing here is emitted: the facts and the empty index only satisfy
     // the walk's resolution, which falls back on neither for a path the
     // file roots or imports.
@@ -99,11 +102,70 @@ pub fn index_facts(
     // it names; an impl's associated type is only ever named from its impl.
     let aliases = std::mem::take(&mut walker.type_aliases);
 
-    (
-        std::mem::take(&mut walker.exports),
-        std::mem::take(&mut walker.struct_fields),
+    let alternatives = std::mem::take(&mut walker.export_alternatives)
+        .into_iter()
+        .filter_map(|(name, paths)| Some((name, paths.filter(|paths| paths.len() > 1)?)))
+        .collect();
+
+    let mut impl_methods = BTreeSet::new();
+    let mut gated_impl_methods = BTreeSet::new();
+    walker.collect_impl_methods(
+        module,
+        items,
+        false,
+        &mut impl_methods,
+        &mut gated_impl_methods,
+    );
+    let mut globs = GlobImports::new();
+    for (container, source) in std::mem::take(&mut walker.globs) {
+        let private = walker
+            .private_globs
+            .contains(&(container.clone(), source.clone()));
+        globs.entry(container).or_default().push((source, private));
+    }
+
+    let private_exports = walker
+        .private_exports
+        .difference(&walker.public_exports)
+        .cloned()
+        .collect();
+
+    IndexFacts {
+        impl_methods,
+        gated_impl_methods,
+        private_exports,
+        exports: std::mem::take(&mut walker.exports),
+        fields: std::mem::take(&mut walker.struct_fields),
         aliases,
-    )
+        export_alternatives: alternatives,
+        globs,
+    }
+}
+
+/// What [`index_facts`] reads from one file for the declaration index.
+#[derive(Clone, Debug, Default)]
+pub struct IndexFacts {
+    /// The path of every method the file's `impl` blocks declare, under the
+    /// type the file's own imports resolve the block's to (`impl
+    /// BrokerState` beside `use super::BrokerState;` declares its methods on
+    /// the parent's type, not on one of the file's module).
+    pub impl_methods: BTreeSet<String>,
+    /// The ones a `cfg` gates, its own, its block's, or an enclosing inline
+    /// module's.
+    pub gated_impl_methods: BTreeSet<String>,
+    /// See [`ExportedNames`].
+    pub exports: ExportedNames,
+    /// The names of `exports` only a private `use` binds, which a glob
+    /// brings in only below the module (see `Walk::through_globs`).
+    pub private_exports: BTreeSet<String>,
+    /// See [`StructFields`].
+    pub fields: StructFields,
+    /// See [`TypeAliases`].
+    pub aliases: TypeAliases,
+    /// See [`ExportAlternatives`].
+    pub export_alternatives: ExportAlternatives,
+    /// See [`GlobImports`].
+    pub globs: GlobImports,
 }
 
 impl<'a> Walk<'a> {
@@ -129,10 +191,12 @@ impl<'a> Walk<'a> {
             aliases: Aliases::default(),
             globs: Vec::new(),
             pending_globs: Vec::new(),
+            private_globs: BTreeSet::new(),
             module_aliases: BTreeMap::new(),
             module_children: BTreeMap::new(),
             type_params: BTreeSet::new(),
             current_impl_target: None,
+            impl_segment: None,
             frameworks,
             declarations,
             routes: Vec::new(),
@@ -145,6 +209,9 @@ impl<'a> Walk<'a> {
             crate_module,
             placed: BTreeSet::new(),
             exports: BTreeMap::new(),
+            export_alternatives: BTreeMap::new(),
+            private_exports: BTreeSet::new(),
+            public_exports: BTreeSet::new(),
             own_declarations: BTreeSet::new(),
             type_aliases: BTreeMap::new(),
         }
@@ -152,6 +219,69 @@ impl<'a> Walk<'a> {
 }
 
 impl Walk<'_> {
+    /// Record the path of every method the `impl` blocks of `items`
+    /// (inline modules included) declare, as [`Walk::walk_impl`] would
+    /// declare it, in `out`, and the `cfg`-gated ones in `gated`. A block
+    /// whose type the file cannot place inside the project, or that only a
+    /// trait impl for a standard type is, declares nothing to the index.
+    fn collect_impl_methods(
+        &self,
+        container: &str,
+        items: &[Item],
+        under_cfg: bool,
+        out: &mut BTreeSet<String>,
+        gated: &mut BTreeSet<String>,
+    ) {
+        for item in items {
+            let item_gated = under_cfg || cfg_predicate(item_attrs(item)).is_some();
+            match item {
+                Item::Impl(node) => {
+                    let Some(target) = self.index_impl_target(container, node) else {
+                        continue;
+                    };
+                    for member in &node.items {
+                        if let ImplItem::Fn(method) = member {
+                            let path = format!("{target}::{}", ident_name(&method.sig.ident));
+                            if item_gated || cfg_predicate(&method.attrs).is_some() {
+                                gated.insert(path.clone());
+                            }
+                            out.insert(path);
+                        }
+                    }
+                }
+                Item::Mod(node) => {
+                    if let Some((_, inner)) = &node.content {
+                        let nested = format!("{container}::{}", ident_name(&node.ident));
+                        self.collect_impl_methods(&nested, inner, item_gated, out, gated);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// The type an `impl` block's methods are indexed under: its self type
+    /// as the file's imports place it, within the project. A trait impl for
+    /// a primitive or prelude type named bare is a block of its own (see
+    /// [`Walk::impl_target`]) and indexed nowhere; so is a blanket impl.
+    fn index_impl_target(&self, container: &str, node: &syn::ItemImpl) -> Option<String> {
+        let target = self.type_path(container, &node.self_ty)?;
+        if !self.in_project(&target) {
+            return None;
+        }
+        if node.trait_.is_some() {
+            if let Type::Path(path) = node.self_ty.as_ref() {
+                if path.path.segments.len() == 1
+                    && is_standard_type(&ident_name(&path.path.segments[0].ident))
+                    && self.stated_type(container, &path.path).is_none()
+                {
+                    return None;
+                }
+            }
+        }
+        Some(target)
+    }
+
     /// Walk one item list whose declarations belong to `container`.
     ///
     /// `container_kind` is the node kind of `container` itself (`module`, `class`,
@@ -167,7 +297,13 @@ impl Walk<'_> {
             if is_test {
                 self.facts.enter_test_scope();
             }
+            let gated = self.facts.enter_cfg_scope(cfg_predicate(item_attrs(item)));
+            let support = self
+                .facts
+                .enter_support_scope(is_cfg_test_support(item_attrs(item)));
             self.walk_item(container, container_kind, item);
+            self.facts.exit_support_scope(support);
+            self.facts.exit_cfg_scope(gated);
             if is_test {
                 self.facts.exit_test_scope();
             }
@@ -231,6 +367,9 @@ impl Walk<'_> {
             Item::Trait(node) => self.walk_trait(container, container_kind, node, item.span()),
             Item::Impl(node) => self.walk_impl(container, container_kind, node, item.span()),
             Item::Mod(node) => self.walk_mod(container, container_kind, node, item.span()),
+            Item::Macro(node) if node.mac.path.is_ident("macro_rules") => {
+                self.walk_macro_rules(container, container_kind, &node.mac.tokens);
+            }
             _ => {}
         }
     }
@@ -354,6 +493,40 @@ impl Walk<'_> {
         node: &syn::ItemImpl,
         span: proc_macro2::Span,
     ) {
+        // `impl OwnedChild` where `OwnedChild` is `#[cfg(unix)] pub use
+        // unix::OwnedChild;` beside a Windows one: the block adds to
+        // whichever compiles, so it is walked once per alternative.
+        let head = match node.self_ty.as_ref() {
+            Type::Path(path) if path.qself.is_none() && path.path.leading_colon.is_none() => path
+                .path
+                .segments
+                .first()
+                .map(|segment| ident_name(&segment.ident)),
+            _ => None,
+        };
+        let alternatives = head
+            .as_deref()
+            .map(|head| self.aliases.alternatives(head))
+            .unwrap_or_default();
+        if let (Some(head), false) = (head, alternatives.is_empty()) {
+            for alternative in alternatives {
+                self.aliases.choose(&head, &alternative);
+                self.walk_impl_block(container, container_kind, node, span);
+                self.aliases.unchoose();
+            }
+            return;
+        }
+        self.walk_impl_block(container, container_kind, node, span);
+    }
+
+    /// [`Walk::walk_impl`] for one reading of the block's type.
+    fn walk_impl_block(
+        &mut self,
+        container: &str,
+        container_kind: &str,
+        node: &syn::ItemImpl,
+        span: proc_macro2::Span,
+    ) {
         let Some(target) = self.impl_target(container, container_kind, node, span) else {
             return;
         };
@@ -453,13 +626,19 @@ impl Walk<'_> {
             .last()
             .map(|segment| ident_name(&segment.ident))
             .unwrap_or_default();
-        self.declare(
+        let canonical = self.declare(
             container,
             container_kind,
             &format!("<impl {trait_name} for {type_name}>"),
             "class",
             span,
-        )
+        );
+        // The block is used wherever a bound on its trait is met
+        // (`fn read<T: NativeValue>(..)` called with a `u32`), which leaves
+        // no edge to it: it fulfils the trait, as its methods do.
+        self.facts
+            .node_attribute(&canonical, "trait_impl", serde_json::Value::Bool(true));
+        canonical
     }
 
     /// Record each associated type of an impl block as an alias of the type it
@@ -522,6 +701,14 @@ impl Walk<'_> {
         // in Rust has to.
         let exported_impl = node.attrs.iter().any(is_wasm_bindgen);
         let outer = self.enter_type_params(&node.generics);
+        // A block `impl_target` declared for a trait impl with no project
+        // type (`<impl Matcher for &M>`) already names the impl.
+        let outer_segment = self.impl_segment.take();
+        if let Some((trait_path, _)) = &node.trait_ {
+            if !target.ends_with('>') {
+                self.impl_segment = Some(format!("<impl {}>", path_label(trait_path)));
+            }
+        }
         for member in &node.items {
             if let ImplItem::Fn(method) = member {
                 let name = ident_name(&method.sig.ident);
@@ -574,6 +761,7 @@ impl Walk<'_> {
                 );
             }
         }
+        self.impl_segment = outer_segment;
         self.type_params = outer;
     }
 
@@ -597,13 +785,27 @@ impl Walk<'_> {
     ) {
         let is_test = is_cfg_test(attrs);
         self.facts.enter_test_scope_if(is_test);
-        let method_canonical = self.declare(
-            owner,
-            owner_kind,
-            &ident_name(&signature.ident),
-            "method",
-            span,
-        );
+        let gated = self.facts.enter_cfg_scope(cfg_predicate(attrs));
+        let support = self.facts.enter_support_scope(is_cfg_test_support(attrs));
+        let name = ident_name(&signature.ident);
+        let method_canonical = match self.impl_segment.clone() {
+            // A trait impl's method, called as `Type::method` or through a
+            // value of the type: that path still reaches it when no
+            // inherent method of the name exists.
+            Some(segment) => {
+                self.facts
+                    .alias(&reference("method", &format!("{owner}::{name}")));
+                self.declare_as(
+                    owner,
+                    owner_kind,
+                    &format!("{segment}::{name}"),
+                    &name,
+                    "method",
+                    span,
+                )
+            }
+            None => self.declare(owner, owner_kind, &name, "method", span),
+        };
         let outer = self.enter_type_params(&signature.generics);
         annotate(self, &method_canonical);
         if let Some(block) = block {
@@ -615,6 +817,8 @@ impl Walk<'_> {
             );
         }
         self.type_params = outer;
+        self.facts.exit_support_scope(support);
+        self.facts.exit_cfg_scope(gated);
         self.facts.exit_test_scope_if(is_test);
     }
 
@@ -676,8 +880,22 @@ impl Walk<'_> {
         kind: &str,
         span: proc_macro2::Span,
     ) -> String {
-        let canonical = format!("{container}::{name}");
-        self.facts.node(kind, &canonical, name, span, span);
+        self.declare_as(container, container_kind, name, name, kind, span)
+    }
+
+    /// [`Walk::declare`] for a node whose path below its container is not
+    /// its display name: `<impl Driver>::receive` is shown as `receive`.
+    fn declare_as(
+        &mut self,
+        container: &str,
+        container_kind: &str,
+        below: &str,
+        display: &str,
+        kind: &str,
+        span: proc_macro2::Span,
+    ) -> String {
+        let canonical = format!("{container}::{below}");
+        self.facts.node(kind, &canonical, display, span, span);
         self.facts.edge(
             "contains",
             &reference(container_kind, container),
@@ -766,6 +984,30 @@ impl Walk<'_> {
         for attrs in field_attrs {
             visitor.serde_references(attrs);
         }
+    }
+
+    /// Walk a `macro_rules!` definition's body for the calls its expansion
+    /// makes, on behalf of the module that defines it: each path written as
+    /// a call (`valid_text(stringify!($name), value)`) is a `possible` call,
+    /// resolved where the macro is defined, since the body is tokens that
+    /// only an expansion turns into code.
+    fn walk_macro_rules(
+        &mut self,
+        container: &str,
+        container_kind: &str,
+        tokens: &proc_macro2::TokenStream,
+    ) {
+        if container_kind != "module" {
+            return;
+        }
+        let mut visitor = Calls {
+            walk: self,
+            enclosing: reference("module", container),
+            container: container.to_owned(),
+            receivers: BTreeMap::new(),
+            prefixes: Vec::new(),
+        };
+        visitor.visit_token_calls(tokens.clone());
     }
 
     /// Walk a module-level `const` or `static`: its type and its initializer,
@@ -860,6 +1102,113 @@ impl Walk<'_> {
             }
         }
         receivers
+    }
+}
+
+/// A path as its source spells it, generic arguments included, without
+/// the spaces a token stream puts between tokens: `From<u8>`,
+/// `Into<crate::Id>`, `Fn(&str) -> bool`. Only the last segment is kept
+/// when the path has several (`std::fmt::Display` is `Display`), so a
+/// trait named through different imports reads the same.
+fn path_label(path: &syn::Path) -> String {
+    type_text(
+        &Type::Path(syn::TypePath {
+            attrs: Vec::new(),
+            qself: None,
+            path: path.clone(),
+        }),
+        true,
+    )
+}
+
+/// A type as its source spells it, for [`path_label`]: every segment of a
+/// path is kept, so `From<a::Id>` and `From<b::Id>` stay apart, unless
+/// `last_only` keeps only the last segment (a trait's own name). Each
+/// segment's generic arguments are rendered the same way.
+fn type_text(ty: &Type, last_only: bool) -> String {
+    match ty {
+        Type::Path(path) if path.qself.is_none() => {
+            let segments = &path.path.segments;
+            let skip = if last_only {
+                segments.len().saturating_sub(1)
+            } else {
+                0
+            };
+            let rendered: Vec<String> = segments
+                .iter()
+                .skip(skip)
+                .map(|segment| {
+                    let mut label = ident_name(&segment.ident);
+                    match &segment.arguments {
+                        syn::PathArguments::None => {}
+                        syn::PathArguments::AngleBracketed(arguments) => {
+                            let parts: Vec<String> = arguments
+                                .args
+                                .iter()
+                                .map(|argument| match argument {
+                                    syn::GenericArgument::Type(ty) => type_text(ty, false),
+                                    syn::GenericArgument::Lifetime(lifetime) => {
+                                        format!("'{}", lifetime.ident)
+                                    }
+                                    syn::GenericArgument::AssocType(assoc) => format!(
+                                        "{}={}",
+                                        ident_name(&assoc.ident),
+                                        type_text(&assoc.ty, false)
+                                    ),
+                                    _ => "_".to_owned(),
+                                })
+                                .collect();
+                            label.push_str(&format!("<{}>", parts.join(",")));
+                        }
+                        syn::PathArguments::Parenthesized(arguments) => {
+                            let inputs: Vec<String> = arguments
+                                .inputs
+                                .iter()
+                                .map(|input| type_text(&input.ty, false))
+                                .collect();
+                            label.push_str(&format!("({})", inputs.join(",")));
+                            if let syn::ReturnType::Type(_, output) = &arguments.output {
+                                label.push_str(&format!("->{}", type_text(output, false)));
+                            }
+                        }
+                    }
+                    label
+                })
+                .collect();
+            if rendered.is_empty() {
+                "_".to_owned()
+            } else {
+                rendered.join("::")
+            }
+        }
+        Type::Reference(reference) => format!(
+            "&{}{}{}",
+            reference
+                .lifetime
+                .as_ref()
+                .map(|lifetime| format!("'{} ", lifetime.ident))
+                .unwrap_or_default(),
+            if reference.mutability.is_some() {
+                "mut "
+            } else {
+                ""
+            },
+            type_text(&reference.elem, false)
+        ),
+        Type::Slice(slice) => format!("[{}]", type_text(&slice.elem, false)),
+        Type::Array(array) => format!("[{};_]", type_text(&array.elem, false)),
+        Type::Tuple(tuple) => format!(
+            "({})",
+            tuple
+                .elems
+                .iter()
+                .map(|elem| type_text(elem, false))
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Type::Paren(paren) => type_text(&paren.elem, last_only),
+        Type::Group(group) => type_text(&group.elem, last_only),
+        _ => "_".to_owned(),
     }
 }
 

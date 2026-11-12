@@ -234,6 +234,8 @@ final class AuditBatch2Test extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'contains', $c, $cRun, 'cc'), $ids['project'], 'contains', $c, $cRun, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->saveEdge(StableId::edge($ids['project'], 'extends', $c, $b, 'cb'), $ids['project'], 'extends', $c, $b, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->saveEdge(StableId::edge($ids['project'], 'extends', $b, $a, 'ba'), $ids['project'], 'extends', $b, $a, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
+        // Something calls the base method, so the override is reached through it.
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $ids['checkout'], $aRun, 'k1'), $ids['project'], 'calls', $ids['checkout'], $aRun, $file, 3, 3, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
         $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;

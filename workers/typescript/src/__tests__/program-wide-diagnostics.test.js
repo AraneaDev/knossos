@@ -379,3 +379,37 @@ describe("a request's compiler diagnostics", () => {
         ]);
     });
 });
+
+describe("an option a config sets", () => {
+    const files = {
+        "tsconfig.json": JSON.stringify({
+            compilerOptions: { downlevelIteration: true, target: "ES2022" },
+            include: ["src"],
+        }),
+        "tests/tsconfig.json": JSON.stringify({
+            extends: "../tsconfig.json",
+            include: ["."],
+        }),
+        "src/a.ts": "export const a = 1;\n",
+        "tests/a.test.ts": "export const t = 2;\n",
+    };
+
+    it("is reported once, by the config that sets it, and a deprecation is a warning", () => {
+        const root = fixture(files);
+
+        const byPath = scan(
+            new TypeScriptScanner(),
+            root,
+            ["src/a.ts", "tests/a.test.ts"],
+            ["tsconfig.json", "tests/tsconfig.json"],
+        );
+
+        const reported = Object.values(byPath).flatMap((contribution) =>
+            contribution.diagnostics.filter((item) => item.code === "TS5101"),
+        );
+        expect(reported).toHaveLength(1);
+        expect(reported[0].severity).toBe("warning");
+        expect(reported[0].message).toContain("(set in tsconfig.json)");
+        expect(reported[0].message).toContain("Knossos bundles");
+    });
+});

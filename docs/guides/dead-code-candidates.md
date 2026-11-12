@@ -102,20 +102,21 @@ Several classes of component have a structurally zero in-degree and would drown
 the real signal. Each exclusion is counted in `bounds` so the filtering is
 auditable rather than invisible.
 
-| `bounds` counter                 | Excluded                                                                                                                                                                                                                                                                                         |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `excluded_external_components`   | Hub ranking only: nodes in the examined window resolved outside the project (`external_*` kinds, `external`/`unresolved` origins), left out of hubs and hotspots. Include with `include_external`. External nodes are never candidates.                                                          |
-| `excluded_test_components`       | Hub ranking only: nodes in the examined window classified `quality.test_module`, left out of hubs and hotspots. Include with `include_tests`. An unreferenced test module is counted in `excluded_convention_discovered`, since a runner discovers it by glob.                                   |
-| `excluded_inherited_methods`     | Methods declared by an internal ancestor: the interface or base class carries the contract, and the override is reached through it. Also methods a scanner marks `overrides` (see below), whose supertype may live outside the project.                                                          |
-| `excluded_contract_methods`      | The mirror: declarations an internal implementation carries, when the declaring type is used (see below).                                                                                                                                                                                        |
-| `excluded_constructors`          | Engine-invoked members (constructors, destructors, magic/protocol methods) whose declaring type is referenced (see below), and components a scanner marks `runtime_invoked`: Rust's `Drop::drop`, and functions exported to a foreign host (`#[no_mangle]`, `#[wasm_bindgen]`, an `extern` ABI). |
-| `excluded_entry_scripts`         | Modules a scanner marked as executable scripts (a shebang, a `__main__` guard, PHP file-scope code, a library crate's root) whose bodies something outside the graph enters, and a Python package's `__init__` when the package holds other modules.                                             |
-| `excluded_type_declarations`     | Modules and symbols declared in a `.d.ts` / `.d.mts`, and declarations inside `declare global { }` or `declare module 'x' { }` in any file (see below).                                                                                                                                          |
-| `excluded_test_support`          | `test_only` components in a file outside its package's source roots (`src`, `lib`, `app`, `source`) when that package keeps its product code in one: a `scripts/` helper its tests import is test tooling, not dead product code. A test-only component under a source root is still reported.   |
-| `suppressed_candidates`          | Canonical names matched by `dead_code_suppressions` in [project configuration](../get-started/project-configuration.md).                                                                                                                                                                         |
-| `excluded_convention_discovered` | Components a framework or tool reaches by convention: controllers, commands, jobs, listeners, handlers, migrations and similar framework roles, `application.entry_point`, `library.public_api`, test modules and `tooling.config` (see below).                                                  |
-| `annotated_false_positives`      | Components carrying a `false_positive` [annotation](../agents/agent-integration.md#component-annotations).                                                                                                                                                                                       |
-| `annotated_intentional`          | Components carrying an `intentional` [annotation](../agents/agent-integration.md#component-annotations): true findings that are meant, such as a parked route.                                                                                                                                   |
+| `bounds` counter                 | Excluded                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `excluded_external_components`   | Hub ranking only: nodes in the examined window resolved outside the project (`external_*` kinds, `external`/`unresolved` origins), left out of hubs and hotspots. Include with `include_external`. External nodes are never candidates.                                                                                                                                                                                                                                 |
+| `excluded_test_components`       | Hub ranking only: nodes in the examined window classified `quality.test_module`, left out of hubs and hotspots. Include with `include_tests`. An unreferenced test module is counted in `excluded_convention_discovered`, since a runner discovers it by glob.                                                                                                                                                                                                          |
+| `excluded_inherited_methods`     | Methods declared by an internal ancestor whose declaration something reaches: the interface or base class carries the contract, and the override is reached through it. An implementation whose every contract is the project's own and reached by nothing is judged on its own callers instead, so one only a test calls is `test_only`. Also methods a scanner marks `overrides` (see below), whose supertype may live outside the project.                           |
+| `excluded_contract_methods`      | The mirror: declarations an internal implementation carries, when the declaring type is used (see below).                                                                                                                                                                                                                                                                                                                                                               |
+| `excluded_constructors`          | Engine-invoked members (constructors, destructors, magic/protocol methods) whose declaring type is referenced (see below), and components a scanner marks `runtime_invoked`: Rust's `Drop::drop`, and functions exported to a foreign host (`#[no_mangle]`, `#[wasm_bindgen]`, an `extern` ABI).                                                                                                                                                                        |
+| `excluded_entry_scripts`         | Modules a scanner marked as executable scripts (a shebang, a `__main__` guard, PHP file-scope code, a library crate's root) whose bodies something outside the graph enters, and a Python package's `__init__` when the package holds other modules.                                                                                                                                                                                                                    |
+| `excluded_type_declarations`     | Modules and symbols declared in a `.d.ts` / `.d.mts`, and declarations inside `declare global { }` or `declare module 'x' { }` in any file (see below).                                                                                                                                                                                                                                                                                                                 |
+| `excluded_test_support`          | `test_only` components in a file outside its package's source roots (`src`, `lib`, `app`, `source`) when that package keeps its product code in one: a `scripts/` helper its tests import is test tooling, not dead product code. A test-only component under a source root is still reported. Also code its scanner marks as compiled only for the tests through a test-support feature (Rust's `#[cfg(feature = "test-support")]`), whether a test reaches it or not. |
+| `suppressed_candidates`          | Canonical names matched by `dead_code_suppressions` in [project configuration](../get-started/project-configuration.md).                                                                                                                                                                                                                                                                                                                                                |
+| `excluded_convention_discovered` | Components a framework or tool reaches by convention: controllers, commands, jobs, listeners, handlers, migrations and similar framework roles, `application.entry_point`, `library.public_api`, test modules and `tooling.config` (see below).                                                                                                                                                                                                                         |
+| `excluded_example_components`    | Example code: files under `examples/`, `example/`, `samples/` or `demo/` outside a package's source roots, or under `docs/**/examples/`, which the `quality.example_module` role marks. Nothing imports it by design. `include_examples` (`--include-examples`) judges it like any other code. A product component only example or test code reaches is `test_only`.                                                                                                    |
+| `annotated_false_positives`      | Components carrying a `false_positive` [annotation](../agents/agent-integration.md#component-annotations).                                                                                                                                                                                                                                                                                                                                                              |
+| `annotated_intentional`          | Components carrying an `intentional` [annotation](../agents/agent-integration.md#component-annotations): true findings that are meant, such as a parked route.                                                                                                                                                                                                                                                                                                          |
 
 ### Why engine-invoked members are excluded
 
@@ -360,13 +361,47 @@ has to call its public API for that API to be wanted. Such components are classi
 
 What a library keeps private stays reportable, and so do its tests.
 
+## A module and what its file declares
+
+A module is used when something outside its file reaches what the file
+declares, also a declaration it makes for a container elsewhere: a Rust file
+holding only `impl BrokerState { .. }` for its parent's type contains nothing
+itself, but the methods it adds are called.
+
+## Methods the runtime calls
+
+A method a JavaScript runtime calls with no call site naming it is at most a
+`possible` candidate, whatever its class extends, and its reason says so:
+`toJSON` (`JSON.stringify`), `toString`, `valueOf` and `[Symbol.toPrimitive]`
+(conversion), `then` (`await`), `[Symbol.iterator]` and
+`[Symbol.asyncIterator]` (`for ... of`), `[Symbol.dispose]` and
+`[Symbol.asyncDispose]` (`using`), and `inspect` (Node's `util.inspect`).
+
 ## Filtering and paging
 
 A large project can have hundreds of candidates, and a framework's lifecycle methods,
 marked `possible`, can fill the first page. `candidate_confidence: "probable"`
 (CLI: `--candidate-confidence=probable`) reports only the stronger claims, and
-`candidate_offset` (`--candidate-offset=N`) pages past the first `limit`.
-`bounds.candidates_total` says how many there are after the filter.
+`candidate_offset` (`--candidate-offset=N`) pages past the first page.
+`candidate_limit` (`--candidate-limit=N`) sets how many candidates a page lists,
+up to 100; left at 0 it is `limit`, which then sizes only the hubs and
+hotspots, so a page of 100 candidates no longer brings 100 hubs and 100
+hotspots with it. `pagination.next_offset` is where the next page starts, null
+on the last one. Over MCP, an answer cut to fit `max_chars` trims the hubs,
+hotspots and other lists first and the candidates last, and
+`pagination.next_offset` then points at the first candidate it left out, so
+paging by it skips none. `bounds.candidates_total` says how many there are
+after the filter. Each candidate carries the `path` and `line` it is declared
+at.
+
+`path_prefix` (`--path-prefix=PATH`) lists only the candidates under one
+project-relative path, and the candidate counts then describe that part. A
+`test_only` candidate carries `test_reference`, the first test reference to it
+by `path` and `line`, and `test_reference_count`; a container whose members only
+tests use has no reference of its own, so its count is 0.
+`include_annotated` (`--include-annotated`) also lists the candidates a
+`false_positive` or `intentional` annotation hid, each with its `annotation`
+and `hidden_by_annotation: true`, still counted under the annotation.
 
 ### Scope and budget
 
@@ -389,10 +424,13 @@ The candidate list reports its own truncation in `bounds.candidates_truncated` a
   verified it but the deletion is not yet scheduled.
 - Record `false_positive` when the component is reached in a way the scan cannot
   see. It is dropped from future candidate lists and the count moves to
-  `bounds.annotated_false_positives`.
+  `bounds.annotated_false_positives`. On a module or a class it covers every
+  member too, unless a member carries an annotation of its own.
 - Record `intentional` when the finding is true and meant: a route parked on
   purpose, a helper only tests use by design. It is dropped from future
-  candidate lists and counted under `bounds.annotated_intentional`.
+  candidate lists and counted under `bounds.annotated_intentional`, and covers
+  the members of a module or class the same way. `confirmed_dead` judges only
+  the component it is on.
 - Use `dead_code_suppressions` for whole families of such components (a
   generated namespace, a plugin directory) rather than annotating each one.
 

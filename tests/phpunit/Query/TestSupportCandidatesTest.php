@@ -47,6 +47,186 @@ final class TestSupportCandidatesTest extends KnossosTestCase
     }
 
     /**
+     * Rust code gated by a test-support feature
+     * (`#[cfg(feature = "test-support")]`) is compiled only for the tests,
+     * which the scanner marks: it is test support whether or not a test
+     * reaches it, and counted as such rather than reported as dead.
+     */
+    #[Group('query')]
+    public function testCodeTheScannerMarksAsTestSupportIsExcludedAndCounted(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $this->function($repository, $ids, 'crates/host/src/fs.rs', 'publication_unknown_fixture_error', ['test_support' => true]);
+        $this->function($repository, $ids, 'crates/host/src/fs.rs', 'really_dead');
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $names = array_map(static fn(array $candidate): string => $candidate['component']['canonical_name'], $data['dead_code_candidates']);
+
+        self::assertNotContains('crates/host/src/fs.rs#publication_unknown_fixture_error', $names);
+        self::assertContains('crates/host/src/fs.rs#really_dead', $names);
+        self::assertSame(1, $data['bounds']['excluded_test_support']);
+    }
+
+    /**
+     * A triage page: candidates under one path only, a test-only candidate
+     * saying which test reaches it, and on request the candidates an
+     * annotation hid, with the annotation.
+     */
+    #[Group('query')]
+    public function testCandidatesFilterByPathSayWhereTestsReachThemAndShowWhatAnnotationsHid(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $suite = $this->testModule($repository, $ids, 'tests/unit/security.test.ts');
+        $tested = $this->function($repository, $ids, 'src/security.ts', 'createAuditLog');
+        $this->function($repository, $ids, 'src/security.ts', 'nobody');
+        $this->function($repository, $ids, 'src/other.ts', 'elsewhere');
+        $hidden = $this->function($repository, $ids, 'src/security.ts', 'loadedByName');
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $suite, $tested, 't:9'), $ids['project'], 'calls', $suite, $tested, $ids['file'], 9, 9, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $queries = ArchitectureQueryService::forDatabase($pdo);
+        $queries->services()->annotationQueries->upsertAnnotation($ids['project'], 'src/security.ts#loadedByName', 'false_positive', 'loaded by name', execute: true);
+        unset($hidden);
+        $health = $queries->services()->healthQueries;
+        $byName = static function (array $data): array {
+            $out = [];
+            foreach ($data['dead_code_candidates'] as $candidate) {
+                $out[$candidate['component']['canonical_name']] = $candidate;
+            }
+
+            return $out;
+        };
+
+        $page = $byName($health->architectureHealth($ids['project'], limit: 100, pathPrefix: 'src/security.ts')->data);
+        self::assertSame(['src/security.ts#nobody', 'src/security.ts#createAuditLog'], array_keys($page));
+        self::assertSame(['path' => 'src/Checkout.php', 'line' => 9], $page['src/security.ts#createAuditLog']['test_reference']);
+        self::assertSame(1, $page['src/security.ts#createAuditLog']['test_reference_count']);
+        self::assertArrayNotHasKey('test_reference', $page['src/security.ts#nobody']);
+
+        $all = $byName($health->architectureHealth($ids['project'], limit: 100, pathPrefix: 'src/security.ts', includeAnnotated: true)->data);
+        self::assertSame(true, $all['src/security.ts#loadedByName']['hidden_by_annotation'] ?? null);
+        self::assertSame('false_positive', $all['src/security.ts#loadedByName']['annotation']['kind'] ?? null);
+    }
+
+    /**
+     * An implementation is out of the report while the contract it fulfils is
+     * reached: called through the interface, it is reached through it. One
+     * whose interface member nothing reaches is judged on its own callers:
+     * a method only a test calls is test-only, one nothing calls is
+     * unreferenced, beside the interface member.
+     */
+    #[Group('query')]
+    public function testAnImplementationIsExcludedOnlyWhileItsContractIsReached(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $node = function (string $kind, string $name, array $attributes = []) use ($repository, $ids): string {
+            $id = StableId::symbol($ids['project'], 'typescript', $kind, $name);
+            $repository->saveNode($id, $ids['project'], 'typescript', $kind, $name, (string) preg_replace('/^.*(::|#)/', '', $name), null, $ids['file'], 1, 1, 'ast', 'certain', $attributes, 'php:file:src/Checkout.php', $ids['scan']);
+
+            return $id;
+        };
+        $edge = function (string $kind, string $source, string $target, int $line) use ($repository, $ids): void {
+            $repository->saveEdge(StableId::edge($ids['project'], $kind, $source, $target, "e{$line}"), $ids['project'], $kind, $source, $target, $ids['file'], $line, $line, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        };
+        $interface = $node('interface', 'src/types.ts#ISecurity');
+        $class = $node('class', 'src/sec.ts#Security');
+        $edge('implements', $class, $interface, 1);
+        $members = [];
+        foreach (['viaInterface', 'auditLog', 'sanitize'] as $index => $method) {
+            $declared = $node('method', "src/types.ts#ISecurity::{$method}");
+            $edge('contains', $interface, $declared, 10 + $index);
+            $implemented = $node('method', "src/sec.ts#Security::{$method}", ['overrides' => true]);
+            $edge('contains', $class, $implemented, 20 + $index);
+            $members[$method] = [$declared, $implemented];
+        }
+        $product = $node('function', 'src/main.ts#main');
+        $suite = $this->testModule($repository, $ids, 'tests/security.test.ts');
+        $edge('calls', $product, $members['viaInterface'][0], 30);
+        $edge('calls', $suite, $members['auditLog'][1], 31);
+        $edge('calls', $product, $class, 32);
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $reachability = [];
+        foreach ($data['dead_code_candidates'] as $candidate) {
+            $reachability[$candidate['component']['canonical_name']] = $candidate['reachability'];
+        }
+
+        self::assertArrayNotHasKey('src/sec.ts#Security::viaInterface', $reachability);
+        self::assertSame('test_only', $reachability['src/sec.ts#Security::auditLog'] ?? null);
+        self::assertSame('unreferenced', $reachability['src/sec.ts#Security::sanitize'] ?? null);
+        self::assertSame('unreferenced', $reachability['src/types.ts#ISecurity::sanitize'] ?? null);
+    }
+
+    /**
+     * Example code is never imported by design: left out of the candidates
+     * and counted, unless asked for. What only an example uses is reached the
+     * way what only a test uses is: test-only.
+     */
+    #[Group('query')]
+    public function testExampleCodeIsLeftOutAndItsUseCountsAsATestsDoes(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $template = $this->function($repository, $ids, 'examples/custom-adapters/adapter-template.ts', 'TemplateAdapter');
+        $repository->saveClassification(StableId::classification($ids['project'], $template, 'quality.example_module', 'core.example.modules.v1'), $ids['project'], $template, 'quality.example_module', 'derived', 'probable', 'core.example.modules.v1', $ids['file'], 1, 1, [], $ids['scan']);
+        $shown = $this->function($repository, $ids, 'src/adapters.ts', 'registerAdapter');
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $template, $shown, 'x:1'), $ids['project'], 'calls', $template, $shown, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries;
+        $reachability = static function (array $data): array {
+            $out = [];
+            foreach ($data['dead_code_candidates'] as $candidate) {
+                $out[$candidate['component']['canonical_name']] = $candidate['reachability'];
+            }
+
+            return $out;
+        };
+
+        $default = $health->architectureHealth($ids['project'], limit: 100)->data;
+        self::assertArrayNotHasKey('examples/custom-adapters/adapter-template.ts#TemplateAdapter', $reachability($default));
+        self::assertSame(1, $default['bounds']['excluded_example_components']);
+        self::assertSame('test_only', $reachability($default)['src/adapters.ts#registerAdapter'] ?? null);
+
+        $all = $health->architectureHealth($ids['project'], limit: 100, includeExamples: true)->data;
+        self::assertSame('unreferenced', $reachability($all)['examples/custom-adapters/adapter-template.ts#TemplateAdapter'] ?? null);
+        self::assertSame(0, $all['bounds']['excluded_example_components']);
+    }
+
+    /**
+     * A Rust file holding only `impl BrokerState { .. }` for its parent's type
+     * contains nothing: the methods it declares belong to the type. Called
+     * from another file, they keep the module live; a module whose file
+     * declares nothing anyone reaches is still dead.
+     */
+    #[Group('query')]
+    public function testAModuleIsUsedWhenWhatItsFileDeclaresIsReachedFromOutside(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        $node = function (string $path, string $kind, string $name) use ($repository, $ids): string {
+            $file = $this->file($repository, $ids, $path);
+            $id = StableId::symbol($ids['project'], 'rust', $kind, $name);
+            $repository->saveNode($id, $ids['project'], 'rust', $kind, $name, $name, null, $file, 1, 1, 'ast', 'certain', [], "rust:file:{$path}", $ids['scan']);
+
+            return $id;
+        };
+        $owned = $node('src/broker/owned.rs', 'module', 'crate::broker::owned');
+        $method = $node('src/broker/owned.rs', 'method', 'crate::broker::BrokerState::accepted_owned');
+        $node('src/broker/idle.rs', 'module', 'crate::broker::idle');
+        $state = $node('src/broker.rs', 'class', 'crate::broker::BrokerState');
+        $caller = $node('src/broker.rs', 'function', 'crate::broker::go');
+        $repository->saveEdge(StableId::edge($ids['project'], 'contains', $state, $method, 'c'), $ids['project'], 'contains', $state, $method, $ids['file'], 1, 1, 'ast', 'certain', [], 'rust:file:src/broker/owned.rs', $ids['scan']);
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $caller, $method, 'k'), $ids['project'], 'calls', $caller, $method, $ids['file'], 2, 2, 'ast', 'certain', [], 'rust:file:src/broker.rs', $ids['scan']);
+        $repository->completeScan($ids['project'], $ids['scan']);
+        unset($owned);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $names = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
+
+        self::assertNotContains('crate::broker::owned', $names);
+        self::assertContains('crate::broker::idle', $names);
+    }
+
+    /**
      * Two pages each declaring their own `StatusBadge` do not use a shared
      * component of that name: the shared one, which nothing imports, stays
      * a candidate beside the local ones that are used.
@@ -75,12 +255,13 @@ final class TestSupportCandidatesTest extends KnossosTestCase
      * A TypeScript function declared in its own file.
      *
      * @param array<string, string> $ids
+     * @param array<string, mixed> $attributes
      */
-    private function function(SqliteGraphRepository $repository, array $ids, string $path, string $name): string
+    private function function(SqliteGraphRepository $repository, array $ids, string $path, string $name, array $attributes = []): string
     {
         $file = $this->file($repository, $ids, $path);
         $id = StableId::symbol($ids['project'], 'typescript', 'function', "{$path}#{$name}");
-        $repository->saveNode($id, $ids['project'], 'typescript', 'function', "{$path}#{$name}", $name, null, $file, 1, 1, 'ast', 'certain', [], "typescript:file:{$path}", $ids['scan']);
+        $repository->saveNode($id, $ids['project'], 'typescript', 'function', "{$path}#{$name}", $name, null, $file, 1, 1, 'ast', 'certain', $attributes, "typescript:file:{$path}", $ids['scan']);
 
         return $id;
     }

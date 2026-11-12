@@ -70,6 +70,46 @@ impl Calls<'_, '_> {
         }
     }
 
+    /// `env!("CARGO_BIN_EXE_tool")`, which Cargo sets for an integration
+    /// test or a benchmark to the path of the package's binary `tool`: the
+    /// test runs that binary as a process, which no call names. Each file
+    /// that could be its root in the test's package (`src/bin/tool.rs`,
+    /// `src/bin/tool/main.rs`, `src/main.rs`) is a speculative `launches`
+    /// target, kept for the ones that exist.
+    pub(super) fn cargo_binary(&mut self, node: &syn::Macro) {
+        if !node.path.is_ident("env") {
+            return;
+        }
+        let Ok(literal) = node.parse_body::<syn::LitStr>() else {
+            return;
+        };
+        let value = literal.value();
+        let Some(name) = value.strip_prefix("CARGO_BIN_EXE_") else {
+            return;
+        };
+        if name.is_empty() || name.contains(['/', '\\', '.']) {
+            return;
+        }
+        let relative = self.walk.relative.clone();
+        let package = self
+            .walk
+            .layout
+            .packages
+            .iter()
+            .map(|(directory, _)| directory.as_str())
+            .filter(|directory| relative.starts_with(directory))
+            .max_by_key(|directory| directory.len())
+            .unwrap_or("")
+            .to_owned();
+        for root in [
+            format!("{package}src/bin/{name}.rs"),
+            format!("{package}src/bin/{name}/main.rs"),
+            format!("{package}src/main.rs"),
+        ] {
+            self.launch(&root, node.span());
+        }
+    }
+
     /// The speculative `launches` edge from this function to the file at
     /// `path`.
     fn launch(&mut self, path: &str, span: proc_macro2::Span) {

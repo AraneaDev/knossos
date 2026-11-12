@@ -336,6 +336,67 @@ final class HealthFiltersTest extends KnossosTestCase
     }
 
     /**
+     * `JSON.stringify` calls `toJSON`, `await` calls `then`: the runtime
+     * reaches these with no call site naming them, so one with no inbound
+     * edge is only possibly dead, and the reason says why. An ordinary
+     * method beside it stays probable.
+     */
+    #[Group('query')]
+    public function testAMethodTheRuntimeCallsImplicitlyIsOnlyPossiblyDead(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        foreach (['toJSON', 'then', 'render'] as $index => $name) {
+            $id = StableId::symbol($ids['project'], 'typescript', 'method', "src/err.ts#AppError::{$name}");
+            $repository->saveNode($id, $ids['project'], 'typescript', 'method', "src/err.ts#AppError::{$name}", $name, null, $ids['file'], 3 + $index, 3 + $index, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $byName = [];
+        foreach ($data['dead_code_candidates'] as $candidate) {
+            $byName[$candidate['component']['canonical_name']] = $candidate;
+        }
+
+        assertSame('possible', $byName['src/err.ts#AppError::toJSON']['confidence'] ?? null);
+        assertSame(true, str_contains($byName['src/err.ts#AppError::toJSON']['reason'], 'runtime calls `toJSON` implicitly'));
+        assertSame('possible', $byName['src/err.ts#AppError::then']['confidence'] ?? null);
+        assertSame('probable', $byName['src/err.ts#AppError::render']['confidence'] ?? null);
+    }
+
+    /**
+     * Candidates page on their own size: `candidate_limit` lists that many
+     * while `limit` sizes the hubs and hotspots, `pagination.next_offset`
+     * says where the next page starts, and each candidate says where it is
+     * declared, so a page is usable without a lookup per candidate.
+     */
+    #[Group('query')]
+    public function testCandidatesPageOnTheirOwnLimitAndCarryTheirLocation(): void
+    {
+        [$pdo, $repository, $ids] = $this->storeFixture();
+        foreach (['b_dead' => 3, 'c_dead' => 5, 'd_dead' => 9] as $name => $line) {
+            $id = StableId::symbol($ids['project'], 'typescript', 'function', "src/x.ts#{$name}");
+            $repository->saveNode($id, $ids['project'], 'typescript', 'function', "src/x.ts#{$name}", $name, null, $ids['file'], $line, $line + 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
+        }
+        $repository->completeScan($ids['project'], $ids['scan']);
+        $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries;
+
+        $all = $health->architectureHealth($ids['project'], limit: 100, candidateConfidence: 'probable')->data;
+        $total = $all['bounds']['candidates_total'];
+        $page = $health->architectureHealth($ids['project'], limit: 1, candidateConfidence: 'probable', candidateLimit: 2)->data;
+
+        assertSame(2, count($page['dead_code_candidates']));
+        assertSame(true, count($page['hubs']) <= 1);
+        assertSame(['list' => 'dead_code_candidates', 'offset' => 0, 'next_offset' => $total > 2 ? 2 : null], $page['pagination']);
+        $located = [];
+        foreach ($all['dead_code_candidates'] as $candidate) {
+            $located[$candidate['component']['canonical_name']] = [$candidate['path'], $candidate['line']];
+        }
+        assertSame(['src/Checkout.php', 5], $located['src/x.ts#c_dead'] ?? null);
+        $last = $health->architectureHealth($ids['project'], limit: 1, candidateConfidence: 'probable', candidateOffset: $total - 1, candidateLimit: 2)->data;
+        assertSame(null, $last['pagination']['next_offset']);
+    }
+
+    /**
      * `declare global { interface Window { ... } }` in an ordinary file is a
      * type declaration all the same: it augments what the runtime defines.
      */
@@ -391,10 +452,16 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'contains', $stripe, $stripeCharge, 'c2'), $ids['project'], 'contains', $stripe, $stripeCharge, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->saveEdge(StableId::edge($ids['project'], 'implements', $stripe, $gateway, 'i1'), $ids['project'], 'implements', $stripe, $gateway, $file, 1, 1, 'ast', 'certain', [], $owner, $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
+        $names = static fn(array $data): array => array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
 
+        // Nothing reaches the contract, so nothing reaches the implementation.
+        $unreached = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
+        assertSame(true, in_array('App\\StripeGateway::charge', $names($unreached), true));
+
+        // Called through the interface, it is reached through it.
+        $repository->saveEdge(StableId::edge($ids['project'], 'calls', $ids['checkout'], $gatewayCharge, 'k1'), $ids['project'], 'calls', $ids['checkout'], $gatewayCharge, $file, 3, 3, 'ast', 'certain', [], $owner, $ids['scan']);
         $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'])->data;
-        $candidateNames = array_map(static fn(array $c): string => $c['component']['canonical_name'], $data['dead_code_candidates']);
-        assertSame(false, in_array('App\\StripeGateway::charge', $candidateNames, true));
+        assertSame(false, in_array('App\\StripeGateway::charge', $names($data), true));
         assertSame(1, $data['bounds']['excluded_inherited_methods']);
     }
 

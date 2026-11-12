@@ -31,7 +31,7 @@ final class ProjectConfigurationLoader
     /** The framework hints knossos.json accepts; the schema's `frameworks` enum must list the same. */
     public const FRAMEWORKS = ['laravel', 'livewire', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
 
-    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'web_roots', 'enrichers'];
+    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'diagnostic_suppressions', 'web_roots', 'enrichers'];
     public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];
 
     /**
@@ -80,6 +80,7 @@ final class ProjectConfigurationLoader
         $policies = self::policies($data['policies'] ?? []);
         $budgets = self::budgets($data['quality_budgets'] ?? []);
         $suppressions = self::stringList($data['dead_code_suppressions'] ?? [], 'dead_code_suppressions', 200);
+        $diagnosticSuppressions = self::diagnosticSuppressions($data['diagnostic_suppressions'] ?? []);
         $webRoots = self::webRoots($data['web_roots'] ?? []);
         $enrichers = self::enrichers($data['enrichers'] ?? []);
 
@@ -96,6 +97,7 @@ final class ProjectConfigurationLoader
             policies: $policies,
             qualityBudgets: $budgets,
             deadCodeSuppressions: $suppressions,
+            diagnosticSuppressions: $diagnosticSuppressions,
             watchScanTimeoutMs: $limits['watch_scan_timeout_ms'],
             refreshBudgetMs: $limits['refresh_budget_ms'],
             webRoots: $webRoots,
@@ -344,6 +346,37 @@ final class ProjectConfigurationLoader
             throw new DiscoveryException('PROJECT_CONFIG_INVALID: ' . $field . ' must be an object.');
         }
         return $value;
+    }
+
+    /**
+     * The diagnostics the project marks as not worth reporting: each a `code`
+     * and optionally a `path` (exact, or a prefix with a trailing `*`) and a
+     * `reason`.
+     *
+     * @return list<array{code: string, path: ?string, reason: ?string}>
+     */
+    private static function diagnosticSuppressions(mixed $value): array
+    {
+        $suppressions = [];
+        foreach (self::objectList($value, 'diagnostic_suppressions', 200) as $item) {
+            $unknown = array_diff(array_keys($item), ['code', 'path', 'reason']);
+            if ($unknown !== []) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: diagnostic_suppressions entries take code, path and reason only.');
+            }
+            $code = $item['code'] ?? null;
+            $path = $item['path'] ?? null;
+            $reason = $item['reason'] ?? null;
+            if (!is_string($code) || $code === '' || strlen($code) > 200) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: diagnostic_suppressions entries need a code.');
+            }
+            if (($path !== null && (!is_string($path) || $path === '' || strlen($path) > 1000))
+                || ($reason !== null && (!is_string($reason) || strlen($reason) > 2000))) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: a diagnostic_suppressions path or reason must be a non-empty string.');
+            }
+            $suppressions[] = ['code' => $code, 'path' => $path, 'reason' => $reason];
+        }
+
+        return $suppressions;
     }
 
     /**

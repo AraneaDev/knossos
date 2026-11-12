@@ -13,7 +13,7 @@ use crate::layout::Layout;
 use crate::params::ScanRequest;
 use crate::protocol::{Contribution, Manifest};
 use crate::reads::FileReads;
-use crate::visit::{Declarations, TestModules};
+use crate::visit::{Declarations, ModuleGates};
 
 /// Serialized bytes one `scan/input_hashes` notification carries at most, well
 /// under the core's line cap, and the same as every other worker uses: each
@@ -139,7 +139,8 @@ fn scan(params: &Value, emit: &mut dyn FnMut(&Value)) -> Result<Value, String> {
         &mut input_hashes,
     );
     let mut heartbeat = Heartbeat::new();
-    let index = index_project(&request, &layout, &mut input_hashes, &mut heartbeat, emit);
+    let mut index = index_project(&request, &layout, &mut input_hashes, &mut heartbeat, emit);
+    let layout = std::mem::take(&mut index.layout);
     let walked = walk_requested(
         &request,
         &layout,
@@ -166,6 +167,8 @@ fn walk_requested(
         prepared,
         declarations,
         test_modules,
+        orphans,
+        ..
     } = index;
     let mut walked: Vec<(Contribution, BTreeSet<String>)> = Vec::with_capacity(prepared.len());
     for item in prepared {
@@ -190,7 +193,10 @@ fn walk_requested(
                     layout,
                 );
                 let lookups = declarations.take_lookups();
-                let keys = reads.of_file(&relative, &module, &lookups, &placed, input_hashes);
+                let mut keys = reads.of_file(&relative, &module, &lookups, &placed, input_hashes);
+                // A file nothing loads is placed by a `#[path]` added near
+                // it, which nothing else it read would reach.
+                keys.extend(orphans.get(&relative).into_iter().flatten().cloned());
                 (contribution, keys)
             }
         });
@@ -253,7 +259,7 @@ fn walk_one(
     content_hash: String,
     frameworks: &[String],
     declarations: &Declarations,
-    test_modules: &TestModules,
+    test_modules: &ModuleGates,
     layout: &Layout,
 ) -> (Contribution, BTreeSet<String>) {
     let display = module.rsplit("::").next().unwrap_or(module).to_owned();
@@ -265,7 +271,14 @@ fn walk_one(
     // reads as unreferenced production code.
     let file_is_test = crate::visit::is_test_module_path(module, test_modules);
     facts.enter_test_scope_if(file_is_test);
+    let file_gate = facts.enter_cfg_scope(test_modules.gate_of_file(relative, module));
+    let file_support = facts.enter_support_scope(crate::visit::is_test_support_module_path(
+        module,
+        test_modules,
+    ));
     facts.node("module", module, &display, span, span);
+    facts.exit_support_scope(file_support);
+    facts.exit_cfg_scope(file_gate);
     facts.exit_test_scope_if(file_is_test);
     let placed = crate::visit::walk(
         &mut facts,

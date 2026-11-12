@@ -28,7 +28,10 @@ pub(super) struct Walk<'a> {
     /// absolute (`::dep::*`), and span, until every `use` in the file is
     /// known: a glob's path may start with an alias declared later in the
     /// same module.
-    pub(super) pending_globs: Vec<(String, String, bool, proc_macro2::Span)>,
+    pub(super) pending_globs: Vec<(String, String, bool, proc_macro2::Span, bool)>,
+    /// The entries of [`Walk::globs`] a private `use` wrote, visible only
+    /// in its module and below it.
+    pub(super) private_globs: BTreeSet<(String, String)>,
     /// Each module's own imported names, for a glob's leading alias: a `use`
     /// is scoped to the module that declares it, so sibling modules may bind
     /// one alias to different paths. `None` marks a name bound twice.
@@ -44,6 +47,11 @@ pub(super) struct Walk<'a> {
     pub(super) type_params: BTreeSet<String>,
     /// Target type of the current impl block, for resolving `Self`.
     pub(super) current_impl_target: Option<String>,
+    /// The segment a trait impl's methods are declared under below their
+    /// type, `<impl Driver>` for `impl Driver for Session`, while one is
+    /// walked: a trait's method is another item than an inherent method of
+    /// the same name, and two traits' methods of one name are two items.
+    pub(super) impl_segment: Option<String>,
     /// Frameworks the scan request asked this worker to enrich, by short name
     /// (`axum`, `actix`, `rocket`). Empty means none.
     pub(super) frameworks: &'a [String],
@@ -82,12 +90,22 @@ pub(super) struct Walk<'a> {
     /// The files this file's `mod` declarations load, whose own placement
     /// decided the module each declaration names.
     pub(super) placed: BTreeSet<String>,
-    /// Every name a visible `use` (`pub use`, `pub(crate) use`) makes a
-    /// path of the module it is written in, mapped to the path it imports:
+    /// Every name a `use` makes a path of the module it is written in
+    /// (`pub use`, and a private one, which descendants name through
+    /// `super`), mapped to the path it imports:
     /// what the declaration index follows a re-exported path through (see
     /// [`Declarations::exported`]).
     /// `None` marks a name two `use` items bind to different paths.
     pub(super) exports: BTreeMap<String, Option<String>>,
+    /// The `cfg` alternatives of a name `use` items re-export apart,
+    /// every one of them gated (`#[cfg(unix)] pub use unix::open;` beside a
+    /// Windows one): each path it may name, `None` once an ungated `use`
+    /// binds it too. See [`ExportedNames`](super::declarations::ExportedNames).
+    pub(super) export_alternatives: BTreeMap<String, Option<Vec<String>>>,
+    /// The names of [`Walk::exports`] some private `use` binds.
+    pub(super) private_exports: BTreeSet<String>,
+    /// The names of [`Walk::exports`] some visible `use` binds.
+    pub(super) public_exports: BTreeSet<String>,
     /// Every path this file declares (see
     /// [`declaration_paths`](super::declarations::declaration_paths)), which
     /// confirms a type the file names unqualified in its own module whether

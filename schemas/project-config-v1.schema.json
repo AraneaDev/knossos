@@ -163,6 +163,35 @@
       "items": { "type": "string", "minLength": 1 },
       "description": "Canonical names (exact, or prefix with a trailing *) never to report as dead-code candidates."
     },
+    "diagnostic_suppressions": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The diagnostic code, such as TS5101."
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "The project-relative file it is reported on, exact or a prefix with a trailing *; every file when absent."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Why it is not worth reporting."
+          }
+        }
+      },
+      "description": "Diagnostics never to report: list_diagnostics leaves them out and counts them in suppressed."
+    },
     "enrichers": {
       "type": "array",
       "maxItems": 32,

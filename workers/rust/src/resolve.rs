@@ -153,11 +153,27 @@ use std::collections::BTreeMap;
 /// Re-inserting the *same* full path under a key is not a collision — that
 /// happens legitimately when the same `use` line is collected from two
 /// nested modules — so it stays resolvable.
+///
+/// One collision is not a guess between two meanings: every binding of the
+/// name comes from a `use` gated by a `cfg` (`#[cfg(unix)] use unix as
+/// platform;` beside `#[cfg(windows)] use windows as platform;`). Exactly one
+/// of them compiles, and code written through the name calls into whichever
+/// that is, so each is kept as an alternative (see [`Aliases::alternatives`])
+/// for a caller to resolve the path once per alternative. The name still
+/// resolves to nothing on its own.
 #[derive(Clone, Debug, Default)]
 pub struct Aliases {
     /// Local name to fully qualified path, or `None` when the local name is
     /// poisoned: two different full paths were imported under it.
     entries: BTreeMap<String, Option<String>>,
+    /// Every full path each name was bound to, in the order bound, while
+    /// every binding of it was `cfg`-gated; a name any ungated `use` binds
+    /// has none.
+    gated: BTreeMap<String, Option<Vec<String>>>,
+    /// The alternatives callers are resolving poisoned names through,
+    /// innermost last, see [`Aliases::choose`]: while one is set, its name
+    /// stands for that path alone.
+    chosen: std::cell::RefCell<Vec<(String, String)>>,
 }
 
 impl Aliases {
@@ -168,6 +184,24 @@ impl Aliases {
     /// path again, or inserting into an alias that is already poisoned, is a
     /// no-op.
     pub fn insert(&mut self, alias: String, full_path: String) {
+        self.insert_gated(alias, full_path, false);
+    }
+
+    /// [`Aliases::insert`] for a binding whose `use` is gated by a `cfg`
+    /// when `gated` is set, which keeps the name's alternatives.
+    pub fn insert_gated(&mut self, alias: String, full_path: String, gated: bool) {
+        let alternatives = self
+            .gated
+            .entry(alias.clone())
+            .or_insert_with(|| Some(Vec::new()));
+        match alternatives {
+            Some(known) if gated => {
+                if !known.contains(&full_path) {
+                    known.push(full_path.clone());
+                }
+            }
+            _ => *alternatives = None,
+        }
         match self.entries.get(&alias) {
             Some(Some(existing)) if existing != &full_path => {
                 self.entries.insert(alias, None);
@@ -184,7 +218,63 @@ impl Aliases {
     /// itself binds it twice apart). The caller restores the outer binding
     /// when the scope ends.
     pub fn shadow(&mut self, alias: String, full: Option<String>) {
+        self.gated.remove(&alias);
         self.entries.insert(alias, full);
+    }
+
+    /// Bind `alias` in an inner scope to `cfg` alternatives, as
+    /// [`Aliases::insert_gated`] keeps them: one alternative is the name's
+    /// path, several poison it and are kept.
+    pub fn shadow_alternatives(&mut self, alias: String, alternatives: Vec<String>) {
+        let full = match alternatives.as_slice() {
+            [one] => Some(one.clone()),
+            _ => None,
+        };
+        self.entries.insert(alias.clone(), full);
+        self.gated.insert(alias, Some(alternatives));
+    }
+
+    /// The paths a poisoned `head` stands for in the builds each `cfg`
+    /// alternative binding it compiles in, or none when it is not poisoned
+    /// or any of its bindings is ungated.
+    #[must_use]
+    pub fn alternatives(&self, head: &str) -> Vec<String> {
+        if !self.is_poisoned(head) {
+            return Vec::new();
+        }
+        match self.gated.get(head) {
+            Some(Some(known)) if known.len() > 1 => known.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Resolve `head` as `full` alone until the matching
+    /// [`Aliases::unchoose`], for a caller walking a path, or a whole `impl`
+    /// block, through one of its alternatives. Choices nest.
+    pub fn choose(&self, head: &str, full: &str) {
+        self.chosen
+            .borrow_mut()
+            .push((head.to_owned(), full.to_owned()));
+    }
+
+    /// End the innermost choice [`Aliases::choose`] made.
+    pub fn unchoose(&self) {
+        self.chosen.borrow_mut().pop();
+    }
+
+    /// The path the innermost [`Aliases::choose`] of `head` gives it, if any.
+    fn chosen_for(&self, head: &str) -> Option<String> {
+        self.chosen
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(chosen, _)| chosen == head)
+            .map(|(_, full)| full.clone())
+    }
+
+    /// Whether `head` was bound twice apart, ignoring any choice.
+    fn is_poisoned(&self, head: &str) -> bool {
+        matches!(self.entries.get(head), Some(None))
     }
 
     /// The full path a local name stands for.
@@ -193,8 +283,11 @@ impl Aliases {
     /// imported ambiguously — two different full paths under the same local
     /// name — since neither case names a full path this worker can vouch for.
     #[must_use]
-    pub fn resolve(&self, path: &str) -> Option<&str> {
-        self.entries.get(path).and_then(|full| full.as_deref())
+    pub fn resolve(&self, path: &str) -> Option<String> {
+        if let Some(chosen) = self.chosen_for(path) {
+            return Some(chosen);
+        }
+        self.entries.get(path).and_then(Clone::clone)
     }
 
     /// Whether `head` names a local alias that was imported ambiguously —
@@ -210,7 +303,7 @@ impl Aliases {
     /// imports fought over.
     #[must_use]
     pub fn is_ambiguous(&self, head: &str) -> bool {
-        matches!(self.entries.get(head), Some(None))
+        self.chosen_for(head).is_none() && self.is_poisoned(head)
     }
 
     /// A path with its leading segment expanded through the map.
@@ -228,7 +321,7 @@ impl Aliases {
 
         Some(match rest {
             Some(rest) => format!("{full}::{rest}"),
-            None => full.to_owned(),
+            None => full,
         })
     }
 }
@@ -503,7 +596,7 @@ mod tests {
         let mut aliases = super::Aliases::default();
         aliases.insert("De".to_owned(), "serde::Deserialize".to_owned());
 
-        assert_eq!(Some("serde::Deserialize"), aliases.resolve("De"));
+        assert_eq!(Some("serde::Deserialize"), aliases.resolve("De").as_deref());
         assert_eq!(None, aliases.resolve("Unknown"));
     }
 
@@ -588,7 +681,7 @@ mod tests {
         aliases.insert("Widget".to_owned(), "foo::Widget".to_owned());
         aliases.insert("Widget".to_owned(), "foo::Widget".to_owned());
 
-        assert_eq!(Some("foo::Widget"), aliases.resolve("Widget"));
+        assert_eq!(Some("foo::Widget"), aliases.resolve("Widget").as_deref());
     }
 
     #[test]

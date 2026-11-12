@@ -4,6 +4,7 @@
  * component parse failures and declaration files over the byte cap.
  */
 
+import path from "node:path";
 import ts from "typescript";
 import { exceedsByteCap } from "./byte-caps.js";
 import {
@@ -51,6 +52,7 @@ export function programDiagnostics(
     maxFileBytes,
     fallback,
     orphaned = false,
+    programConfigs = new Set(),
 ) {
     let byFile = new Map();
     let programLevel = [];
@@ -59,6 +61,7 @@ export function programDiagnostics(
             program,
             root,
             maxFileBytes,
+            programConfigs,
         ));
     } catch (error) {
         rethrowStackOverflow(error);
@@ -166,9 +169,9 @@ function hasControlCharacter(name) {
  * program's whole type check for a one-file request. A diagnostic that names
  * no file is taken before the check (see programLevelDiagnostics).
  */
-function diagnosticsForProgram(program, root, maxFileBytes) {
+function diagnosticsForProgram(program, root, maxFileBytes, programConfigs) {
     const result = new Map();
-    const programLevel = programLevelDiagnostics(program);
+    const programLevel = programLevelDiagnostics(program, root, programConfigs);
     for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
         if (diagnostic.file)
             addFileDiagnostic(
@@ -193,7 +196,7 @@ function diagnosticsForProgram(program, root, maxFileBytes) {
  * when it is created, and what the config and options report, depends only
  * on the program's configuration.
  */
-function programLevelDiagnostics(program) {
+function programLevelDiagnostics(program, root, programConfigs) {
     const programLevel = [];
     const diagnostics = ts.sortAndDeduplicateDiagnostics([
         ...program.getConfigFileParsingDiagnostics(),
@@ -202,8 +205,31 @@ function programLevelDiagnostics(program) {
     ]);
     for (const diagnostic of diagnostics) {
         if (diagnostic.file) continue;
+        const text = ts.flattenDiagnosticMessageText(
+            diagnostic.messageText,
+            "\n",
+        );
+        // An option one config sets is reported once, by the program of
+        // that config: another program the request builds inherits it
+        // through `extends` and leaves it to that one.
+        const setter = optionSetter(program, optionNamed(text));
+        const own = program.getCompilerOptions().configFilePath;
+        if (
+            setter !== undefined &&
+            own !== undefined &&
+            path.resolve(setter) !== path.resolve(own) &&
+            programConfigs.has(path.resolve(setter))
+        )
+            continue;
+        const deprecated = isDeprecation(diagnostic, text);
         const message =
-            ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n") +
+            text +
+            (setter === undefined
+                ? ""
+                : ` (set in ${relativeInside(root, setter) ?? setter})`) +
+            (deprecated
+                ? ` (deprecated by the TypeScript ${ts.version} Knossos bundles, which may be newer than the project's own compiler)`
+                : "") +
             " (applies to the whole program)";
         const code = `TS${diagnostic.code}`;
         if (
@@ -214,7 +240,8 @@ function programLevelDiagnostics(program) {
             continue;
         programLevel.push({
             severity:
-                diagnostic.category === ts.DiagnosticCategory.Error
+                diagnostic.category === ts.DiagnosticCategory.Error &&
+                !deprecated
                     ? "error"
                     : "warning",
             code,
@@ -222,6 +249,67 @@ function programLevelDiagnostics(program) {
         });
     }
     return programLevel;
+}
+
+/**
+ * The compiler option a program-wide diagnostic names: `downlevelIteration`
+ * in "Option 'downlevelIteration' is deprecated", `moduleResolution` in
+ * "Option 'moduleResolution=node10' is deprecated".
+ */
+function optionNamed(text) {
+    return /Option '([A-Za-z][A-Za-z0-9]*)/.exec(text)?.[1];
+}
+
+/**
+ * A deprecation of an option: TS5101 and its siblings. The project builds
+ * with its own compiler, which may predate the deprecation, so it is no
+ * error of the project's.
+ */
+function isDeprecation(diagnostic, text) {
+    return (
+        [5101, 5107, 5108].includes(diagnostic.code) ||
+        / is deprecated\b/.test(text)
+    );
+}
+
+/**
+ * The config file of a program's `extends` chain that sets `name` in its
+ * `compilerOptions`, its own first, or undefined when none does or the
+ * diagnostic names no option. Only a relative `extends` is followed: a
+ * package's config sets no option of the project's. The chain's files were
+ * read when the program's config was parsed, which recorded them.
+ */
+function optionSetter(program, name) {
+    if (name === undefined) return undefined;
+    let file = program.getCompilerOptions().configFilePath;
+    const seen = new Set();
+    while (typeof file === "string" && !seen.has(file) && seen.size < 16) {
+        seen.add(file);
+        const text = ts.sys.readFile(file);
+        if (text === undefined) return undefined;
+        const { config } = ts.parseConfigFileTextToJson(file, text);
+        const compilerOptions = config?.compilerOptions;
+        if (
+            compilerOptions !== null &&
+            typeof compilerOptions === "object" &&
+            Object.prototype.hasOwnProperty.call(compilerOptions, name)
+        )
+            return file;
+        const parents = [config?.extends ?? []].flat();
+        file = parents
+            .filter(
+                (parent) =>
+                    typeof parent === "string" && parent.startsWith("."),
+            )
+            .map((parent) => {
+                const resolved = path.resolve(path.dirname(file), parent);
+                return resolved.endsWith(".json")
+                    ? resolved
+                    : `${resolved}.json`;
+            })
+            .find((parent) => ts.sys.fileExists(parent));
+    }
+    return undefined;
 }
 
 /** One compiler diagnostic on a file, added to that file's list. */

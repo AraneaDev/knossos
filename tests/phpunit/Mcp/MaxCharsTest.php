@@ -37,6 +37,37 @@ final class MaxCharsTest extends KnossosTestCase
         assertSame(100, count($enricher->enrich($envelope, 'search_architecture', 'compact')->data['components']));
     }
 
+    /**
+     * The list an answer pages through gives way last: architecture_health's
+     * candidates, sorted first alphabetically, used to lose half a page to a
+     * budget the hubs and hotspots beside them could have paid, with nothing
+     * but `dropped_items` saying so. Cut at last, the page's cursor resumes at
+     * the first candidate it left out.
+     */
+    #[Group('mcp')]
+    public function testThePagedListIsTrimmedLastAndResumesWhereItWasCut(): void
+    {
+        $pdo = $this->freshTestDatabase();
+        $enricher = new ResultEnricher(new StalenessProbe($pdo), new NextStepPlanner());
+        $rows = static fn(string $prefix): array => array_map(static fn(int $i): array => ['name' => $prefix . $i, 'padding' => str_repeat('x', 100)], range(1, 30));
+        $envelope = new ResultEnvelope('project_x', 'scan_x', 'ok', [
+            'hubs' => $rows('hub_'), 'static_hotspots' => $rows('hot_'), 'dead_code_candidates' => $rows('dead_'),
+            'pagination' => ['list' => 'dead_code_candidates', 'offset' => 40, 'next_offset' => 70],
+        ]);
+
+        $roomy = $enricher->enrich($envelope, 'architecture_health', 'compact', 6000);
+        assertSame(30, count($roomy->data['dead_code_candidates']));
+        assertSame(70, $roomy->data['pagination']['next_offset']);
+        assertSame(false, isset($roomy->meta['dropped_items']['dead_code_candidates']));
+
+        $tight = $enricher->enrich($envelope, 'architecture_health', 'compact', 2500);
+        $shown = count($tight->data['dead_code_candidates']);
+        assertSame(true, $shown < 30);
+        assertSame([], $tight->data['hubs']);
+        assertSame([], $tight->data['static_hotspots']);
+        assertSame(40 + $shown, $tight->data['pagination']['next_offset']);
+    }
+
     #[Group('mcp')]
     public function testEnricherTrimsNestedListsToFitBudget(): void
     {

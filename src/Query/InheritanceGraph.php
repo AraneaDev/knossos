@@ -41,7 +41,7 @@ final class InheritanceGraph
      * @param array<string, list<string>> $parents type id => direct parent ids
      * @param array<string, list<string>> $subtypes type id => ids of the types that inherit its members
      * @param array<string, array<string, mixed>> $meta ancestor id => node row (id, kind, display_name, origin)
-     * @param array<string, array<string, true>> $memberNames type id => member display names
+     * @param array<string, array<string, list<string>>> $memberNames type id => member display name => the ids of its members by that name
      * @param array<string, array<string, list<string>>> $implemented type id => member name => ids of the members its direct implementers carry by that name
      */
     private function __construct(
@@ -142,7 +142,17 @@ final class InheritanceGraph
      */
     public function memberNames(string $id): array
     {
-        return $this->memberNames[$id] ?? [];
+        return array_map(static fn(): bool => true, $this->memberNames[$id] ?? []);
+    }
+
+    /**
+     * The ids of the members by `$name` that a type declares.
+     *
+     * @return list<string>
+     */
+    public function memberIds(string $id, string $name): array
+    {
+        return $this->memberNames[$id][$name] ?? [];
     }
 
     /**
@@ -267,14 +277,11 @@ final class InheritanceGraph
      * The member names each of `$typeIds` declares.
      *
      * @param list<string> $typeIds
-     * @return array<string, array<string, true>> type id => member display names
+     * @return array<string, array<string, list<string>>> type id => member display name => member ids
      */
     private static function memberNamesOf(PDO $pdo, string $projectId, array $typeIds): array
     {
-        return array_map(
-            static fn(array $members): array => array_map(static fn(): bool => true, $members),
-            self::membersOf($pdo, $projectId, $typeIds),
-        );
+        return self::membersOf($pdo, $projectId, $typeIds);
     }
 
     /**
