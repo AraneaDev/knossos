@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.5](https://github.com/AraneaDev/knossos/compare/v0.44.4...v0.44.5) (2026-11-12)
+
+
+### Fixes
+
+* type Rust receivers across cfg alternatives, block globs and Option chains, and leave untyped-only dead-code candidates out ([#465](https://github.com/AraneaDev/knossos/issues/465)) ([40a5607](https://github.com/AraneaDev/knossos/commit/40a56079cab65db1ae082dd2dba8cc4d9c717e18))
+
 ## [0.44.4](https://github.com/AraneaDev/knossos/compare/v0.44.3...v0.44.4) (2026-11-12)
 
 
