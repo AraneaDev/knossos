@@ -30,7 +30,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
         $repository->saveNode($loop, $project, 'ts', 'module', 'zzz/loop.js', 'loop.js', null, $ids['file'], 1, 9, 'ast', 'certain', ['executable' => true, 'unresolved_member_calls' => ['label']], 'ts:file:zzz/loop.js', $ids['scan']);
         $repository->completeScan($project, $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project, limit: 100, maxNodes: 3)->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($project, limit: 100, maxNodes: 3, includeUntypedReceiver: true)->data;
 
         $confidence = [];
         foreach ($data['dead_code_candidates'] as $candidate) {

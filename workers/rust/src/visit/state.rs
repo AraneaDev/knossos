@@ -116,6 +116,10 @@ pub(super) struct Walk<'a> {
     /// confirms a type the file names unqualified in its own module whether
     /// or not the index answers for the file.
     pub(super) own_declarations: BTreeSet<String>,
+    /// The types this file's inherent `impl` blocks are for, which places a
+    /// type a macro declares (`named_enum!(ErrorCode { .. })` beside `impl
+    /// ErrorCode { .. }`) where the declarations do not.
+    pub(super) implemented_types: BTreeSet<String>,
     /// The type each alias this file declares names, resolved as the file's
     /// imports place it, by the alias's canonical path: `type Alias = Policy;`
     /// in a module, and an impl's associated type, `type Out = Engine;`,
@@ -161,6 +165,11 @@ pub(super) struct Calls<'a, 'b> {
     /// walked hands that closure's first parameter
     /// (`values.iter().any(|v| ..)`).
     pub(super) closure_element: Option<String>,
+    /// How many `cfg` alternatives of a binding the walk is replaying the
+    /// rest of a block for besides the first (see
+    /// [`Calls::visit_statements`]): what a replay records once already is
+    /// not recorded again, and nesting stops at a few.
+    pub(super) replaying: u8,
     /// The route prefixes of the `nest(...)` and `scope(...)` calls whose
     /// arguments are being walked, outermost first: a route declared inside
     /// one is served under all of them.

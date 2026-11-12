@@ -205,7 +205,7 @@ final class HealthFiltersTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100, includeUntypedReceiver: true)->data;
         $byName = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
             $byName[$candidate['component']['canonical_name']] = $candidate;
@@ -218,13 +218,13 @@ final class HealthFiltersTest extends KnossosTestCase
 
     /**
      * Possible only because some untyped receiver calls a member of its
-     * name, a candidate follows every other one: on a Rust workspace nearly
+     * name, a candidate is left out and counted: on a Rust workspace nearly
      * every method name is called so, and nearly every such candidate had a
-     * caller, so alphabetical order buried the real findings. The count is
-     * in bounds and the summary, and the compact page carries the same order.
+     * caller, so listing them buried the real findings. Asked for, they
+     * follow every other candidate, on the full and the compact page alike.
      */
     #[Group('query')]
-    public function testUntypedReceiverCandidatesFollowEveryOtherCandidate(): void
+    public function testUntypedReceiverCandidatesAreLeftOutUnlessAskedForAndThenFollowTheRest(): void
     {
         [$pdo, $repository, $ids] = $this->storeFixture();
         $module = StableId::symbol($ids['project'], 'typescript', 'module', 'src/loop.js');
@@ -236,7 +236,18 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $health = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries;
 
-        $full = $health->architectureHealth($ids['project'], limit: 100);
+        $default = $health->architectureHealth($ids['project'], limit: 100);
+        $listed = array_map(static fn(array $candidate): string => $candidate['component']['canonical_name'], $default->data['dead_code_candidates']);
+        assertSame(false, in_array('src/mode.ts#alpha', $listed, true));
+        assertSame(true, in_array('src/mode.ts#zeta', $listed, true));
+        assertSame(1, $default->data['bounds']['excluded_untyped_receiver']);
+        assertSame(0, $default->data['bounds']['candidates_untyped_receiver']);
+        assertSame(true, str_contains($default->summary, '1 more are left out'), $default->summary);
+        $compactDefault = $health->architectureHealth($ids['project'], limit: 100, candidateLimit: 1000, candidatesOnly: true);
+        assertSame($listed, array_column($compactDefault->data['dead_code_candidates'], 'component'));
+        assertSame(1, $compactDefault->data['bounds']['excluded_untyped_receiver']);
+
+        $full = $health->architectureHealth($ids['project'], limit: 100, includeUntypedReceiver: true);
         $names = array_map(static fn(array $candidate): string => $candidate['component']['canonical_name'], $full->data['dead_code_candidates']);
         $mode = array_values(array_filter($names, static fn(string $name): bool => str_starts_with($name, 'src/mode.ts#')));
         assertSame(['src/mode.ts#zeta', 'src/mode.ts#alpha'], $mode);
@@ -244,7 +255,8 @@ final class HealthFiltersTest extends KnossosTestCase
         assertSame(1, $full->data['bounds']['candidates_untyped_receiver']);
         assertSame(true, str_contains($full->summary, '1 of them are possible only because'));
 
-        $compact = $health->architectureHealth($ids['project'], limit: 100, candidateLimit: 1000, candidatesOnly: true);
+        assertSame(0, $full->data['bounds']['excluded_untyped_receiver']);
+        $compact = $health->architectureHealth($ids['project'], limit: 100, candidateLimit: 1000, candidatesOnly: true, includeUntypedReceiver: true);
         assertSame(false, array_key_exists('hubs', $compact->data));
         $rows = $compact->data['dead_code_candidates'];
         assertSame($names, array_column($rows, 'component'));
@@ -270,7 +282,7 @@ final class HealthFiltersTest extends KnossosTestCase
         }
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100, includeUntypedReceiver: true)->data;
         $byName = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
             $byName[$candidate['component']['canonical_name']] = $candidate;
@@ -300,7 +312,7 @@ final class HealthFiltersTest extends KnossosTestCase
         $repository->saveEdge(StableId::edge($ids['project'], 'calls', $suite, $reset, 't:1'), $ids['project'], 'calls', $suite, $reset, $ids['file'], 1, 1, 'ast', 'certain', [], 'php:file:src/Checkout.php', $ids['scan']);
         $repository->completeScan($ids['project'], $ids['scan']);
 
-        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100)->data;
+        $data = ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($ids['project'], limit: 100, includeUntypedReceiver: true)->data;
         $byName = [];
         foreach ($data['dead_code_candidates'] as $candidate) {
             $byName[$candidate['component']['canonical_name']] = $candidate;

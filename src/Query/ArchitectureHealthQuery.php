@@ -60,7 +60,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      *
      * @param list<string> $edgeKinds
      */
-    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000, int $candidateLimit = 0, ?string $pathPrefix = null, bool $includeAnnotated = false, bool $includeExamples = false, bool $candidatesOnly = false): ResultEnvelope
+    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000, int $candidateLimit = 0, ?string $pathPrefix = null, bool $includeAnnotated = false, bool $includeExamples = false, bool $candidatesOnly = false, bool $includeUntypedReceiver = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         // The candidate page has its own size, so paging through the
@@ -75,9 +75,9 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         [$confidenceRank, $edgeKinds] = $this->healthArguments($edgeKinds, $minConfidence, $limit, $maxNodes, $maxEdges, $timeoutMs, $candidateConfidence, $candidateOffset, $candidateTimeoutMs);
         $minimumRank = $confidenceRank[$minConfidence];
         $pathPrefix = $pathPrefix === null || ltrim($pathPrefix, '/') === '' ? null : ltrim($pathPrefix, '/');
-        $candidateBounds = ['limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs, 'candidate_confidence' => $candidateConfidence, 'candidate_offset' => $candidateOffset, 'candidate_timeout_ms' => $candidateTimeoutMs, 'candidate_limit' => $candidateLimit, 'path_prefix' => $pathPrefix, 'include_annotated' => $includeAnnotated, 'include_examples' => $includeExamples];
+        $candidateBounds = ['limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs, 'candidate_confidence' => $candidateConfidence, 'candidate_offset' => $candidateOffset, 'candidate_timeout_ms' => $candidateTimeoutMs, 'candidate_limit' => $candidateLimit, 'path_prefix' => $pathPrefix, 'include_annotated' => $includeAnnotated, 'include_examples' => $includeExamples, 'include_untyped_receiver' => $includeUntypedReceiver];
         if ($candidatesOnly) {
-            $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $this->now() + ($candidateTimeoutMs * 1_000_000), $candidateConfidence, $candidateOffset, $candidateLimit, $pathPrefix, $includeAnnotated, $includeExamples);
+            $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $this->now() + ($candidateTimeoutMs * 1_000_000), $candidateConfidence, $candidateOffset, $candidateLimit, $pathPrefix, $includeAnnotated, $includeExamples, $includeUntypedReceiver);
 
             return $this->candidatesEnvelope($project, $candidateBounds + ['candidates_only' => true], $found);
         }
@@ -96,7 +96,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
 
         $ranked = $this->rankNodes($slice, $walk['metrics'], $cycleMembers, $includeExternal, $includeTests, $limit);
         $candidateDeadline = $this->now() + ($candidateTimeoutMs * 1_000_000);
-        $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $candidateDeadline, $candidateConfidence, $candidateOffset, $candidateLimit, $pathPrefix, $includeAnnotated, $includeExamples);
+        $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $candidateDeadline, $candidateConfidence, $candidateOffset, $candidateLimit, $pathPrefix, $includeAnnotated, $includeExamples, $includeUntypedReceiver);
         foreach (['hub_total', 'hotspot_total'] as $total) {
             if ($ranked[$total] > $limit) {
                 $truncation->add('result_limit');
@@ -283,7 +283,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      * with the bounds and tallies that say how complete each list is.
      *
      * @param array<string, mixed> $project
-     * @param array{limit: int, max_nodes: int, max_edges: int, timeout_ms: int, candidate_confidence: string, candidate_offset: int, candidate_timeout_ms: int, candidate_limit: int, path_prefix: ?string, include_annotated: bool, include_examples: bool} $bounds the caller's bounds, reported first and in this order
+     * @param array{limit: int, max_nodes: int, max_edges: int, timeout_ms: int, candidate_confidence: string, candidate_offset: int, candidate_timeout_ms: int, candidate_limit: int, path_prefix: ?string, include_annotated: bool, include_examples: bool, include_untyped_receiver: bool} $bounds the caller's bounds, reported first and in this order
      * @param array{slice: array<string, mixed>, walk: array{metrics: array{in: list<int>, out: list<int>, cross: list<int>}, edges_examined: int}, ranked: array<string, mixed>, found: array<string, mixed>, cycle_members: array<string, true>, cycle_scan_truncated: bool} $result
      */
     private function healthEnvelope(array $project, array $bounds, array $result, Truncation $truncation): ResultEnvelope
@@ -319,7 +319,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         return new ResultEnvelope(
             $project['id'],
             $project['active_scan_id'],
-            self::healthSummary(count($hubs), count($hotspots), $candidatesTotal, count($deadCandidates), $testOnlyCandidates, $probableCandidates, $truncationReasons, $candidateTruncationReasons) . self::untypedSummary($found['untyped_receiver']),
+            self::healthSummary(count($hubs), count($hotspots), $candidatesTotal, count($deadCandidates), $testOnlyCandidates, $probableCandidates, $truncationReasons, $candidateTruncationReasons) . self::untypedSummary($found['untyped_receiver'], $bounds['include_untyped_receiver']),
             [
                 'hubs' => $hubs, 'static_hotspots' => $hotspots, 'dead_code_candidates' => $deadCandidates, 'in_degree_histogram' => $ranked['in_degree'],
                 // The candidates are the paged list: a page trimmed to fit a
@@ -334,7 +334,8 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
                     'candidates_probable' => $probableCandidates,
                     'candidates_possible' => $candidatesTotal - $probableCandidates,
                     'candidates_test_only' => $testOnlyCandidates,
-                    'candidates_untyped_receiver' => $found['untyped_receiver'],
+                    'candidates_untyped_receiver' => $bounds['include_untyped_receiver'] ? $found['untyped_receiver'] : 0,
+                    'excluded_untyped_receiver' => $bounds['include_untyped_receiver'] ? 0 : $found['untyped_receiver'],
                     'candidates_truncated' => $candidateTruncationReasons !== [],
                     'candidate_truncation_reasons' => $candidateTruncationReasons,
                     'nodes_examined' => count($slice['ids']), 'edges_examined' => $result['walk']['edges_examined'],
@@ -413,7 +414,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
             $found['test_only'],
             $found['probable'],
             $found['total'] - $found['probable'],
-        ) . self::untypedSummary($found['untyped_receiver']);
+        ) . self::untypedSummary($found['untyped_receiver'], $bounds['include_untyped_receiver']);
         if (in_array('time_limit', $candidateTruncationReasons, true)) {
             $summary .= ' The candidate search ran out of time, so the candidate list is partial.';
         }
@@ -434,7 +435,8 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
                     'candidates_probable' => $found['probable'],
                     'candidates_possible' => $found['total'] - $found['probable'],
                     'candidates_test_only' => $found['test_only'],
-                    'candidates_untyped_receiver' => $found['untyped_receiver'],
+                    'candidates_untyped_receiver' => $bounds['include_untyped_receiver'] ? $found['untyped_receiver'] : 0,
+                    'excluded_untyped_receiver' => $bounds['include_untyped_receiver'] ? 0 : $found['untyped_receiver'],
                     'candidates_truncated' => $candidateTruncationReasons !== [],
                     'candidate_truncation_reasons' => $candidateTruncationReasons,
                     'excluded_inherited_methods' => $excluded['inherited'] ?? 0,
@@ -457,14 +459,18 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
 
     /**
      * The summary's word on the candidates only an untyped receiver makes
-     * possible, which the page lists after every other candidate.
+     * possible: left out, or listed after every other candidate when the
+     * caller asked for them.
      */
-    private static function untypedSummary(int $untyped): string
+    private static function untypedSummary(int $untyped, bool $included): string
     {
-        return $untyped === 0 ? '' : sprintf(
-            ' %d of them are possible only because a member of that name is called on a receiver the scan could not type; they are listed after all the others.',
-            $untyped,
-        );
+        if ($untyped === 0) {
+            return '';
+        }
+
+        return $included
+            ? sprintf(' %d of them are possible only because a member of that name is called on a receiver the scan could not type; they are listed after all the others.', $untyped)
+            : sprintf(' %d more are left out: possible only because a member of that name is called on a receiver the scan could not type (include_untyped_receiver lists them).', $untyped);
     }
 
     /**

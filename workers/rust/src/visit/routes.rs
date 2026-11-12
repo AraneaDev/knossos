@@ -196,11 +196,17 @@ impl Calls<'_, '_> {
         }) else {
             return;
         };
-        self.walk.routes.push(path);
+        // A replay of a `cfg` alternative walks this call again.
+        if self.replaying == 0 {
+            self.walk.routes.push(path);
+        }
     }
 
     /// A dynamic route path diagnostic.
     fn dynamic_route(&mut self, span: proc_macro2::Span) {
+        if self.replaying > 0 {
+            return;
+        }
         self.walk.facts.diagnostic(
             "warning",
             "RS_DYNAMIC_ROUTE_PATH",

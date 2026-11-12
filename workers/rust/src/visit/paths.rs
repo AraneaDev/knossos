@@ -468,7 +468,7 @@ impl Walk<'_> {
         &mut self,
         container: &str,
         statements: &[syn::Stmt],
-    ) -> Option<Aliases> {
+    ) -> Option<(Aliases, usize)> {
         let uses: Vec<&syn::ItemUse> = statements
             .iter()
             .filter_map(|statement| match statement {
@@ -495,6 +495,26 @@ impl Walk<'_> {
                 _ => None,
             })
             .collect();
+        // A glob (`use theseus_host::services::systemd::*;`) brings in its
+        // module's names for the rest of the block, as one at module level
+        // does for the module: its source joins the module's globs until the
+        // block ends.
+        let globs_before = self.globs.len();
+        for node in &uses {
+            let mut globs = Vec::new();
+            glob_prefixes(&node.tree, "", &mut globs);
+            for glob in globs {
+                let unrooted = node.leading_colon.is_none();
+                let head = glob.split("::").next().unwrap_or(&glob);
+                if unrooted && !is_root(head) && local.contains(head) {
+                    continue;
+                }
+                if let Some(source) = self.block_use_path(container, &children, unrooted, &glob) {
+                    self.globs
+                        .push((container.to_owned(), self.exported(source)));
+                }
+            }
+        }
         let mut written: Vec<((UseLeaf, bool), proc_macro2::Span, bool)> = Vec::new();
         for node in uses {
             let mut leaves = Vec::new();
@@ -556,7 +576,7 @@ impl Walk<'_> {
             }
         }
 
-        Some(outer)
+        Some((outer, globs_before))
     }
 
     /// The path one leaf of a `use` in a block imports. Its first segment
@@ -587,9 +607,10 @@ impl Walk<'_> {
 
     /// End the scope [`Walk::enter_block_uses`] opened, restoring the
     /// imports it returned.
-    pub(super) fn leave_block_uses(&mut self, outer: Option<Aliases>) {
-        if let Some(outer) = outer {
+    pub(super) fn leave_block_uses(&mut self, outer: Option<(Aliases, usize)>) {
+        if let Some((outer, globs)) = outer {
             self.aliases = outer;
+            self.globs.truncate(globs);
         }
     }
 

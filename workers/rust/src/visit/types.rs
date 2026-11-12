@@ -25,8 +25,16 @@ impl Walk<'_> {
             FieldType::Resolved(target) if local => Some(target),
             FieldType::Resolved(declared) => {
                 let (marks, held) = split_marks(&declared);
-                self.renamed(held.to_owned())
-                    .map(|target| format!("{marks}{}", self.exported(target)))
+                let placed: Option<Vec<String>> = held
+                    .split(ALTERNATIVE_MARK)
+                    .map(|held| {
+                        self.renamed(held.to_owned())
+                            .map(|target| self.exported(target))
+                    })
+                    .collect();
+                placed.map(|targets| {
+                    format!("{marks}{}", targets.join(&ALTERNATIVE_MARK.to_string()))
+                })
             }
             FieldType::Globbed {
                 name,
@@ -161,7 +169,7 @@ impl Walk<'_> {
                         return None;
                     }
                     match self.resolve_written(container, path)? {
-                        (target, true) if !self.own_declarations.contains(&target) => {
+                        (target, true) if !self.declares_type(&target) => {
                             Some((name, String::new()))
                         }
                         _ => None,
@@ -288,7 +296,7 @@ impl Walk<'_> {
             (target, true)
                 if path.segments.len() == 1
                     && !is_self
-                    && !self.own_declarations.contains(&target)
+                    && !self.declares_type(&target)
                     && !self.type_aliases.contains_key(&target) =>
             {
                 return None;
@@ -304,7 +312,7 @@ impl Walk<'_> {
     /// turn. Every alias is resolved when it is collected, so this only looks
     /// paths up. A file that does not compile can alias in a circle; past a
     /// few hops the alias reached is the answer.
-    fn through_aliases(&self, target: String) -> String {
+    pub(super) fn through_aliases(&self, target: String) -> String {
         let mut current = target;
         for _ in 0..MAX_ALIAS_HOPS {
             if !split_marks(&current).0.is_empty() {
@@ -324,6 +332,53 @@ impl Walk<'_> {
             current = next;
         }
         current
+    }
+
+    /// Whether this file declares `target`, or declares members of it in an
+    /// `impl` block: `impl ErrorCode { .. }` beside `named_enum!(ErrorCode
+    /// { .. })` places a type a macro declares in this module, where an
+    /// unqualified `impl` resolves.
+    fn declares_type(&self, target: &str) -> bool {
+        self.own_declarations.contains(target) || self.implemented_types.contains(target)
+    }
+
+    /// A member path under a type alias, moved to the type the alias names:
+    /// `TextPreview::new` under `type TextPreview = Preview<512>;` is
+    /// `Preview::new`, the generic arguments dropped. Any other path is
+    /// returned as it is.
+    pub(super) fn through_member_alias(&self, target: String) -> String {
+        let Some((owner, member)) = target.rsplit_once("::") else {
+            return target;
+        };
+        let aliased = self.through_aliases(owner.to_owned());
+        if aliased == owner || !split_marks(&aliased).0.is_empty() {
+            return target;
+        }
+        format!("{aliased}::{member}")
+    }
+
+    /// Record the type of every inherent `impl` block a file writes, inline
+    /// modules included (see `implemented_types`): a type of this crate,
+    /// in this module when written unqualified, whatever declares it.
+    pub(super) fn collect_implemented_types(&mut self, module: &str, items: &[Item]) {
+        for item in items {
+            match item {
+                Item::Impl(node) if node.trait_.is_none() => {
+                    if let Some(owner) = self.type_path(module, &node.self_ty) {
+                        self.implemented_types.insert(owner);
+                    }
+                }
+                Item::Mod(inner) => {
+                    if let Some((_, nested)) = &inner.content {
+                        self.collect_implemented_types(
+                            &format!("{module}::{}", ident_name(&inner.ident)),
+                            nested,
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Record the return type of every function and method a file declares,
@@ -448,6 +503,12 @@ pub(super) fn class_of(owner: &str) -> Option<&str> {
 
     (!class.starts_with(ELEMENT_MARK) && !class.starts_with(WRAP_MARK)).then_some(class)
 }
+
+/// Between the types a field holds when it is declared once per `cfg`
+/// (`#[cfg(linux)] manager: Option<Systemd>, #[cfg(windows)] manager:
+/// Option<Scm>`), after the marks they share: `?a::Systemd|b::Scm`. Which
+/// one compiles is unknown, so a method called on it is called on each.
+pub(super) const ALTERNATIVE_MARK: char = '|';
 
 /// A receiver type split into the marks leading it and the path they hold.
 pub(super) fn split_marks(owner: &str) -> (&str, &str) {

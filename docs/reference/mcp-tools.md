@@ -367,6 +367,7 @@ Rank the structural hotspots, hubs, and likely-dead code. Use to decide where cl
 | `candidates_only` | boolean | no | default=false | Answer with the dead-code candidates alone, each as component, kind, path, line, reachability, confidence and reason_code, plus their tallies: no hubs, hotspots or histogram are computed or sent, and candidate_limit may go to 1000. |
 | `path_prefix` | string | no | maxLength=1000 | Only list dead-code candidates under this project-relative path; the candidate counts then describe that part. |
 | `include_annotated` | boolean | no | default=false | Also list the candidates a false_positive or intentional annotation hid, each with its annotation and hidden_by_annotation. |
+| `include_untyped_receiver` | boolean | no | default=false | Also list the candidates whose only ground for doubt is a call by their name on a receiver the scan could not type (reason_code untyped_receiver), after every other candidate; left out by default and counted in bounds.excluded_untyped_receiver. |
 | `include_examples` | boolean | no | default=false | Also judge example code (examples/, example/, samples/, demo/ outside a source root, docs/**/examples/) as dead-code candidates; left out by default and counted in bounds.excluded_example_components. |
 | `candidate_timeout_ms` | integer | no | minimum=1; maximum=60000; default=5000 | Time budget for finding dead-code candidates across the whole project, separate from timeout_ms, which bounds the hub walk. When it runs out, bounds.candidate_truncation_reasons holds time_limit. |
 

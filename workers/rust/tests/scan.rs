@@ -5866,3 +5866,394 @@ pub fn run() {
         "{targets:?}"
     );
 }
+
+/// The `calls` edges from `source` to a method, without the ones to
+/// functions and constructors a fixture also makes.
+fn method_targets(contributions: &[Value], source: &str) -> Vec<String> {
+    method_calls(contributions, source)
+        .into_iter()
+        .map(|(target, _)| target)
+        .filter(|target| target.starts_with("rust:method:"))
+        .collect()
+}
+
+#[test]
+fn a_binding_under_exclusive_cfgs_holds_every_alternatives_type() {
+    // `#[cfg(linux)] let loaded = load_stock(..); #[cfg(not(linux))] let
+    // loaded = load(..);` compiles one or the other, so what is called on
+    // `loaded` (and on what a `match` takes out of it) is called on both.
+    let source = r#"
+pub struct Stock;
+impl Stock { pub fn eof(&self) -> bool { true } }
+pub struct Plain;
+impl Plain { pub fn eof(&self) -> bool { true } }
+pub struct Config;
+impl Config {
+    pub fn load(_: &str) -> std::io::Result<Plain> { Ok(Plain) }
+    pub fn load_stock(_: &str) -> std::io::Result<Stock> { Ok(Stock) }
+}
+pub fn run(path: &str) -> i32 {
+    #[cfg(target_os = "linux")]
+    let loaded = Config::load_stock(path);
+    #[cfg(not(target_os = "linux"))]
+    let loaded = Config::load(path);
+    let config = match loaded {
+        Ok(config) => config,
+        Err(_error) => return 2,
+    };
+    let _ = config.eof();
+    0
+}
+pub fn plain(path: &str) {
+    let first = Config::load_stock(path);
+    let first = Config::load(path);
+    if let Ok(config) = first {
+        config.eof();
+    }
+}
+"#;
+    let contributions = scan_fixture("cfg-binding-alternatives", &[("src/lib.rs", source)]);
+
+    let eofs = |source: &str| -> Vec<String> {
+        let mut found: Vec<String> = method_targets(&contributions, source)
+            .into_iter()
+            .filter(|target| target.ends_with("::eof"))
+            .collect();
+        found.dedup();
+        found
+    };
+    assert_eq!(
+        vec![
+            "rust:method:crate::Plain::eof".to_owned(),
+            "rust:method:crate::Stock::eof".to_owned()
+        ],
+        eofs("rust:function:crate::run")
+    );
+    // Without `cfg`, the second `let` shadows the first.
+    assert_eq!(
+        vec!["rust:method:crate::Plain::eof".to_owned()],
+        eofs("rust:function:crate::plain")
+    );
+}
+
+#[test]
+fn a_glob_use_inside_a_function_body_brings_its_names_in_for_that_body() {
+    let lib = r#"
+pub mod services;
+pub struct Owner;
+impl Owner {
+    pub fn manager(&mut self) {
+        use crate::services::systemd::*;
+        let _ = SystemdManager::connect(SystemdAuthority);
+    }
+    pub fn elsewhere(&self) {
+        let _ = SystemdManager::connect(SystemdAuthority);
+    }
+}
+"#;
+    let systemd = r#"
+pub struct SystemdAuthority;
+pub struct SystemdManager;
+impl SystemdManager {
+    pub fn connect(_: SystemdAuthority) -> Self { SystemdManager }
+}
+"#;
+    let contributions = scan_fixture(
+        "block-glob",
+        &[
+            ("src/lib.rs", lib),
+            ("src/services/mod.rs", "pub mod systemd;\n"),
+            ("src/services/systemd.rs", systemd),
+        ],
+    );
+    let targets = |source: &str| -> Vec<String> {
+        method_calls(&contributions, source)
+            .into_iter()
+            .map(|(target, _)| target)
+            .filter(|target| target.contains("connect"))
+            .collect()
+    };
+
+    assert_eq!(
+        vec!["rust:method:crate::services::systemd::SystemdManager::connect".to_owned()],
+        targets("rust:method:crate::Owner::manager")
+    );
+    // The glob ends with the body that writes it.
+    assert!(!targets("rust:method:crate::Owner::elsewhere")
+        .contains(&"rust:method:crate::services::systemd::SystemdManager::connect".to_owned()));
+}
+
+#[test]
+fn a_parameter_of_enum_type_taken_by_value_is_typed() {
+    let source = r#"
+#[derive(Clone, Copy)]
+pub enum ErrorCode { Stale, Large }
+pub struct ErrorPolicy;
+impl ErrorCode {
+    pub fn policy(self) -> ErrorPolicy { ErrorPolicy }
+}
+pub struct Failure;
+impl Failure {
+    pub fn new(code: ErrorCode, message: String) -> Self {
+        let _policy = code.policy();
+        let _ = message;
+        Failure
+    }
+}
+"#;
+    let contributions = scan_fixture("enum-param", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec!["rust:method:crate::ErrorCode::policy".to_owned()],
+        method_targets(&contributions, "rust:method:crate::Failure::new")
+    );
+}
+
+#[test]
+fn a_path_call_through_an_alias_of_a_generic_type_reaches_the_type() {
+    let types = r#"
+pub struct Preview<const LIMIT: usize> { pub text: String }
+impl<const LIMIT: usize> Preview<LIMIT> {
+    pub fn new(value: &str, _lossy: bool) -> Self { Preview { text: value.to_owned() } }
+}
+pub(crate) type TextPreview = Preview<512>;
+"#;
+    let budget = r#"
+use super::types::TextPreview;
+pub fn too_large() -> TextPreview {
+    TextPreview::new("Response exceeds the frame limit", false)
+}
+"#;
+    let contributions = scan_fixture(
+        "generic-alias",
+        &[
+            ("src/lib.rs", "pub mod types;\npub mod budget;\n"),
+            ("src/types.rs", types),
+            ("src/budget.rs", budget),
+        ],
+    );
+    let targets: Vec<String> =
+        method_calls(&contributions, "rust:function:crate::budget::too_large")
+            .into_iter()
+            .map(|(target, _)| target)
+            .collect();
+
+    assert!(
+        targets.contains(&"rust:method:crate::types::Preview::new".to_owned()),
+        "{targets:?}"
+    );
+}
+
+#[test]
+fn an_option_field_taken_through_as_ref_and_unwrap_holds_its_type() {
+    let source = r#"
+pub struct CommandProvider;
+impl CommandProvider {
+    pub fn invoke(&mut self) -> u8 { 0 }
+    pub fn validate_original_baseline(&self, _: u8) -> bool { true }
+}
+pub struct Owners { pub provider: Option<CommandProvider> }
+pub fn run(owners: &mut Owners) -> bool {
+    let receipt = owners.provider.as_mut().unwrap().invoke();
+    owners
+        .provider
+        .as_ref()
+        .unwrap()
+        .validate_original_baseline(receipt)
+}
+"#;
+    let contributions = scan_fixture("option-field", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec![
+            "rust:method:crate::CommandProvider::invoke".to_owned(),
+            "rust:method:crate::CommandProvider::validate_original_baseline".to_owned()
+        ],
+        method_targets(&contributions, "rust:function:crate::run")
+    );
+}
+
+#[test]
+fn a_cfg_gated_option_field_of_self_taken_through_as_mut_and_unwrap_holds_its_type() {
+    // The field is declared under `cfg(windows)` with a re-exported type.
+    let lib = r#"
+pub mod scm;
+pub struct Service {
+    #[cfg(windows)]
+    manager: Option<crate::scm::ScmManager>,
+}
+impl Service {
+    pub fn query(&mut self) -> u8 {
+        self.manager.as_mut().unwrap().inspect()
+    }
+}
+"#;
+    let scm = r#"
+mod native;
+pub use native::ScmManager;
+"#;
+    let native = r#"
+pub struct ScmManager;
+impl ScmManager {
+    pub fn inspect(&mut self) -> u8 { 0 }
+}
+"#;
+    let contributions = scan_fixture(
+        "self-option-field",
+        &[
+            ("src/lib.rs", lib),
+            ("src/scm/mod.rs", scm),
+            ("src/scm/native.rs", native),
+        ],
+    );
+
+    assert_eq!(
+        vec!["rust:method:crate::scm::native::ScmManager::inspect".to_owned()],
+        method_targets(&contributions, "rust:method:crate::Service::query")
+    );
+}
+
+#[test]
+fn if_let_some_of_a_find_over_a_vec_field_binds_the_element() {
+    let source = r#"
+pub struct Entry { pub key: u8 }
+impl Entry {
+    pub fn start_data(&self) -> u8 { self.key }
+}
+pub struct Registry { entries: Vec<Entry> }
+impl Registry {
+    pub fn admit(&self, key: u8) -> Option<u8> {
+        if let Some(entry) = self.entries.iter().find(|e| e.key == key) {
+            return Some(entry.start_data());
+        }
+        while let Some(last) = self.entries.last() {
+            return Some(last.start_data());
+        }
+        None
+    }
+}
+"#;
+    let contributions = scan_fixture("vec-find", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec![
+            "rust:method:crate::Entry::start_data".to_owned(),
+            "rust:method:crate::Entry::start_data".to_owned()
+        ],
+        method_targets(&contributions, "rust:method:crate::Registry::admit")
+    );
+}
+
+#[test]
+fn a_closure_handed_to_an_option_predicate_takes_what_the_option_holds() {
+    // `self.desktop.as_ref().is_none_or(|d| d.forward_active())`
+    let source = r#"
+pub struct DesktopHooks { forward: bool }
+impl DesktopHooks {
+    pub fn forward_active(&self) -> bool { self.forward }
+    pub fn other(&self) -> bool { self.forward }
+}
+pub struct Driver { desktop: Option<DesktopHooks> }
+impl Driver {
+    pub fn active(&self) -> bool {
+        self.desktop.as_ref().is_none_or(|d| d.forward_active())
+            && self.desktop.as_ref().is_some_and(|d| d.other())
+            && self.desktop.as_ref().map_or(true, |d| d.other())
+    }
+}
+"#;
+    let contributions = scan_fixture("option-predicate", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec![
+            "rust:method:crate::DesktopHooks::forward_active".to_owned(),
+            "rust:method:crate::DesktopHooks::other".to_owned(),
+            "rust:method:crate::DesktopHooks::other".to_owned()
+        ],
+        method_targets(&contributions, "rust:method:crate::Driver::active")
+    );
+}
+
+#[test]
+fn a_field_declared_once_per_cfg_holds_every_alternatives_type() {
+    // `manager` is a `SystemdManager` on Linux, a `LaunchdManager` on macOS
+    // and an `ScmManager` on Windows: a call through it is on each.
+    let source = r#"
+pub struct SystemdManager;
+impl SystemdManager { pub fn revoke_context(&mut self) {} }
+pub struct LaunchdManager;
+impl LaunchdManager { pub fn revoke_context(&mut self) {} }
+pub struct ScmManager;
+impl ScmManager { pub fn revoke_context(&mut self) {} }
+pub struct Service {
+    #[cfg(target_os = "linux")]
+    manager: Option<SystemdManager>,
+    #[cfg(target_os = "macos")]
+    manager: Option<LaunchdManager>,
+    #[cfg(windows)]
+    manager: Option<ScmManager>,
+    #[cfg(unix)]
+    mixed: Option<ScmManager>,
+    #[cfg(windows)]
+    mixed: Vec<ScmManager>,
+}
+impl Service {
+    pub fn revoke(&mut self) {
+        self.manager.as_mut().unwrap().revoke_context();
+    }
+    pub fn revoke_mixed(&mut self) {
+        self.mixed.as_mut().unwrap().revoke_context();
+    }
+}
+"#;
+    let contributions = scan_fixture("cfg-field-alternatives", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec![
+            "rust:method:crate::LaunchdManager::revoke_context".to_owned(),
+            "rust:method:crate::ScmManager::revoke_context".to_owned(),
+            "rust:method:crate::SystemdManager::revoke_context".to_owned()
+        ],
+        method_targets(&contributions, "rust:method:crate::Service::revoke")
+    );
+    // An `Option` on one target and a `Vec` on another agree on nothing.
+    assert!(method_targets(&contributions, "rust:method:crate::Service::revoke_mixed").is_empty());
+}
+
+#[test]
+fn a_type_a_macro_declares_is_typed_by_the_impl_block_the_file_writes_for_it() {
+    // `named_enum!(ErrorCode { .. })` declares the enum where the scan
+    // cannot see it, but `impl ErrorCode` beside it places it in this
+    // module, so a parameter of that type is typed by value.
+    let source = r#"
+macro_rules! named_enum {
+    ($name:ident { $($variant:ident),* }) => {
+        #[derive(Clone, Copy)]
+        pub enum $name { $($variant),* }
+    };
+}
+named_enum!(ErrorCode { Stale, Large });
+pub struct ErrorPolicy;
+impl ErrorCode {
+    pub fn policy(self) -> ErrorPolicy { ErrorPolicy }
+}
+pub struct Failure;
+impl Failure {
+    pub fn new(code: ErrorCode) -> Self {
+        let _policy = code.policy();
+        Failure
+    }
+}
+pub fn unknown(code: Unknown) {
+    code.policy();
+}
+"#;
+    let contributions = scan_fixture("macro-declared-type", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec!["rust:method:crate::ErrorCode::policy".to_owned()],
+        method_targets(&contributions, "rust:method:crate::Failure::new")
+    );
+    // A name nothing here declares or implements stays untyped.
+    assert!(method_targets(&contributions, "rust:function:crate::unknown").is_empty());
+}

@@ -61,6 +61,7 @@ pub fn walk(
     let mut walker = Walk::new(facts, module, frameworks, declarations, layout);
     walker.own_declarations = declaration_paths(module, &file.items);
     walker.collect_uses(module, &file.items);
+    walker.collect_implemented_types(module, &file.items);
     walker.resolve_globs();
     walker.collect_type_aliases(module, &file.items);
     walker.collect_struct_fields(module, &file.items);
@@ -92,6 +93,7 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
     let mut walker = Walk::new(&mut facts, module, &[], &declarations, layout);
     walker.own_declarations = declaration_paths(module, items);
     walker.collect_uses(module, items);
+    walker.collect_implemented_types(module, items);
     // The glob sources a field type may come through, as this file alone
     // places them; which one provides a name is asked at lookup.
     walker.resolve_globs();
@@ -218,6 +220,7 @@ impl<'a> Walk<'a> {
             private_exports: BTreeSet::new(),
             public_exports: BTreeSet::new(),
             own_declarations: BTreeSet::new(),
+            implemented_types: BTreeSet::new(),
             type_aliases: BTreeMap::new(),
         }
     }
@@ -958,12 +961,11 @@ impl Walk<'_> {
             prefixes: Vec::new(),
             scrutinee: None,
             closure_element: None,
+            replaying: 0,
         };
         visitor.visit_signature(signature);
         let outer = visitor.walk.enter_block_uses(container, &block.stmts);
-        for statement in &block.stmts {
-            visitor.visit_stmt(statement);
-        }
+        visitor.visit_statements(&block.stmts);
         visitor.walk.leave_block_uses(outer);
     }
 
@@ -987,6 +989,7 @@ impl Walk<'_> {
             prefixes: Vec::new(),
             scrutinee: None,
             closure_element: None,
+            replaying: 0,
         };
         visitor.serde_references(attrs);
         for fields in fields {
@@ -1023,6 +1026,7 @@ impl Walk<'_> {
             prefixes: Vec::new(),
             scrutinee: None,
             closure_element: None,
+            replaying: 0,
         };
         visitor.visit_token_calls(tokens.clone());
     }
@@ -1039,6 +1043,7 @@ impl Walk<'_> {
             prefixes: Vec::new(),
             scrutinee: None,
             closure_element: None,
+            replaying: 0,
         };
         visitor.visit_type(ty);
         visitor.visit_expr(expr);
@@ -1092,13 +1097,33 @@ impl Walk<'_> {
         fields: &syn::Fields,
     ) -> BTreeMap<String, FieldType> {
         let mut types = BTreeMap::new();
+        // A name declared again is a `cfg` alternative of the field: it holds
+        // one of the types, each under the same marks (see
+        // `ALTERNATIVE_MARK`). Alternatives that differ otherwise, or one
+        // whose type is unknown, leave the field untyped.
+        let mut untyped = BTreeSet::new();
         for (position, field) in fields.iter().enumerate() {
             let name = field
                 .ident
                 .as_ref()
                 .map_or_else(|| position.to_string(), ident_name);
-            if let Some(target) = self.declared_field_type(container, &field.ty) {
-                types.insert(name, target);
+            if untyped.contains(&name) {
+                continue;
+            }
+            let declared = self.declared_field_type(container, &field.ty);
+            let merged = match (types.remove(&name), declared) {
+                (None, declared) => declared,
+                (Some(earlier), Some(next)) => alternative_field(earlier, next),
+                (Some(_), None) => None,
+            };
+            match merged {
+                Some(target) => {
+                    types.insert(name, target);
+                }
+                None if field.ident.is_some() => {
+                    untyped.insert(name);
+                }
+                None => {}
             }
         }
         types
@@ -1352,6 +1377,32 @@ fn type_label(ty: &Type) -> String {
 
 #[cfg(test)]
 mod tests;
+
+/// The type a field declared twice under different `cfg`s holds: the two
+/// types as alternatives under the marks both write, or None when the
+/// marks differ or either is not a resolved path.
+fn alternative_field(earlier: FieldType, next: FieldType) -> Option<FieldType> {
+    use types::{split_marks, ALTERNATIVE_MARK};
+    let (FieldType::Resolved(earlier), FieldType::Resolved(next)) = (earlier, next) else {
+        return None;
+    };
+    let (marks, held) = split_marks(&earlier);
+    let (next_marks, next_held) = split_marks(&next);
+    if marks != next_marks {
+        return None;
+    }
+    let mut alternatives: Vec<&str> = held.split(ALTERNATIVE_MARK).collect();
+    for alternative in next_held.split(ALTERNATIVE_MARK) {
+        if !alternatives.contains(&alternative) {
+            alternatives.push(alternative);
+        }
+    }
+    alternatives.sort_unstable();
+    Some(FieldType::Resolved(format!(
+        "{marks}{}",
+        alternatives.join(&ALTERNATIVE_MARK.to_string())
+    )))
+}
 
 /// Record each field of a generic struct declared as one of the struct's
 /// own type parameters, behind any `&`, by that parameter's position (see
