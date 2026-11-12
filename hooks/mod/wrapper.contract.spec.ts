@@ -57,7 +57,9 @@ beforeAll(() => {
   for (const name of ['knossos', 'docker']) writeFileSync(join(work, 'bin', name), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${join(work, 'ran')}'\nprintf '%s\\n' '{"status":"ok"}'\n`, { mode: 0o755 })
 })
 
-afterAll(() => rmSync(work, { recursive: true, force: true }))
+// A wrapper or stub a test left still exiting can write into `work` while it
+// is removed (ENOTEMPTY on CI): retry rather than fail a passing suite.
+afterAll(() => rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))
 
 beforeEach(() => {
   reset(options)
