@@ -42,11 +42,16 @@ pub(super) struct Walk<'a> {
     /// `None` marks a name two declarations send to two modules.
     pub(super) module_children: BTreeMap<String, BTreeMap<String, Option<String>>>,
     /// The generic type parameters in scope (`T` of `impl<T>`, `fn f<T>`,
-    /// `struct S<T>`), which shadow any type of that name: a receiver of
-    /// one has no type the walk can name.
-    pub(super) type_params: BTreeSet<String>,
+    /// `struct S<T>`), which shadow any type of that name, each with the
+    /// trait bounds it is declared with, inline or in a `where` clause. A
+    /// receiver of one holds some type of its bound: a method called on it
+    /// is the trait's (see [`Walk::stated_type`](super::types)).
+    pub(super) type_params: BTreeMap<String, Vec<syn::Path>>,
     /// Target type of the current impl block, for resolving `Self`.
     pub(super) current_impl_target: Option<String>,
+    /// The current impl block's self type as written, whose type arguments
+    /// a field declared as one of the type's parameters takes.
+    pub(super) current_impl_self: Option<syn::Type>,
     /// The segment a trait impl's methods are declared under below their
     /// type, `<impl Driver>` for `impl Driver for Session`, while one is
     /// walked: a trait's method is another item than an inherent method of
@@ -144,6 +149,18 @@ pub(super) struct Calls<'a, 'b> {
     /// annotated or constructed through a path. What a method call on one of
     /// them resolves through.
     pub(super) receivers: BTreeMap<String, String>,
+    /// The type arguments a signature writes for a receiver it types, with
+    /// that receiver's type: what a field declared as a type parameter of
+    /// the receiver's struct holds (see `FieldType::Param`). Read only while
+    /// the receiver still has that type.
+    pub(super) receiver_arguments: BTreeMap<String, (String, Vec<Option<String>>)>,
+    /// The type of the value the `match` whose arm is about to be walked
+    /// matches, for the arm's pattern to bind against.
+    pub(super) scrutinee: Option<String>,
+    /// The type of what the adapter whose closure argument is about to be
+    /// walked hands that closure's first parameter
+    /// (`values.iter().any(|v| ..)`).
+    pub(super) closure_element: Option<String>,
     /// The route prefixes of the `nest(...)` and `scope(...)` calls whose
     /// arguments are being walked, outermost first: a route declared inside
     /// one is served under all of them.

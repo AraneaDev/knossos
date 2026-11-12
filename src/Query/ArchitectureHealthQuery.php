@@ -31,6 +31,9 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      */
     private const IN_DEGREE_FROM = [0, 1, 6, 21, 101];
 
+    /** The longest candidates-only page: one row is a few short fields. */
+    private const MAX_COMPACT_CANDIDATES = 1000;
+
     private DependencyCycleQuery $cycles;
     private DeadCodeCandidates $candidates;
 
@@ -57,17 +60,27 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      *
      * @param list<string> $edgeKinds
      */
-    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000, int $candidateLimit = 0, ?string $pathPrefix = null, bool $includeAnnotated = false, bool $includeExamples = false): ResultEnvelope
+    public function architectureHealth(string $projectId, array $edgeKinds = [], string $minConfidence = 'possible', int $limit = 20, int $maxNodes = QueryBounds::MAX_NODES, int $maxEdges = QueryBounds::MAX_EDGES, int $timeoutMs = 1000, bool $includeExternal = false, bool $includeTests = false, string $candidateConfidence = 'possible', int $candidateOffset = 0, int $candidateTimeoutMs = 5000, int $candidateLimit = 0, ?string $pathPrefix = null, bool $includeAnnotated = false, bool $includeExamples = false, bool $candidatesOnly = false): ResultEnvelope
     {
         $project = $this->project($projectId);
         // The candidate page has its own size, so paging through the
         // candidates does not also page the hubs and hotspots; 0 is `limit`.
-        if ($candidateLimit < 0 || $candidateLimit > 100) {
-            throw new InvalidArgumentException('candidate_limit must be between 0 and 100.');
+        // A candidates-only page carries a few fields per candidate and
+        // nothing else, so it may be ten times as long.
+        $maxCandidates = $candidatesOnly ? self::MAX_COMPACT_CANDIDATES : 100;
+        if ($candidateLimit < 0 || $candidateLimit > $maxCandidates) {
+            throw new InvalidArgumentException(sprintf('candidate_limit must be between 0 and %d.', $maxCandidates));
         }
         $candidateLimit = $candidateLimit === 0 ? $limit : $candidateLimit;
         [$confidenceRank, $edgeKinds] = $this->healthArguments($edgeKinds, $minConfidence, $limit, $maxNodes, $maxEdges, $timeoutMs, $candidateConfidence, $candidateOffset, $candidateTimeoutMs);
         $minimumRank = $confidenceRank[$minConfidence];
+        $pathPrefix = $pathPrefix === null || ltrim($pathPrefix, '/') === '' ? null : ltrim($pathPrefix, '/');
+        $candidateBounds = ['limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs, 'candidate_confidence' => $candidateConfidence, 'candidate_offset' => $candidateOffset, 'candidate_timeout_ms' => $candidateTimeoutMs, 'candidate_limit' => $candidateLimit, 'path_prefix' => $pathPrefix, 'include_annotated' => $includeAnnotated, 'include_examples' => $includeExamples];
+        if ($candidatesOnly) {
+            $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $this->now() + ($candidateTimeoutMs * 1_000_000), $candidateConfidence, $candidateOffset, $candidateLimit, $pathPrefix, $includeAnnotated, $includeExamples);
+
+            return $this->candidatesEnvelope($project, $candidateBounds + ['candidates_only' => true], $found);
+        }
 
         $deadline = $this->now() + ($timeoutMs * 1_000_000);
         $truncation = new Truncation();
@@ -83,7 +96,6 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
 
         $ranked = $this->rankNodes($slice, $walk['metrics'], $cycleMembers, $includeExternal, $includeTests, $limit);
         $candidateDeadline = $this->now() + ($candidateTimeoutMs * 1_000_000);
-        $pathPrefix = $pathPrefix === null || ltrim($pathPrefix, '/') === '' ? null : ltrim($pathPrefix, '/');
         $found = $this->candidates->find($projectId, $edgeKinds, $minimumRank, $includeTests, $candidateDeadline, $candidateConfidence, $candidateOffset, $candidateLimit, $pathPrefix, $includeAnnotated, $includeExamples);
         foreach (['hub_total', 'hotspot_total'] as $total) {
             if ($ranked[$total] > $limit) {
@@ -93,7 +105,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
 
         return $this->healthEnvelope(
             $project,
-            ['limit' => $limit, 'max_nodes' => $maxNodes, 'max_edges' => $maxEdges, 'timeout_ms' => $timeoutMs, 'candidate_confidence' => $candidateConfidence, 'candidate_offset' => $candidateOffset, 'candidate_timeout_ms' => $candidateTimeoutMs, 'candidate_limit' => $candidateLimit, 'path_prefix' => $pathPrefix, 'include_annotated' => $includeAnnotated, 'include_examples' => $includeExamples],
+            $candidateBounds,
             ['slice' => $slice, 'walk' => $walk, 'ranked' => $ranked, 'found' => $found, 'cycle_members' => $cycleMembers, 'cycle_scan_truncated' => $cycleScanTruncated],
             $truncation,
         );
@@ -307,7 +319,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         return new ResultEnvelope(
             $project['id'],
             $project['active_scan_id'],
-            self::healthSummary(count($hubs), count($hotspots), $candidatesTotal, count($deadCandidates), $testOnlyCandidates, $probableCandidates, $truncationReasons, $candidateTruncationReasons),
+            self::healthSummary(count($hubs), count($hotspots), $candidatesTotal, count($deadCandidates), $testOnlyCandidates, $probableCandidates, $truncationReasons, $candidateTruncationReasons) . self::untypedSummary($found['untyped_receiver']),
             [
                 'hubs' => $hubs, 'static_hotspots' => $hotspots, 'dead_code_candidates' => $deadCandidates, 'in_degree_histogram' => $ranked['in_degree'],
                 // The candidates are the paged list: a page trimmed to fit a
@@ -322,6 +334,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
                     'candidates_probable' => $probableCandidates,
                     'candidates_possible' => $candidatesTotal - $probableCandidates,
                     'candidates_test_only' => $testOnlyCandidates,
+                    'candidates_untyped_receiver' => $found['untyped_receiver'],
                     'candidates_truncated' => $candidateTruncationReasons !== [],
                     'candidate_truncation_reasons' => $candidateTruncationReasons,
                     'nodes_examined' => count($slice['ids']), 'edges_examined' => $result['walk']['edges_examined'],
@@ -347,6 +360,102 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
                 'Each candidate carries a reachability class: `unreferenced` means nothing references it at all, `test_only` means the only references come from test code. Components reached by convention — controllers, commands, entry points, config — are excluded rather than reported, and counted in bounds.excluded_convention_discovered.',
             ],
             $truncation->any(),
+        );
+    }
+
+    /**
+     * A candidates-only page: each candidate as its name, kind, file, line,
+     * reachability, confidence and reason code, with the tallies and nothing
+     * of the hub ranking, which is neither computed nor sent. Paging the
+     * full answer sent the hubs and hotspots again with every page.
+     *
+     * @param array<string, mixed> $project
+     * @param array<string, mixed> $bounds
+     * @param array<string, mixed> $found
+     */
+    private function candidatesEnvelope(array $project, array $bounds, array $found): ResultEnvelope
+    {
+        $candidateTruncationReasons = [];
+        if ($found['truncated']) {
+            $candidateTruncationReasons[] = 'time_limit';
+        }
+        if ($found['total'] > $bounds['candidate_offset'] + $bounds['candidate_limit']) {
+            $candidateTruncationReasons[] = 'result_limit';
+        }
+        $rows = $this->candidates->rows(array_map(static fn(array $candidate): string => (string) $candidate['component']['id'], $found['candidates']));
+        $compact = [];
+        foreach ($found['candidates'] as $candidate) {
+            $row = $rows[(string) $candidate['component']['id']] ?? [];
+            $compact[] = [
+                'component' => $candidate['component']['canonical_name'],
+                'kind' => $candidate['component']['kind'] ?? null,
+                'path' => $row['relative_path'] ?? null,
+                'line' => isset($row['start_line']) ? (int) $row['start_line'] : null,
+                'reachability' => $candidate['reachability'],
+                'confidence' => $candidate['confidence'],
+                'reason_code' => $candidate['reason_code'] ?? null,
+            ];
+        }
+        $shown = $bounds['candidate_offset'] + count($compact);
+        $summary = sprintf(
+            'Listed %d of %d dead-code candidates: %d with no inbound reference, %d reached only by tests; %d probable, %d possible.',
+            count($compact),
+            $found['total'],
+            $found['total'] - $found['test_only'],
+            $found['test_only'],
+            $found['probable'],
+            $found['total'] - $found['probable'],
+        ) . self::untypedSummary($found['untyped_receiver']);
+        if (in_array('time_limit', $candidateTruncationReasons, true)) {
+            $summary .= ' The candidate search ran out of time, so the candidate list is partial.';
+        }
+        if (in_array('result_limit', $candidateTruncationReasons, true)) {
+            $summary .= ' More candidates follow this page; candidate_offset pages past it.';
+        }
+        $excluded = $found['excluded'];
+
+        return new ResultEnvelope(
+            $project['id'],
+            $project['active_scan_id'],
+            $summary,
+            [
+                'dead_code_candidates' => $compact,
+                'pagination' => ['list' => 'dead_code_candidates', 'offset' => $bounds['candidate_offset'], 'next_offset' => $found['total'] > $shown ? $shown : null],
+                'bounds' => $bounds + [
+                    'candidates_total' => $found['total'],
+                    'candidates_probable' => $found['probable'],
+                    'candidates_possible' => $found['total'] - $found['probable'],
+                    'candidates_test_only' => $found['test_only'],
+                    'candidates_untyped_receiver' => $found['untyped_receiver'],
+                    'candidates_truncated' => $candidateTruncationReasons !== [],
+                    'candidate_truncation_reasons' => $candidateTruncationReasons,
+                    'excluded_inherited_methods' => $excluded['inherited'] ?? 0,
+                    'excluded_contract_methods' => $excluded['contracts'] ?? 0,
+                    'excluded_constructors' => $excluded['constructors'] ?? 0,
+                    'excluded_convention_discovered' => $found['convention_excluded'],
+                    'suppressed_candidates' => $excluded['suppressed'] ?? 0,
+                    'annotated_false_positives' => $excluded['annotated_false_positives'] ?? 0,
+                    'annotated_intentional' => $excluded['annotated_intentional'] ?? 0,
+                ],
+            ],
+            [],
+            [
+                'Dead-code results are candidates only; reflection, configuration, templates, registry arrays, callbacks, dispatch tables, and framework conventions may reference a component without a visible static edge.',
+                'reason_code names why a candidate is only possible: `untyped_receiver`, `shape_contract`, `uncontracted_literal`, `external_ancestor` or `implicit_protocol`; `unreferenced` or `test_only` when nothing qualifies it. inspect_component or the full answer gives the reason in words.',
+            ],
+            $found['truncated'] || $candidateTruncationReasons !== [],
+        );
+    }
+
+    /**
+     * The summary's word on the candidates only an untyped receiver makes
+     * possible, which the page lists after every other candidate.
+     */
+    private static function untypedSummary(int $untyped): string
+    {
+        return $untyped === 0 ? '' : sprintf(
+            ' %d of them are possible only because a member of that name is called on a receiver the scan could not type; they are listed after all the others.',
+            $untyped,
         );
     }
 

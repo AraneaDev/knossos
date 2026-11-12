@@ -40,6 +40,9 @@ struct FileIndex {
     /// The field types of every struct the file declares, see
     /// [`crate::visit::index_facts`].
     fields: crate::visit::StructFields,
+    /// The type every function and method of the file returns, see
+    /// [`crate::visit::index_facts`].
+    returns: crate::visit::FunctionReturns,
     /// The type every module-level alias of the file names, see
     /// [`crate::visit::index_facts`].
     aliases: crate::visit::TypeAliases,
@@ -68,6 +71,7 @@ impl FileIndex {
             private_exports,
             exports,
             fields,
+            returns,
             aliases,
             export_alternatives,
             globs,
@@ -94,6 +98,7 @@ impl FileIndex {
             },
             exports,
             fields,
+            returns,
             aliases,
             export_alternatives,
             globs,
@@ -494,6 +499,7 @@ impl Declarations {
         self.add_renames(&index.renames);
         self.add_exports(&index.exports);
         self.add_fields(&index.fields);
+        self.add_returns(&index.returns);
         self.add_aliases(&index.aliases);
         self.add_export_alternatives(&index.export_alternatives);
         self.add_globs(&index.globs);

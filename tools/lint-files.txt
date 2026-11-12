@@ -819,6 +819,7 @@ php	tests/phpunit/Query/RescanFatalTest.php
 php	tests/phpunit/Query/RescanServiceTest.php
 php	tests/phpunit/Query/ReviewDiffReportTest.php
 php	tests/phpunit/Query/ReviewDiffTest.php
+php	tests/phpunit/Query/RustReceiverDeadCodeTest.php
 php	tests/phpunit/Query/ScanChronologyTest.php
 php	tests/phpunit/Query/ScannerFactoryTest.php
 php	tests/phpunit/Query/SearchAnyTermFallbackTest.php

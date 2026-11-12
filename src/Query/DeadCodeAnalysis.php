@@ -145,12 +145,13 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 ++$excluded['test_support'];
                 continue;
             }
-            [$confidence, $reason] = $this->confidenceAndReason($candidate, $reachability, $context, $facts);
+            [$confidence, $reason, $code] = $this->confidenceAndReason($candidate, $reachability, $context, $facts);
             $entry = [
                 'component' => $candidate['component'],
                 'reachability' => $reachability,
                 'confidence' => $confidence,
                 'reason' => $reason,
+                'reason_code' => $code,
                 'out_degree' => $candidate['out_degree'],
             ];
             if ($annotation !== null) {
@@ -337,7 +338,12 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
      *
      * @param array{component: array<string, mixed>, row: array<string, mixed>, roles: list<array<string, mixed>>, out_degree: int, reachability: string} $candidate
      * @param array{inherited: bool, contracts?: list<string>, implemented: bool, implementations: list<string>, declaring_kind: ?string, declaring_type: ?string, external_ancestor: ?string, uncontracted_literal: bool} $context
-     * @return array{0: string, 1: string}
+     * The third element names the reason in a word, for a caller that
+     * sorts or tallies by it: `unreferenced` or `test_only` alone,
+     * `untyped_receiver`, `shape_contract`, `uncontracted_literal`,
+     * `external_ancestor` or `implicit_protocol`.
+     *
+     * @return array{0: string, 1: string, 2: string}
      */
     private function confidenceAndReason(array $candidate, string $reachability, array $context, CandidateGraphFacts $facts): array
     {
@@ -351,6 +357,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         $reason = $reachability === 'test_only'
             ? $found . ', so nothing the product runs reaches this.'
             : $found . ' among the selected edge kinds.';
+        $code = $reachability;
         // A call by this name on a receiver its scanner could not type may
         // be the one that reaches it, so the absence of an edge proves less.
         if ($confidence === 'probable'
@@ -358,6 +365,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             && $facts->mayBeCalledUntyped((string) ($candidate['row']['language'] ?? ''), (string) $candidate['row']['display_name'])) {
             $confidence = 'possible';
             $reason = $found . ', but a member of this name is called on a receiver the scan could not type, or typed only as an object type no component stands for (as a cast to one writes), which may be this one.';
+            $code = 'untyped_receiver';
         }
         // A class meeting an interface by shape is passed where the interface
         // is expected with no `implements` to say so, and the interface's
@@ -367,19 +375,25 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             if ($contract !== null) {
                 $confidence = 'possible';
                 $reason = sprintf('%s, but its type has every member of the interface %s, whose member of this name is called; a value of this type handed on as %s reaches this method.', $found, $contract, $contract);
+                $code = 'shape_contract';
             }
         }
         if ($context['uncontracted_literal'] && $confidence === 'probable') {
             $confidence = 'possible';
             $reason = $found . ', but this method belongs to an object literal handed to other code with no type naming its methods; whatever receives the literal may call it.';
+            $code = 'uncontracted_literal';
         }
-        if ($context['external_ancestor'] !== null) {
+        // A Rust trait's methods are items of their own, under the impl
+        // (`Type::<impl Debug>::fmt`): `Debug` or `Drop` dispatches to those
+        // and never to an inherent method of the type, whatever its name.
+        if ($context['external_ancestor'] !== null && !self::isRustInherentMethod($candidate['row'])) {
             $confidence = 'possible';
             $reason = sprintf(
                 '%s, but the declaring type extends or implements %s, whose members are not statically visible; dispatch may reach this method.',
                 $found,
                 $context['external_ancestor'],
             );
+            $code = 'external_ancestor';
         }
         // The runtime calls these by name or symbol with no call site naming
         // them (`JSON.stringify` calls `toJSON`, `await` calls `then`, `for
@@ -388,9 +402,23 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         if ($candidate['row']['kind'] === 'method' && in_array($name, self::IMPLICIT_PROTOCOL_METHODS, true)) {
             $confidence = 'possible';
             $reason = sprintf('%s, but the runtime calls `%s` implicitly (serialising, converting, awaiting, iterating, disposing or inspecting a value), with no call site that names it.', $found, $name);
+            $code = 'implicit_protocol';
         }
 
-        return [$confidence, $reason];
+        return [$confidence, $reason, $code];
+    }
+
+    /**
+     * Whether a candidate is a method of a Rust type's own `impl` block,
+     * rather than one fulfilling a trait under `<impl Trait>`.
+     *
+     * @param array<string, mixed> $row
+     */
+    private static function isRustInherentMethod(array $row): bool
+    {
+        return ($row['language'] ?? null) === 'rust'
+            && ($row['kind'] ?? null) === 'method'
+            && !str_contains((string) $row['canonical_name'], '::<impl ');
     }
 
     /**

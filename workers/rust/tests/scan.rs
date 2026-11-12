@@ -2912,7 +2912,7 @@ fn a_method_called_on_an_untyped_receiver_is_listed_on_the_module() {
         "untyped-calls",
         &[(
             "src/lib.rs",
-            "pub struct Mode;\nimpl Mode {\n    pub fn label(&self) {}\n    pub fn typed(&self) {}\n}\npub fn run(mode: &Mode, all: &[Mode]) {\n    mode.typed();\n    all.iter().for_each(|m| m.label());\n}\n",
+            "pub struct Mode;\nimpl Mode {\n    pub fn label(&self) {}\n    pub fn typed(&self) {}\n    pub fn listed(&self) {}\n}\npub fn run(mode: &Mode, all: &[Mode]) {\n    mode.typed();\n    all.iter().for_each(|m| m.listed());\n    let show = |m| m.label();\n    show(mode);\n}\n",
         )],
     );
     let module = contributions[0]["nodes"]
@@ -2925,9 +2925,12 @@ fn a_method_called_on_an_untyped_receiver_is_listed_on_the_module() {
         .as_array()
         .unwrap();
 
-    // The closure parameter has no stated type; `mode` does.
+    // A closure bound to a name says nothing about its parameter's type;
+    // `mode` states its own, and one handed to `for_each` over a slice of
+    // `Mode` takes a `Mode`.
     assert!(names.contains(&serde_json::json!("label")));
     assert!(!names.contains(&serde_json::json!("typed")));
+    assert!(!names.contains(&serde_json::json!("listed")));
 }
 
 #[test]
@@ -5508,4 +5511,244 @@ pub fn later(mut driver: impl Driver) -> u8 { driver.receive() }
             "{from}: {calls:?}"
         );
     }
+}
+
+#[test]
+fn a_binding_of_a_call_declared_in_another_file_takes_its_return_type() {
+    // `let store = report::open_existing(&root)?;` in one file, the function
+    // in another behind a `pub use`, returning `anyhow::Result<ReportStore>`.
+    // The binding had no type, so every `ReportStore` method only such
+    // bindings call read as dead code. `?`, `.unwrap()` and `.expect(..)`
+    // open the `Result`; a `&` borrow or parentheses change nothing.
+    let files = [
+        ("src/lib.rs", "pub mod report;\npub mod native;\n"),
+        (
+            "src/report/mod.rs",
+            "mod store;\npub use store::{open_existing, maybe_open, ReportStore};\n",
+        ),
+        (
+            "src/report/store.rs",
+            "use anyhow::Result;\npub struct ReportStore;\npub fn open_existing(_: &str) -> Result<ReportStore> { Ok(ReportStore) }\npub fn maybe_open() -> Option<ReportStore> { None }\nimpl ReportStore {\n    pub fn load_selected_report(&self) -> Result<()> { Ok(()) }\n    pub fn intent_store(&self) {}\n    pub fn journal(&self) {}\n    pub fn other(&self) -> Result<Self> { Ok(ReportStore) }\n    pub fn last(&self) {}\n}\n",
+        ),
+        (
+            "src/native/storage.rs",
+            "use crate::report;\npub fn load(root: &str) -> anyhow::Result<()> {\n    let store = report::open_existing(root)?;\n    store.load_selected_report()?;\n    let unwrapped = &report::open_existing(root).unwrap();\n    unwrapped.intent_store();\n    let expected = (report::maybe_open().expect(\"open\"));\n    expected.journal();\n    report::open_existing(root)?.other()?.last();\n    Ok(())\n}\n",
+        ),
+        ("src/native/mod.rs", "pub mod storage;\n"),
+    ];
+    let contributions = scan_fixture("cross-file-returned-binding", &files);
+    let targets: Vec<String> =
+        method_calls(&contributions, "rust:function:crate::native::storage::load")
+            .into_iter()
+            .map(|(target, _)| target)
+            .collect();
+
+    for method in [
+        "load_selected_report",
+        "intent_store",
+        "journal",
+        "other",
+        "last",
+    ] {
+        let target = format!("rust:method:crate::report::store::ReportStore::{method}");
+        assert!(targets.contains(&target), "{target} in {targets:?}");
+    }
+}
+
+#[test]
+fn a_match_arm_or_if_let_binding_takes_the_type_the_scrutinee_holds() {
+    // `let store = match parent { Some(p) => p.create_child()?, None =>
+    // report::create()? };`: `p` is what the `Option<&ReportStore>` holds,
+    // and the `match` has the type its arms agree on.
+    let source = r#"
+pub struct ReportStore;
+pub fn create() -> Result<ReportStore, String> { Ok(ReportStore) }
+impl ReportStore {
+    pub fn create_child(&self) -> Result<ReportStore, String> { Ok(ReportStore) }
+    pub fn intent_store(&self) {}
+    pub fn native_report_path(&self) {}
+    pub fn checked(&self) {}
+    pub fn tail(&self) {}
+}
+pub struct Run { pub store: Option<std::sync::Arc<ReportStore>> }
+pub fn run(parent: Option<&ReportStore>, held: &Run) -> Result<(), String> {
+    let store = match parent {
+        Some(p) => p.create_child()?,
+        None => create()?,
+    };
+    store.native_report_path();
+    store.intent_store();
+    if let Some(inner) = &held.store {
+        inner.checked();
+    }
+    let Some(last) = parent else { return Ok(()) };
+    last.tail();
+    Ok(())
+}
+"#;
+    let contributions = scan_fixture("scrutinee-receivers", &[("src/lib.rs", source)]);
+    let targets: Vec<String> = method_calls(&contributions, "rust:function:crate::run")
+        .into_iter()
+        .map(|(target, _)| target)
+        .collect();
+
+    for method in [
+        "create_child",
+        "native_report_path",
+        "intent_store",
+        "checked",
+        "tail",
+    ] {
+        let target = format!("rust:method:crate::ReportStore::{method}");
+        assert!(targets.contains(&target), "{target} in {targets:?}");
+    }
+}
+
+#[test]
+fn variant_patterns_and_adapter_closures_bind_their_declared_types() {
+    // `Observation::Equals { actual } if !actual.valid()` binds the variant's
+    // declared field; `values.iter().any(|v| v.valid())` hands the closure an
+    // element of a `Vec<Value>`; `Some(v)` of a tuple variant its position.
+    let source = r#"
+pub struct Value;
+impl Value {
+    pub fn valid(&self) -> bool { true }
+    pub fn equals(&self) -> bool { true }
+    pub fn mapped(&self) -> bool { true }
+    pub fn looped(&self) -> bool { true }
+}
+pub enum Observation {
+    Equals { actual: Value },
+    Many { values: Vec<Value> },
+    One(Value),
+}
+pub fn check(observations: &[Observation], maybe: Option<Value>) -> bool {
+    for observation in observations {
+        match observation {
+            Observation::Equals { actual } if !actual.valid() => return false,
+            Observation::Many { values } => {
+                if values.iter().filter(|v| v.valid()).any(|v| !v.equals()) {
+                    return false;
+                }
+                for value in values.iter().rev() {
+                    value.looped();
+                }
+            }
+            Observation::One(single) => return single.valid(),
+        }
+    }
+    maybe.is_some_and(|value| value.mapped())
+}
+"#;
+    let contributions = scan_fixture("pattern-receivers", &[("src/lib.rs", source)]);
+    let targets: Vec<String> = method_calls(&contributions, "rust:function:crate::check")
+        .into_iter()
+        .map(|(target, _)| target)
+        .collect();
+
+    for method in ["valid", "equals", "mapped", "looped"] {
+        let target = format!("rust:method:crate::Value::{method}");
+        assert!(targets.contains(&target), "{target} in {targets:?}");
+    }
+}
+
+#[test]
+fn a_method_called_on_a_generic_bounded_by_a_trait_is_the_traits() {
+    // `fn run_duplex<D: DuplexDriver>(driver: &mut D)` calls the trait's
+    // methods, which every implementation fulfils; a `where` clause bounds
+    // the same way. Unbounded, or bounded only by a trait nothing vouches
+    // for, the receiver stays untyped.
+    let source = r#"
+pub trait DuplexDriver {
+    fn pending_write(&self) -> &[u8];
+    fn written(&mut self, n: usize);
+}
+pub fn run_duplex<D: Send + DuplexDriver>(driver: &mut D) {
+    let _ = driver.pending_write();
+}
+pub fn finish<D>(driver: &mut D) where D: DuplexDriver + ?Sized {
+    driver.written(1);
+}
+pub fn plain<T: Clone>(value: &T) {
+    value.pending_write();
+}
+"#;
+    let contributions = scan_fixture("bounded-receivers", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec![(
+            "rust:method:crate::DuplexDriver::pending_write".to_owned(),
+            true
+        )],
+        method_calls(&contributions, "rust:function:crate::run_duplex")
+    );
+    assert_eq!(
+        vec![("rust:method:crate::DuplexDriver::written".to_owned(), true)],
+        method_calls(&contributions, "rust:function:crate::finish")
+    );
+    assert!(method_calls(&contributions, "rust:function:crate::plain").is_empty());
+}
+
+#[test]
+fn a_field_declared_as_a_type_parameter_takes_the_receivers_type_argument() {
+    // `ScenarioContext<'a, E>` declares `environment: &'a mut E` and leaves
+    // `E` unbounded; `impl<E: Environment> ScenarioContext<'_, E>` and
+    // `fn step<E: Environment>(c: &mut ScenarioContext<'_, E>)` bound it.
+    // A call through the field is the trait's.
+    let source = r#"
+pub trait Environment {
+    fn create(&mut self);
+    fn execute(&mut self);
+}
+pub struct ScenarioContext<'a, E> {
+    pub environment: &'a mut E,
+}
+impl<E: Environment> ScenarioContext<'_, E> {
+    pub fn run(&mut self) {
+        self.environment.create();
+    }
+}
+pub fn step<E: Environment>(c: &mut ScenarioContext<'_, E>) {
+    c.environment.execute();
+}
+"#;
+    let contributions = scan_fixture("param-field-receivers", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec![("rust:method:crate::Environment::create".to_owned(), true)],
+        method_calls(&contributions, "rust:method:crate::ScenarioContext::run")
+    );
+    assert_eq!(
+        vec![("rust:method:crate::Environment::execute".to_owned(), true)],
+        method_calls(&contributions, "rust:function:crate::step")
+    );
+}
+
+#[test]
+fn a_match_arm_handing_back_what_ok_or_some_holds_has_that_type() {
+    // `let client = match Client::start() { Ok(c) => c, Err(e) => return };`
+    let source = r#"
+pub struct Client;
+impl Client {
+    pub fn start() -> Result<Self, String> { Ok(Client) }
+    pub fn export_recovery(&self) {}
+}
+pub fn run() {
+    let client = match Client::start() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    client.export_recovery();
+}
+"#;
+    let contributions = scan_fixture("ok-arm-receiver", &[("src/lib.rs", source)]);
+    let targets: Vec<String> = method_calls(&contributions, "rust:function:crate::run")
+        .into_iter()
+        .map(|(target, _)| target)
+        .collect();
+
+    assert!(
+        targets.contains(&"rust:method:crate::Client::export_recovery".to_owned()),
+        "{targets:?}"
+    );
 }
