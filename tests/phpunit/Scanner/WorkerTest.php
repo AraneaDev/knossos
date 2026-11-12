@@ -16,7 +16,7 @@ use PHPUnit\Framework\Attributes\Group;
 final class WorkerTest extends KnossosTestCase
 {
     #[Group('worker')]
-    public function testWorkerSupervisorInitializesScansCancelsAndShutsDown(): void
+    public function testWorkerSupervisorInitializesScansAndShutsDown(): void
     {
         $client = $this->fakeWorkerClient('compliant');
         $manifest = $client->initialize();
@@ -27,20 +27,11 @@ final class WorkerTest extends KnossosTestCase
         assertSame('worker:file:src/Checkout.ts', $contributions[0]->ownerKey);
         assertSame('Checkout', $contributions[0]->nodes[0]->displayName);
 
-        $client->cancel('scan-2');
-        // An empty scan is the cheapest round trip left now that discover is
-        // gone, and the fake worker echoes the ids it was told to cancel.
-        assertSame([], iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => '/workspace', 'files' => []])));
-        assertSame(['scan-2'], $client->lastScanResult()['cancelled']);
         $client->shutdown();
     }
 
     /**
-     * Cancellation of a request that is still in flight.
-     *
-     * The test above only replays fake-worker state: it cancels an id after
-     * that scan has already completed, then reads the echo back on the next
-     * round trip. Nothing in it exercises the path that matters — a request
+     * Cancellation of a request that is still in flight: a request
      * with no reply coming, a cancellation callback that turns true while the
      * host is still waiting, the notification that follows, and the worker
      * being torn down rather than left running.

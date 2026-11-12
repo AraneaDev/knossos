@@ -40,7 +40,6 @@ This file is generated from enforced PHP interface docblocks and the isolated PH
 
 - `initialize(): Knossos\Scanner\Protocol\ScannerManifest`: Negotiate the worker contract before any project input is sent
 - `scan(array $request): iterable`: Stream owned facts for a bounded, validated scan request
-- `cancel(string|int $requestId): void`: Send an advisory cancel for an in-flight scan request. A worker busy inside the scan cannot read it, so the host ends the process
 - `shutdown(): void`: Shut down the worker and release its complete process tree
 
 ### `Knossos\Store\GraphRepository`

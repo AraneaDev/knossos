@@ -1,11 +1,12 @@
 use super::{collect_test_modules, declaration_paths, walk, Declarations, ModuleGates};
 use crate::facts::Facts;
 use crate::layout::Layout;
+use std::collections::BTreeSet;
 use syn::Item;
 
 /// Index one file's declarations, as the server does for each file it reads.
 fn collect_declarations(module: &str, items: &[Item], out: &mut Declarations) {
-    out.add_file(&declaration_paths(module, items));
+    out.add_gated_file(&declaration_paths(module, items), &BTreeSet::new(), false);
 }
 
 /// A method lives in an `impl` block, not beside the type, so a collector

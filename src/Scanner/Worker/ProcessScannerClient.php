@@ -54,12 +54,6 @@ final class ProcessScannerClient implements ScannerClient
     }
 
     /** {@inheritDoc} */
-    public function cancel(int|string $requestId): void
-    {
-        $this->session->cancel($requestId);
-    }
-
-    /** {@inheritDoc} */
     public function shutdown(): void
     {
         $this->session->shutdown();

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Scanner;
 
 use Knossos\Scanner\ScannerClient;
+use Knossos\Scanner\Worker\ScannerProtocolSession;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -27,7 +28,6 @@ final class ScannerClientTest extends TestCase
 
         assertArrayContains('initialize', $methods);
         assertArrayContains('scan', $methods);
-        assertArrayContains('cancel', $methods);
         assertArrayContains('shutdown', $methods);
     }
 
@@ -38,9 +38,18 @@ final class ScannerClientTest extends TestCase
         self::assertFalse(method_exists(ScannerClient::class, 'discover'));
     }
 
-    public function testCancelAcceptsAnIntegerRequestId(): void
+    public function testScannerClientDeclaresNoCancelMethod(): void
     {
-        $parameter = (new \ReflectionMethod(ScannerClient::class, 'cancel'))->getParameters()[0];
+        // A scan is cancelled through the callback scan() takes; the client's
+        // own cancel had no caller outside a test.
+        self::assertFalse(method_exists(ScannerClient::class, 'cancel'));
+    }
+
+    public function testTheSessionCancelAcceptsAnIntegerRequestId(): void
+    {
+        // The session sends the id verbatim: an int scan id must not be
+        // stringified, or a type-strict worker never matches it.
+        $parameter = (new \ReflectionMethod(ScannerProtocolSession::class, 'cancel'))->getParameters()[0];
         self::assertStringContainsString('int', (string) $parameter->getType());
     }
 }

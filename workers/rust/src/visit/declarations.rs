@@ -153,13 +153,8 @@ impl Declarations {
         self.counts.get(name)
     }
 
-    /// Count one file's declarations, as [`declaration_paths`] returned them.
-    pub fn add_file(&mut self, paths: &BTreeSet<String>) {
-        self.add_gated_file(paths, &BTreeSet::new(), false);
-    }
-
     /// Count one file's declarations, of which the ones in `gated` (see
-    /// [`gated_declaration_paths`]), or all of them when the file itself is
+    /// [`indexed_item_paths`]), or all of them when the file itself is
     /// (`file_gated`), compile only under a `cfg`. A name every declaring
     /// file gates is one declaration in several `cfg` alternatives, and
     /// counts once.
@@ -486,7 +481,7 @@ fn collect_renames(
 /// A file counts once per path: `#[cfg]` alternatives of one item are one
 /// declaration, compiled in whichever form the target takes. Two files
 /// declaring one path still make it ambiguous. The caller keeps the paths
-/// apart from the index and counts them in with [`Declarations::add_file`].
+/// apart from the index and counts them in with [`Declarations::add_gated_file`].
 #[must_use]
 pub fn declaration_paths(module: &str, items: &[Item]) -> BTreeSet<String> {
     let mut paths = BTreeSet::new();
@@ -495,22 +490,11 @@ pub fn declaration_paths(module: &str, items: &[Item]) -> BTreeSet<String> {
     paths
 }
 
-/// The paths of [`declaration_paths`] whose declaration compiles only under
-/// a `cfg` other than `test`, its own or an enclosing inline module's or
-/// `impl` block's: `cfg` alternatives of what another file may declare too.
-#[must_use]
-pub fn gated_declaration_paths(module: &str, items: &[Item]) -> BTreeSet<String> {
-    let mut paths = BTreeSet::new();
-    let mut gated = BTreeSet::new();
-    collect_gated_paths(module, items, false, true, &mut paths, &mut gated);
-
-    gated
-}
-
 /// What a file declares to the declaration index apart from its `impl`
-/// blocks' methods, and which of those paths a `cfg` gates: the paths of
-/// [`declaration_paths`] and [`gated_declaration_paths`] without the methods,
-/// whose type `index_facts` places through the file's imports instead.
+/// blocks' methods, and which of those paths compile only under a `cfg`
+/// other than `test` (their own, or an enclosing inline module's or `impl`
+/// block's): the paths of [`declaration_paths`] without the methods, whose
+/// type `index_facts` places through the file's imports instead.
 #[must_use]
 pub fn indexed_item_paths(module: &str, items: &[Item]) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut paths = BTreeSet::new();
