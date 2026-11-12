@@ -498,8 +498,11 @@ impl Walk<'_> {
         // A glob (`use theseus_host::services::systemd::*;`) brings in its
         // module's names for the rest of the block, as one at module level
         // does for the module: its source joins the module's globs until the
-        // block ends.
+        // block ends. It is resolved once the block's own names are bound,
+        // which Rust reads it through (`use crate::right as selected; use
+        // selected::*;`).
         let globs_before = self.globs.len();
+        let mut block_globs: Vec<(bool, String, proc_macro2::Span)> = Vec::new();
         for node in &uses {
             let mut globs = Vec::new();
             glob_prefixes(&node.tree, "", &mut globs);
@@ -509,10 +512,7 @@ impl Walk<'_> {
                 if unrooted && !is_root(head) && local.contains(head) {
                     continue;
                 }
-                if let Some(source) = self.block_use_path(container, &children, unrooted, &glob) {
-                    self.globs
-                        .push((container.to_owned(), self.exported(source)));
-                }
+                block_globs.push((unrooted, glob, node.span()));
             }
         }
         let mut written: Vec<((UseLeaf, bool), proc_macro2::Span, bool)> = Vec::new();
@@ -573,6 +573,13 @@ impl Walk<'_> {
                 1 => self.aliases.shadow(alias, fulls.into_iter().next()),
                 _ if gated => self.aliases.shadow_alternatives(alias, fulls),
                 _ => self.aliases.shadow(alias, None),
+            }
+        }
+        for (unrooted, glob, span) in block_globs {
+            if let Some(found) = self.block_use_path(container, &children, unrooted, &glob) {
+                let placed = self.exported(found);
+                self.import(&source, &placed, span);
+                self.globs.push((container.to_owned(), placed));
             }
         }
 

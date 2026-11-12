@@ -6257,3 +6257,55 @@ pub fn unknown(code: Unknown) {
     // A name nothing here declares or implements stays untyped.
     assert!(method_targets(&contributions, "rust:function:crate::unknown").is_empty());
 }
+
+#[test]
+fn a_block_glob_resolves_through_the_blocks_own_aliases_and_imports_its_module() {
+    // The block renames `right` as `selected`, shadowing the module's
+    // `selected`; its glob reads the block's, as Rust resolves it.
+    let lib = r#"
+pub mod left;
+pub mod right;
+pub mod extra;
+use crate::left as selected;
+pub fn other() {
+    use crate::extra::*;
+    let _ = Widget::make();
+}
+pub fn pick() {
+    use crate::right as selected;
+    use selected::*;
+    let _ = Widget::make();
+}
+"#;
+    let widget = "pub struct Widget;\nimpl Widget { pub fn make() -> Self { Widget } }\n";
+    let contributions = scan_fixture(
+        "block-glob-alias",
+        &[
+            ("src/lib.rs", lib),
+            ("src/left.rs", widget),
+            ("src/right.rs", widget),
+            ("src/extra.rs", widget),
+        ],
+    );
+    let makes: Vec<String> = method_calls(&contributions, "rust:function:crate::pick")
+        .into_iter()
+        .map(|(target, _)| target)
+        .filter(|target| target.ends_with("::make"))
+        .collect();
+    assert_eq!(
+        vec!["rust:method:crate::right::Widget::make".to_owned()],
+        makes
+    );
+
+    let imports: Vec<String> = contributions
+        .iter()
+        .flat_map(|contribution| contribution["edges"].as_array().unwrap().clone())
+        .filter(|edge| edge["kind"] == "imports" && edge["source"] == "rust:module:crate")
+        .map(|edge| edge["target"].as_str().unwrap().to_owned())
+        .collect();
+    // Only the block's glob names `extra`.
+    assert!(
+        imports.contains(&"rust:module:crate::extra".to_owned()),
+        "{imports:?}"
+    );
+}
