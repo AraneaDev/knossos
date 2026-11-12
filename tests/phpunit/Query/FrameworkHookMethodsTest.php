@@ -218,7 +218,7 @@ final class FrameworkHookMethodsTest extends KnossosTestCase
             $pdo = $this->freshTestDatabase();
             $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
 
-            return ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 100)->data;
+            return ArchitectureQueryService::forDatabase($pdo)->services()->healthQueries->architectureHealth($projectId, limit: 100, includeUntypedReceiver: true)->data;
         } finally {
             $this->removeTempTree($root);
         }

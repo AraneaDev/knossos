@@ -468,7 +468,7 @@ impl Walk<'_> {
         &mut self,
         container: &str,
         statements: &[syn::Stmt],
-    ) -> Option<Aliases> {
+    ) -> Option<(Aliases, usize)> {
         let uses: Vec<&syn::ItemUse> = statements
             .iter()
             .filter_map(|statement| match statement {
@@ -495,6 +495,26 @@ impl Walk<'_> {
                 _ => None,
             })
             .collect();
+        // A glob (`use theseus_host::services::systemd::*;`) brings in its
+        // module's names for the rest of the block, as one at module level
+        // does for the module: its source joins the module's globs until the
+        // block ends. It is resolved once the block's own names are bound,
+        // which Rust reads it through (`use crate::right as selected; use
+        // selected::*;`).
+        let globs_before = self.globs.len();
+        let mut block_globs: Vec<(bool, String, proc_macro2::Span)> = Vec::new();
+        for node in &uses {
+            let mut globs = Vec::new();
+            glob_prefixes(&node.tree, "", &mut globs);
+            for glob in globs {
+                let unrooted = node.leading_colon.is_none();
+                let head = glob.split("::").next().unwrap_or(&glob);
+                if unrooted && !is_root(head) && local.contains(head) {
+                    continue;
+                }
+                block_globs.push((unrooted, glob, node.span()));
+            }
+        }
         let mut written: Vec<((UseLeaf, bool), proc_macro2::Span, bool)> = Vec::new();
         for node in uses {
             let mut leaves = Vec::new();
@@ -555,8 +575,15 @@ impl Walk<'_> {
                 _ => self.aliases.shadow(alias, None),
             }
         }
+        for (unrooted, glob, span) in block_globs {
+            if let Some(found) = self.block_use_path(container, &children, unrooted, &glob) {
+                let placed = self.exported(found);
+                self.import(&source, &placed, span);
+                self.globs.push((container.to_owned(), placed));
+            }
+        }
 
-        Some(outer)
+        Some((outer, globs_before))
     }
 
     /// The path one leaf of a `use` in a block imports. Its first segment
@@ -587,9 +614,10 @@ impl Walk<'_> {
 
     /// End the scope [`Walk::enter_block_uses`] opened, restoring the
     /// imports it returned.
-    pub(super) fn leave_block_uses(&mut self, outer: Option<Aliases>) {
-        if let Some(outer) = outer {
+    pub(super) fn leave_block_uses(&mut self, outer: Option<(Aliases, usize)>) {
+        if let Some((outer, globs)) = outer {
             self.aliases = outer;
+            self.globs.truncate(globs);
         }
     }
 

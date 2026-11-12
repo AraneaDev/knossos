@@ -11,8 +11,11 @@ use std::collections::BTreeMap;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 
+use super::cfg::cfg_predicate;
 use super::state::Calls;
-use super::types::{element_of, pointee_of, unwrapped, ELEMENT_MARK, POINTER_MARK, WRAP_MARK};
+use super::types::{
+    element_of, pointee_of, unwrapped, ALTERNATIVE_MARK, ELEMENT_MARK, POINTER_MARK, WRAP_MARK,
+};
 use crate::facts::reference;
 use crate::resolve::{ident_name, is_prelude_name};
 
@@ -84,6 +87,11 @@ impl Calls<'_, '_> {
             return;
         }
         for (target, unconfirmed) in self.walk.resolve_paths(&self.container, path) {
+            let target = if unconfirmed {
+                target
+            } else {
+                self.walk.through_member_alias(target)
+            };
             self.call_target(&target, unconfirmed, span);
         }
     }
@@ -332,6 +340,22 @@ impl Calls<'_, '_> {
                     return unwrapped(&held).map(str::to_owned);
                 }
             }
+            // `provider.as_ref()`, `slot.take()`: still an `Option` (or a
+            // `Result`) of what it held, seen through the borrow.
+            syn::Expr::MethodCall(call) if call.turbofish.is_none() && keeps_wrapper(call) => {
+                if let Some(held) = self.value_type(&call.receiver) {
+                    if let Some(inner) = unwrapped(&held) {
+                        return Some(format!("{WRAP_MARK}{inner}"));
+                    }
+                }
+            }
+            // `entries.iter().find(..)`, `entries.last()`: an `Option` of
+            // one element of the collection.
+            syn::Expr::MethodCall(call) if call.turbofish.is_none() => {
+                if let Some(element) = self.picked_element(call) {
+                    return Some(format!("{WRAP_MARK}{element}"));
+                }
+            }
             syn::Expr::Match(node) => {
                 return node.arms.iter().find_map(|arm| {
                     self.unwrapping_arm(arm, &node.expr)
@@ -358,6 +382,45 @@ impl Calls<'_, '_> {
             None if is_place(expression) => self.receiver_owner(expression),
             None => None,
         }
+    }
+
+    /// The element a method picking one out of a sequence returns in an
+    /// `Option`: `find`, `next`, `last`, `nth`, `min`, `max` and the like on
+    /// an iterator over a known element, and `first`, `last`, `get` and
+    /// `pop` (with their `_mut` forms) on a collection of one.
+    fn picked_element(&self, call: &syn::ExprMethodCall) -> Option<String> {
+        let method = ident_name(&call.method);
+        let from_iterator = matches!(
+            method.as_str(),
+            "find"
+                | "next"
+                | "next_back"
+                | "last"
+                | "nth"
+                | "nth_back"
+                | "min"
+                | "max"
+                | "min_by"
+                | "max_by"
+                | "min_by_key"
+                | "max_by_key"
+                | "reduce"
+        );
+        if from_iterator {
+            if let Some(element) = self.iterator_element(&call.receiver) {
+                return Some(element);
+            }
+        }
+        let from_collection = matches!(
+            method.as_str(),
+            "first" | "last" | "get" | "first_mut" | "last_mut" | "get_mut" | "pop"
+        );
+        if !from_collection {
+            return None;
+        }
+        let owner = self.receiver_owner(&call.receiver)?;
+
+        element_of(&owner).map(str::to_owned)
     }
 
     /// The type of an arm that hands back what `Ok(c)` or `Some(c)` binds
@@ -661,7 +724,8 @@ impl Calls<'_, '_> {
             syn::Expr::MethodCall(call) => {
                 let method = ident_name(&call.method);
                 let owner = dispatch(&self.receiver_owner(&call.receiver)?, &method)?;
-                Some(format!("{owner}::{method}"))
+                // Of `cfg` alternatives, no one method's return is the value's.
+                (!owner.contains(ALTERNATIVE_MARK)).then(|| format!("{owner}::{method}"))
             }
             syn::Expr::Call(call) => match call.func.as_ref() {
                 // `Vec::new()` names no type of this crate: a guess placed
@@ -888,13 +952,16 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
             );
         }
         if let Some(target) = owner {
-            let endpoint = reference("method", &format!("{target}::{method}"));
-            self.walk.facts.speculative_edge(
-                "calls",
-                &self.enclosing,
-                &endpoint,
-                node.method.span(),
-            );
+            // A field declared once per `cfg` holds one of several types.
+            for target in target.split(ALTERNATIVE_MARK) {
+                let endpoint = reference("method", &format!("{target}::{method}"));
+                self.walk.facts.speculative_edge(
+                    "calls",
+                    &self.enclosing,
+                    &endpoint,
+                    node.method.span(),
+                );
+            }
         } else if returning.is_none() {
             self.walk.facts.untyped_call(method);
         }
@@ -997,7 +1064,7 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
         // and so does what a `use` in it imports.
         let saved = self.receivers.clone();
         let outer = self.walk.enter_block_uses(&self.container, &node.stmts);
-        syn::visit::visit_block(self, node);
+        self.visit_statements(&node.stmts);
         self.walk.leave_block_uses(outer);
         self.receivers = saved;
     }
@@ -1056,6 +1123,40 @@ impl syn::visit::Visit<'_> for Calls<'_, '_> {
 }
 
 impl Calls<'_, '_> {
+    /// Walk a block's statements in order. Where consecutive `let`s bind
+    /// one name each under its own `cfg` (`#[cfg(target_os = "linux")] let
+    /// loaded = load_stock(..); #[cfg(not(..))] let loaded = load(..);`),
+    /// one of them is compiled, so the rest of the block is walked once
+    /// after each: what is called on the binding, or on what is taken out
+    /// of it, is called on every alternative's type. The core collapses the
+    /// edges a replay repeats; routes are recorded on the first walk only.
+    /// Past a few nested alternatives, the last one alone stands, as when
+    /// there is no `cfg`.
+    pub(super) fn visit_statements(&mut self, statements: &[syn::Stmt]) {
+        /// Alternatives replayed inside one another at most.
+        const MAX_REPLAYS: u8 = 2;
+        for (index, statement) in statements.iter().enumerate() {
+            let alternatives = cfg_alternatives(&statements[index..]);
+            if alternatives < 2 || self.replaying >= MAX_REPLAYS {
+                self.visit_stmt(statement);
+                continue;
+            }
+            let rest = &statements[index + alternatives..];
+            let saved = (self.receivers.clone(), self.receiver_arguments.clone());
+            for (position, alternative) in
+                statements[index..index + alternatives].iter().enumerate()
+            {
+                (self.receivers, self.receiver_arguments) = saved.clone();
+                self.visit_stmt(alternative);
+                let replay = u8::from(position > 0);
+                self.replaying += replay;
+                self.visit_statements(rest);
+                self.replaying -= replay;
+            }
+            return;
+        }
+    }
+
     /// Walk a macro body as expressions, as far as it is made of them.
     ///
     /// Comma-separated expressions first (`format!`, `assert_eq!`). A body
@@ -1349,6 +1450,61 @@ fn opens_wrapper(call: &syn::ExprMethodCall) -> bool {
     matches!(
         ident_name(&call.method).as_str(),
         "unwrap" | "expect" | "unwrap_or" | "unwrap_or_else" | "unwrap_or_default"
+    )
+}
+
+/// How many statements from the first are `let`s binding the same name,
+/// each under a `cfg` of its own and no two under the same one: the `cfg`
+/// alternatives of one binding, of which one is compiled. Fewer than two is
+/// no alternative.
+fn cfg_alternatives(statements: &[syn::Stmt]) -> usize {
+    let binding = |statement: &syn::Stmt| -> Option<(String, String)> {
+        let syn::Stmt::Local(local) = statement else {
+            return None;
+        };
+        let name = match &local.pat {
+            syn::Pat::Ident(ident) if ident.subpat.is_none() => ident_name(&ident.ident),
+            syn::Pat::Type(typed) => match typed.pat.as_ref() {
+                syn::Pat::Ident(ident) if ident.subpat.is_none() => ident_name(&ident.ident),
+                _ => return None,
+            },
+            _ => return None,
+        };
+        Some((name, cfg_predicate(&local.attrs)?))
+    };
+    let Some((name, first)) = statements.first().and_then(binding) else {
+        return 0;
+    };
+    let mut seen = vec![first];
+    for statement in &statements[1..] {
+        match binding(statement) {
+            Some((next, predicate)) if next == name && !seen.contains(&predicate) => {
+                seen.push(predicate);
+            }
+            _ => break,
+        }
+    }
+    seen.len()
+}
+
+/// Whether a method call on an `Option` or a `Result` returns one holding
+/// the same value, borrowed, moved out or copied: `as_ref`, `as_mut`,
+/// `as_deref`, `take`, `cloned` and the like.
+fn keeps_wrapper(call: &syn::ExprMethodCall) -> bool {
+    matches!(
+        ident_name(&call.method).as_str(),
+        "as_ref"
+            | "as_mut"
+            | "as_deref"
+            | "as_deref_mut"
+            | "take"
+            | "cloned"
+            | "copied"
+            | "clone"
+            | "or"
+            | "or_else"
+            | "filter"
+            | "inspect"
     )
 }
 

@@ -103,6 +103,7 @@ Usage:
                               [--candidate-offset=N] [--candidate-limit=N]
                               [--path-prefix=PATH] [--include-annotated]
                               [--include-examples] [--candidates-only]
+                              [--include-untyped-receiver]
                               [--candidate-timeout=MS] [--json]
   knossos dead-code <path|project-id> [--reachability=unreferenced|test-only]
                     [--candidate-timeout=MS] [--db=PATH] [--json]
