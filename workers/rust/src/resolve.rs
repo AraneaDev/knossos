@@ -438,6 +438,12 @@ pub fn glob_prefixes(tree: &syn::UseTree, prefix: &str, out: &mut Vec<String>) {
     }
 }
 
+/// Whether a path's first segment roots it (`crate`, `self`, `super`,
+/// `Self`) rather than naming something in scope.
+pub fn is_root(head: &str) -> bool {
+    matches!(head, "crate" | "self" | "super" | "Self")
+}
+
 /// Whether a bare name is a primitive type or a type the prelude brings
 /// into every module (`String`, `Vec`, `Option`, `Result`, `Box`).
 #[must_use]

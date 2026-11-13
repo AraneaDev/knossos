@@ -420,12 +420,6 @@ impl Walk<'_> {
     }
 }
 
-/// Whether a path's first segment roots it (`crate`, `self`, `super`,
-/// `Self`) rather than naming something in scope.
-pub(super) fn is_root(head: &str) -> bool {
-    matches!(head, "crate" | "self" | "super" | "Self")
-}
-
 /// The standard library path of a trait the Rust 2021 prelude brings into
 /// every module, by its bare name. A trait outside the prelude (`Display`,
 /// `Hash`) is in scope only through an import, which resolves it.

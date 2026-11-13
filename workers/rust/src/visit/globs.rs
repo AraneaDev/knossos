@@ -1,9 +1,9 @@
 //! Glob imports: resolving what each brings in, and which source provides
 //! a name written unqualified.
 
-use super::paths::is_root;
 use super::state::Walk;
 use crate::facts::reference;
+use crate::resolve::is_root;
 use crate::resolve::rebase;
 
 impl Walk<'_> {

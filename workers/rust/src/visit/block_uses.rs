@@ -7,10 +7,11 @@ use syn::spanned::Spanned;
 use syn::Item;
 
 use super::cfg::cfg_predicate;
-use super::paths::is_root;
 use super::state::Walk;
 use crate::facts::reference;
-use crate::resolve::{flatten_use, glob_prefixes, ident_name, parent_module, Aliases, UseLeaf};
+use crate::resolve::{
+    flatten_use, glob_prefixes, ident_name, is_root, parent_module, Aliases, UseLeaf,
+};
 
 impl Walk<'_> {
     /// Bring what the `use` items among a block's `statements` import into

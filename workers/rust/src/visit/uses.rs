@@ -8,11 +8,12 @@ use syn::Item;
 
 use super::cfg::cfg_predicate;
 use super::globs::Globbed;
-use super::paths::is_root;
 use super::placement::mod_child;
 use super::state::Walk;
 use crate::facts::reference;
-use crate::resolve::{flatten_use, glob_prefixes, ident_name, parent_module, rebase, UseLeaf};
+use crate::resolve::{
+    flatten_use, glob_prefixes, ident_name, is_root, parent_module, rebase, UseLeaf,
+};
 
 impl Walk<'_> {
     /// Record every `use` in this item list, emitting one `imports` edge each.
