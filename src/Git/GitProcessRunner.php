@@ -643,12 +643,12 @@ final readonly class GitProcessRunner implements GitProcessRunnerInterface
     /**
      * Throws once either stream holds more than its configured limit.
      *
-     * @throws RuntimeException naming the operation
+     * @throws GitOutputLimitExceeded naming the operation
      */
     private function assertWithinLimits(string $stdout, string $stderr, string $operation): void
     {
         if (strlen($stdout) > $this->maxOutputBytes || strlen($stderr) > $this->maxErrorBytes) {
-            throw new RuntimeException(sprintf('Git %s output exceeded its configured byte limit.', $operation));
+            throw new GitOutputLimitExceeded(sprintf('Git %s output exceeded its configured byte limit.', $operation));
         }
     }
 }

@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Git;
 
+use Knossos\Git\GitOutputLimitExceeded;
+use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Git\ProcessGitHistoryProvider;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
+use ReflectionProperty;
 use RuntimeException;
 
 /**
@@ -664,6 +667,97 @@ final class ProcessGitProviderTest extends KnossosTestCase
             }
             file_put_contents($root . '/' . $path, $content);
         }
+    }
+
+    /**
+     * A changed file named in digits alone stays a string. Collected as an
+     * array key PHP makes "123" an int, and every consumer is typed for a
+     * path.
+     */
+    public function testAChangedPathOfDigitsAloneStaysAString(): void
+    {
+        $runner = new RecordingGitRunner(static fn(array $command): string => match (true) {
+            in_array('rev-parse', $command, true) => "abc\n",
+            in_array('diff', $command, true) => "M\000123\0",
+            default => "789\0",
+        });
+
+        $result = (new ProcessGitWorkingTreeProvider(runner: $runner))->changes($this->existingDir, null, 10, 100);
+
+        assertSame(['123', '789'], $result['paths']);
+    }
+
+    /**
+     * The untracked listing names every file the tree's own .gitignore files
+     * do not exclude, so its size follows the checkout. The 2 MB that bounds
+     * an ordinary answer failed the whole query before `max_files` could cut
+     * the list.
+     */
+    public function testTheWorkingTreeRunnerIsSizedForAListing(): void
+    {
+        $runner = (new ReflectionProperty(ProcessGitWorkingTreeProvider::class, 'runner'))->getValue(new ProcessGitWorkingTreeProvider());
+
+        assertSame(GitProcessRunner::LISTING_OUTPUT_BYTES, (new ReflectionProperty(GitProcessRunner::class, 'maxOutputBytes'))->getValue($runner));
+    }
+
+    /**
+     * A log past the output limit is asked for again with a tenth of the
+     * commits and reported as cut, so the ranking keeps a change signal.
+     */
+    public function testALogPastTheOutputLimitIsRetriedWithFewerCommitsAndSaysItWasCut(): void
+    {
+        $log = self::logOutput([["KNOSSOS_COMMIT\x1f" . str_repeat('a', 40) . "\x1f2026-07-20T10:00:00+00:00\x1f1784541600\x1fa@test.dev", ['src/a.php']]]);
+        $runner = new RecordingGitRunner(static function (array $command) use ($log): string {
+            if (in_array('--max-count=501', $command, true)) {
+                throw new GitOutputLimitExceeded('Git history output exceeded its configured byte limit.');
+            }
+
+            return $log;
+        });
+
+        $result = (new ProcessGitHistoryProvider(runner: $runner))->history($this->existingDir, 30, 500, 100);
+
+        assertSame([true, 1, ['src/a.php']], [$result['truncated'], $result['commits_examined'], array_keys($result['files'])]);
+        assertSame(['--max-count=501', '--max-count=50'], array_map(
+            static fn(array $command): string => array_values(array_filter($command, static fn(string $arg): bool => str_starts_with($arg, '--max-count=')))[0],
+            $runner->commandsWith('log'),
+        ));
+    }
+
+    /** A log that is still too large at a tenth fails with the first error, and one commit cannot be asked for in fewer. */
+    public function testALogThatNeverFitsFailsWithTheLimitError(): void
+    {
+        $runner = new RecordingGitRunner(static fn(array $command): string => throw new GitOutputLimitExceeded('too large at ' . implode(' ', array_filter($command, static fn(string $arg): bool => str_starts_with($arg, '--max-count=')))));
+
+        try {
+            (new ProcessGitHistoryProvider(runner: $runner))->history($this->existingDir, 30, 500, 100);
+            self::fail('A log that never fits must fail.');
+        } catch (GitOutputLimitExceeded $error) {
+            assertSame('too large at --max-count=501', $error->getMessage());
+        }
+        self::assertCount(2, $runner->commandsWith('log'));
+
+        $single = new RecordingGitRunner(static fn(array $command): string => throw new GitOutputLimitExceeded('too large'));
+        try {
+            (new ProcessGitHistoryProvider(runner: $single))->history($this->existingDir, 30, 9, 100);
+            self::fail('A log that never fits must fail.');
+        } catch (GitOutputLimitExceeded) {
+        }
+        self::assertCount(1, $single->commandsWith('log'), 'A tenth of nine commits is none, so there is nothing smaller to ask for.');
+    }
+
+    /** Any other failure is not retried: a directory that is no repository fails the same way however little is asked. */
+    public function testAFailureThatIsNotTheOutputLimitIsNotRetried(): void
+    {
+        $runner = new RecordingGitRunner(static fn(array $command): string => throw new RuntimeException('Git history unavailable: not a git repository'));
+
+        try {
+            (new ProcessGitHistoryProvider(runner: $runner))->history($this->existingDir, 30, 500, 100);
+            self::fail('The failure must surface.');
+        } catch (RuntimeException $error) {
+            assertSame('Git history unavailable: not a git repository', $error->getMessage());
+        }
+        self::assertCount(1, $runner->commandsWith('log'));
     }
 
     private function mockRunner(string $returnValue): GitProcessRunnerInterface

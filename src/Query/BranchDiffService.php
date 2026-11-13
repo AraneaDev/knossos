@@ -101,7 +101,13 @@ final readonly class BranchDiffService
         if ($mergeBase === null) {
             return ['status' => 'no-default'] + $envelope;
         }
-        $ahead = (int) ($this->git($root, ['rev-list', '--count', $mergeBase . '..HEAD']) ?? 0);
+        $counted = $this->git($root, ['rev-list', '--count', $mergeBase . '..HEAD']);
+        if ($counted === null) {
+            // Not zero: a count git could not give says nothing about whether
+            // the branch has commits of its own, and zero reads as on-default.
+            return ['status' => 'error', 'reason' => 'Git could not count the commits this branch is ahead of ' . $default . '.'] + $envelope;
+        }
+        $ahead = (int) $counted;
         $envelope = ['merge_base' => ['rev' => $mergeBase, 'at' => (int) ($this->git($root, ['show', '-s', '--format=%ct', $mergeBase]) ?? 0)], 'ahead' => $ahead] + $envelope;
         if ($ahead === 0 || $branch === $default || $branch === preg_replace('#^[^/]+/#', '', $default)) {
             return ['status' => 'on-default'] + $envelope;
