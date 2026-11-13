@@ -13,6 +13,7 @@ use Knossos\Scan\LanguageScanResult;
 use Knossos\Scan\ScanPlan;
 use Knossos\Scan\ScanPreparation;
 use Knossos\Scan\ScanResultFactory;
+use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -107,6 +108,39 @@ final class ScanResultFactoryTest extends TestCase
         assertSame(1, $envelope->data['changed_files']);
         assertSame(['kind' => 'php'], $envelope->data['scanner_metadata']);
         assertSame([], $envelope->data['degraded_languages']);
+    }
+
+    /**
+     * The factory compares the workers that ran against the installation it
+     * was given, and a factory given none compares nothing.
+     */
+    public function testAScanThatRanAStaleWorkerBinaryWarns(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-factory-' . bin2hex(random_bytes(6));
+        mkdir($root . '/workers/rust/src', 0o777, true);
+        file_put_contents($root . '/workers/rust/Cargo.toml', "[package]\n");
+        file_put_contents($root . '/workers/rust/src/main.rs', "fn main() {}\n");
+        try {
+            $plan = new ScanPlan(preparation: $this->makePreparation(), projectId: 'p', effectiveMode: 'incremental', cacheByScannerPath: [], deletedFiles: 0);
+            $language = new LanguageScanResult(
+                manifests: [new ScannerManifest('knossos.rust', '0.2.0', '1.0', '1.0', ['rust'], ['rs'], ['scan'], str_repeat('ab', 32))],
+                contributions: [],
+                cacheEntries: [],
+                parsed: 1,
+                unchanged: 0,
+                added: 0,
+                changed: 1,
+                scannerMetadata: [],
+                stageMilliseconds: [],
+            );
+            $result = new ReconciliationResult(projectId: 'p', scanId: 's', files: 1, nodes: 1, edges: 0, diagnostics: 0, unresolvedNodes: 0);
+            $stale = static fn(array $warnings): array => array_values(array_filter($warnings, static fn(string $warning): bool => str_starts_with($warning, 'WORKER_BINARY_STALE: ')));
+
+            self::assertCount(1, $stale((new ScanResultFactory($root))->create($plan, $language, $result, 1_000_000_000, [])->warnings));
+            assertSame([], $stale((new ScanResultFactory())->create($plan, $language, $result, 1_000_000_000, [])->warnings));
+        } finally {
+            exec('rm -rf ' . escapeshellarg($root));
+        }
     }
 
     public function testLeftOutFilesAreNamedInTheSummaryAndTheWarnings(): void

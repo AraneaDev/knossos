@@ -370,7 +370,6 @@ php	src/Runtime/RuntimeFactory.php
 php	src/Runtime/RuntimeVersionRequirement.php
 php	src/Runtime/ServerEnvironment.php
 php	src/Runtime/Version.php
-php	src/Runtime/WorkerSourceHash.php
 php	src/Scan/AnalysisHash.php
 php	src/Scan/CachedReads.php
 php	src/Scan/ContributionCacheService.php
@@ -413,6 +412,7 @@ php	src/Scan/ScanSnapshotChangedException.php
 php	src/Scan/ScanSnapshotValidator.php
 php	src/Scan/ScanTarget.php
 php	src/Scan/StageClock.php
+php	src/Scan/StaleWorkerBinaries.php
 php	src/Scan/TreeFingerprint.php
 php	src/Scan/UndiscoveredInputVerifier.php
 php	src/Scan/UndiscoveredInputs.php
@@ -446,6 +446,7 @@ php	src/Scanner/Worker/WorkerExecutionPolicy.php
 php	src/Scanner/Worker/WorkerLimits.php
 php	src/Scanner/Worker/WorkerProcessSupervisor.php
 php	src/Scanner/Worker/WorkerSignal.php
+php	src/Scanner/Worker/WorkerSourceHash.php
 php	src/Store/ChunkedInQuery.php
 php	src/Store/ContributionCacheEntry.php
 php	src/Store/CountedSnapshotFigures.php
@@ -970,6 +971,7 @@ php	tests/phpunit/Scan/ScanResultFactoryTest.php
 php	tests/phpunit/Scan/ScanSnapshotValidationTest.php
 php	tests/phpunit/Scan/ShebangScanTest.php
 php	tests/phpunit/Scan/ShellScriptNodesTest.php
+php	tests/phpunit/Scan/StaleWorkerBinariesTest.php
 php	tests/phpunit/Scan/TreeFingerprintTest.php
 php	tests/phpunit/Scan/TypescriptInputHashesPartsCoverageTest.php
 php	tests/phpunit/Scan/TypescriptNodeModulesVerificationTest.php
