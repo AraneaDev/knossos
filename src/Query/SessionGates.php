@@ -16,7 +16,7 @@ use Throwable;
  * `composer.json` and `package.json` at the project root, because the session
  * brief has no discovery units to ask; a file that is missing, oversized or
  * not valid JSON simply contributes no scripts. Script names are filtered to a
- * short, single-line alphabet and lifecycle hooks (`pre-*`, `post-*`) are not
+ * short, single-line alphabet and lifecycle hooks (`pre-*`, `post-*`, and npm's `pre<x>`/`post<x>`) are not
  * offered as gates. Declared gates need no filtering here: the loader already
  * refuses a gate name outside `[a-z0-9-]` and a command with a control character.
  */
@@ -46,15 +46,54 @@ final readonly class SessionGates
         if ($declared !== []) {
             return ['declared' => $declared, 'found' => []];
         }
-        $names = array_values(array_unique(array_filter(
-            array_map('strval', [...array_keys($composerScripts), ...array_keys($packageScripts)]),
-            static fn(string $name): bool => preg_match(self::SCRIPT_NAME, $name) === 1
-                && !str_starts_with($name, 'pre-')
-                && !str_starts_with($name, 'post-'),
-        )));
+        $names = array_values(array_unique([...self::offered($composerScripts, false), ...self::offered($packageScripts, true)]));
         sort($names, SORT_STRING);
 
         return ['declared' => [], 'found' => array_slice($names, 0, self::MAX_FOUND)];
+    }
+
+    /**
+     * The script names of one manifest worth offering as gates: a safe name that is not a lifecycle hook.
+     *
+     * A hyphenated `pre-`/`post-` name is a hook in either manifest. npm also runs
+     * `pre<x>` and `post<x>` around a script `<x>` with no hyphen, so in a
+     * package.json such a name is dropped when `<x>` is a script of the same
+     * manifest; `prepare`, with no script called `pare`, stays.
+     *
+     * @param array<array-key, mixed> $scripts
+     * @return list<string>
+     */
+    private static function offered(array $scripts, bool $npm): array
+    {
+        $all = array_map('strval', array_keys($scripts));
+        $offered = [];
+        foreach ($all as $name) {
+            if (preg_match(self::SCRIPT_NAME, $name) !== 1 || str_starts_with($name, 'pre-') || str_starts_with($name, 'post-')) {
+                continue;
+            }
+            if ($npm && self::isNpmHook($name, $all)) {
+                continue;
+            }
+            $offered[] = $name;
+        }
+
+        return $offered;
+    }
+
+    /**
+     * Whether `$name` is `pre<x>` or `post<x>` for a script `<x>` in `$all`.
+     *
+     * @param list<string> $all
+     */
+    private static function isNpmHook(string $name, array $all): bool
+    {
+        foreach (['pre', 'post'] as $prefix) {
+            if (str_starts_with($name, $prefix) && strlen($name) > strlen($prefix) && in_array(substr($name, strlen($prefix)), $all, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

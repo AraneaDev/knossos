@@ -331,16 +331,20 @@ final readonly class SessionBriefRenderer
      * @param list<string> $floor lines always kept, in order
      * @param array<int, string> $sections optional sections in order, kept while they fit
      * @param string|null $rule a line always kept just before the pointer, outside the budget
-     * @param string|null $always a section kept whatever the budget, in its place among the others
+     * @param string|null $always a section kept whatever the budget, in its place among the others, and not counted against it
      */
     private function fit(array $floor, array $sections, int $budget, ?string $rule = null, ?string $always = null): string
     {
         $tail = "\n" . self::POINTER;
         $out = implode("\n", $floor);
+        // What counts against the budget: the exempt section is added to the output but not to this.
+        $counted = strlen($out) + strlen($tail);
         foreach ($sections as $line) {
-            $candidate = $out . "\n" . $line;
-            if ($line === $always || strlen($candidate) + strlen($tail) <= $budget) {
-                $out = $candidate;
+            if ($line === $always) {
+                $out .= "\n" . $line;
+            } elseif ($counted + 1 + strlen($line) <= $budget) {
+                $out .= "\n" . $line;
+                $counted += 1 + strlen($line);
             }
         }
         return $out . ($rule === null ? '' : "\n" . $rule) . $tail;

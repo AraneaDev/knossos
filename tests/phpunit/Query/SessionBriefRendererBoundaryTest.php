@@ -105,6 +105,34 @@ final class SessionBriefRendererBoundaryTest extends KnossosTestCase
         assertSame($bare, $over, 'A section one byte over the budget is dropped whole.');
     }
 
+    /** The gates block is exempt from the budget, so its bytes must not push Entry and Hubs out of a fresh brief. */
+    #[Group('query')]
+    public function testLongGateCommandsDoNotCrowdOutTheOtherSections(): void
+    {
+        $declared = [];
+        foreach (range(1, 5) as $i) {
+            $declared[] = ['name' => 'gate-' . $i, 'command' => str_repeat('x', 300)];
+        }
+        $brief = new SessionBrief(
+            state: 'fresh',
+            projectId: 'project_abc',
+            projectName: 'Shop',
+            path: '/work/shop',
+            ageSeconds: 3_600,
+            changedFiles: 0,
+            trackedFiles: 10,
+            entryPoints: ['src/Main.php'],
+            hubs: ['App\\Core'],
+            gates: ['declared' => $declared, 'found' => []],
+        );
+
+        $text = (new SessionBriefRenderer())->render($brief);
+
+        assertSame(true, str_contains($text, 'Entry: src/Main.php'), $text);
+        assertSame(true, str_contains($text, 'Hubs: App\\Core'), $text);
+        assertSame(true, str_contains($text, str_repeat('x', 300)));
+    }
+
     /** @param list<string> $rules */
     private static function brief(string $state, ?int $ageSeconds = 3_600, array $rules = []): SessionBrief
     {

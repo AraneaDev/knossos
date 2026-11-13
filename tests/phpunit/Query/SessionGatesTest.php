@@ -88,6 +88,30 @@ final class SessionGatesTest extends KnossosTestCase
         assertSame(['@scope/run', 'cs', 'lint:js'], $found);
     }
 
+    /** npm runs `pre<x>` and `post<x>` around a script `<x>`: they are hooks, whatever their lack of a hyphen. */
+    #[Group('query')]
+    public function testNpmLifecycleHooksOfAScriptInTheSameManifestAreNotOffered(): void
+    {
+        $package = ['pretest' => 'x', 'test' => 'x', 'posttest' => 'x', 'prepare' => 'x'];
+
+        assertSame(['prepare', 'test'], SessionGates::of(new ProjectConfiguration(), [], $package)['found']);
+        // Per manifest: composer has no such hooks, and a script of the other manifest does not make one.
+        assertSame(['pretest', 'test'], SessionGates::of(new ProjectConfiguration(), ['pretest' => 'x'], ['test' => 'x'])['found']);
+    }
+
+    /** Hooks are dropped before the cut to six, so they cannot push real scripts out of the list. */
+    #[Group('query')]
+    public function testHooksDoNotTakeASlotFromRealScripts(): void
+    {
+        $package = [];
+        foreach (['test', 'unit', 'verify', 'watch', 'xref', 'zip'] as $name) {
+            $package['pre' . $name] = 'x';
+            $package[$name] = 'x';
+        }
+
+        assertSame(['test', 'unit', 'verify', 'watch', 'xref', 'zip'], SessionGates::of(new ProjectConfiguration(), [], $package)['found']);
+    }
+
     #[Group('query')]
     public function testAProjectWithNeitherShowsNothing(): void
     {
