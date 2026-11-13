@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Query;
 
-use Knossos\Git\GitProcessRunner;
+use Knossos\Git\GitListingRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Query\LedgeredScanner;
 use Knossos\Query\SessionChangesService;
@@ -367,7 +367,7 @@ final class SessionChangesServiceTest extends KnossosTestCase
                     throw new RuntimeException('Git ' . $operation . ' timed out.');
                 }
 
-                return (new GitProcessRunner(GitProcessRunner::LISTING_OUTPUT_BYTES))->run($command, $timeoutMs, $operation);
+                return GitListingRunner::create()->run($command, $timeoutMs, $operation);
             }
         };
     }

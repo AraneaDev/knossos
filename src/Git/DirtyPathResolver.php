@@ -40,7 +40,7 @@ final readonly class DirtyPathResolver
      */
     public function __construct(?GitProcessRunnerInterface $runner = null)
     {
-        $this->runner = $runner ?? GitProcessRunner::forListings();
+        $this->runner = $runner ?? GitListingRunner::create();
     }
 
     /**

@@ -31,7 +31,7 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
      * `.git/info/exclude` or a global ignore is listed file by file, and the
      * `max_files` bound can only be applied to an answer that was read.
      */
-    public function __construct(int $maxOutputBytes = GitProcessRunner::LISTING_OUTPUT_BYTES, int $maxErrorBytes = 65_536, ?GitProcessRunnerInterface $runner = null)
+    public function __construct(int $maxOutputBytes = GitListingRunner::OUTPUT_BYTES, int $maxErrorBytes = 65_536, ?GitProcessRunnerInterface $runner = null)
     {
         $this->runner = $runner ?? new GitProcessRunner($maxOutputBytes, $maxErrorBytes);
     }

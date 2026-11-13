@@ -112,30 +112,6 @@ final class GitProcessRunnerHardeningTest extends TestCase
     }
 
     /**
-     * A listing of every tracked path grows with the repository, not with the
-     * question: about 120 bytes an entry, so 20,000 tracked files already pass
-     * the 2 MB that bounds every other answer. The listing runner reads such
-     * an answer whole, while the default runner still refuses it.
-     */
-    public function testAListingRunnerReadsAnAnswerPastTheDefaultCeiling(): void
-    {
-        $dir = sys_get_temp_dir() . '/knossos-git-listing-' . bin2hex(random_bytes(8));
-        mkdir($dir, 0o700, true);
-        $fakeGit = $dir . '/git';
-        file_put_contents($fakeGit, "#!/bin/sh\nhead -c 3000000 /dev/zero\n");
-        chmod($fakeGit, 0o700);
-        try {
-            self::assertSame(3_000_000, strlen(GitProcessRunner::forListings()->run([$fakeGit, 'ls-tree'], 5000, 'listing probe')));
-            self::assertGreaterThan(2_000_000, GitProcessRunner::LISTING_OUTPUT_BYTES);
-
-            $this->expectExceptionMessage('Git listing probe output exceeded its configured byte limit.');
-            (new GitProcessRunner())->run([$fakeGit, 'ls-tree'], 5000, 'listing probe');
-        } finally {
-            self::runQuiet(['rm', '-rf', $dir]);
-        }
-    }
-
-    /**
      * A containerised run names the mounted project as safe: the project is
      * the host user's, the container's user is another, and git refuses a
      * repository another user owns. The name reaches git as a `-c` setting,

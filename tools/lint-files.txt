@@ -184,6 +184,7 @@ php	src/Git/GitCommand.php
 php	src/Git/GitHeadResolver.php
 php	src/Git/GitHistoryProvider.php
 php	src/Git/GitLogRecords.php
+php	src/Git/GitOutputLimitExceeded.php
 php	src/Git/GitProcessRunner.php
 php	src/Git/GitProcessRunnerInterface.php
 php	src/Git/GitWorkingTreeProvider.php

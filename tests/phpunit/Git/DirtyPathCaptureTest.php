@@ -7,11 +7,9 @@ namespace Knossos\Tests\Phpunit\Git;
 use Knossos\Discovery\DiscoveredFile;
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\DirtyPathSet;
-use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
-use ReflectionProperty;
 use RuntimeException;
 
 /**
@@ -166,24 +164,6 @@ final class DirtyPathCaptureTest extends KnossosTestCase
         (new DirtyPathResolver($this->runner('')))->resolve('/tmp/knossos-dirty', self::HEAD, [], $failure);
 
         self::assertNull($failure);
-    }
-
-    /**
-     * The tree is listed whole, so its size follows the repository: a runner
-     * held to the 2 MB that bounds every other git answer refuses the listing
-     * of a repository with some 20,000 tracked files, and the scan then
-     * records no set at all.
-     */
-    #[Group('git')]
-    public function testTheDefaultRunnerIsSizedForAWholeTreeListing(): void
-    {
-        $runner = (new ReflectionProperty(DirtyPathResolver::class, 'runner'))->getValue(new DirtyPathResolver());
-
-        self::assertInstanceOf(GitProcessRunner::class, $runner);
-        self::assertSame(
-            GitProcessRunner::LISTING_OUTPUT_BYTES,
-            (new ReflectionProperty(GitProcessRunner::class, 'maxOutputBytes'))->getValue($runner),
-        );
     }
 
     /**

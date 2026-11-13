@@ -7,7 +7,7 @@ namespace Knossos\Query\Drift;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Git\DirtyPathSet;
 use Knossos\Git\GitCommand;
-use Knossos\Git\GitProcessRunner;
+use Knossos\Git\GitListingRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Store\ChunkedInQuery;
 use PDO;
@@ -157,7 +157,7 @@ final readonly class GitDriftOracle implements DriftOracle
         private PDO $pdo,
         ?GitProcessRunnerInterface $runner = null,
     ) {
-        $this->runner = $runner ?? GitProcessRunner::forListings();
+        $this->runner = $runner ?? GitListingRunner::create();
     }
 
     /**
