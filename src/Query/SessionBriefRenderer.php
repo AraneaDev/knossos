@@ -66,6 +66,10 @@ final readonly class SessionBriefRenderer
             // After Notes, so a tight budget drops this line before the notes themselves.
             $this->section('Orphaned', self::missingNotes($brief->missingNotes)),
         ];
+        $gates = SessionGatesRenderer::lines($brief->gates);
+        if ($gates !== []) {
+            $sections[] = implode("\n", $gates);
+        }
         if ($brief->state === 'fresh') {
             $sections[] = $this->section('Entry', $brief->entryPoints);
             $sections[] = $this->section('Hubs', $brief->hubs);

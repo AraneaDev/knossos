@@ -136,6 +136,7 @@ final readonly class SessionBriefService
             $rootStatus['roots_file'],
             $this->missingNotes($projectId),
             $this->checks($projectId),
+            SessionGates::forRoot($root),
         );
     }
 

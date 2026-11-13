@@ -327,6 +327,8 @@ php	src/Query/SessionBriefRenderer.php
 php	src/Query/SessionBriefService.php
 php	src/Query/SessionChangesService.php
 php	src/Query/SessionDiffService.php
+php	src/Query/SessionGates.php
+php	src/Query/SessionGatesRenderer.php
 php	src/Query/SnapshotDiffQuery.php
 php	src/Query/SnapshotGraphReader.php
 php	src/Query/SnapshotMetrics.php
@@ -854,11 +856,13 @@ php	tests/phpunit/Query/ScannerFactoryTest.php
 php	tests/phpunit/Query/SearchAnyTermFallbackTest.php
 php	tests/phpunit/Query/SearchMatchingTest.php
 php	tests/phpunit/Query/SemanticTest.php
+php	tests/phpunit/Query/SessionBriefGatesRenderTest.php
 php	tests/phpunit/Query/SessionBriefRendererBoundaryTest.php
 php	tests/phpunit/Query/SessionBriefRendererTest.php
 php	tests/phpunit/Query/SessionBriefServiceTest.php
 php	tests/phpunit/Query/SessionChangesServiceTest.php
 php	tests/phpunit/Query/SessionDiffServiceTest.php
+php	tests/phpunit/Query/SessionGatesTest.php
 php	tests/phpunit/Query/SnapshotDiffArchiveTest.php
 php	tests/phpunit/Query/SnapshotDiffTest.php
 php	tests/phpunit/Query/SnapshotGraphReaderBlobStreamTest.php
