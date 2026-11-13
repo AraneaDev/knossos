@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.45.0](https://github.com/AraneaDev/knossos/compare/v0.44.7...v0.45.0) (2026-11-13)
+
+
+### Features
+
+* warn in the scan result when a worker binary was not built from the checked-out source ([#479](https://github.com/AraneaDev/knossos/issues/479)) ([cc80f08](https://github.com/AraneaDev/knossos/commit/cc80f086bfd9703bc3474fcca294987858fcbe69))
+
+
+### Fixes
+
+* resolve a call through a child module's re-export to the function it names ([#478](https://github.com/AraneaDev/knossos/issues/478)) ([e6498ba](https://github.com/AraneaDev/knossos/commit/e6498bae367e17945ffbd14a3acd49afcdfcb892))
+
 ## [0.44.7](https://github.com/AraneaDev/knossos/compare/v0.44.6...v0.44.7) (2026-11-13)
 
 
