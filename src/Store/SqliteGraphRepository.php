@@ -76,12 +76,13 @@ final class SqliteGraphRepository implements GraphRepository
      *
      * @template T
      * @param callable(GraphRepository): T $operation
+     * @param ?string $projectId the one project the rewrite touches; null checks every row of the scan-owned tables
      *
      * @return T
      */
-    public function bulkTransaction(callable $operation): mixed
+    public function bulkTransaction(callable $operation, ?string $projectId = null): mixed
     {
-        return $this->transactions->runBulk(fn(): mixed => $operation($this), self::SCAN_OWNED_TABLES);
+        return $this->transactions->runBulk(fn(): mixed => $operation($this), self::SCAN_OWNED_TABLES, $projectId);
     }
 
     /** Upsert by id: a rescan of the same root updates the name/config rather than creating a second project. */

@@ -2734,7 +2734,7 @@ final class FakeGraphRepository implements GraphRepository
         return $operation($this);
     }
 
-    public function bulkTransaction(callable $operation): mixed
+    public function bulkTransaction(callable $operation, ?string $projectId = null): mixed
     {
         return $this->transaction($operation);
     }

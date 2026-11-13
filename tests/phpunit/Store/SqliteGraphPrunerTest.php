@@ -44,6 +44,43 @@ final class SqliteGraphPrunerTest extends KnossosTestCase
         assertSame('2', (string) $pdo->query('SELECT COUNT(*) FROM nodes')->fetchColumn());
     }
 
+    /** The project still guards the delete: an id that belongs to another project is left alone. */
+    #[Group('store')]
+    public function testPruneLeavesARowOfAnotherProjectAlone(): void
+    {
+        [$pdo, , $ids] = $this->storeFixture();
+        $pruner = new SqliteGraphPruner(new SqliteStatementCache($pdo));
+        $existing = $pruner->existingGraphIds($ids['project']);
+
+        $pruner->pruneGraph('another-project', $existing, []);
+
+        assertSame('1', (string) $pdo->query('SELECT COUNT(*) FROM edges')->fetchColumn());
+        assertSame('2', (string) $pdo->query('SELECT COUNT(*) FROM nodes')->fetchColumn());
+        assertSame('1', (string) $pdo->query('SELECT COUNT(*) FROM files')->fetchColumn());
+    }
+
+    /**
+     * Obsolete rows of the large tables are found by their primary key. Found
+     * through a project index, each chunk of ids read every row of the
+     * project, so pruning cost the size of the project per chunk.
+     */
+    #[Group('store')]
+    public function testTheLargeTablesArePrunedByPrimaryKey(): void
+    {
+        [$pdo] = $this->storeFixture();
+
+        foreach (['edges', 'nodes', 'classifications'] as $table) {
+            $plan = $pdo->prepare('EXPLAIN QUERY PLAN ' . SqliteGraphPruner::pruneSql($table, 400));
+            $plan->execute([...array_fill(0, 400, 'id'), 'project']);
+            $detail = implode(' | ', array_column($plan->fetchAll(), 'detail'));
+
+            assertSame(1, preg_match('/\\(id=\\?\\)/', $detail), $table . ': ' . $detail);
+            assertSame(false, str_contains($detail, 'project_id'), $table . ': ' . $detail);
+        }
+        assertSame('DELETE FROM files WHERE id IN (?,?) AND project_id = ?', SqliteGraphPruner::pruneSql('files', 2));
+        assertSame('DELETE FROM edges WHERE id IN (?,?) AND +project_id = ?', SqliteGraphPruner::pruneSql('edges', 2));
+    }
+
     #[Group('store')]
     public function testPruningNothingChangedDeletesNothing(): void
     {

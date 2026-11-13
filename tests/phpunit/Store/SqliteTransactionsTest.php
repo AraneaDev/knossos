@@ -157,6 +157,69 @@ final class SqliteTransactionsTest extends KnossosTestCase
         assertSame('0', (string) $pdo->query('SELECT COUNT(*) FROM child')->fetchColumn());
     }
 
+    /**
+     * A rewrite of one project is checked over that project's rows. Checked
+     * over the whole table, a scan paid for every other project in the
+     * database, and failed on damage that was never its own.
+     */
+    #[Group('store')]
+    public function testABulkRewriteOfOneProjectIsCheckedOverThatProjectOnly(): void
+    {
+        $pdo = self::projectScoped();
+        $pdo->exec('PRAGMA foreign_keys = OFF');
+        $pdo->exec("INSERT INTO child(id, project_id, parent_id, other_id) VALUES (1, 'theirs', 999, NULL)");
+        $pdo->exec('PRAGMA foreign_keys = ON');
+
+        (new SqliteTransactions($pdo))->runBulk(
+            static fn() => $pdo->exec("INSERT INTO parent(id) VALUES (7); INSERT INTO child(id, project_id, parent_id, other_id) VALUES (2, 'mine', 7, NULL)"),
+            ['child'],
+            'mine',
+        );
+
+        assertSame('2', (string) $pdo->query('SELECT COUNT(*) FROM child')->fetchColumn(), 'A key left NULL references nothing, and another project\'s dangling row is not this rewrite\'s to fail on.');
+        // With no project named, every row is checked as before.
+        assertThrows(
+            static fn() => (new SqliteTransactions($pdo))->runBulk(static fn() => null, ['child']),
+            RuntimeException::class,
+        );
+    }
+
+    /** Every foreign key of the table is checked for the project, the second as much as the first, and the count names them all. */
+    #[Group('store')]
+    public function testAProjectScopedCheckCoversEveryForeignKeyOfTheTable(): void
+    {
+        $pdo = self::projectScoped();
+        $pdo->exec('INSERT INTO parent(id) VALUES (7)');
+
+        try {
+            (new SqliteTransactions($pdo))->runBulk(
+                static fn() => $pdo->exec("INSERT INTO child(id, project_id, parent_id, other_id) VALUES (1, 'mine', 7, 404), (2, 'mine', 999, 405)"),
+                ['child'],
+                'mine',
+            );
+            self::fail('A dangling second key must refuse the commit.');
+        } catch (RuntimeException $error) {
+            assertSame('Refusing to commit a graph with 3 dangling reference(s) in table child.', $error->getMessage());
+        }
+        assertSame('0', (string) $pdo->query('SELECT COUNT(*) FROM child')->fetchColumn());
+    }
+
+    /** A table with no project column cannot be held to a project, so it is checked whole. */
+    #[Group('store')]
+    public function testATableWithoutAProjectColumnIsCheckedWhole(): void
+    {
+        $pdo = self::parentChild();
+
+        assertThrows(
+            static fn() => (new SqliteTransactions($pdo))->runBulk(
+                static fn() => $pdo->exec('INSERT INTO child(id, parent_id) VALUES (1, 999)'),
+                ['child'],
+                'mine',
+            ),
+            RuntimeException::class,
+        );
+    }
+
     #[Group('store')]
     public function testABulkRewriteMayWriteAChildBeforeItsParent(): void
     {
@@ -324,6 +387,18 @@ final class SqliteTransactionsTest extends KnossosTestCase
         $pdo->exec('PRAGMA foreign_keys = ON');
         $pdo->exec('CREATE TABLE parent(id INTEGER PRIMARY KEY)');
         $pdo->exec('CREATE TABLE child(id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parent(id))');
+
+        return $pdo;
+    }
+
+    /** A child table with a project column and two foreign keys, the second nullable. */
+    private static function projectScoped(): PDO
+    {
+        $pdo = SqliteConnection::open(':memory:');
+        $pdo->exec('PRAGMA foreign_keys = ON');
+        $pdo->exec('CREATE TABLE parent(id INTEGER PRIMARY KEY)');
+        $pdo->exec('CREATE TABLE other(id INTEGER PRIMARY KEY)');
+        $pdo->exec('CREATE TABLE child(id INTEGER PRIMARY KEY, project_id TEXT NOT NULL, parent_id INTEGER NOT NULL REFERENCES parent(id), other_id INTEGER REFERENCES other(id))');
 
         return $pdo;
     }
