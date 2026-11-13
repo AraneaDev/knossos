@@ -13,8 +13,7 @@ use PDO;
  *
  * A population is the direct children of a directory with one extension and
  * one role, the same grouping the folder facts count. Each file brings the
- * name of its first top-level type or function and the distinct targets it
- * depends on outside its own folder.
+ * distinct targets it depends on outside its own folder.
  */
 final readonly class NeighbourCandidates
 {
@@ -29,7 +28,7 @@ final readonly class NeighbourCandidates
     /**
      * The files of the population except `$exclude`, in path order.
      *
-     * @return list<array{path: string, top_level: string, uses: list<string>}>
+     * @return list<array{path: string, uses: list<string>}>
      */
     public function of(string $projectId, string $directory, string $extension, string $role, string $exclude): array
     {
@@ -50,11 +49,10 @@ final readonly class NeighbourCandidates
         }
         $population = array_values(array_filter($ids, static fn(string $id): bool => isset($tests[$id]) === ($role === 'test')));
 
-        $names = $this->topLevelNames($population);
         $uses = $this->uses($population, $directory);
         $candidates = [];
         foreach ($population as $id) {
-            $candidates[] = ['path' => $files[$id], 'top_level' => $names[$id] ?? '', 'uses' => $uses[$id] ?? []];
+            $candidates[] = ['path' => $files[$id], 'uses' => $uses[$id] ?? []];
         }
         usort($candidates, static fn(array $a, array $b): int => strcmp($a['path'], $b['path']));
 
@@ -80,31 +78,6 @@ final readonly class NeighbourCandidates
         }
 
         return $files;
-    }
-
-    /**
-     * The first top-level type or function of each file, by name order.
-     *
-     * @param list<string> $fileIds
-     * @return array<string, string>
-     */
-    private function topLevelNames(array $fileIds): array
-    {
-        $names = [];
-        foreach (ChunkedInQuery::rows(
-            $this->pdo,
-            "SELECT n.file_id, n.display_name FROM nodes n WHERE n.kind IN ('class', 'interface', 'trait', 'enum', 'function') AND n.file_id IN (%s)
-             AND NOT EXISTS (SELECT 1 FROM edges e JOIN nodes s ON s.id = e.source_id WHERE e.target_id = n.id AND e.kind = 'contains' AND s.kind <> 'module')",
-            $fileIds,
-            mode: PDO::FETCH_NUM,
-        ) as [$fileId, $name]) {
-            $current = $names[(string) $fileId] ?? null;
-            if ($current === null || strcmp((string) $name, $current) < 0) {
-                $names[(string) $fileId] = (string) $name;
-            }
-        }
-
-        return $names;
     }
 
     /**

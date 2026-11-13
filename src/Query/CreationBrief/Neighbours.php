@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Knossos\Query\CreationBrief;
 
+use Knossos\Scan\Conventions\NameWords;
+use Knossos\Scan\Conventions\PathParts;
+
 /**
  * Picks the existing files a new one is best read beside.
  *
  * The order is a stable one, so the same graph names the same neighbours: a
- * file whose top-level name ends in the same CamelCase word as the new file's
- * (`Service`, `Test`) comes first, then the file whose outgoing dependencies
+ * file whose name ends in the same word as the new file's (`Service`, `Test`,
+ * `_service`, `-thing`, compared without case; see {@see NameWords}) comes first, then the file whose outgoing dependencies
  * look most like the folder's usual set, then the path.
  */
 final class Neighbours
@@ -29,12 +32,12 @@ final class Neighbours
      * float decides an order.
      *
      * @param string $name the new file's name without its extensions, as `FooService`
-     * @param list<array{path: string, top_level: string, uses: list<string>}> $candidates
+     * @param list<array{path: string, uses: list<string>}> $candidates
      * @return list<string>
      */
     public static function rank(string $name, array $candidates): array
     {
-        $word = self::lastWord($name);
+        $word = NameWords::last($name);
         $usual = self::usual($candidates);
         $scored = [];
         foreach ($candidates as $candidate) {
@@ -42,7 +45,7 @@ final class Neighbours
             $common = count(array_intersect($own, $usual));
             $scored[] = [
                 'path' => $candidate['path'],
-                'shares' => $word !== '' && self::lastWord($candidate['top_level']) === $word,
+                'shares' => $word !== '' && NameWords::last(PathParts::stem($candidate['path'])) === $word,
                 'common' => $common,
                 'union' => count($own) + count($usual) - $common,
             ];
@@ -57,7 +60,7 @@ final class Neighbours
     /**
      * The dependencies most candidates have, most first and the name breaking ties.
      *
-     * @param list<array{path: string, top_level: string, uses: list<string>}> $candidates
+     * @param list<array{path: string, uses: list<string>}> $candidates
      * @return list<string>
      */
     private static function usual(array $candidates): array
@@ -72,13 +75,5 @@ final class Neighbours
         usort($names, static fn(string $a, string $b): int => $counts[$b] <=> $counts[$a] ?: strcmp($a, $b));
 
         return array_slice($names, 0, self::USUAL);
-    }
-
-    /** The last CamelCase word of a name, empty for an empty name. */
-    private static function lastWord(string $name): string
-    {
-        preg_match_all('/[A-Z][a-z0-9]*|[a-z0-9]+/', $name, $words);
-
-        return $words[0] === [] ? '' : $words[0][count($words[0]) - 1];
     }
 }

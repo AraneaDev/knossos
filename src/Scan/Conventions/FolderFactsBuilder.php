@@ -332,15 +332,14 @@ final readonly class FolderFactsBuilder
     }
 
     /**
-     * Every proper CamelCase-word suffix of a name: `ChurnService` gives `Service`, never the whole name.
+     * Every proper word suffix of a name ({@see NameWords}): `ChurnService` gives `Service`, never the whole name.
      *
      * @return list<string>
      */
     private static function suffixes(string $name): array
     {
-        preg_match_all('/[A-Z]+(?![a-z])|[A-Z]?[a-z0-9]+/', $name, $words, PREG_OFFSET_CAPTURE);
         $suffixes = [];
-        foreach (array_slice($words[0], 1) as [, $offset]) {
+        foreach (array_slice(NameWords::split($name), 1) as [, $offset]) {
             $suffixes[] = substr($name, $offset);
         }
 

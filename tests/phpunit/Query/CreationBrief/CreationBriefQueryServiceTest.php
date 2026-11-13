@@ -161,6 +161,52 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         self::assertSame('test', $root['role'], 'a directory hole matches the root too');
     }
 
+    /**
+     * Nested declared boundaries both bind a file: the brief names the inner one
+     * and forbids what either forbids.
+     */
+    public function testANestedBoundaryForbidsWhatEveryEnclosingBoundaryForbids(): void
+    {
+        $service = $this->scanned();
+        mkdir($this->root . '/tools', 0o777, true);
+        file_put_contents($this->root . '/tools/Lint.php', "<?php\n\nfinal class Lint {}\n");
+        file_put_contents($this->root . '/knossos.json', json_encode([
+            'version' => 1,
+            'boundaries' => [
+                ['name' => 'core', 'path_prefix' => 'src/'],
+                ['name' => 'Query', 'path_prefix' => 'src/Query/'],
+                ['name' => 'Mcp', 'path_prefix' => 'src/Mcp/'],
+                ['name' => 'tooling', 'path_prefix' => 'tools/'],
+            ],
+            'policies' => [
+                ['id' => 'query-not-mcp', 'from_boundary' => 'Query', 'deny_targets' => ['Mcp']],
+                ['id' => 'core-not-tooling', 'from_boundary' => 'core', 'deny_targets' => ['tooling']],
+            ],
+        ], JSON_THROW_ON_ERROR));
+        $this->scan();
+
+        self::assertSame(['boundary' => 'Query', 'may_not_use' => ['Mcp', 'tooling']], $service->creationBrief($this->projectId, 'src/Query/FooService.php')->data['placement']);
+        self::assertSame(['boundary' => 'core', 'may_not_use' => ['tooling']], $service->creationBrief($this->projectId, 'src/Other/Foo.php')->data['placement']);
+    }
+
+    /**
+     * A test in a new folder under a folder that holds only tests is a test, briefed
+     * from that folder, even though no source folder's test pattern names its path.
+     */
+    public function testANewTestFolderUnderATestOnlyFolderIsATest(): void
+    {
+        $this->scanned();
+        foreach (['P', 'Q', 'R', 'S', 'T'] as $name) {
+            file_put_contents($this->root . "/tests/phpunit/{$name}Test.php", "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Tests;\n\nfinal class {$name}Test\n{\n    public function testIt(): void {}\n}\n");
+        }
+        $this->scan();
+
+        $data = (new CreationBriefQueryService($this->pdo))->creationBrief($this->projectId, 'tests/phpunit/NewDir/FooTest.php')->data;
+
+        self::assertSame('test', $data['role']);
+        self::assertSame(['directory' => 'tests/phpunit', 'files' => 5, 'borrowed' => true], $data['basis']);
+    }
+
     public function testAnExistingPathSaysSo(): void
     {
         $data = $this->scanned()->creationBrief($this->projectId, 'src/Query/AService.php')->data;

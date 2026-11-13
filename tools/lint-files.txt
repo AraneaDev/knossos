@@ -388,6 +388,7 @@ php	src/Scan/ContributionPartition.php
 php	src/Scan/Conventions/FolderCompanionsBuilder.php
 php	src/Scan/Conventions/FolderFactsBuilder.php
 php	src/Scan/Conventions/FolderFactsRefresher.php
+php	src/Scan/Conventions/NameWords.php
 php	src/Scan/Conventions/PathParts.php
 php	src/Scan/Conventions/TestPathPattern.php
 php	src/Scan/DegradedRescanGuard.php
@@ -948,6 +949,7 @@ php	tests/phpunit/Scan/Conventions/FolderCompanionsBuilderTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsBuilderTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsScanTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsUnchangedScanTest.php
+php	tests/phpunit/Scan/Conventions/NameWordsTest.php
 php	tests/phpunit/Scan/Conventions/TestPathPatternTest.php
 php	tests/phpunit/Scan/EndpointRouteFlowTest.php
 php	tests/phpunit/Scan/EndpointRouteScanTest.php

@@ -13,8 +13,8 @@ use PDO;
  *
  * A file the graph holds is a test when it holds a node classified as a test
  * module. A path that is not there is judged by what the folders show: first by
- * its own folder, then by the shape of the test names the project's source
- * folders have.
+ * the nearest folder, its own or an ancestor, that holds files of its extension,
+ * then by the shape of the test names the project's source folders have.
  */
 final readonly class PathRole
 {
@@ -29,10 +29,18 @@ final readonly class PathRole
         if ($recorded !== null) {
             return $recorded;
         }
-        $directory = PathParts::directory($path);
         $extension = PathParts::extension($path);
-        if ($this->facts->of($projectId, $directory, $extension, 'test') !== null && $this->facts->of($projectId, $directory, $extension, 'source') === null) {
-            return 'test';
+        // The nearest folder, the path's own or an ancestor, that holds any file of the
+        // extension decides, as it decides the basis: one that holds only tests makes this a test.
+        for ($candidate = PathParts::directory($path);; $candidate = PathParts::directory($candidate)) {
+            $test = $this->facts->of($projectId, $candidate, $extension, 'test') !== null;
+            $source = $this->facts->of($projectId, $candidate, $extension, 'source') !== null;
+            if ($test && !$source) {
+                return 'test';
+            }
+            if ($test || $source || $candidate === '') {
+                break;
+            }
         }
         foreach ($this->facts->testPathPatterns($projectId, $extension) as $pattern) {
             if (preg_match(self::regex($pattern), $path) === 1) {

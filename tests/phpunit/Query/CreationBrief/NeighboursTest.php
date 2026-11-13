@@ -13,18 +13,18 @@ use PHPUnit\Framework\Attributes\Group;
 final class NeighboursTest extends KnossosTestCase
 {
     /** @param list<string> $uses */
-    private static function file(string $path, string $topLevel, array $uses = []): array
+    private static function file(string $path, array $uses = []): array
     {
-        return ['path' => $path, 'top_level' => $topLevel, 'uses' => $uses];
+        return ['path' => $path, 'uses' => $uses];
     }
 
     /** A file whose name ends in the same word comes before one that merely looks like the folder. */
     public function testASharedSuffixBeatsSimilarity(): void
     {
         $candidates = [
-            self::file('src/a/Alpha.php', 'Alpha', ['PDO', 'Clock']),
-            self::file('src/a/Beta.php', 'Beta', ['PDO', 'Clock']),
-            self::file('src/a/ZetaService.php', 'ZetaService', []),
+            self::file('src/a/Alpha.php', ['PDO', 'Clock']),
+            self::file('src/a/Beta.php', ['PDO', 'Clock']),
+            self::file('src/a/ZetaService.php', []),
         ];
 
         self::assertSame(['src/a/ZetaService.php', 'src/a/Alpha.php', 'src/a/Beta.php'], Neighbours::rank('FooService', $candidates));
@@ -34,10 +34,10 @@ final class NeighboursTest extends KnossosTestCase
     public function testSimilarityBeatsPath(): void
     {
         $candidates = [
-            self::file('src/a/A.php', 'A', ['X']),
-            self::file('src/a/B.php', 'B', ['PDO', 'Clock']),
-            self::file('src/a/C.php', 'C', ['PDO', 'Clock', 'Other']),
-            self::file('src/a/D.php', 'D', ['PDO']),
+            self::file('src/a/A.php', ['X']),
+            self::file('src/a/B.php', ['PDO', 'Clock']),
+            self::file('src/a/C.php', ['PDO', 'Clock', 'Other']),
+            self::file('src/a/D.php', ['PDO']),
         ];
 
         // The folder's usual set is PDO, Clock, Other, X. C holds three of the four (3/4), B two (2/4);
@@ -49,11 +49,11 @@ final class NeighboursTest extends KnossosTestCase
     public function testTiesBreakByPathAndAtMostThreeAreNamed(): void
     {
         $candidates = [
-            self::file('src/a/E.php', 'E'),
-            self::file('src/a/B.php', 'B'),
-            self::file('src/a/D.php', 'D'),
-            self::file('src/a/A.php', 'A'),
-            self::file('src/a/C.php', 'C'),
+            self::file('src/a/E.php'),
+            self::file('src/a/B.php'),
+            self::file('src/a/D.php'),
+            self::file('src/a/A.php'),
+            self::file('src/a/C.php'),
         ];
 
         self::assertSame(['src/a/A.php', 'src/a/B.php', 'src/a/C.php'], Neighbours::rank('Foo', $candidates));
@@ -64,6 +64,42 @@ final class NeighboursTest extends KnossosTestCase
     public function testNoCandidatesGiveNoNeighbours(): void
     {
         self::assertSame([], Neighbours::rank('Foo', []));
-        self::assertSame(['src/a/A.php'], Neighbours::rank('', [self::file('src/a/A.php', '')]));
+        self::assertSame(['src/a/A.php'], Neighbours::rank('', [self::file('src/a/A.php')]));
+    }
+
+    /** A snake_case stem shares its last word with a snake_case neighbour, which then comes first. */
+    public function testASnakeCaseStemSharesItsLastWord(): void
+    {
+        $candidates = [
+            self::file('app/a.py', ['db', 'log']),
+            self::file('app/bar_service.py'),
+            self::file('app/b.py', ['db', 'log']),
+        ];
+
+        self::assertSame('app/bar_service.py', Neighbours::rank('foo_service', $candidates)[0]);
+    }
+
+    /** `new-thing` and `NewThing` end in the same word, so they rank the same neighbours the same way. */
+    public function testKebabAndCamelCaseStemsAgree(): void
+    {
+        $candidates = [
+            self::file('web/a.ts', ['react']),
+            self::file('web/other-thing.ts'),
+            self::file('web/OldThing.ts'),
+            self::file('web/b.ts', ['react']),
+        ];
+
+        $kebab = Neighbours::rank('new-thing', $candidates);
+
+        self::assertSame(['web/OldThing.ts', 'web/other-thing.ts', 'web/a.ts'], $kebab);
+        self::assertSame($kebab, Neighbours::rank('NewThing', $candidates));
+    }
+
+    /** The word compared is the candidate's file stem, not what it declares first. */
+    public function testTheCandidatesFileStemIsCompared(): void
+    {
+        $candidates = [self::file('src/a/A.php'), self::file('src/a/ZetaService.php')];
+
+        self::assertSame(['src/a/ZetaService.php', 'src/a/A.php'], Neighbours::rank('FooService', $candidates));
     }
 }

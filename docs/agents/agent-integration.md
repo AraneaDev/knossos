@@ -181,8 +181,9 @@ that need not exist, relative to the project root or absolute under it, and
 reads only what the last scan stored, so the same graph gives the same answer
 and git is never run.
 
-`data` holds `placement` (the declared boundary the path lands in and the
-boundaries it may not use), `neighbours` (at most three existing files to copy
+`data` holds `placement` (the most specific declared boundary the path lands
+in, and the boundaries that one or any declared boundary containing it may not
+use), `neighbours` (at most three existing files to copy
 from), `conventions` (each with the number of files that follow it, shown only
 when the folder has at least five files of that kind and four in five follow it),
 `goes_with` (the test the folder's own pattern expects, then the files that
@@ -202,7 +203,7 @@ Call `creation_brief` before you write a new file. For a PHP file in
 
 ```text
 knossos · new file in ns:Query
-may not use: ns:Cli, ns:Mcp
+may not use: ns:Cli, ns:Mcp, php-worker, python-worker, rust-worker, tests, tooling, typescript-worker
 like: src/Query/ArchitectureContextService.php, src/Query/AgentBriefService.php, src/Query/ReviewDiffService.php
 here: 97 of 99 one class per file · 96 of 99 final · median 166 lines, largest 924
 gates: cs · phpstan · docblocks · file-length · lint-files · reference · mutation-pins. Run: vendor/bin/php-cs-fixer fix; vendor/bin/phpstan analyse --memory-limit=1G src; ...
