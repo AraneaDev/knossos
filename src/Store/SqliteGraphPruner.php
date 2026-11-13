@@ -28,6 +28,9 @@ final class SqliteGraphPruner
         'files' => 'id',
     ];
 
+    /** The tables whose obsolete rows are found by primary key, see {@see self::pruneSql()}. */
+    private const PRUNED_BY_PRIMARY_KEY = ['classifications', 'edges', 'nodes'];
+
     /**
      * The ids a project's graph currently holds, per table.
      *
@@ -85,11 +88,31 @@ final class SqliteGraphPruner
                 continue;
             }
             foreach (array_chunk($obsolete, 400) as $chunk) {
-                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                $statement = $this->statements->prepare(sprintf('DELETE FROM %s WHERE project_id = ? AND id IN (%s)', $table, $placeholders));
-                $statement->execute([$projectId, ...$chunk]);
+                $this->statements->prepare(self::pruneSql($table, $chunk))->execute([...$chunk, $projectId]);
             }
         }
+    }
+
+    /**
+     * The delete for the obsolete `$ids` of `$table`, bound as the ids first, then the project.
+     *
+     * On the large tables the project guard carries a unary plus, which keeps
+     * it as a filter but stops SQLite choosing it as the index. Left free,
+     * the planner read every row of the project through a project index for
+     * each chunk of 400 ids, so a delete cost the size of the project rather
+     * than the size of the chunk. The small tables keep the plain guard: there
+     * the plus turns the lookup into a scan of the whole table.
+     *
+     * @param list<string> $ids
+     */
+    public static function pruneSql(string $table, array $ids): string
+    {
+        return sprintf(
+            'DELETE FROM %s WHERE id IN (%s) AND %sproject_id = ?',
+            $table,
+            implode(',', array_fill(0, count($ids), '?')),
+            in_array($table, self::PRUNED_BY_PRIMARY_KEY, true) ? '+' : '',
+        );
     }
 
     /**

@@ -97,10 +97,11 @@ final class SqliteTransactions
      * @template T
      * @param callable(): T $operation
      * @param list<string> $checkedTables the tables whose foreign keys are verified before commit
+     * @param ?string $projectId when the rewrite touched one project only, that project: the check is then held to its rows
      *
      * @return T
      */
-    public function runBulk(callable $operation, array $checkedTables): mixed
+    public function runBulk(callable $operation, array $checkedTables, ?string $projectId = null): mixed
     {
         if ($this->open || $this->pdo->inTransaction()) {
             return $this->run($operation);
@@ -108,17 +109,17 @@ final class SqliteTransactions
         $previous = (string) $this->pdo->query('PRAGMA foreign_keys')->fetchColumn();
         $this->pdo->exec('PRAGMA foreign_keys = OFF');
         try {
-            return $this->run(function () use ($operation, $checkedTables): mixed {
+            return $this->run(function () use ($operation, $checkedTables, $projectId): mixed {
                 $result = $operation();
                 // Checked per table rather than database-wide: an unrelated
                 // table's pre-existing damage is not this rewrite's to fail on,
                 // and naming the table keeps the blame where it belongs.
                 foreach ($checkedTables as $table) {
-                    $violations = $this->pdo->query(sprintf('PRAGMA foreign_key_check(%s)', $table))->fetchAll();
-                    if ($violations !== []) {
+                    $violations = $this->danglingReferences($table, $projectId);
+                    if ($violations > 0) {
                         throw new RuntimeException(sprintf(
                             'Refusing to commit a graph with %d dangling reference(s) in table %s.',
-                            count($violations),
+                            $violations,
                             $table,
                         ));
                     }
@@ -158,5 +159,74 @@ final class SqliteTransactions
             }
             throw $error;
         }
+    }
+
+    /**
+     * How many rows of `$table` reference a row that does not exist.
+     *
+     * With a project, only that project's rows are checked, one indexed
+     * anti-join per foreign key. `PRAGMA foreign_key_check` reads the whole
+     * table, so a scan of one project paid for the rows of every other
+     * project in the database, and paid more with each project added. The
+     * foreign keys come from the schema itself, so a key added later is
+     * checked without this method changing.
+     *
+     * A table with no `project_id`, or a key the anti-join cannot express (one
+     * that names no parent column), falls back to the pragma for that table.
+     */
+    private function danglingReferences(string $table, ?string $projectId): int
+    {
+        $keys = [];
+        if ($projectId !== null && $this->hasColumn($table, 'project_id')) {
+            foreach ($this->pdo->query(sprintf('PRAGMA foreign_key_list(%s)', self::quoted($table)))->fetchAll(PDO::FETCH_ASSOC) as $column) {
+                if ($column['to'] === null) {
+                    $keys = [];
+                    break;
+                }
+                $keys[(int) $column['id']]['parent'] = (string) $column['table'];
+                $keys[(int) $column['id']]['columns'][(string) $column['from']] = (string) $column['to'];
+            }
+        }
+        if ($keys === []) {
+            return count($this->pdo->query(sprintf('PRAGMA foreign_key_check(%s)', self::quoted($table)))->fetchAll());
+        }
+        $dangling = 0;
+        foreach ($keys as $key) {
+            $present = $matches = [];
+            foreach ($key['columns'] as $from => $to) {
+                // A key with any NULL column references nothing, as SQLite's own check reads it.
+                $present[] = sprintf('c.%s IS NOT NULL', self::quoted($from));
+                $matches[] = sprintf('p.%s = c.%s', self::quoted($to), self::quoted($from));
+            }
+            $statement = $this->pdo->prepare(sprintf(
+                'SELECT COUNT(*) FROM %s c WHERE c.project_id = ? AND %s AND NOT EXISTS (SELECT 1 FROM %s p WHERE %s)',
+                self::quoted($table),
+                implode(' AND ', $present),
+                self::quoted($key['parent']),
+                implode(' AND ', $matches),
+            ));
+            $statement->execute([$projectId]);
+            $dangling += (int) $statement->fetchColumn();
+        }
+
+        return $dangling;
+    }
+
+    /** Whether `$table` has a column named `$column`. */
+    private function hasColumn(string $table, string $column): bool
+    {
+        foreach ($this->pdo->query(sprintf('PRAGMA table_info(%s)', self::quoted($table)))->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if ($row['name'] === $column) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** An identifier quoted for SQL, with any quote in it doubled. */
+    private static function quoted(string $identifier): string
+    {
+        return '"' . str_replace('"', '""', $identifier) . '"';
     }
 }

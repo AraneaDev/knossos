@@ -40,9 +40,10 @@ interface GraphRepository
      *
      * @template T
      * @param callable(GraphRepository): T $operation
+     * @param ?string $projectId the one project the rewrite touches, so the check can be held to its rows; null checks every row
      * @return T
      */
-    public function bulkTransaction(callable $operation): mixed;
+    public function bulkTransaction(callable $operation, ?string $projectId = null): mixed;
 
     /**
      * Create or update project identity and non-secret configuration metadata.
