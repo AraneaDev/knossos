@@ -495,7 +495,7 @@ final class QueryTest extends KnossosTestCase
             // 37 graph tools plus server_info and diagnose_runtime, which a real
             // `serve` offers because it wires a ServerEnvironment.
             $toolNames = array_column($responses[1]['result']['tools'], 'name');
-            assertSame(39, count($toolNames));
+            assertSame(40, count($toolNames));
             assertArrayContains('server_info', $toolNames);
             assertArrayContains('diagnose_runtime', $toolNames);
             assertSame(true, $responses[2]['result']['isError']);
