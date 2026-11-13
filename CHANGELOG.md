@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.6](https://github.com/AraneaDev/knossos/compare/v0.44.5...v0.44.6) (2026-11-13)
+
+
+### Fixes
+
+* keep a Result's type through map_err, ok_or and context, and type map to a named variant or function ([#467](https://github.com/AraneaDev/knossos/issues/467)) ([53fd35b](https://github.com/AraneaDev/knossos/commit/53fd35b15f5afa5a3f7a903323949e966bf3dc01))
+
 ## [0.44.5](https://github.com/AraneaDev/knossos/compare/v0.44.4...v0.44.5) (2026-11-12)
 
 
