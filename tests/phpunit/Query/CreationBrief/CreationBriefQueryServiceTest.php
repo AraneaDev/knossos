@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Query\CreationBrief;
 
 use InvalidArgumentException;
+use Knossos\Query\AnnotationService;
 use Knossos\Query\CreationBrief\CreationBriefQueryService;
 use Knossos\Scan\Conventions\FolderFactsBuilder;
 use Knossos\Scan\ProjectScanService;
@@ -128,11 +129,67 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
 
     public function testAFileNoScannerCoversGetsGatesAndCompanionsOnly(): void
     {
-        $data = $this->scanned()->creationBrief($this->projectId, 'docs/x.md')->data;
+        $service = $this->scanned();
+        (new FolderFactsStore($this->pdo))->saveCompanions($this->projectId, 'head', 'ok', ['docs' => [['path' => 'knossos.json', 'commits' => 4, 'of' => 5]]]);
+
+        $data = $service->creationBrief($this->projectId, 'docs/x.md')->data;
 
         self::assertSame(['cs', 'docs'], array_column($data['gates'], 'name'));
         self::assertSame([], $data['conventions']);
+        self::assertSame([], $data['neighbours']);
         self::assertSame('source', $data['role']);
+        self::assertSame([['path' => 'knossos.json', 'commits' => 4, 'of' => 5, 'kind' => 'companion']], $data['goes_with']);
+    }
+
+    /**
+     * Notes on a neighbour's component and on the boundary are counted; an empty
+     * note says nothing and is not, and neither is a note on a file that is no neighbour.
+     */
+    public function testNotesOnTheNeighboursAndTheBoundaryAreCounted(): void
+    {
+        $service = $this->scanned();
+        $annotations = new AnnotationService($this->pdo);
+        $annotations->upsertAnnotation($this->projectId, 'App\\Query\\AService', 'note', 'Keep the PDO injected.', execute: true);
+        $annotations->upsertAnnotation($this->projectId, 'Query', 'intended_boundary', 'Reads only.', execute: true);
+        $annotations->upsertAnnotation($this->projectId, 'App\\Query\\BService', 'note', '', execute: true);
+        $annotations->upsertAnnotation($this->projectId, 'App\\Mcp\\Tool', 'note', 'Not a neighbour.', execute: true);
+
+        $data = $service->creationBrief($this->projectId, 'src/Query/FooService.php')->data;
+
+        self::assertSame(['src/Query/AService.php', 'src/Query/BService.php', 'src/Query/CService.php'], $data['neighbours']);
+        self::assertSame(4, (int) $this->pdo->query('SELECT COUNT(*) FROM annotations')->fetchColumn(), 'the empty note is stored, and still not counted');
+        self::assertSame(2, $data['notes']);
+    }
+
+    /**
+     * Stored companions follow the expected test, most commits first and the path
+     * breaking ties, without repeating the test; adding one changes the signature.
+     */
+    public function testCompanionsFollowTheTestInOrderAndCountInTheSignature(): void
+    {
+        $service = $this->scanned();
+        $store = new FolderFactsStore($this->pdo);
+        $store->saveCompanions($this->projectId, 'head1', 'ok', ['src/Query' => [
+            ['path' => 'src/Mcp/Tool.php', 'commits' => 4, 'of' => 6],
+            ['path' => 'tests/phpunit/Query/FooServiceTest.php', 'commits' => 6, 'of' => 6],
+            ['path' => 'knossos.json', 'commits' => 5, 'of' => 6],
+        ]]);
+        $before = $service->creationBrief($this->projectId, 'src/Query/FooService.php')->data;
+        $store->saveCompanions($this->projectId, 'head2', 'ok', ['src/Query' => [
+            ['path' => 'src/Mcp/Tool.php', 'commits' => 4, 'of' => 6],
+            ['path' => 'tests/phpunit/Query/FooServiceTest.php', 'commits' => 6, 'of' => 6],
+            ['path' => 'knossos.json', 'commits' => 5, 'of' => 6],
+            ['path' => 'tests/phpunit/Query/AServiceTest.php', 'commits' => 4, 'of' => 6],
+        ]]);
+        $after = $service->creationBrief($this->projectId, 'src/Query/FooService.php')->data;
+
+        self::assertSame([
+            ['path' => 'tests/phpunit/Query/FooServiceTest.php', 'kind' => 'test'],
+            ['path' => 'knossos.json', 'commits' => 5, 'of' => 6, 'kind' => 'companion'],
+            ['path' => 'src/Mcp/Tool.php', 'commits' => 4, 'of' => 6, 'kind' => 'companion'],
+        ], $before['goes_with']);
+        self::assertSame(['src/Mcp/Tool.php', 'tests/phpunit/Query/AServiceTest.php'], array_column(array_slice($after['goes_with'], 2), 'path'));
+        self::assertNotSame($before['signature'], $after['signature']);
     }
 
     public function testATestFileIsBriefedFromTheTestsBesideIt(): void

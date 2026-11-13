@@ -285,33 +285,35 @@ final class FolderCompanionsBuilderTest extends KnossosTestCase
         self::assertSame([], $this->store->companionsOf($this->project, 'src/App'));
     }
 
-    /** Parsing is checked against what git really writes for `--name-status -z`, not a hand-built string. */
-    public function testCompanionsAreFoundInRealGitOutput(): void
+    /**
+     * Parsing is checked against bytes git really wrote for `--name-status -z`, not a hand-built string.
+     *
+     * The fixture is the output of three commits in a throwaway repository, each
+     * adding one file to `src/Q` and appending a line to `registry.txt`, recorded
+     * with the builder's own command. To regenerate it:
+     *
+     *     git init -q repo && cd repo && mkdir -p src/Q
+     *     for n in A B C; do
+     *       printf '<?php\n' > src/Q/$n.php; echo $n >> registry.txt; git add .
+     *       git -c user.name='Knossos Test' -c user.email=test@example.test -c commit.gpgsign=false commit -q -m "add $n"
+     *     done
+     *     git -c core.quotePath=false --no-optional-locks --no-pager --literal-pathspecs -C . log \
+     *       --since=365.days.ago --max-count=2000 --no-merges --no-renames -z --name-status \
+     *       --format=%x00KNOSSOS_COMPANIONS%x1f%H --relative -- . > tests/Fixtures/git-log/companions-name-status-z.bin
+     */
+    public function testCompanionsAreFoundInRecordedGitOutput(): void
     {
-        if (self::locateGit() === null) {
-            self::markTestSkipped('git is not available.');
-        }
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
-        mkdir($root . '/src/Q', 0o777, true);
-        try {
-            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
-            foreach (['A', 'B', 'C'] as $name) {
-                file_put_contents($root . '/src/Q/' . $name . '.php', "<?php\n");
-                file_put_contents($root . '/registry.txt', $name . "\n", FILE_APPEND);
-                $this->runFixtureCommand(['git', '-C', $root, 'add', '.']);
-                $this->runFixtureCommand(['git', '-C', $root, '-c', 'user.name=Knossos Test', '-c', 'user.email=test@example.test', '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'add ' . $name]);
-            }
+        $output = (string) file_get_contents(dirname(__DIR__, 3) . '/Fixtures/git-log/companions-name-status-z.bin');
+        $runner = new RecordingGitRunner(static fn(): string => $output);
 
-            (new FolderCompanionsBuilder($this->store))->refresh($this->project, $root, 'head1');
+        (new FolderCompanionsBuilder($this->store, $runner))->refresh($this->project, '/repo', 'head1');
 
-            self::assertSame('ok', $this->storedStatus());
-            self::assertEquals(
-                [['path' => 'registry.txt', 'commits' => 3, 'of' => 3]],
-                $this->store->companionsOf($this->project, 'src/Q'),
-            );
-        } finally {
-            $this->removeTempTree($root);
-        }
+        self::assertSame('ok', $this->storedStatus());
+        self::assertEquals(
+            [['path' => 'registry.txt', 'commits' => 3, 'of' => 3]],
+            $this->store->companionsOf($this->project, 'src/Q'),
+        );
+        self::assertContains('--format=%x00KNOSSOS_COMPANIONS%x1f%H', $runner->commands[0], 'the fixture was recorded with the format the builder asks for');
     }
 
     /**

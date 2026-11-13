@@ -88,11 +88,8 @@ skip. A test that skips itself, because a tool is missing or the process runs as
 root, passes without asserting anything, so the run counts the skipped tests in
 its JUnit logs and refuses above the budget, naming every one. The merge counts
 them over the shards (`--budgets=FILE` names another file), and an unsharded run
-counts them with `php tools/skipped-tests.php`. The budget is 5, the count
-measured on `main` at 391ea306 in CI's coverage shards (4) plus a fifth, added for
-`FolderCompanionsBuilderTest::testCompanionsAreFoundInRealGitOutput`, which checks
-the companions parser once against real `git log` output and skips where no git
-binary exists, as in a gitless CI container. Of the first four, three, in
+counts them with `php tools/skipped-tests.php`. The budget is 4, the count
+measured on `main` at 391ea306 in CI's coverage shards. Three of them, in
 `RepositoryCheckTest`, `DocumentationTest` and `GitIgnoreTest`, ask git which
 files it ignores, which needs the checkout the image does not carry; the fourth,
 in `GitProcessRunnerHardeningTest`, needs root, and the suite runs as the
