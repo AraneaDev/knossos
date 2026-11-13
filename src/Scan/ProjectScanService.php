@@ -72,7 +72,6 @@ final class ProjectScanService implements ProjectScanner
         $this->enrichment = new EnrichmentPhase($pdo, $enrichers);
     }
     /** Shut the worker pool down, including when a scan failed or was cancelled. */
-
     public function __destruct()
     {
         $this->workerPool->shutdown();
@@ -280,7 +279,7 @@ final class ProjectScanService implements ProjectScanner
             self::undiscoveredVerifier($preparation, $language, $plan),
         );
         $clock->recordAll($result->phaseMilliseconds, 'reconciliation.');
-
+        (new \Knossos\Scan\Conventions\FolderFactsRefresher($this->pdo))->refresh($projectId);
         return $result;
     }
 
