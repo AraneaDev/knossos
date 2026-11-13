@@ -207,6 +207,13 @@ php tools/skill-copies.php --check
 php tools/worker-constants.php --check
 php tools/documentation-check.php
 php tools/maintainability-report.php
+# Measured on the checkout, as the lint list above is: the image has no .git.
+if git -c safe.directory="$lint_repo" -C "$lint_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    php tools/file-length-check.php --root="$lint_repo" --baseline="$lint_repo/file-length-baseline.json"
+else
+    quality_not_run 'the file length check (tools/file-length-check.php)' \
+        "no git checkout at $lint_repo; mount the checkout and name it with KNOSSOS_GATE_REPO"
+fi
 php tools/docstring-report.php
 php tools/api-documentation-check.php
 fi

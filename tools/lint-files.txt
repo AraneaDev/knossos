@@ -614,6 +614,7 @@ php	tests/phpunit/Enrichment/EnrichmentValidatorTest.php
 php	tests/phpunit/Enrichment/NativeNodeIndexTest.php
 php	tests/phpunit/ExceptionsTest.php
 php	tests/phpunit/FailOnWarningTest.php
+php	tests/phpunit/FileLengthCheckTest.php
 php	tests/phpunit/Filesystem/AtomicFileTest.php
 php	tests/phpunit/Filesystem/RelativePathRuleTest.php
 php	tests/phpunit/Framework/ClassificationTest.php
@@ -1123,6 +1124,7 @@ php	tools/coverage-merge.php
 php	tools/docstring-report.php
 php	tools/documentation-check.php
 php	tools/eval/annotations.php
+php	tools/file-length-check.php
 php	tools/gate-report.php
 php	tools/generate-benchmark-corpus.php
 php	tools/generate-reference.php
