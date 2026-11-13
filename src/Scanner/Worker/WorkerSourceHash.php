@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Knossos\Runtime;
+namespace Knossos\Scanner\Worker;
 
 use FilesystemIterator;
 use RecursiveDirectoryIterator;
@@ -14,8 +14,8 @@ use SplFileInfo;
  *
  * The Rust worker embeds this hash at build time (`workers/rust/build.rs`) and
  * announces it as `source_hash` in its manifest. `git pull` updates the source
- * but not the git-ignored binary, so comparing the two is how `doctor` notices
- * a binary built from older source. One definition, mirrored in
+ * but not the git-ignored binary, so comparing the two is how `doctor` and a
+ * scan notice a binary built from older source. One definition, mirrored in
  * `workers/rust/src/source_hash.rs` and held together by a shared fixture and
  * golden value:
  *

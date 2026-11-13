@@ -68,7 +68,7 @@ final class ProjectScanService implements ProjectScanner
         );
         $this->analysisPipeline = new ScanAnalysisPipeline();
         $this->snapshotValidator = new ScanSnapshotValidator();
-        $this->resultFactory = new ScanResultFactory();
+        $this->resultFactory = new ScanResultFactory($installationRoot);
         $this->enrichment = new EnrichmentPhase($pdo, $enrichers);
     }
     /** Shut the worker pool down, including when a scan failed or was cancelled. */

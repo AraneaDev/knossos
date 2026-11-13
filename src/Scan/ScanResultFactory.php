@@ -15,6 +15,9 @@ use Knossos\Result\ResultEnvelope;
  */
 final readonly class ScanResultFactory
 {
+    /** @param string $installationRoot where the workers live, so a stale worker binary can be reported; empty reports none */
+    public function __construct(private string $installationRoot = '') {}
+
     /**
      * Build the scan's result envelope from its counts, timings, and diagnostics.
      *
@@ -46,6 +49,7 @@ final readonly class ScanResultFactory
         if ($leftOut !== '') {
             $warnings[] = sprintf("SCANNER_FILES_LEFT_OUT: %s Each file's diagnostic names the limit.", $leftOut);
         }
+        array_push($warnings, ...StaleWorkerBinaries::warnings($this->installationRoot, $language->manifests));
         $treeFailure = $plan->preparation->dirtyPathsFailure;
         if ($treeFailure !== null) {
             $warnings[] = sprintf(

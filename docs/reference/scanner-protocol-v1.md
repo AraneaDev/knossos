@@ -75,7 +75,7 @@ A compiled worker may add `source_hash`: the lowercase hex SHA-256 of the
 source it was built from. The Rust worker embeds it at build time, and `doctor`
 recomputes it over `workers/rust` to warn when the binary is older than the
 checkout. The definition (which files, in what order, hashed how) lives in
-`workers/rust/src/source_hash.rs` and `src/Runtime/WorkerSourceHash.php`. Other
+`workers/rust/src/source_hash.rs` and `src/Scanner/Worker/WorkerSourceHash.php`. Other
 workers leave the field out.
 
 ### `scan`

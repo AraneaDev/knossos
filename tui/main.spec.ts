@@ -204,7 +204,9 @@ describe('knossos (the terminal pane)', () => {
     const data = scratch()
     const run = tui(dir, envOf(data, markedPluginRoot(mark())))
     await run.until(text => text.includes(ENTER), 'ENTER')
-    expect(run.out()).toContain('Starting the pane...')
+    // Waited for, not read off what has arrived so far: the line is a write of its own after ENTER,
+    // and the two can reach this process in separate chunks.
+    await run.until(text => text.includes('Starting the pane...'), 'the starting line')
     run.child.stdin.write('\x1b]11;rgb:ffff/ffff/ffff\x072')
     // Pressed once, before the first frame: the second tab shows without another key.
     await run.until(text => text.includes('Component0'), 'the second tab')

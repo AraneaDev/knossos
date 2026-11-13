@@ -11,6 +11,7 @@ use Knossos\Scan\LanguageDescriptor;
 use Knossos\Scan\ScanFailureClass;
 use Knossos\Scan\ScanFailureLog;
 use Knossos\Scanner\Worker\ProcessScannerClient;
+use Knossos\Scanner\Worker\WorkerSourceHash;
 use PDO;
 use Throwable;
 

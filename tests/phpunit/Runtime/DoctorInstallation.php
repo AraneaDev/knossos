@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Runtime;
 
-use Knossos\Runtime\WorkerSourceHash;
+use Knossos\Scanner\Worker\WorkerSourceHash;
 
 /**
  * A throwaway installation root for `doctor`, with a scripted Rust worker.

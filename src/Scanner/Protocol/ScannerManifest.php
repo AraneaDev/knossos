@@ -24,7 +24,7 @@ final readonly class ScannerManifest implements JsonSerializable
      * @param list<non-empty-string> $languages
      * @param list<non-empty-string> $fileExtensions
      * @param list<non-empty-string> $capabilities
-     * @param ?string $sourceHash hash of the source a compiled worker was built from, see {@see \Knossos\Runtime\WorkerSourceHash}
+     * @param ?string $sourceHash hash of the source a compiled worker was built from, see {@see \Knossos\Scanner\Worker\WorkerSourceHash}
      */
     public function __construct(
         public string $id,
