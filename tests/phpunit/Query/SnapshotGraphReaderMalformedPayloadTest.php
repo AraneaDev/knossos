@@ -49,8 +49,10 @@ final class SnapshotGraphReaderMalformedPayloadTest extends KnossosTestCase
     private static function streamedOnly(SnapshotGraphReader $reader, string $stored): ?array
     {
         $slices = (new \ReflectionMethod($reader, 'slices'))->invoke(null, $stored);
+        $base64 = (new \ReflectionMethod($reader, 'isBase64'))->invoke(null, $stored);
+        $compressed = (new \ReflectionMethod($reader, 'compressed'))->invoke(null, $slices, $base64);
 
-        return (new \ReflectionMethod($reader, 'streamed'))->invoke($reader, $slices, SnapshotGraphReader::COLUMNS);
+        return (new \ReflectionMethod($reader, 'streamed'))->invoke($reader, $compressed, SnapshotGraphReader::COLUMNS);
     }
 
     /** @return array<string, list<array<string, mixed>>> */

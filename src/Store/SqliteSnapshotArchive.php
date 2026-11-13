@@ -93,11 +93,16 @@ final class SqliteSnapshotArchive
             'INSERT OR IGNORE INTO scan_snapshots(scan_id, project_id, scanner_set_hash, config_hash, complete, fact_count, byte_size, payload_json, captured_at) ' .
             'VALUES (:scan, :project, :scanner, :config, :complete, :facts, :bytes, :payload, :captured)',
         );
-        $insert->execute([
+        foreach ([
             'scan' => $scanId, 'project' => $projectId, 'scanner' => $scannerHash, 'config' => $configHash,
-            'complete' => $reason === null ? 1 : 0, 'facts' => $factCount, 'bytes' => $byteSize,
-            'payload' => $payload, 'captured' => SqliteValues::now(),
-        ]);
+            'complete' => $reason === null ? 1 : 0, 'facts' => $factCount, 'bytes' => $byteSize, 'captured' => SqliteValues::now(),
+        ] as $name => $value) {
+            $insert->bindValue($name, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        // Gzip bytes bound as text would be stored as text that is not valid
+        // UTF-8; as a BLOB they come back exactly as they went in.
+        $insert->bindValue('payload', $payload, SnapshotPayload::isBinary($payload) ? PDO::PARAM_LOB : PDO::PARAM_STR);
+        $insert->execute();
     }
 
     /**

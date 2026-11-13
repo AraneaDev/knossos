@@ -72,7 +72,7 @@ final class SnapshotGraphReaderBlobStreamTest extends KnossosTestCase
         $repository->completeScan($ids['project'], $ids['scan']);
         $repository->archiveActiveSnapshot($ids['project'], hash('sha256', '{}'), 5);
         $stored = (string) $pdo->query('SELECT payload_json FROM scan_snapshots WHERE scan_id = ' . $pdo->quote($ids['scan']))->fetchColumn();
-        assertSame(true, str_starts_with($stored, 'gzip64:'), 'The archive writes a compressed payload.');
+        assertSame(true, str_starts_with($stored, 'gzipb1:'), 'The archive writes a compressed payload.');
         assertGreaterThan(3 * 4096, strlen($stored), 'The payload spans several slices.');
 
         return [$pdo, $ids['project'], $ids['scan'], $stored];
@@ -115,6 +115,19 @@ final class SnapshotGraphReaderBlobStreamTest extends KnossosTestCase
         }
     }
 
+    /** The gzip bytes themselves come off the stream in pieces of any length too: nothing has to line up for them. */
+    #[Group('query')]
+    public function testBinaryPiecesOfAnyLengthGiveTheSameRows(): void
+    {
+        [$pdo, , $scan, $stored] = $this->archivedStore();
+        $expected = (new SnapshotGraphReader($pdo, blobReads: false))->archivedById($scan);
+        $pdo->opener = static fn(): mixed => PieceStream::open('binary', $stored, [1, 4095, 2, 777]);
+
+        assertSame($expected, (new SnapshotGraphReader($pdo))->archivedById($scan));
+        assertSame(strlen($stored), PieceStream::$served['binary'], 'The whole payload came off the stream, not the fetched string.');
+        assertSame(true, PieceStream::$closed['binary']);
+    }
+
     /**
      * A stream need not return whole slices: pieces of 3, 4,093, 1 and 2,050
      * bytes split base64 groups, and the partial group is carried to the next.
@@ -122,8 +135,12 @@ final class SnapshotGraphReaderBlobStreamTest extends KnossosTestCase
     #[Group('query')]
     public function testPiecesOfAnyLengthGiveTheSameRows(): void
     {
-        [$pdo, , $scan, $stored] = $this->archivedStore();
+        [$pdo, , $scan, $binary] = $this->archivedStore();
         $expected = (new SnapshotGraphReader($pdo, blobReads: false))->archivedById($scan);
+        // As an earlier version stored it: the same gzip bytes, as base64 text.
+        $stored = 'gzip64:' . base64_encode(substr($binary, strlen('gzipb1:')));
+        self::restore($pdo, $scan, $stored);
+        assertSame($expected, (new SnapshotGraphReader($pdo, blobReads: false))->archivedById($scan), 'The base64 form gives the rows the binary form gives.');
         $pdo->opener = static fn(): mixed => PieceStream::open('odd', $stored, [3, 4093, 1, 2050]);
 
         $streamed = (new SnapshotGraphReader($pdo))->archivedById($scan);
