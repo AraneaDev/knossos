@@ -56,8 +56,9 @@ final readonly class SessionBriefRenderer
     {
         $budget = self::BUDGETS[$brief->state] ?? self::BUDGETS['unscanned'];
         $verdict = $this->verdict($brief);
+        $gates = SessionGatesRenderer::lines($brief->gates);
         if ($brief->state === 'unscanned') {
-            return $this->fit([$verdict], [], $budget);
+            return $this->fit([$verdict, ...$gates], [], $budget);
         }
 
         $sections = [
@@ -66,6 +67,11 @@ final readonly class SessionBriefRenderer
             // After Notes, so a tight budget drops this line before the notes themselves.
             $this->section('Orphaned', self::missingNotes($brief->missingNotes)),
         ];
+        // Read from knossos.json, not the graph, so exempt from the budget in every state.
+        $gatesBlock = implode("\n", $gates);
+        if ($gates !== []) {
+            $sections[] = $gatesBlock;
+        }
         if ($brief->state === 'fresh') {
             $sections[] = $this->section('Entry', $brief->entryPoints);
             $sections[] = $this->section('Hubs', $brief->hubs);
@@ -75,6 +81,7 @@ final readonly class SessionBriefRenderer
             array_filter($sections, static fn(?string $section): bool => $section !== null),
             $budget,
             implode("\n", [self::NOTE_RULE, ...self::checks($brief->checks)]),
+            $gates === [] ? null : $gatesBlock,
         );
     }
 
@@ -233,16 +240,16 @@ final readonly class SessionBriefRenderer
     private function stateClause(SessionBrief $brief): string
     {
         return match ($brief->state) {
-            'fresh' => sprintf('FRESH (scanned %s ago)', $this->age($brief->ageSeconds)),
+            'fresh' => sprintf('FRESH (scanned %s ago)', self::age($brief->ageSeconds)),
             'stale' => sprintf(
                 'STALE (%d files, %s)',
                 $brief->changedFiles,
-                $this->age($brief->ageSeconds),
+                self::age($brief->ageSeconds),
             ),
             'unverified' => sprintf(
                 'UNVERIFIED (%d files, over probe limit; scanned %s ago)',
                 $brief->trackedFiles,
-                $this->age($brief->ageSeconds),
+                self::age($brief->ageSeconds),
             ),
             'missing' => 'NO GRAPH',
             default => 'NOT SCANNED',
@@ -250,7 +257,7 @@ final readonly class SessionBriefRenderer
     }
 
     /** Coarse, single-token age. Minute precision on a seventeen-day-old graph is noise. */
-    private function age(?int $seconds): string
+    public static function age(?int $seconds): string
     {
         return match (true) {
             $seconds === null => 'unknown',
@@ -324,15 +331,20 @@ final readonly class SessionBriefRenderer
      * @param list<string> $floor lines always kept, in order
      * @param array<int, string> $sections optional sections in order, kept while they fit
      * @param string|null $rule a line always kept just before the pointer, outside the budget
+     * @param string|null $always a section kept whatever the budget, in its place among the others, and not counted against it
      */
-    private function fit(array $floor, array $sections, int $budget, ?string $rule = null): string
+    private function fit(array $floor, array $sections, int $budget, ?string $rule = null, ?string $always = null): string
     {
         $tail = "\n" . self::POINTER;
         $out = implode("\n", $floor);
+        // What counts against the budget: the exempt section is added to the output but not to this.
+        $counted = strlen($out) + strlen($tail);
         foreach ($sections as $line) {
-            $candidate = $out . "\n" . $line;
-            if (strlen($candidate) + strlen($tail) <= $budget) {
-                $out = $candidate;
+            if ($line === $always) {
+                $out .= "\n" . $line;
+            } elseif ($counted + 1 + strlen($line) <= $budget) {
+                $out .= "\n" . $line;
+                $counted += 1 + strlen($line);
             }
         }
         return $out . ($rule === null ? '' : "\n" . $rule) . $tail;

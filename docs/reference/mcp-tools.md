@@ -230,6 +230,20 @@ List the files, or the classes and functions, no test reaches through the graph:
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
+## `creation_brief`
+
+What a file about to be created should look like: the boundary it lands in and what that may not use, the closest existing files to copy from, the conventions most files in the folder share (each with its count), the files that usually change with a new one there, and the gates that will judge it. Call before creating a file.
+
+| Input | Type | Required | Constraints/default | Description |
+| --- | --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
+| `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
+| `project_id` | string | yes | minLength=1 | none |
+| `path` | string | yes | minLength=1 | The file to create, relative to the project root or absolute under it. It need not exist. |
+
+Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
+
 ## `file_context`
 
 One file's architectural context in one short answer: its boundary and the declared rules that bind it, how many files depend on it (and the closest few), the tests that reach it, and its latest commits. Call it before editing a file you have not read about, instead of grepping for its callers.

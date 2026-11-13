@@ -14,6 +14,8 @@ use Knossos\Mcp\ToolArgumentPreflight;
 use Knossos\Mcp\ToolArgumentSpec;
 use Knossos\Mcp\ToolBindings;
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\CreationBrief\CreationBriefRenderer;
+use Knossos\Query\StalenessProbe;
 use Knossos\Result\ResultEnvelope;
 
 /**
@@ -38,8 +40,14 @@ final class QueryCommand implements CliCommand
         'find-component', 'inspect-component', 'list-usages', 'architecture-summary', 'file-metrics', 'untested-code', 'explain-flow', 'impact-analysis',
         'dependency-cycles', 'architecture-health', 'check-architecture', 'suggest-location', 'change-impact',
         'changed-files-impact', 'test-impact', 'review-diff', 'architecture-context', 'export-diagram', 'export-agent-brief', 'list-boundaries',
-        'search-architecture', 'annotate-component', 'list-annotations',
+        'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief',
     ];
+
+    /**
+     * @param resource|null $errors where a text-mode warning goes, STDERR by default; tests pass their own,
+     *                              since a byte on the real STDERR stops a mutation run (see CliErrorRenderer)
+     */
+    public function __construct(private $errors = null) {}
 
     /** {@inheritDoc} */
     public function supports(string $command): bool
@@ -173,12 +181,19 @@ final class QueryCommand implements CliCommand
         $text = match ($command) {
             'list-projects' => self::projectLines($result),
             'untested-code' => self::untestedLines($result),
+            'creation-brief' => $json ? '' : CreationBriefRenderer::lines($result->data, (new StalenessProbe($context->database()))->probe($result->projectId)),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],
             'export-agent-brief' => self::writeBrief($result, $context->options->single($options, 'out')),
             default => $result->summary,
         };
         $context->output($result->jsonSerialize(), $json, $text);
+        if ($command === 'creation-brief' && !$json) {
+            // The brief may be partial (an unreadable knossos.json); the envelope says why, the text did not.
+            foreach ($result->warnings as $warning) {
+                fwrite(is_resource($this->errors) ? $this->errors : STDERR, 'warning: ' . $warning . PHP_EOL);
+            }
+        }
 
         return match ($command) {
             'quality-gate' => $result->data['passed'] ? CliCommand::EXIT_OK : CliCommand::EXIT_GATE_FAILED,

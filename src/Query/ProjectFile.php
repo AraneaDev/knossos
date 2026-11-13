@@ -6,7 +6,7 @@ namespace Knossos\Query;
 
 use Knossos\Filesystem\RelativePathRule;
 
-/** Whether a project-relative name is a regular file inside a project's root. */
+/** Whether a project-relative name is a regular file, or a directory, inside a project's root. */
 final class ProjectFile
 {
     private function __construct() {}
@@ -25,5 +25,17 @@ final class ProjectFile
         $realRoot = realpath($root);
 
         return $real !== false && $realRoot !== false && is_file($real) && str_starts_with($real, rtrim($realRoot, '/') . '/');
+    }
+
+    /** Like {@see self::exists()}, for a directory: a symlink that leaves `$root` does not count. */
+    public static function isDirectory(string $root, string $relative): bool
+    {
+        if ($root === '' || $relative === '' || !RelativePathRule::isContained($relative)) {
+            return false;
+        }
+        $real = realpath(rtrim($root, '/') . '/' . $relative);
+        $realRoot = realpath($root);
+
+        return $real !== false && $realRoot !== false && is_dir($real) && str_starts_with($real . '/', rtrim($realRoot, '/') . '/');
     }
 }

@@ -424,6 +424,59 @@
     "hub_degree_growth": 25,
     "unreferenced_candidates": 110
   },
+  "gates": [
+    {
+      "name": "cs",
+      "command": "vendor/bin/php-cs-fixer fix",
+      "applies_to": ["src/*", "tests/*", "tools/*", "workers/php/*"]
+    },
+    {
+      "name": "phpstan",
+      "command": "vendor/bin/phpstan analyse --memory-limit=1G src",
+      "applies_to": ["src/*"]
+    },
+    {
+      "name": "docblocks",
+      "command": "php tools/docstring-report.php",
+      "applies_to": ["src/*", "tools/*", "workers/php/*"]
+    },
+    {
+      "name": "file-length",
+      "command": "php tools/file-length-check.php"
+    },
+    {
+      "name": "lint-files",
+      "command": "git add -A && php tools/lint-files.php --write"
+    },
+    {
+      "name": "reference",
+      "command": "php tools/generate-reference.php",
+      "applies_to": ["src/*"]
+    },
+    {
+      "name": "mutation-pins",
+      "command": "vendor/bin/phpunit tests/phpunit/InfectionExclusionsTest.php",
+      "applies_to": ["src/*"]
+    },
+    {
+      "name": "docs",
+      "command": "npx prettier --check \"**/*.{js,json,jsonc,yaml,yml,md}\"",
+      "applies_to": [
+        "docs/*",
+        "*.md",
+        "*.json",
+        "*.js",
+        "*.jsonc",
+        "*.yaml",
+        "*.yml"
+      ]
+    },
+    {
+      "name": "rust",
+      "command": "cd workers/rust && cargo fmt && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked",
+      "applies_to": ["workers/rust/*"]
+    }
+  ],
   "dead_code_suppressions": [
     "Knossos\\Scanner\\Sdk\\FixtureBuilder*",
     "workers/typescript/src/exclusions.js#excludedBy",

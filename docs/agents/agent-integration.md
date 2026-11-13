@@ -173,6 +173,62 @@ This is the one query path that reads project source. It uses the scan's root
 guard and degrades to `unavailable` where a scan would fail, and it never needs
 write access.
 
+## Creation brief
+
+`creation_brief` (CLI: `knossos creation-brief <path|project-id> <file>`) says
+what a file about to be created should look like. It takes a project and a path
+that need not exist, relative to the project root or absolute under it, and
+reads only what the last scan stored, so the same graph gives the same answer
+and git is never run.
+
+`data` holds `placement` (the most specific declared boundary the path lands
+in, and the boundaries that one or any declared boundary containing it may not
+use), `neighbours` (at most three existing files to copy
+from), `conventions` (each with the number of files that follow it, shown only
+when the folder has at least five files of that kind and four in five follow it),
+`goes_with` (the test the folder's own pattern expects, then the files that
+usually change when a file is added there), `gates` (the checks in
+`knossos.json` that apply to the path, with their commands), `notes` (how many
+notes sit on the neighbours and the boundary) and a `signature` that ignores
+counts and neighbours. A folder with fewer than five files of the path's
+extension and role borrows from the nearest ancestor that has them, and `basis`
+says so. Without a `knossos.json` that can be read, placement and gates are
+empty and a warning carries the loader's message. The CLI prints the brief as
+text, at most 14 lines and 1,200 characters, or the envelope with `--json`. The
+text is cut from the bottom, with two lines kept through the cut: on a stale
+graph, `graph is behind (scanned 2h ago): ...` with the files changed since,
+and, when the gate commands do not fit, the gate names with a pointer to the
+`gates` list in `knossos.json`. A path that names a directory, the project root
+included, is refused, and a companion whose file has been deleted is not named.
+
+### Before creating a file
+
+Call `creation_brief` before you write a new file. For a PHP file in
+`src/Query/` of this repository it prints the following, with the last line shortened:
+
+```text
+knossos · new file in ns:Query
+may not use: ns:Cli, ns:Mcp, php-worker, python-worker, rust-worker, tests, tooling, typescript-worker
+like: src/Query/ArchitectureContextService.php, src/Query/AgentBriefService.php, src/Query/ReviewDiffService.php
+here: 97 of 99 one class per file · 96 of 99 final · median 166 lines, largest 924
+gates: cs · phpstan · docblocks · file-length · lint-files · reference · mutation-pins. Run: vendor/bin/php-cs-fixer fix; vendor/bin/phpstan analyse --memory-limit=1G src; ...
+```
+
+The gates come from the `gates` key of `knossos.json`: each has a `name`, a
+`command` of at most 300 characters and an optional `applies_to` list of globs
+(at most ten) over project-relative paths. A gate without `applies_to` covers
+every path, and `*` crosses `/`, so `src/*` covers `src/Query/A.php`. A project
+may declare up to 20 gates.
+
+The session brief shows the same gates when a session starts, in every state
+whose folder can be read, because they come from `knossos.json` and not from the
+graph: a stale graph or a folder that was never scanned still shows them. Up to
+five gates are listed with their commands. With more, the block is three lines:
+the heading, every gate name in declared order, and a pointer to the `gates`
+list in `knossos.json` or to `creation_brief` for one path. A project that
+declares none gets one line naming the scripts found in its `composer.json` and
+`package.json`.
+
 ## Component annotations
 
 Use `annotate_component` to record a durable judgment on a component and

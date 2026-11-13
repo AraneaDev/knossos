@@ -78,6 +78,15 @@ final class ProjectConfigurationBoundsTest extends KnossosTestCase
         self::assertRefused(['ignores' => [str_repeat('a', 501)]]);
     }
 
+    /** A gate command is limited in characters, as the schema counts them, not in bytes. */
+    #[Group('config')]
+    public function testAGateCommandIsMeasuredInCharactersNotBytes(): void
+    {
+        self::assertLoads(['gates' => [['name' => 'g', 'command' => 'echo ' . str_repeat('é', 150)]]]);
+        self::assertLoads(['gates' => [['name' => 'g', 'command' => str_repeat('é', 300)]]]);
+        self::assertRefused(['gates' => [['name' => 'g', 'command' => str_repeat('é', 301)]]]);
+    }
+
     /** A quality budget of exactly a hundred thousand is allowed. */
     #[Group('config')]
     public function testAQualityBudgetOfExactlyAHundredThousandIsAllowed(): void

@@ -42,6 +42,7 @@ Unknown keys are an error. These are the keys:
 | `diagnostic_suppressions` | up to 200 objects               | Diagnostics not to report, by `code` and optionally `path`.   |
 | `web_roots`               | object, up to 50 entries        | URL prefixes a web server maps to project folders.            |
 | `enrichers`               | up to 32 names                  | Installed enrichers whose facts this project wants.           |
+| `gates`                   | up to 20 objects                | Commands the project runs before a commit.                    |
 
 ### Ignores
 
@@ -240,6 +241,29 @@ Each entry names an enricher that the installation defines in
 a lowercase letter and holds lowercase letters, digits, `_` and `-`, up to 64
 characters. A path, a command line or an uppercase name is rejected: the
 project requests an enricher by name, and never carries a command to run.
+
+### Gates
+
+```json
+{
+    "version": 1,
+    "gates": [
+        { "name": "cs", "command": "vendor/bin/php-cs-fixer fix" },
+        {
+            "name": "docs",
+            "command": "npx prettier --check docs",
+            "applies_to": ["docs/*"]
+        }
+    ]
+}
+```
+
+A gate is a command you run before a commit. `name` is 1 to 40 lowercase
+letters, digits and hyphens, and unique in the file. `command` is 1 to 300
+characters, quoted as written and never run by Knossos. `applies_to` is an
+optional list of up to 10 globs over project-relative paths. A gate without it
+covers every path. A `*` crosses `/`, so `src/*` matches `src/Query/A.php`.
+The order of the list is kept.
 
 ## Precedence
 

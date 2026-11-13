@@ -301,6 +301,13 @@ final class ToolBindings
                     'granularity' => [], 'path_prefix' => self::as('path'), 'limit' => [], 'offset' => [], 'max_nodes' => [], 'timeout_ms' => [],
                 ],
             ],
+            'creation_brief' => [
+                'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->creationBrief(...$v),
+                'arguments' => [
+                    'project_id' => self::at('Usage: knossos creation-brief <path|project-id> <file> [--json]'),
+                    'path' => self::at('Usage: knossos creation-brief <path|project-id> <file> [--json]'),
+                ],
+            ],
             // MCP only: the CLI's file-context is the pane's, a different answer.
             'file_context' => [
                 'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->fileContext(...$v),

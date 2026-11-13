@@ -32,7 +32,7 @@ final readonly class ToolService
      * on the machine, so these are confined to the server's allowed roots the
      * same way a scan is. Graph-only tools answer for every project.
      */
-    private const DISK_TOOLS = ['file_context', 'change_impact', 'changed_files_impact', 'test_impact', 'review_diff'];
+    private const DISK_TOOLS = ['file_context', 'creation_brief', 'change_impact', 'changed_files_impact', 'test_impact', 'review_diff'];
 
     /** What repairs a stale graph before a read tool answers. */
     private StaleScanRefresher $refresher;

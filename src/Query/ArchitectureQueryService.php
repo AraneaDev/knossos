@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use Knossos\Git\GitHistoryProvider;
 use Knossos\Git\GitWorkingTreeProvider;
+use Knossos\Query\CreationBrief\CreationBriefQueryService;
 use Knossos\Query\Drift\DriftOracle;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\ProjectRepository;
@@ -162,6 +163,12 @@ final readonly class ArchitectureQueryService
         $declared->execute([$projectId, (string) ($result->data['path'] ?? $path)]);
 
         return $this->withNotes($result, $declared->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /** {@see CreationBriefQueryService::creationBrief()} */
+    public function creationBrief(string $projectId, string $path): ResultEnvelope
+    {
+        return $this->services->creationBriefQueries->creationBrief($projectId, $path);
     }
 
     /**

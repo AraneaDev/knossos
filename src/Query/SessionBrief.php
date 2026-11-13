@@ -75,6 +75,10 @@ final readonly class SessionBrief
      * @param list<string> $checks the components whose note the person
      *   flagged for the model to look at again (a `check` annotation),
      *   by canonical name
+     * @param array{declared: list<array{name: string, command: string}>, found: list<string>} $gates what
+     *   {@see SessionGates} found for the project: the gates `knossos.json` declares, or
+     *   the scripts that could become gates. Not called "checks", which already means
+     *   components a person flagged.
      */
     public function __construct(
         public string $state,
@@ -95,5 +99,6 @@ final readonly class SessionBrief
         public ?string $rootsFile = null,
         public int $missingNotes = 0,
         public array $checks = [],
+        public array $gates = ['declared' => [], 'found' => []],
     ) {}
 }

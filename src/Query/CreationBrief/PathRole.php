@@ -1,0 +1,86 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Knossos\Query\CreationBrief;
+
+use Knossos\Scan\Conventions\PathParts;
+use Knossos\Store\FolderFactsStore;
+use PDO;
+
+/**
+ * Whether a path is a test or a source file, for a path that may not exist yet.
+ *
+ * A file the graph holds is a test when it holds a node classified as a test
+ * module. A path that is not there is judged by what the folders show: first by
+ * the nearest folder, its own or an ancestor, that holds files of its extension,
+ * then by the shape of the test names the project's source folders have.
+ */
+final readonly class PathRole
+{
+    private const TEST_MODULE = 'quality.test_module';
+
+    public function __construct(private PDO $pdo, private FolderFactsStore $facts) {}
+
+    /** `test` or `source` for the project-relative path. */
+    public function of(string $projectId, string $path): string
+    {
+        $recorded = $this->recorded($projectId, $path);
+        if ($recorded !== null) {
+            return $recorded;
+        }
+        $extension = PathParts::extension($path);
+        // The nearest folder, the path's own or an ancestor, that holds any file of the
+        // extension decides, as it decides the basis: one that holds only tests makes this a test.
+        for ($candidate = PathParts::directory($path);; $candidate = PathParts::directory($candidate)) {
+            $test = $this->facts->of($projectId, $candidate, $extension, 'test') !== null;
+            $source = $this->facts->of($projectId, $candidate, $extension, 'source') !== null;
+            if ($test && !$source) {
+                return 'test';
+            }
+            if ($test || $source || $candidate === '') {
+                break;
+            }
+        }
+        foreach ($this->facts->testPathPatterns($projectId, $extension, Conventions::MIN_FILES, Conventions::SHARE_NUMERATOR, Conventions::SHARE_DENOMINATOR) as $pattern) {
+            if (preg_match(self::regex($pattern), $path) === 1) {
+                return 'test';
+            }
+        }
+
+        return 'source';
+    }
+
+    /** The role the graph recorded for a scanned file, or null when the file is not in it. */
+    private function recorded(string $projectId, string $path): ?string
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT EXISTS (SELECT 1 FROM classifications c JOIN nodes n ON n.id = c.node_id WHERE n.file_id = f.id AND c.role = ?) FROM files f WHERE f.project_id = ? AND f.relative_path = ?',
+        );
+        $statement->execute([self::TEST_MODULE, $projectId, $path]);
+        $test = $statement->fetchColumn();
+
+        return $test === false ? null : ((int) $test === 1 ? 'test' : 'source');
+    }
+
+    /**
+     * The regular expression of the paths a test-path pattern could produce, `<name>` any file name part and `<dir>/` any directory.
+     *
+     * A pattern is learnt only with `<dir>` as a whole leading segment (`<dir>/<name>.spec.ts`),
+     * so a `<dir>` that is not followed by a slash is not a hole and is matched literally.
+     */
+    public static function regex(string $pattern): string
+    {
+        $parts = preg_split('/(<dir>\/|<name>)/', $pattern, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [];
+        $regex = '';
+        foreach ($parts as $part) {
+            $regex .= match ($part) {
+                '<dir>/' => '(?:.*/)?',
+                '<name>' => '[^/]+',
+                default => preg_quote($part, '#'),
+            };
+        }
+
+        return '#^' . $regex . '$#';
+    }
+}

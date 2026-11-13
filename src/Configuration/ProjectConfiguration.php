@@ -19,6 +19,7 @@ final readonly class ProjectConfiguration
      * @param int|null $refreshBudgetMs how long refresh_if_stale may rescan inside a query, 0 for never; null for its default
      * @param array<string, string> $webRoots URL path prefix (`/static/`) => the project folder a web server serves it from (`web/public/`)
      * @param list<string> $enrichers names of installation-defined enrichers the project asks for
+     * @param list<ProjectGate> $gates commands the project runs before a commit, in the order it declared them
      */
     public function __construct(
         public ?string $path = null,
@@ -38,5 +39,6 @@ final readonly class ProjectConfiguration
         public array $webRoots = [],
         public array $enrichers = [],
         public array $diagnosticSuppressions = [],
+        public array $gates = [],
     ) {}
 }
