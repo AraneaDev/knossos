@@ -22,28 +22,34 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
 
     private string $root = '';
 
+    /** @var list<string> every tree a test made, so a test that scans twice leaves none behind */
+    private array $roots = [];
+
     private PDO $pdo;
 
     private string $projectId = '';
 
     protected function tearDown(): void
     {
-        if ($this->root !== '') {
-            $this->removeTempTree($this->root);
+        foreach ($this->roots as $root) {
+            $this->removeTempTree($root);
         }
         parent::tearDown();
     }
 
     /** Scan a tree of six services and tests, a knossos.json with a boundary, a deny policy and two gates. */
-    private function scanned(): CreationBriefQueryService
+    private function scanned(bool $withConfiguration = true): CreationBriefQueryService
     {
         $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->roots[] = $this->root;
         foreach (self::SERVICES as $name) {
             $this->service($name);
         }
         mkdir($this->root . '/src/Mcp', 0o777, true);
         file_put_contents($this->root . '/src/Mcp/Tool.php', "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Mcp;\n\nfinal class Tool {}\n");
-        $this->config([['name' => 'cs', 'command' => 'vendor/bin/php-cs-fixer fix'], ['name' => 'docs', 'command' => 'npx prettier --check', 'applies_to' => ['docs/*']]]);
+        if ($withConfiguration) {
+            $this->config([['name' => 'cs', 'command' => 'vendor/bin/php-cs-fixer fix'], ['name' => 'docs', 'command' => 'npx prettier --check', 'applies_to' => ['docs/*']]]);
+        }
 
         $this->pdo = $this->freshTestDatabase();
         $this->projectId = $this->scan()->projectId;
@@ -138,14 +144,21 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         self::assertNotContains('test', array_column($data['goes_with'], 'kind'));
     }
 
-    /** A test in a folder that holds no files yet is still a test when the project's source folders name tests that way. */
+    /** A test in a folder that holds no files yet is a test when the project's source folders name tests that way. */
     public function testANewTestFolderIsRecognisedByTheNameTestsHaveElsewhere(): void
     {
-        $data = $this->scanned()->creationBrief($this->projectId, 'tests/phpunit/Query/BrandNewServiceTest.php')->data;
-        $elsewhere = $this->scanned()->creationBrief($this->projectId, 'tests/phpunit/Other/ThingTest.php')->data;
+        $service = $this->scanned();
+        // A source folder elsewhere whose files all have a sibling `.spec.php`, as a `<dir>/` pattern says it.
+        $this->pdo->prepare('INSERT INTO folder_facts (project_id, directory, extension, role, files, facts_json) VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([$this->projectId, 'lib/old', 'php', 'source', 5, json_encode(['test_path' => ['pattern' => '<dir>/<name>.spec.php', 'files' => 5]], JSON_THROW_ON_ERROR)]);
 
-        self::assertSame('test', $data['role']);
-        self::assertSame('source', $elsewhere['role'], 'a different folder is not the folder the pattern names');
+        $spec = $service->creationBrief($this->projectId, 'lib/new/Thing.spec.php')->data;
+        $plain = $service->creationBrief($this->projectId, 'lib/new/Thing.php')->data;
+        $root = $service->creationBrief($this->projectId, 'Thing.spec.php')->data;
+
+        self::assertSame('test', $spec['role']);
+        self::assertSame('source', $plain['role'], 'a name that does not have the shape is a source file');
+        self::assertSame('test', $root['role'], 'a directory hole matches the root too');
     }
 
     public function testAnExistingPathSaysSo(): void
@@ -199,10 +212,51 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         self::assertStringContainsString('knossos.json could not be read', $result->warnings[0]);
     }
 
+    public function testAnAbsolutePathOutsideTheRootAndADirectoryAreRefused(): void
+    {
+        $service = $this->scanned();
+
+        foreach (['/etc/passwd' => 'is outside the project', 'src/Query/' => 'names a directory'] as $path => $message) {
+            try {
+                $service->creationBrief($this->projectId, (string) $path);
+                self::fail($path . ' was briefed.');
+            } catch (InvalidArgumentException $error) {
+                self::assertStringContainsString($message, $error->getMessage());
+            }
+        }
+    }
+
+    /** A file with no extension, and one at the root, are briefed from what their folder holds, without error. */
+    public function testAFileWithoutAnExtensionAndAFileAtTheRootAnswer(): void
+    {
+        $service = $this->scanned();
+
+        $makefile = $service->creationBrief($this->projectId, 'src/Query/Makefile')->data;
+        $readme = $service->creationBrief($this->projectId, 'README')->data;
+
+        self::assertSame(['', 'src/Query', null], [$makefile['extension'], $makefile['directory'], $makefile['basis']]);
+        self::assertSame(['', '', null], [$readme['extension'], $readme['directory'], $readme['basis']]);
+        self::assertSame(['cs'], array_column($readme['gates'], 'name'));
+    }
+
+    /** A project with no knossos.json has nothing declared (scanned without one): empty placement and gates, and no warning. */
+    public function testAbsentConfigurationIsNotAnError(): void
+    {
+        $service = $this->scanned(withConfiguration: false);
+
+        $result = $service->creationBrief($this->projectId, 'src/Query/FooService.php');
+
+        self::assertSame(['boundary' => null, 'may_not_use' => []], $result->data['placement']);
+        self::assertSame([], $result->data['gates']);
+        self::assertSame([], $result->warnings);
+        self::assertNotSame([], $result->data['conventions']);
+    }
+
     /** On the 20,000-node synthetic graph the brief is a few indexed reads. */
     public function testTheBriefOnALargeGraphIsAnsweredQuickly(): void
     {
         $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->roots[] = $this->root;
         mkdir($this->root . '/src', 0o777, true);
         [$this->pdo, , $ids] = $this->storeFixture();
         $this->projectId = $ids['project'];
@@ -211,15 +265,21 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         $this->pdo->prepare('INSERT INTO files (id, project_id, relative_path, content_hash, size, mtime, language, scanner_version, last_scan_id, line_count) VALUES (?, ?, ?, ?, 1, 1, ?, ?, ?, 9)')
             ->execute([$ids['file'], $this->projectId, 'src/Checkout.php', 'h', 'php', '1', $ids['scan']]);
         SyntheticGraph::seed($this->pdo, $ids, 20000, 4);
+        $insert = $this->pdo->prepare('INSERT INTO files (id, project_id, relative_path, content_hash, size, mtime, language, scanner_version, last_scan_id, line_count) VALUES (?, ?, ?, ?, 1, 1, ?, ?, ?, 9)');
+        for ($i = 0; $i < 250; ++$i) {
+            $insert->execute(['pop:' . $i, $this->projectId, sprintf('src/Pop/File%03d.php', $i), 'h', 'php', '1', $ids['scan']]);
+        }
         $this->pdo->prepare('UPDATE projects SET root_realpath = ?, active_scan_id = ? WHERE id = ?')->execute([realpath($this->root), $ids['scan'], $this->projectId]);
         (new FolderFactsStore($this->pdo))->replace($this->projectId, (new FolderFactsBuilder($this->pdo))->rows($this->projectId));
         $service = new CreationBriefQueryService($this->pdo);
 
         $started = hrtime(true);
-        $data = $service->creationBrief($this->projectId, 'src/NewThing.php')->data;
+        $data = $service->creationBrief($this->projectId, 'src/Pop/NewThing.php')->data;
         $milliseconds = (hrtime(true) - $started) / 1e6;
 
-        self::assertSame('src/NewThing.php', $data['path']);
+        self::assertSame(250, $data['basis']['files'] ?? null);
+        self::assertCount(3, $data['neighbours']);
+        self::assertNotSame([], $data['conventions']);
         // The bound catches a change of complexity class, not a regression of tens of milliseconds: CI runs under pcov on slower runners.
         self::assertLessThan(1500.0, $milliseconds);
     }

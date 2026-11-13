@@ -55,8 +55,13 @@ final readonly class PathRole
         return $test === false ? null : ((int) $test === 1 ? 'test' : 'source');
     }
 
-    /** The regular expression of the paths a test-path pattern could produce, `<name>` any file name part and `<dir>` any directory. */
-    private static function regex(string $pattern): string
+    /**
+     * The regular expression of the paths a test-path pattern could produce, `<name>` any file name part and `<dir>/` any directory.
+     *
+     * A pattern is learnt only with `<dir>` as a whole leading segment (`<dir>/<name>.spec.ts`),
+     * so a `<dir>` that is not followed by a slash is not a hole and is matched literally.
+     */
+    public static function regex(string $pattern): string
     {
         $parts = preg_split('/(<dir>\/|<name>)/', $pattern, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [];
         $regex = '';

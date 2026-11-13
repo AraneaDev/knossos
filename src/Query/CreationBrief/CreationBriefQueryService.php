@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Knossos\Query\CreationBrief;
 
+use InvalidArgumentException;
 use Knossos\Configuration\ProjectConfiguration;
 use Knossos\Configuration\ProjectConfigurationLoader;
+use Knossos\Discovery\DiscoveryException;
 use Knossos\Query\AbstractArchitectureQueryService;
 use Knossos\Query\ProjectFile;
 use Knossos\Query\ProjectRelativePath;
@@ -13,7 +15,6 @@ use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\Conventions\PathParts;
 use Knossos\Scan\Conventions\TestPathPattern;
 use Knossos\Store\FolderFactsStore;
-use Throwable;
 
 /**
  * The `creation_brief` tool: what a file about to be created should look like.
@@ -36,20 +37,25 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
         $project = $this->project($projectId);
         $root = rtrim((string) $project['root_realpath'], '/');
         $relative = ProjectRelativePath::of($root, $path);
+        if (str_ends_with($relative, '/')) {
+            throw new InvalidArgumentException(sprintf('%s names a directory; a brief is for a file.', $path));
+        }
         $directory = PathParts::directory($relative);
         $extension = PathParts::extension($relative);
         $facts = new FolderFactsStore($this->pdo);
         $role = (new PathRole($this->pdo, $facts))->of($projectId, $relative);
 
         $warnings = [];
+        $readable = true;
         $configuration = new ProjectConfiguration();
         try {
             $configuration = ProjectConfigurationLoader::load($root, [$root]);
-        } catch (Throwable $error) {
+        } catch (DiscoveryException $error) {
+            $readable = false;
             $warnings[] = sprintf('The project\'s knossos.json could not be read, so placement and gates are left out: %s', $error->getMessage());
         }
 
-        $placement = $warnings === [] ? (new Placement($this->pdo))->of($projectId, $relative, $configuration->policies) : ['boundary' => null, 'may_not_use' => []];
+        $placement = $readable ? (new Placement($this->pdo))->of($projectId, $relative, $configuration->policies) : ['boundary' => null, 'may_not_use' => []];
         $basis = $this->basis($facts, $projectId, $directory, $extension, $role);
         $population = $basis === null ? null : $facts->of($projectId, $basis['directory'], $extension, $role);
         $neighbours = $basis === null ? [] : Neighbours::rank(

@@ -175,7 +175,7 @@ final class QueryCommand implements CliCommand
         $text = match ($command) {
             'list-projects' => self::projectLines($result),
             'untested-code' => self::untestedLines($result),
-            'creation-brief' => CreationBriefRenderer::lines($result->data, $json ? null : (new StalenessProbe($context->database()))->probe($result->projectId)),
+            'creation-brief' => $json ? '' : CreationBriefRenderer::lines($result->data, (new StalenessProbe($context->database()))->probe($result->projectId)),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],
             'export-agent-brief' => self::writeBrief($result, $context->options->single($options, 'out')),
