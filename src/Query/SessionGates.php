@@ -62,9 +62,12 @@ final readonly class SessionGates
      * cannot be read: a config problem is the scan's to report, not the
      * session hook's.
      *
+     * @param \Closure(string, int): (string|false)|null $read reads at most the given
+     *   number of bytes of a file, or says it cannot; a seam so the "cannot be read"
+     *   branch can be driven where file permissions do not apply (a root user).
      * @return array{declared: list<array{name: string, command: string}>, found: list<string>}
      */
-    public static function forRoot(string $root): array
+    public static function forRoot(string $root, ?\Closure $read = null): array
     {
         try {
             $configuration = ProjectConfigurationLoader::load($root, [$root]);
@@ -74,8 +77,8 @@ final readonly class SessionGates
 
         return self::of(
             $configuration,
-            self::scripts($root . '/composer.json'),
-            self::scripts($root . '/package.json'),
+            self::scripts($root . '/composer.json', $read),
+            self::scripts($root . '/package.json', $read),
         );
     }
 
@@ -97,14 +100,16 @@ final readonly class SessionGates
      * read gives no names without a warning. A list-valued `scripts` has no
      * names, only positions.
      *
+     * @param \Closure(string, int): (string|false)|null $read
      * @return array<array-key, mixed>
      */
-    private static function scripts(string $path): array
+    private static function scripts(string $path, ?\Closure $read): array
     {
         if (is_link($path) || !is_file($path)) {
             return [];
         }
-        $contents = @file_get_contents($path, false, null, 0, self::MAX_MANIFEST_BYTES + 1);
+        $limit = self::MAX_MANIFEST_BYTES + 1;
+        $contents = $read !== null ? $read($path, $limit) : @file_get_contents($path, false, null, 0, $limit);
         if (!is_string($contents) || strlen($contents) > self::MAX_MANIFEST_BYTES) {
             return [];
         }

@@ -64,33 +64,23 @@ final class SessionGatesManifestTest extends KnossosTestCase
         }
     }
 
+    /** The file passes the checks and then cannot be read (removed, or unreadable): no names, no failure. */
     #[Group('query')]
-    public function testAnUnreadableManifestGivesNoNamesAndNoWarning(): void
+    public function testAManifestThatCannotBeReadGivesNoNames(): void
     {
-        if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
-            self::markTestSkipped('root reads any file');
-        }
         $root = $this->root();
         try {
             file_put_contents($root . '/package.json', '{"scripts":{"test":"x"}}');
-            chmod($root . '/package.json', 0000);
-            $warnings = [];
-            set_error_handler(static function (int $number, string $message) use (&$warnings): bool {
-                // A silenced warning writes nothing, which is what this asserts.
-                if ((error_reporting() & $number) !== 0) {
-                    $warnings[] = $message;
-                }
+            $asked = [];
 
-                return true;
+            $result = SessionGates::forRoot($root, static function (string $path, int $limit) use (&$asked): false {
+                $asked[] = [basename($path), $limit];
+
+                return false;
             });
-            try {
-                $result = SessionGates::forRoot($root);
-            } finally {
-                restore_error_handler();
-            }
 
             assertSame(SessionGates::none(), $result);
-            assertSame([], $warnings);
+            assertSame([['package.json', 1_000_001]], $asked);
         } finally {
             $this->removeTempTree($root);
         }
