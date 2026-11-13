@@ -146,6 +146,108 @@ final class FolderCompanionsBuilderTest extends KnossosTestCase
         self::assertSame([], $this->store->companionsOf($this->project, 'src/Q'));
     }
 
+    /** The smallest history that can claim a companion: three additions, the path in all three. */
+    public function testExactlyThreeAdditionsWithThePathInAllThreeGiveACompanion(): void
+    {
+        $commits = array_map(static fn(int $i): array => [['A', 'src/Q/X' . $i . '.php'], ['M', 'tools/list.txt']], range(1, 3));
+
+        $this->refreshFrom($commits);
+
+        self::assertEquals([['path' => 'tools/list.txt', 'commits' => 3, 'of' => 3]], $this->store->companionsOf($this->project, 'src/Q'));
+    }
+
+    /** Three of five is 60%, in; two of five is 40%, out. */
+    public function testTheSixtyPercentShareIsInclusive(): void
+    {
+        $commits = [];
+        foreach (range(1, 5) as $i) {
+            $changes = [['A', 'src/Q/X' . $i . '.php']];
+            if ($i <= 3) {
+                $changes[] = ['M', 'in.txt'];
+            }
+            if ($i >= 4) {
+                $changes[] = ['M', 'out.txt'];
+            }
+            $commits[] = $changes;
+        }
+
+        $this->refreshFrom($commits);
+
+        self::assertEquals([['path' => 'in.txt', 'commits' => 3, 'of' => 5]], $this->store->companionsOf($this->project, 'src/Q'));
+    }
+
+    /** More than five qualifying paths keep five, the most common first and the path breaking ties. */
+    public function testOnlyTheFiveBestCompanionsAreKeptInOrder(): void
+    {
+        $commits = [];
+        foreach (range(1, 4) as $i) {
+            $changes = [['A', 'src/Q/X' . $i . '.php']];
+            foreach (['g', 'f', 'e', 'd', 'c', 'b', 'a'] as $letter) {
+                // `a` in 4 commits, `b` to `g` in 3 each (all of them but the fourth for letters after `a`).
+                if ($letter === 'a' || $i <= 3) {
+                    $changes[] = ['M', 'docs/' . $letter . '.md'];
+                }
+            }
+            $commits[] = $changes;
+        }
+
+        $this->refreshFrom($commits);
+
+        self::assertSame(
+            ['docs/a.md', 'docs/b.md', 'docs/c.md', 'docs/d.md', 'docs/e.md'],
+            array_column($this->store->companionsOf($this->project, 'src/Q'), 'path'),
+        );
+    }
+
+    /** Directories named in digits keep their names and their order; "10" is not read as a number. */
+    public function testNumericDirectoriesAreKeptAsStrings(): void
+    {
+        $commits = array_map(static fn(int $i): array => [['A', '2024/X' . $i . '.php'], ['M', 'CHANGELOG.md']], range(1, 3));
+
+        $this->refreshFrom($commits);
+
+        self::assertEquals([['path' => 'CHANGELOG.md', 'commits' => 3, 'of' => 3]], $this->store->companionsOf($this->project, '2024'));
+    }
+
+    /** Parsing is checked against what git really writes for `--name-status -z`, not a hand-built string. */
+    public function testCompanionsAreFoundInRealGitOutput(): void
+    {
+        if (self::locateGit() === null) {
+            self::markTestSkipped('git is not available.');
+        }
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src/Q', 0o777, true);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            foreach (['A', 'B', 'C'] as $name) {
+                file_put_contents($root . '/src/Q/' . $name . '.php', "<?php\n");
+                file_put_contents($root . '/registry.txt', $name . "\n", FILE_APPEND);
+                $this->runFixtureCommand(['git', '-C', $root, 'add', '.']);
+                $this->runFixtureCommand(['git', '-C', $root, '-c', 'user.name=Knossos Test', '-c', 'user.email=test@example.test', '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'add ' . $name]);
+            }
+
+            (new FolderCompanionsBuilder($this->store))->refresh($this->project, $root, 'head1');
+
+            self::assertSame('ok', $this->storedStatus());
+            self::assertEquals(
+                [['path' => 'registry.txt', 'commits' => 3, 'of' => 3]],
+                $this->store->companionsOf($this->project, 'src/Q'),
+            );
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * Run the builder over commits of `[status, path]` entries.
+     *
+     * @param list<list<array{string, string}>> $commits
+     */
+    private function refreshFrom(array $commits): void
+    {
+        (new FolderCompanionsBuilder($this->store, new RecordingGitRunner(static fn(): string => self::log($commits))))->refresh($this->project, '/repo', 'head1');
+    }
+
     /**
      * `git log -z --name-status` output for commits of `[status, path]` entries.
      *

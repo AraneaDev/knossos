@@ -40,7 +40,7 @@ final class TestPathPattern
             return null;
         }
         $patterns = array_keys($counts);
-        usort($patterns, static fn(string $a, string $b): int => [$counts[$b], $a] <=> [$counts[$a], $b]);
+        usort($patterns, static fn(string $a, string $b): int => $counts[$b] <=> $counts[$a] ?: strcmp($a, $b));
 
         return ['pattern' => $patterns[0], 'files' => $counts[$patterns[0]]];
     }

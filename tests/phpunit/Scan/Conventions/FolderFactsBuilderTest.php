@@ -201,20 +201,46 @@ final class FolderFactsBuilderTest extends KnossosTestCase
         self::assertSame($this->rows(), $this->rows());
     }
 
-    /** Twenty thousand nodes are folded into rows within the scan's budget for this step. */
-    public function testRowsForTwentyThousandNodesAreBuiltQuickly(): void
+    /**
+     * A graph shaped like a real one (half the nodes in test files, tens of thousands of edges
+     * leaving them) is folded within the scan's budget, test pairing included.
+     */
+    public function testRowsForARealisticGraphAreBuiltQuickly(): void
     {
         $this->pdo->prepare('INSERT INTO files (id, project_id, relative_path, content_hash, size, mtime, language, scanner_version, last_scan_id, line_count) VALUES (?, ?, ?, ?, 1, 1, ?, ?, ?, 9)')
             ->execute([$this->ids['file'], $this->ids['project'], 'src/Checkout.php', 'h', 'php', '1', $this->ids['scan']]);
         SyntheticGraph::seed($this->pdo, $this->ids, 20000, 4);
+        $project = $this->ids['project'];
+        $this->pdo->exec(
+            "INSERT INTO files (id, project_id, relative_path, content_hash, size, mtime, language, scanner_version, last_scan_id, line_count)
+             WITH RECURSIVE seq(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM seq WHERE i < 399)
+             SELECT 'bulk:' || i, '$project', CASE i % 2 WHEN 0 THEN 'tests/d' || (i % 40) || '/F' || i || 'Test.php' ELSE 'src/d' || (i % 40) || '/F' || i || '.php' END,
+                    'h', 1, 1, 'php', '1', '{$this->ids['scan']}', 50 FROM seq",
+        );
+        $this->pdo->exec("UPDATE nodes SET file_id = 'bulk:' || (rowid % 400) WHERE project_id = '$project'");
+        $this->pdo->exec(
+            "INSERT INTO classifications (id, project_id, node_id, role, origin, confidence, rule_id, file_id, last_scan_id)
+             SELECT 'c:' || id, project_id, id, 'quality.test_module', 'rule', 'certain', 'r', file_id, '{$this->ids['scan']}'
+             FROM nodes WHERE project_id = '$project' AND rowid % 400 % 2 = 0 AND rowid % 400 < 399",
+        );
+        self::assertGreaterThan(30000, (int) $this->pdo->query("SELECT COUNT(*) FROM edges e JOIN classifications c ON c.node_id = e.source_id WHERE e.project_id = '$project'")->fetchColumn());
         $builder = new FolderFactsBuilder($this->pdo);
 
         $started = hrtime(true);
-        $rows = $builder->rows($this->ids['project']);
+        $rows = $builder->rows($project);
         $milliseconds = (hrtime(true) - $started) / 1e6;
 
-        self::assertCount(1, $rows);
+        self::assertGreaterThan(40, count($rows));
         self::assertLessThan(450.0, $milliseconds);
+    }
+
+    /** Directories compare as strings, so `10` sorts before `9` even though both are numeric. */
+    public function testRowsOfNumericDirectoriesComeOutInStringOrder(): void
+    {
+        $this->file('9/A.php', 1);
+        $this->file('10/A.php', 1);
+
+        self::assertSame(['10', '9'], array_column($this->rows(), 'directory'));
     }
 
     /** @return list<array{directory: string, extension: string, role: string, files: int, facts: array<string, mixed>}> */

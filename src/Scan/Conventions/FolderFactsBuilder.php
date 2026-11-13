@@ -50,7 +50,7 @@ final readonly class FolderFactsBuilder
         $files = [];
         /** @var array<string, array<string, mixed>> $populations */
         $populations = [];
-        $statement = $this->pdo->prepare('SELECT id, relative_path, line_count FROM files WHERE project_id = ?');
+        $statement = $this->pdo->prepare('SELECT id, relative_path, line_count FROM files WHERE project_id = ? ORDER BY relative_path');
         $statement->execute([$projectId]);
         foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$id, $path, $lines]) {
             $directory = PathParts::directory((string) $path);
@@ -77,7 +77,7 @@ final readonly class FolderFactsBuilder
                 'facts' => self::facts($population),
             ];
         }
-        usort($rows, static fn(array $a, array $b): int => [$a['directory'], $a['extension'], $a['role']] <=> [$b['directory'], $b['extension'], $b['role']]);
+        usort($rows, static fn(array $a, array $b): int => strcmp($a['directory'], $b['directory']) ?: strcmp($a['extension'], $b['extension']) ?: strcmp($a['role'], $b['role']));
 
         return $rows;
     }
@@ -194,15 +194,18 @@ final readonly class FolderFactsBuilder
             return;
         }
         $kinds = "'" . implode("', '", self::TEST_EDGES) . "'";
+        // Driven from the test files' nodes through the source index, with targets in test files dropped
+        // and the pairs grouped in SQL, so PHP sees one row per pair of files and not one per edge.
         $statement = $this->pdo->prepare(
-            "SELECT DISTINCT s.file_id, t.file_id FROM edges e JOIN nodes s ON s.id = e.source_id JOIN nodes t ON t.id = e.target_id
-             WHERE e.project_id = ? AND e.kind IN ($kinds) AND t.file_id IS NOT NULL AND s.file_id <> t.file_id
-               AND s.file_id IN (
-                   SELECT n.file_id FROM classifications c JOIN nodes n ON n.id = c.node_id
-                   WHERE c.project_id = ? AND c.role = 'quality.test_module' AND n.file_id IS NOT NULL
-               )",
+            "WITH test_files(file_id) AS (
+                 SELECT DISTINCT n.file_id FROM classifications c JOIN nodes n ON n.id = c.node_id
+                 WHERE c.project_id = ? AND c.role = 'quality.test_module' AND n.file_id IS NOT NULL
+             )
+             SELECT s.file_id, t.file_id FROM test_files JOIN nodes s ON s.file_id = test_files.file_id JOIN edges e ON e.source_id = s.id JOIN nodes t ON t.id = e.target_id
+             WHERE e.kind IN ($kinds) AND t.file_id IS NOT NULL AND t.file_id NOT IN (SELECT file_id FROM test_files)
+             GROUP BY s.file_id, t.file_id",
         );
-        $statement->execute([$projectId, $projectId]);
+        $statement->execute([$projectId]);
         /** @var array<string, string> $best the test file chosen for each source file */
         $best = [];
         foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$testFile, $sourceFile]) {
@@ -214,7 +217,7 @@ final readonly class FolderFactsBuilder
             if ($stem === '' || !str_contains(basename($testPath), $stem)) {
                 continue;
             }
-            if (!isset($best[(string) $sourceFile]) || $testPath < $best[(string) $sourceFile]) {
+            if (!isset($best[(string) $sourceFile]) || strcmp($testPath, $best[(string) $sourceFile]) < 0) {
                 $best[(string) $sourceFile] = $testPath;
             }
         }
@@ -274,12 +277,29 @@ final readonly class FolderFactsBuilder
         $best = null;
         foreach ($counts as $suffix => $files) {
             $suffix = (string) $suffix;
-            if ($best === null || ([$files, strlen($suffix), $best['value']] <=> [$best['files'], strlen($best['value']), $suffix]) > 0) {
+            if ($best === null || self::betterSuffix($suffix, $files, $best)) {
                 $best = ['value' => $suffix, 'files' => $files];
             }
         }
 
         return $best === null || $best['files'] < 2 ? null : $best;
+    }
+
+    /**
+     * Whether a suffix beats the best so far: more files, then longer, then the smaller string.
+     *
+     * @param array{value: string, files: int} $best
+     */
+    private static function betterSuffix(string $suffix, int $files, array $best): bool
+    {
+        if ($files !== $best['files']) {
+            return $files > $best['files'];
+        }
+        if (strlen($suffix) !== strlen($best['value'])) {
+            return strlen($suffix) > strlen($best['value']);
+        }
+
+        return strcmp($best['value'], $suffix) > 0;
     }
 
     /**
@@ -291,7 +311,7 @@ final readonly class FolderFactsBuilder
     private static function top(array $counts): array
     {
         $names = array_map('strval', array_keys($counts));
-        usort($names, static fn(string $a, string $b): int => [$counts[$b], $a] <=> [$counts[$a], $b]);
+        usort($names, static fn(string $a, string $b): int => $counts[$b] <=> $counts[$a] ?: strcmp($a, $b));
 
         return array_map(static fn(string $name): array => ['type' => $name, 'files' => $counts[$name]], array_slice($names, 0, self::TOP));
     }

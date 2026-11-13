@@ -123,7 +123,7 @@ final readonly class FolderCompanionsBuilder
                     $companions[] = ['path' => (string) $path, 'commits' => $commits, 'of' => $of];
                 }
             }
-            usort($companions, static fn(array $a, array $b): int => [$b['commits'], $a['path']] <=> [$a['commits'], $b['path']]);
+            usort($companions, static fn(array $a, array $b): int => $b['commits'] <=> $a['commits'] ?: strcmp($a['path'], $b['path']));
             if ($companions !== []) {
                 $byDirectory[(string) $directory] = array_slice($companions, 0, self::PER_DIRECTORY);
             }
