@@ -349,6 +349,15 @@ impl Calls<'_, '_> {
                     }
                 }
             }
+            // `from_value(v).map(ToolCall::RunStart)`: an `Option` or a
+            // `Result` of what the function or variant named returns.
+            syn::Expr::MethodCall(call)
+                if call.turbofish.is_none() && call.method == "map" && call.args.len() == 1 =>
+            {
+                if let Some(mapped) = self.mapped_type(call) {
+                    return Some(format!("{WRAP_MARK}{mapped}"));
+                }
+            }
             // `entries.iter().find(..)`, `entries.last()`: an `Option` of
             // one element of the collection.
             syn::Expr::MethodCall(call) if call.turbofish.is_none() => {
@@ -381,6 +390,41 @@ impl Calls<'_, '_> {
             Some(path) => self.walk.stated_type(&self.container, &path),
             None if is_place(expression) => self.receiver_owner(expression),
             None => None,
+        }
+    }
+
+    /// What `.map(f)` makes of the value an `Option` or a `Result` holds,
+    /// when `f` is named rather than a closure: a tuple variant's enum
+    /// (`ToolCall::RunStart`) or what a function returns. Not for a `map`
+    /// over an iterator of known element, whose result is no `Option`.
+    fn mapped_type(&self, call: &syn::ExprMethodCall) -> Option<String> {
+        let syn::Expr::Path(function) = call.args.first()? else {
+            return None;
+        };
+        if function.qself.is_some() || self.iterator_element(&call.receiver).is_some() {
+            return None;
+        }
+        let receiver = self.value_type(&call.receiver);
+        if receiver
+            .as_deref()
+            .is_some_and(|held| unwrapped(held).is_none())
+        {
+            return None;
+        }
+        let path = &function.path;
+        let last = ident_name(&path.segments.last()?.ident);
+        if path.segments.len() >= 2 && last.starts_with(char::is_uppercase) {
+            let mut owner = path.clone();
+            owner.segments.pop();
+            owner.segments.pop_punct();
+            return self.walk.stated_type(&self.container, &owner);
+        }
+        match self.walk.resolve_path(&self.container, path)? {
+            (target, false) => self.walk.returned_type(&target),
+            (target, true) if self.walk.own_declarations.contains(&target) => {
+                self.walk.returned_type(&target)
+            }
+            _ => None,
         }
     }
 
@@ -1489,7 +1533,8 @@ fn cfg_alternatives(statements: &[syn::Stmt]) -> usize {
 
 /// Whether a method call on an `Option` or a `Result` returns one holding
 /// the same value, borrowed, moved out or copied: `as_ref`, `as_mut`,
-/// `as_deref`, `take`, `cloned` and the like.
+/// `as_deref`, `take`, `cloned` and the like, and the conversions between
+/// the two (`ok_or`, `ok`, `map_err`, anyhow's `context`).
 fn keeps_wrapper(call: &syn::ExprMethodCall) -> bool {
     matches!(
         ident_name(&call.method).as_str(),
@@ -1505,6 +1550,14 @@ fn keeps_wrapper(call: &syn::ExprMethodCall) -> bool {
             | "or_else"
             | "filter"
             | "inspect"
+            // An `Option` turned into a `Result` or back, or a `Result`
+            // whose error is changed, still holds the same value.
+            | "map_err"
+            | "ok_or"
+            | "ok_or_else"
+            | "ok"
+            | "context"
+            | "with_context"
     )
 }
 
