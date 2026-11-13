@@ -116,6 +116,7 @@ php	src/Configuration/EnricherDefinition.php
 php	src/Configuration/EnrichersFile.php
 php	src/Configuration/ProjectConfiguration.php
 php	src/Configuration/ProjectConfigurationLoader.php
+php	src/Configuration/ProjectGate.php
 php	src/Discovery/DiscoveredFile.php
 php	src/Discovery/DiscoveryConfig.php
 php	src/Discovery/DiscoveryDiagnostic.php
@@ -575,6 +576,7 @@ php	tests/phpunit/Configuration/ProjectConfigurationBoundsTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationLoaderTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationSchemaAgreementTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationTest.php
+php	tests/phpunit/Configuration/ProjectGatesTest.php
 php	tests/phpunit/Configuration/RepositoryConfigurationTest.php
 php	tests/phpunit/CoverageBudgetsTest.php
 php	tests/phpunit/Discovery/BoundedContentReadTest.php

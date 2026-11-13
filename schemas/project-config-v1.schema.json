@@ -199,6 +199,30 @@
       "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
       "description": "Names of enrichers the installation defines in enrichers.json, whose facts this project wants merged into its graph. A name only: the project never carries a command."
     },
+    "gates": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "command"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "command": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "applies_to": {
+            "type": "array",
+            "maxItems": 10,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      },
+      "description": "Commands the project runs before a commit, such as its formatter and linter. A creation brief lists the ones whose applies_to globs match the new file; without applies_to a gate covers every path. Names are unique."
+    },
     "web_roots": {
       "type": "object",
       "maxProperties": 50,

@@ -34,6 +34,7 @@ final class ProjectConfigurationSchemaAgreementTest extends TestCase
             'quality_budgets' => [ProjectConfigurationLoader::BUDGET_KEYS, 'quality_budgets'],
             'boundaries' => [ProjectConfigurationLoader::BOUNDARY_KEYS, 'boundaries'],
             'policies' => [ProjectConfigurationLoader::POLICY_KEYS, 'policies'],
+            'gates' => [ProjectConfigurationLoader::GATE_KEYS, 'gates'],
         ];
     }
 

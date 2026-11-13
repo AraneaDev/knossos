@@ -31,7 +31,7 @@ final class ProjectConfigurationLoader
     /** The framework hints knossos.json accepts; the schema's `frameworks` enum must list the same. */
     public const FRAMEWORKS = ['laravel', 'livewire', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
 
-    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'diagnostic_suppressions', 'web_roots', 'enrichers'];
+    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'diagnostic_suppressions', 'web_roots', 'enrichers', 'gates'];
     public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];
 
     /**
@@ -46,6 +46,7 @@ final class ProjectConfigurationLoader
      */
     public const LIMIT_KEYS = ['max_files', 'max_file_bytes', 'worker_timeout_ms', 'worker_memory_mb', 'watch_scan_timeout_ms', 'refresh_budget_ms'];
     public const BOUNDARY_KEYS = ['name', 'path_prefix', 'namespace_prefix'];
+    public const GATE_KEYS = ['name', 'command', 'applies_to'];
     public const POLICY_KEYS = ['id', 'from_boundary', 'allow_targets', 'deny_targets', 'edge_kinds'];
 
     private function __construct() {}
@@ -83,6 +84,7 @@ final class ProjectConfigurationLoader
         $diagnosticSuppressions = self::diagnosticSuppressions($data['diagnostic_suppressions'] ?? []);
         $webRoots = self::webRoots($data['web_roots'] ?? []);
         $enrichers = self::enrichers($data['enrichers'] ?? []);
+        $gates = self::gates($data['gates'] ?? []);
 
         return new ProjectConfiguration(
             path: basename($path),
@@ -102,6 +104,7 @@ final class ProjectConfigurationLoader
             refreshBudgetMs: $limits['refresh_budget_ms'],
             webRoots: $webRoots,
             enrichers: $enrichers,
+            gates: $gates,
         );
     }
 
@@ -250,6 +253,38 @@ final class ProjectConfigurationLoader
         }
 
         return $policies;
+    }
+
+    /**
+     * The `gates` list: each a uniquely named, non-empty command, optionally
+     * narrowed to paths by globs. Refusals name the entry so a long list can
+     * be fixed without counting.
+     *
+     * @return list<ProjectGate>
+     */
+    private static function gates(mixed $value): array
+    {
+        $entries = self::objectList($value, 'gates', 20);
+        $gates = [];
+        $seen = [];
+        foreach ($entries as $index => $entry) {
+            self::knownKeys($entry, self::GATE_KEYS, 'gate');
+            $name = $entry['name'] ?? null;
+            if (!is_string($name) || preg_match('/^[a-z0-9][a-z0-9-]{0,39}$/', $name) !== 1) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates entry ' . $index . ' needs a name of 1 to 40 lowercase letters, digits and hyphens.');
+            }
+            $command = $entry['command'] ?? null;
+            if (!is_string($command) || $command === '' || strlen($command) > 300) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates entry ' . $name . ' needs a command of 1 to 300 characters.');
+            }
+            if (isset($seen[$name])) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates name ' . $name . ' is used twice.');
+            }
+            $seen[$name] = true;
+            $gates[] = new ProjectGate($name, $command, self::stringList($entry['applies_to'] ?? [], 'gates ' . $name . ' applies_to', 10));
+        }
+
+        return $gates;
     }
 
     /**
