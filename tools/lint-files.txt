@@ -453,6 +453,7 @@ php	src/Store/ContributionCacheEntry.php
 php	src/Store/CountedSnapshotFigures.php
 php	src/Store/EdgeQueries.php
 php	src/Store/EnrichedFacts.php
+php	src/Store/FolderFactsStore.php
 php	src/Store/GraphRepository.php
 php	src/Store/MigrationRunner.php
 php	src/Store/NodeQueries.php
@@ -1068,6 +1069,7 @@ php	tests/phpunit/Store/BulkTransactionTest.php
 php	tests/phpunit/Store/ChunkedInQueryTest.php
 php	tests/phpunit/Store/ContributionCacheEntryTest.php
 php	tests/phpunit/Store/ContributionCacheWriteTest.php
+php	tests/phpunit/Store/FolderFactsStoreTest.php
 php	tests/phpunit/Store/MigrationRunnerRaceTest.php
 php	tests/phpunit/Store/MigrationRunnerTest.php
 php	tests/phpunit/Store/ProjectRepositoryTest.php
