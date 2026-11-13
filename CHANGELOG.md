@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.44.7](https://github.com/AraneaDev/knossos/compare/v0.44.6...v0.44.7) (2026-11-13)
+
+
+### Fixes
+
+* read whole-tree git listings under a 64 MB ceiling and warn when the scanned tree cannot be listed ([#473](https://github.com/AraneaDev/knossos/issues/473)) ([f113977](https://github.com/AraneaDev/knossos/commit/f113977de005b99ef5914d13acd7be4d0d9047e2))
+
+
+### Performance
+
+* check a scan's foreign keys over its own project and prune large tables by primary key ([#474](https://github.com/AraneaDev/knossos/issues/474)) ([bfc46ae](https://github.com/AraneaDev/knossos/commit/bfc46ae23a83a683baebf6d8c1c6a75b0095f7ad))
+* leave nodes, edges, classifications and memberships on the scan that wrote them ([#477](https://github.com/AraneaDev/knossos/issues/477)) ([03ac2db](https://github.com/AraneaDev/knossos/commit/03ac2db03bdde74fd05a3b570a79d0e6ecf37ed9))
+* store a snapshot's gzip bytes as a BLOB instead of base64 text ([#476](https://github.com/AraneaDev/knossos/issues/476)) ([ad9c010](https://github.com/AraneaDev/knossos/commit/ad9c010e38d694f087e51d64836d146d92247640))
+
 ## [0.44.6](https://github.com/AraneaDev/knossos/compare/v0.44.5...v0.44.6) (2026-11-13)
 
 
