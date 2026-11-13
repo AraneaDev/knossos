@@ -220,11 +220,41 @@ final class SqliteScanLifecycle
             $deleteMetrics->execute(['scan' => $snapshotId]);
             $deleteSnapshot->execute(['scan' => $snapshotId, 'project' => $projectId]);
         }
-        $deleteScans = $this->statements->pdo()->prepare(
-            "DELETE FROM scans WHERE project_id = :project AND status = 'complete' " .
+        $candidates = $this->statements->pdo()->prepare(
+            "SELECT id FROM scans WHERE project_id = :project AND status = 'complete' " .
             'AND id <> COALESCE((SELECT active_scan_id FROM projects WHERE id = :project), \'\') ' .
             'AND NOT EXISTS (SELECT 1 FROM scan_snapshots ss WHERE ss.scan_id = scans.id)',
         );
-        $deleteScans->execute(['project' => $projectId]);
+        $candidates->execute(['project' => $projectId]);
+        $removable = array_diff($candidates->fetchAll(PDO::FETCH_COLUMN), $this->scansTheGraphNames($projectId));
+        $deleteScan = $this->statements->pdo()->prepare('DELETE FROM scans WHERE id = :scan AND project_id = :project');
+        foreach ($removable as $scanId) {
+            $deleteScan->execute(['scan' => $scanId, 'project' => $projectId]);
+        }
+    }
+
+    /**
+     * The scans a row of the project's graph still names as its last writer.
+     *
+     * Rows of the large tables stay on the scan that wrote them, so a scan
+     * with no snapshot left can still be referenced, and deleting it would
+     * leave those rows pointing at nothing. Read once per table rather than
+     * asked per candidate: the column has no index, so each question reads
+     * the project's rows, and the candidates grow with every scan kept.
+     *
+     * @return list<string>
+     */
+    private function scansTheGraphNames(string $projectId): array
+    {
+        $named = [];
+        foreach (SqliteGraphPruner::WRITER_STAMPED_TABLES as $table) {
+            $statement = $this->statements->pdo()->prepare(sprintf('SELECT DISTINCT last_scan_id FROM %s WHERE project_id = :project', $table));
+            $statement->execute(['project' => $projectId]);
+            foreach ($statement->fetchAll(PDO::FETCH_COLUMN) as $scanId) {
+                $named[(string) $scanId] = true;
+            }
+        }
+
+        return array_map('strval', array_keys($named));
     }
 }

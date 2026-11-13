@@ -213,14 +213,9 @@ final class SqliteGraphRepository implements GraphRepository
     }
 
     /**
-     * Attribute every surviving graph row to the scan that just confirmed it.
+     * Attribute the surviving files and boundaries to the scan that just confirmed them.
      *
-     * Rows a scan left untouched are still current, and `last_scan_id` is what
-     * keeps scan cleanup from deleting history the graph still points at — a row
-     * left on an older scan would pin that scan forever. Nothing indexes this
-     * column, so the update rewrites rows without touching an index: on this
-     * repository's graph it costs about a tenth of a second against the couple
-     * of seconds a full rewrite spent on index maintenance alone.
+     * @see SqliteGraphPruner::stampGraphScan() for why the large tables are left on the scan that wrote them.
      */
     public function stampGraphScan(string $projectId, string $scanId): void
     {
