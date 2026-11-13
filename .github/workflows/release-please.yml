@@ -37,10 +37,11 @@ jobs:
   release-please:
     name: Release PR + tag/release on merge
     runs-on: ubuntu-latest
-    # The job runs the full quality profile (mutation testing runs only from
-    # mutation.yml). It took 22 minutes for 0.20.0 and passed 30 for 0.20.1, so
-    # the old limit cancelled a release whose gate was still passing and
-    # deleted its draft.
+    # The job runs only the release lane: the commit it releases already
+    # passed every lane on its pull request, and the full profile here, run
+    # serially in one container, took 25 to 37 minutes for each of 0.44.3 to
+    # 0.44.5 to repeat them. 60 minutes leaves the lane and an uncached image
+    # build room either way.
     timeout-minutes: 60
     steps:
       # On merge of a Release PR, creates a DRAFT GitHub Release and sets
@@ -64,8 +65,6 @@ jobs:
       # Everything below runs ONLY on the merge that cut a release. Because the
       # release is made with GITHUB_TOKEN, no separate tag-triggered workflow
       # would fire, so gate and publish live here instead.
-      # Full history: the profile's `gate` lane measures the released tree
-      # against the commit before it, and a shallow clone cannot reach one.
       #
       # Credentials are NOT persisted. actions/checkout writes GITHUB_TOKEN into
       # .git/config by default, and this job's token carries `contents: write`
@@ -81,7 +80,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.release.outputs.sha }}
-          fetch-depth: 0
           persist-credentials: false
 
       # The push to main that cut this release publishes the dependency images
@@ -127,22 +125,21 @@ jobs:
         if: ${{ steps.release.outputs.release_created && steps.published.outputs.reuse != 'true' }}
         run: docker build --target quality -t knossos:quality .
 
-      # The same versioned profile that gates every PR, run against the release
-      # commit before the release is published: lint, static analysis, tests,
-      # coverage floors, security audits, and supply-chain assurance. The lanes
-      # run one after another in this container, so PHPUnit runs once, under
-      # pcov in the coverage lane, as it does in the PR checks; the tests lane
-      # then runs the shell tests only.
-      - name: Run full quality profile
+      # What only a release needs, run against the release commit before the
+      # release is published: the dependency audits (an advisory may have been
+      # published since the pull request's run), the external link check, the
+      # MCP inspector, the runtime image and its checks, the install, upgrade
+      # and rollback lifecycle, supply-chain assurance and the benchmark. Lint,
+      # static analysis, tests, coverage and the gate passed on the pull request
+      # that made this commit, so they are not run again here.
+      - name: Run the release lane
         if: ${{ steps.release.outputs.release_created }}
         run: |
           docker run --name knossos-quality -e KNOSSOS_QUALITY_CONTAINER=1 \
-            -e KNOSSOS_PHPUNIT_IN_COVERAGE=1 \
             -e KNOSSOS_RUNTIME_IMAGE_GIVEN=1 \
-            -e KNOSSOS_GATE_REPO=/workspace \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$PWD:/workspace:ro" \
-            knossos:quality full
+            knossos:quality full release
 
       - name: Verify the released runtime image reports its version
         if: ${{ steps.release.outputs.release_created }}
