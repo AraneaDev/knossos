@@ -10,7 +10,8 @@ use PHPUnit\Framework\Attributes\Group;
  * The file length ratchet refuses a new file past the limit, a listed file
  * that grows past its entry, and an entry left behind once its file is split
  * back within the limit; `--write` records the tree as it is. The tests run
- * the real check against this repository and against a git tree of their own.
+ * the real check against a git tree of their own; the static lane runs it on
+ * the repository's checkout, which the quality image does not carry.
  */
 #[Group('quality')]
 final class FileLengthCheckTest extends KnossosTestCase
@@ -30,21 +31,6 @@ final class FileLengthCheckTest extends KnossosTestCase
         if ($this->directory !== '' && is_dir($this->directory)) {
             $this->runFixtureCommand(['rm', '-rf', $this->directory]);
         }
-    }
-
-    public function testTheRepositoryKeepsToItsOwnBaseline(): void
-    {
-        // The quality image has no .git; the lanes mount the checkout and
-        // name it, and the static lane runs this check there.
-        $checkout = getenv('KNOSSOS_GATE_REPO') ?: self::repositoryRoot();
-        [$isCheckout] = $this->runFixtureCommandOutput(['git', '-c', 'safe.directory=' . $checkout, '-C', $checkout, 'rev-parse', '--is-inside-work-tree']);
-        if ($isCheckout !== 0) {
-            self::markTestSkipped('No git checkout to measure: ' . $checkout);
-        }
-        [$exit, $output, $errors] = $this->check($checkout, self::repositoryRoot() . '/file-length-baseline.json');
-
-        assertSame(0, $exit, $errors);
-        assertContains('File lengths passed:', $output);
     }
 
     public function testANewFilePastTheLimitIsRefusedByName(): void
