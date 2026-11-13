@@ -93,16 +93,24 @@ final class SqliteGraphPrunerTest extends KnossosTestCase
         assertSame('1', (string) $pdo->query('SELECT COUNT(*) FROM edges')->fetchColumn());
     }
 
+    /**
+     * Files move onto the scan that confirmed them, because the freshness
+     * check asks for the files of the active scan. Nodes and edges stay on
+     * the scan that wrote them: moving them rewrote every row of the project
+     * on every scan.
+     */
     #[Group('store')]
-    public function testStampingMovesEveryRowOntoTheConfirmingScan(): void
+    public function testStampingMovesTheFilesAndLeavesTheLargeTablesOnTheirWriter(): void
     {
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->createScan('scan_new', $ids['project'], 'full', 'h');
 
         (new SqliteGraphPruner(new SqliteStatementCache($pdo)))->stampGraphScan($ids['project'], 'scan_new');
 
-        foreach (['files', 'nodes', 'edges'] as $table) {
-            assertSame('0', (string) $pdo->query(sprintf("SELECT COUNT(*) FROM %s WHERE last_scan_id <> 'scan_new'", $table))->fetchColumn());
-        }
+        assertSame('0', (string) $pdo->query("SELECT COUNT(*) FROM files WHERE last_scan_id <> 'scan_new'")->fetchColumn());
+        assertSame('0', (string) $pdo->query("SELECT COUNT(*) FROM nodes WHERE last_scan_id = 'scan_new'")->fetchColumn());
+        assertSame('0', (string) $pdo->query("SELECT COUNT(*) FROM edges WHERE last_scan_id = 'scan_new'")->fetchColumn());
+        assertSame(['boundaries', 'files'], SqliteGraphPruner::STAMPED_TABLES);
+        assertSame(['boundary_memberships', 'classifications', 'edges', 'nodes'], SqliteGraphPruner::WRITER_STAMPED_TABLES);
     }
 }

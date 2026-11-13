@@ -140,18 +140,33 @@ final class SqliteGraphPruner
     }
 
     /**
-     * Attribute every surviving graph row to the scan that just confirmed it.
+     * The tables whose every row is moved onto the scan that confirmed it.
      *
-     * Rows a scan left untouched are still current, and `last_scan_id` is what
-     * keeps scan cleanup from deleting history the graph still points at — a row
-     * left on an older scan would pin that scan forever. Nothing indexes this
-     * column, so the update rewrites rows without touching an index: on this
-     * repository's graph it costs about a tenth of a second against the couple
-     * of seconds a full rewrite spent on index maintenance alone.
+     * `files`, because "the files of the active scan" is a question the
+     * freshness check and the project summary ask by `last_scan_id`, and
+     * `boundaries`, which is a handful of rows. Not the large tables: see
+     * {@see self::stampGraphScan()}.
+     */
+    public const STAMPED_TABLES = ['boundaries', 'files'];
+
+    /** The tables whose rows stay on the scan that last wrote them, and so keep that scan's row alive. */
+    public const WRITER_STAMPED_TABLES = ['boundary_memberships', 'classifications', 'edges', 'nodes'];
+
+    /**
+     * Attribute the surviving files and boundaries to the scan that just confirmed them.
+     *
+     * Nodes, edges, classifications and memberships are left on the scan
+     * that last wrote them. Moving them too rewrote every row of the project
+     * on every scan: the update itself was quick, but the pages it dirtied
+     * were about 100 MB of write-ahead log for a graph of 105,000 edges,
+     * however little the scan changed, and the commit paid for all of it.
+     * Nothing reads those four columns as "confirmed by"; what they still
+     * do is reference a scan row, so scan cleanup keeps a scan that any of
+     * them names ({@see SqliteScanLifecycle}).
      */
     public function stampGraphScan(string $projectId, string $scanId): void
     {
-        foreach (array_keys(self::GRAPH_TABLES) as $table) {
+        foreach (self::STAMPED_TABLES as $table) {
             $statement = $this->statements->prepare(sprintf('UPDATE %s SET last_scan_id = :scan WHERE project_id = :project AND last_scan_id <> :scan', $table));
             $statement->execute(['scan' => $scanId, 'project' => $projectId]);
         }

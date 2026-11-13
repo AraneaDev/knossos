@@ -75,12 +75,12 @@ final class IncrementalWriteTest extends KnossosTestCase
     }
 
     #[Group('reconciliation')]
-    public function testEveryRowStillPointsAtTheScanThatLastConfirmedIt(): void
+    public function testFilesPointAtTheConfirmingScanAndEveryOtherRowAtAScanThatStillExists(): void
     {
-        // Rows that survive a rescan untouched must still be attributed to the
-        // current scan: `last_scan_id` is what stops scan cleanup from deleting
-        // history the graph still references, and a stale one would pin scans
-        // that nothing needs.
+        // Files and boundaries are attributed to the scan that confirmed
+        // them, which is what "the files of the active scan" is asked by. The
+        // large tables stay on the scan that wrote them, and scan cleanup has
+        // to keep every scan one of their rows still names.
         $root = sys_get_temp_dir() . '/knossos-incremental-' . bin2hex(random_bytes(6));
         if (!mkdir($root . '/src', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
@@ -99,11 +99,34 @@ final class IncrementalWriteTest extends KnossosTestCase
 
             $active = (string) $pdo->query('SELECT active_scan_id FROM projects')->fetchColumn();
             assertSame($result->snapshotId, $active);
-            foreach (['files', 'nodes', 'edges', 'classifications', 'boundaries', 'boundary_memberships'] as $table) {
+            foreach (['files', 'boundaries'] as $table) {
                 $statement = $pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE last_scan_id <> :scan', $table));
                 $statement->execute(['scan' => $active]);
                 assertSame(0, (int) $statement->fetchColumn(), $table . ' has rows attributed to an older scan');
             }
+            // A.php was not touched by the second scan, so its rows are still the first scan's.
+            $older = $pdo->prepare('SELECT COUNT(*) FROM nodes WHERE last_scan_id <> :scan');
+            $older->execute(['scan' => $active]);
+            self::assertGreaterThan(0, (int) $older->fetchColumn(), 'An untouched node must not be rewritten just to move its scan.');
+            foreach (['nodes', 'edges', 'classifications', 'boundary_memberships'] as $table) {
+                assertSame(0, (int) $pdo->query(sprintf('SELECT COUNT(*) FROM %s t WHERE NOT EXISTS (SELECT 1 FROM scans s WHERE s.id = t.last_scan_id)', $table))->fetchColumn(), $table . ' names a scan that was deleted');
+            }
+            assertSame([], $pdo->query('PRAGMA foreign_key_check')->fetchAll());
+
+            // With no snapshot kept, a scan is removed as soon as nothing names it
+            // and kept for as long as one row does.
+            $service->scan($root, new ScanOptions(mode: 'full', snapshotRetention: 0));
+            file_put_contents($root . '/src/B.php', "<?php\n\nnamespace Fixture;\n\nfinal class B { public function again(): void {} }\n");
+            $service->scan($root, new ScanOptions(snapshotRetention: 0));
+            $named = (int) $pdo->query('SELECT COUNT(DISTINCT last_scan_id) FROM nodes')->fetchColumn();
+            self::assertGreaterThan(1, $named);
+            assertSame([], $pdo->query('PRAGMA foreign_key_check')->fetchAll());
+            assertSame(0, (int) $pdo->query(
+                'SELECT COUNT(*) FROM scans s WHERE s.id <> (SELECT active_scan_id FROM projects) '
+                . 'AND NOT EXISTS (SELECT 1 FROM scan_snapshots ss WHERE ss.scan_id = s.id) '
+                . 'AND NOT EXISTS (SELECT 1 FROM nodes n WHERE n.last_scan_id = s.id) AND NOT EXISTS (SELECT 1 FROM edges e WHERE e.last_scan_id = s.id) '
+                . 'AND NOT EXISTS (SELECT 1 FROM classifications c WHERE c.last_scan_id = s.id) AND NOT EXISTS (SELECT 1 FROM boundary_memberships m WHERE m.last_scan_id = s.id)',
+            )->fetchColumn(), 'A scan nothing names and no snapshot holds must be removed.');
         } finally {
             unset($pdo);
             $this->removeFixtureTree($root);
