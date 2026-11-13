@@ -195,6 +195,30 @@ says so. Without a `knossos.json` that can be read, placement and gates are
 empty and a warning carries the loader's message. The CLI prints the brief as
 text, at most 14 lines and 1,200 characters, or the envelope with `--json`.
 
+### Before creating a file
+
+Call `creation_brief` before you write a new file. For a PHP file in
+`src/Query/` of this repository it prints the following, with the last line shortened:
+
+```text
+knossos · new file in ns:Query
+may not use: ns:Cli, ns:Mcp
+like: src/Query/ArchitectureContextService.php, src/Query/AgentBriefService.php, src/Query/ReviewDiffService.php
+here: 97 of 99 one class per file · 96 of 99 final · median 166 lines, largest 924
+gates: cs · phpstan · docblocks · file-length · lint-files · reference · mutation-pins. Run: vendor/bin/php-cs-fixer fix; vendor/bin/phpstan analyse --memory-limit=1G src; ...
+```
+
+The gates come from the `gates` key of `knossos.json`: each has a `name`, a
+`command` of at most 300 characters and an optional `applies_to` list of globs
+(at most ten) over project-relative paths. A gate without `applies_to` covers
+every path, and `*` crosses `/`, so `src/*` covers `src/Query/A.php`. A project
+may declare up to 20 gates.
+
+The session brief shows the same gates when a session starts, at most six
+lines. With more than five gates it lists the first four and counts the rest.
+A project that declares none gets one line naming the scripts found in its
+`composer.json` and `package.json`.
+
 ## Component annotations
 
 Use `annotate_component` to record a durable judgment on a component and
