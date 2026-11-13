@@ -213,7 +213,12 @@
             "minLength": 1,
             "maxLength": 40
           },
-          "command": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "command": {
+            "type": "string",
+            "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+            "minLength": 1,
+            "maxLength": 300
+          },
           "applies_to": {
             "type": "array",
             "maxItems": 10,

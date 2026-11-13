@@ -69,6 +69,26 @@ final class SessionGatesTest extends KnossosTestCase
     }
 
     #[Group('query')]
+    public function testSixGatesSwitchToTheNameLineAndFiveStayInTheLongForm(): void
+    {
+        $five = self::lines(self::gates(5));
+        assertSame('- gate-5: run 5', $five[5]);
+        assertSame(6, count($five));
+
+        $six = self::lines(self::gates(6));
+        assertSame(3, count($six));
+        assertSame('- gate-1, gate-2, gate-3, gate-4, gate-5, gate-6', $six[1]);
+    }
+
+    #[Group('query')]
+    public function testLifecycleHooksAndUnsafeNamesAreNotOfferedAsGates(): void
+    {
+        $found = SessionGates::of(new ProjectConfiguration(), ['pre-install-cmd' => 'x', 'post-update-cmd' => 'x', 'cs' => 'x', "evil\nname" => 'x', str_repeat('a', 41) => 'x', 'has space' => 'x'], ['lint:js' => 'x', '@scope/run' => 'x'])['found'];
+
+        assertSame(['@scope/run', 'cs', 'lint:js'], $found);
+    }
+
+    #[Group('query')]
     public function testAProjectWithNeitherShowsNothing(): void
     {
         assertSame([], self::lines([]));

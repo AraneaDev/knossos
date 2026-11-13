@@ -15,7 +15,10 @@ use Throwable;
  * Read-only like the rest of the session brief. The script names come from
  * `composer.json` and `package.json` at the project root, because the session
  * brief has no discovery units to ask; a file that is missing, oversized or
- * not valid JSON simply contributes no scripts.
+ * not valid JSON simply contributes no scripts. Script names are filtered to a
+ * short, single-line alphabet and lifecycle hooks (`pre-*`, `post-*`) are not
+ * offered as gates. Declared gates need no filtering here: the loader already
+ * refuses a gate name outside `[a-z0-9-]` and a command with a control character.
  */
 final readonly class SessionGates
 {
@@ -23,6 +26,9 @@ final readonly class SessionGates
     public const MAX_FOUND = 6;
 
     private const MAX_MANIFEST_BYTES = 1_000_000;
+
+    /** A script name that is safe to put in front of a model: short, one line, no spaces. */
+    private const SCRIPT_NAME = '/^[A-Za-z0-9:_.\-@\/]{1,40}$/D';
 
     /**
      * The declared gates, or when there are none the script names that could become gates.
@@ -40,7 +46,12 @@ final readonly class SessionGates
         if ($declared !== []) {
             return ['declared' => $declared, 'found' => []];
         }
-        $names = array_values(array_unique(array_map('strval', [...array_keys($composerScripts), ...array_keys($packageScripts)])));
+        $names = array_values(array_unique(array_filter(
+            array_map('strval', [...array_keys($composerScripts), ...array_keys($packageScripts)]),
+            static fn(string $name): bool => preg_match(self::SCRIPT_NAME, $name) === 1
+                && !str_starts_with($name, 'pre-')
+                && !str_starts_with($name, 'post-'),
+        )));
         sort($names, SORT_STRING);
 
         return ['declared' => [], 'found' => array_slice($names, 0, self::MAX_FOUND)];
@@ -58,7 +69,7 @@ final readonly class SessionGates
         try {
             $configuration = ProjectConfigurationLoader::load($root, [$root]);
         } catch (Throwable) {
-            return ['declared' => [], 'found' => []];
+            return self::none();
         }
 
         return self::of(
@@ -69,20 +80,37 @@ final readonly class SessionGates
     }
 
     /**
+     * The nothing-to-say value: no declared gates and no scripts found.
+     *
+     * @return array{declared: list<array{name: string, command: string}>, found: list<string>}
+     */
+    public static function none(): array
+    {
+        return ['declared' => [], 'found' => []];
+    }
+
+    /**
      * The `scripts` object of one manifest, or none when it cannot be read safely.
+     *
+     * A symlink is not followed, the read stops one byte past the size cap even
+     * if the file grew after the check, and a file that vanished or cannot be
+     * read gives no names without a warning. A list-valued `scripts` has no
+     * names, only positions.
      *
      * @return array<array-key, mixed>
      */
     private static function scripts(string $path): array
     {
-        $size = is_file($path) ? filesize($path) : false;
-        if (!is_int($size) || $size > self::MAX_MANIFEST_BYTES) {
+        if (is_link($path) || !is_file($path)) {
             return [];
         }
-        $contents = file_get_contents($path);
-        $data = is_string($contents) ? json_decode($contents, true) : null;
+        $contents = @file_get_contents($path, false, null, 0, self::MAX_MANIFEST_BYTES + 1);
+        if (!is_string($contents) || strlen($contents) > self::MAX_MANIFEST_BYTES) {
+            return [];
+        }
+        $data = json_decode($contents, true);
         $scripts = is_array($data) ? ($data['scripts'] ?? null) : null;
 
-        return is_array($scripts) ? $scripts : [];
+        return is_array($scripts) && !array_is_list($scripts) ? $scripts : [];
     }
 }

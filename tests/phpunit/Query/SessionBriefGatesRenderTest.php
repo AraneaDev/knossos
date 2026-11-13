@@ -51,7 +51,7 @@ final class SessionBriefGatesRenderTest extends KnossosTestCase
         try {
             file_put_contents($root . '/knossos.json', '{ not json');
 
-            assertSame(['declared' => [], 'found' => []], SessionGates::forRoot($root));
+            assertSame(SessionGates::none(), SessionGates::forRoot($root));
         } finally {
             $this->removeTempTree($root);
         }

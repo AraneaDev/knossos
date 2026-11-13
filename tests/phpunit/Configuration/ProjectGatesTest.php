@@ -74,6 +74,14 @@ final class ProjectGatesTest extends KnossosTestCase
         $this->assertRefused(['gates' => [['name' => "cs\n", 'command' => 'true']]], 'gates');
     }
 
+    /** A command is shown at session start, so a line break or tab in it is refused, naming the gate. */
+    public function testACommandWithAControlCharacterIsRefused(): void
+    {
+        foreach (["a\nb", "a\tb", "a\x00b", "a\x7Fb"] as $command) {
+            $this->assertRefused(['gates' => [['name' => 'cs', 'command' => $command]]], 'cs');
+        }
+    }
+
     /** A name is lowercase letters, digits and hyphens. */
     public function testANameWithASpaceAndCapitalsIsRefused(): void
     {

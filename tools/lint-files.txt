@@ -862,6 +862,7 @@ php	tests/phpunit/Query/SessionBriefRendererTest.php
 php	tests/phpunit/Query/SessionBriefServiceTest.php
 php	tests/phpunit/Query/SessionChangesServiceTest.php
 php	tests/phpunit/Query/SessionDiffServiceTest.php
+php	tests/phpunit/Query/SessionGatesManifestTest.php
 php	tests/phpunit/Query/SessionGatesTest.php
 php	tests/phpunit/Query/SnapshotDiffArchiveTest.php
 php	tests/phpunit/Query/SnapshotDiffTest.php
