@@ -101,6 +101,33 @@ final readonly class FolderFactsStore
     }
 
     /**
+     * The test-path patterns the project's source folders show for an extension, sorted and distinct.
+     *
+     * A pattern counts when at least four in five of its folder's files follow it,
+     * the same threshold a brief applies before it names an expected test. Read
+     * from every folder so a path in a folder with no source files of its own can
+     * still be recognised as a test by the shape its name has elsewhere.
+     *
+     * @return list<string>
+     */
+    public function testPathPatterns(string $projectId, string $extension): array
+    {
+        $statement = $this->pdo->prepare("SELECT files, facts_json FROM folder_facts WHERE project_id = ? AND extension = ? AND role = 'source'");
+        $statement->execute([$projectId, $extension]);
+        $patterns = [];
+        foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$files, $json]) {
+            $testPath = self::decode((string) $json)['test_path'] ?? null;
+            if (is_array($testPath) && is_string($testPath['pattern'] ?? null) && is_int($testPath['files'] ?? null) && $testPath['files'] * 5 >= (int) $files * 4) {
+                $patterns[$testPath['pattern']] = true;
+            }
+        }
+        $patterns = array_map('strval', array_keys($patterns));
+        sort($patterns, SORT_STRING);
+
+        return $patterns;
+    }
+
+    /**
      * Replace the project's companions with the result of one git run.
      *
      * Stored whole, keyed by the HEAD they were computed at, so a later read can

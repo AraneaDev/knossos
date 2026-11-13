@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use Knossos\Git\{GitHistoryProvider, GitWorkingTreeProvider};
+use Knossos\Query\CreationBrief\CreationBriefQueryService;
 use Knossos\Query\Drift\DriftOracle;
 use PDO;
 
@@ -42,6 +43,7 @@ final readonly class QueryServices
         public AgentBriefService $briefQueries,
         public AnnotationService $annotationQueries,
         public FileContextQueryService $fileContextQueries,
+        public CreationBriefQueryService $creationBriefQueries,
         public DiagnosticsQueryService $diagnosticsQueries,
         public RefreshPolicy $refreshPolicy,
     ) {}
@@ -102,6 +104,7 @@ final readonly class QueryServices
             briefQueries: new AgentBriefService($pdo, $clock, $healthQueries),
             annotationQueries: new AnnotationService($pdo, $clock),
             fileContextQueries: new FileContextQueryService($pdo, $clock),
+            creationBriefQueries: new CreationBriefQueryService($pdo, $clock),
             diagnosticsQueries: new DiagnosticsQueryService($pdo, $clock),
             refreshPolicy: $refreshPolicy,
         );

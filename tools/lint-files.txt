@@ -247,6 +247,12 @@ php	src/Query/ComponentSpan.php
 php	src/Query/CompositionRoots.php
 php	src/Query/ConstructedClasses.php
 php	src/Query/CreationBrief/Conventions.php
+php	src/Query/CreationBrief/CreationBriefQueryService.php
+php	src/Query/CreationBrief/CreationBriefRenderer.php
+php	src/Query/CreationBrief/NeighbourCandidates.php
+php	src/Query/CreationBrief/Neighbours.php
+php	src/Query/CreationBrief/PathRole.php
+php	src/Query/CreationBrief/Placement.php
 php	src/Query/DashboardService.php
 php	src/Query/DeadCodeAnalysis.php
 php	src/Query/DeadCodeCandidates.php
@@ -739,6 +745,9 @@ php	tests/phpunit/Query/ComponentUsageTest.php
 php	tests/phpunit/Query/ConstructorReachTest.php
 php	tests/phpunit/Query/ContractThroughSubtypeTest.php
 php	tests/phpunit/Query/CreationBrief/ConventionsTest.php
+php	tests/phpunit/Query/CreationBrief/CreationBriefQueryServiceTest.php
+php	tests/phpunit/Query/CreationBrief/CreationBriefRendererTest.php
+php	tests/phpunit/Query/CreationBrief/NeighboursTest.php
 php	tests/phpunit/Query/CyclesTest.php
 php	tests/phpunit/Query/DashboardServiceTest.php
 php	tests/phpunit/Query/DeadCodeCandidatePlanTest.php
@@ -1081,6 +1090,7 @@ php	tests/phpunit/Store/ChunkedInQueryTest.php
 php	tests/phpunit/Store/ContributionCacheEntryTest.php
 php	tests/phpunit/Store/ContributionCacheWriteTest.php
 php	tests/phpunit/Store/FolderFactsStoreTest.php
+php	tests/phpunit/Store/FolderFactsStoreTestPathsTest.php
 php	tests/phpunit/Store/MigrationRunnerRaceTest.php
 php	tests/phpunit/Store/MigrationRunnerTest.php
 php	tests/phpunit/Store/ProjectRepositoryTest.php
