@@ -461,7 +461,15 @@
     {
       "name": "docs",
       "command": "npx prettier --check \"**/*.{js,json,jsonc,yaml,yml,md}\"",
-      "applies_to": ["docs/*", "*.md", "*.json"]
+      "applies_to": [
+        "docs/*",
+        "*.md",
+        "*.json",
+        "*.js",
+        "*.jsonc",
+        "*.yaml",
+        "*.yml"
+      ]
     },
     {
       "name": "rust",

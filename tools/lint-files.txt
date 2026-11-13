@@ -950,6 +950,7 @@ php	tests/phpunit/Scan/ContributionPartitionTest.php
 php	tests/phpunit/Scan/Conventions/FolderCompanionsBoundsTest.php
 php	tests/phpunit/Scan/Conventions/FolderCompanionsBuilderTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsBuilderTest.php
+php	tests/phpunit/Scan/Conventions/FolderFactsRetryTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsScanTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsUnchangedScanTest.php
 php	tests/phpunit/Scan/Conventions/NameWordsTest.php

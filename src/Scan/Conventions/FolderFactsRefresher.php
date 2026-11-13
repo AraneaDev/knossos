@@ -24,11 +24,19 @@ final readonly class FolderFactsRefresher
 
     private FolderFactsStore $store;
 
-    /** @param ?FolderCompanionsBuilder $companions injected only so a test can drive git without a subprocess */
-    public function __construct(private PDO $pdo, ?FolderCompanionsBuilder $companions = null)
+    /** @var \Closure(string): list<array{directory: string, extension: string, role: string, files: int, facts: array<string, mixed>}> */
+    private \Closure $rows;
+
+    /**
+     * @param ?FolderCompanionsBuilder $companions injected only so a test can drive git without a subprocess
+     * @param ?\Closure(string): list<array{directory: string, extension: string, role: string, files: int, facts: array<string, mixed>}> $rows
+     *   the rows of a project's facts; injected only so a test can make the rebuild fail
+     */
+    public function __construct(private PDO $pdo, ?FolderCompanionsBuilder $companions = null, ?\Closure $rows = null)
     {
         $this->store = new FolderFactsStore($pdo);
         $this->companions = $companions ?? new FolderCompanionsBuilder($this->store);
+        $this->rows = $rows ?? static fn(string $projectId): array => (new FolderFactsBuilder($pdo))->rows($projectId);
     }
 
     /**
@@ -62,14 +70,21 @@ final readonly class FolderFactsRefresher
         $this->refreshCompanions($projectId, $root, $gitHead, $clock);
     }
 
-    /** Replace the stored facts with ones built from the committed graph, timed as `folder_facts`. */
+    /**
+     * Replace the stored facts with ones built from the committed graph, timed as `folder_facts`.
+     *
+     * A rebuild that fails removes the project's facts instead of leaving the old
+     * ones: stale facts shown as current are worse than none, and with none a
+     * later scan that changed nothing sees they are missing and builds them again.
+     */
     private function rebuildFacts(string $projectId, StageClock $clock): void
     {
         $clock->time('folder_facts', function () use ($projectId): void {
             try {
-                $this->store->replace($projectId, (new FolderFactsBuilder($this->pdo))->rows($projectId));
+                $this->store->replace($projectId, ($this->rows)($projectId));
             } catch (Throwable $failure) {
                 error_log('knossos folder facts: ' . $failure->getMessage());
+                $this->discard($projectId);
             }
         });
     }
@@ -84,5 +99,15 @@ final readonly class FolderFactsRefresher
                 error_log('knossos folder facts: ' . $failure->getMessage());
             }
         });
+    }
+
+    /** Drop the project's facts after a failed rebuild; a failure of its own is only logged. */
+    private function discard(string $projectId): void
+    {
+        try {
+            $this->store->clear($projectId);
+        } catch (Throwable $failure) {
+            error_log('knossos folder facts: stale facts could not be removed: ' . $failure->getMessage());
+        }
     }
 }

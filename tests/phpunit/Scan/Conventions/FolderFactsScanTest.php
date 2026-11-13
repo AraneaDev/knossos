@@ -48,7 +48,7 @@ final class FolderFactsScanTest extends KnossosTestCase
         }
     }
 
-    /** A facts table that cannot be written costs one log line, not the scan. */
+    /** A facts table that cannot be written costs two log lines, the rebuild's and the cleanup's, not the scan. */
     public function testAFailingFactsRefreshLeavesTheScanResultIntact(): void
     {
         $root = $this->fixtureRoot();
@@ -65,7 +65,8 @@ final class FolderFactsScanTest extends KnossosTestCase
             self::assertNotNull($result);
             self::assertGreaterThan(0, $this->nodeCount($pdo));
             self::assertStringContainsString('knossos folder facts:', $logged);
-            self::assertSame(1, substr_count(trim($logged), 'knossos folder facts:'));
+            self::assertSame(2, substr_count(trim($logged), 'knossos folder facts:'));
+            self::assertStringContainsString('stale facts could not be removed', $logged);
         } finally {
             $this->removeTempTree($root);
         }

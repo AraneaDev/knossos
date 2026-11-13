@@ -83,6 +83,12 @@ final readonly class FolderFactsStore
         return $changed;
     }
 
+    /** Delete every folder fact of the project, so {@see self::has()} is false until they are built again. */
+    public function clear(string $projectId): void
+    {
+        $this->pdo->prepare('DELETE FROM folder_facts WHERE project_id = ?')->execute([$projectId]);
+    }
+
     /**
      * Whether any folder facts are stored for the project.
      *
