@@ -274,7 +274,7 @@ final class ProjectConfigurationLoader
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates entry ' . $index . ' needs a name of 1 to 40 lowercase letters, digits and hyphens.');
             }
             $command = $entry['command'] ?? null;
-            if (!is_string($command) || $command === '' || strlen($command) > 300) {
+            if (!is_string($command) || $command === '' || mb_strlen($command, 'UTF-8') > 300) {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates entry ' . $name . ' needs a command of 1 to 300 characters.');
             }
             // A command reaches the model's context at session start, so a line break in it, Unicode ones included, could carry text that is not a command.

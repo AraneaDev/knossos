@@ -43,7 +43,7 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
             throw new InvalidArgumentException(sprintf('%s names a directory; a brief is for a file.', $path));
         }
         $relative = ProjectRelativePath::of($root, $path);
-        if (str_ends_with($relative, '/') || str_ends_with('/' . $relative, '/.')) {
+        if (str_ends_with($relative, '/') || str_ends_with('/' . $relative, '/.') || ProjectFile::isDirectory($root, $relative)) {
             throw new InvalidArgumentException(sprintf('%s names a directory; a brief is for a file.', $path));
         }
         $directory = PathParts::directory($relative);
@@ -174,7 +174,10 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
                 $goesWith[] = ['path' => $test, 'kind' => 'test'];
             }
         }
-        $companions = $facts->companionsOf($projectId, $basis === null ? $directory : $basis['directory']);
+        $companions = $facts->companionsOf($projectId, $directory);
+        if ($companions === [] && $basis !== null && $basis['directory'] !== $directory) {
+            $companions = $facts->companionsOf($projectId, $basis['directory']);
+        }
         usort($companions, static fn(array $a, array $b): int => [$b['commits'], $a['path']] <=> [$a['commits'], $b['path']]);
         foreach (array_slice($companions, 0, self::MAX_COMPANIONS_CHECKED) as $companion) {
             if ($companion['path'] !== $relative && $companion['path'] !== ($goesWith[0]['path'] ?? null) && ProjectFile::exists($root, $companion['path'])) {
@@ -206,17 +209,21 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
     /**
      * A hash of what the brief says that counts and neighbours do not change.
      *
+     * Gates count by name and command, conventions by id and text, so a moved
+     * suffix or a changed command is a change. The `lines` convention is left
+     * out: its text is numbers that move with every file added.
+     *
      * @param array{boundary: ?string, may_not_use: list<string>} $placement
-     * @param list<array{id: string}> $conventions
-     * @param list<array{name: string}> $gates
+     * @param list<array{id: string, text: string}> $conventions
+     * @param list<array{name: string, command: string}> $gates
      * @param list<array{path: string, kind: string}> $goesWith
      */
     private function signature(array $placement, array $conventions, array $gates, array $goesWith): string
     {
         return hash('sha256', json_encode([
             $placement,
-            array_column($conventions, 'id'),
-            array_column($gates, 'name'),
+            array_map(static fn(array $convention): array => [$convention['id'], $convention['text']], array_values(array_filter($conventions, static fn(array $convention): bool => $convention['id'] !== 'lines'))),
+            array_map(static fn(array $gate): array => [$gate['name'], $gate['command']], $gates),
             array_column(array_filter($goesWith, static fn(array $entry): bool => $entry['kind'] === 'companion'), 'path'),
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
     }

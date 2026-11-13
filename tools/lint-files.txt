@@ -754,6 +754,7 @@ php	tests/phpunit/Query/ConstructorReachTest.php
 php	tests/phpunit/Query/ContractThroughSubtypeTest.php
 php	tests/phpunit/Query/CreationBrief/ConventionsTest.php
 php	tests/phpunit/Query/CreationBrief/CreationBriefQueryServiceTest.php
+php	tests/phpunit/Query/CreationBrief/CreationBriefReadingTest.php
 php	tests/phpunit/Query/CreationBrief/CreationBriefRendererTest.php
 php	tests/phpunit/Query/CreationBrief/NeighboursTest.php
 php	tests/phpunit/Query/CreationBrief/PathRoleTest.php

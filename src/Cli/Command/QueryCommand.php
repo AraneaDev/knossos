@@ -43,6 +43,12 @@ final class QueryCommand implements CliCommand
         'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief',
     ];
 
+    /**
+     * @param resource|null $errors where a text-mode warning goes, STDERR by default; tests pass their own,
+     *                              since a byte on the real STDERR stops a mutation run (see CliErrorRenderer)
+     */
+    public function __construct(private $errors = null) {}
+
     /** {@inheritDoc} */
     public function supports(string $command): bool
     {
@@ -182,6 +188,12 @@ final class QueryCommand implements CliCommand
             default => $result->summary,
         };
         $context->output($result->jsonSerialize(), $json, $text);
+        if ($command === 'creation-brief' && !$json) {
+            // The brief may be partial (an unreadable knossos.json); the envelope says why, the text did not.
+            foreach ($result->warnings as $warning) {
+                fwrite(is_resource($this->errors) ? $this->errors : STDERR, 'warning: ' . $warning . PHP_EOL);
+            }
+        }
 
         return match ($command) {
             'quality-gate' => $result->data['passed'] ? CliCommand::EXIT_OK : CliCommand::EXIT_GATE_FAILED,
