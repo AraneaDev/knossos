@@ -204,6 +204,58 @@ final class SqliteTransactionsTest extends KnossosTestCase
         assertSame('0', (string) $pdo->query('SELECT COUNT(*) FROM child')->fetchColumn());
     }
 
+    /**
+     * A key that names no parent column references the parent's primary key.
+     * The anti-join has no column to join on, so that table is checked whole
+     * rather than not at all.
+     */
+    #[Group('store')]
+    public function testAKeyThatNamesNoParentColumnIsStillChecked(): void
+    {
+        $pdo = SqliteConnection::open(':memory:');
+        $pdo->exec('CREATE TABLE parent(id INTEGER PRIMARY KEY)');
+        $pdo->exec('CREATE TABLE child(id INTEGER PRIMARY KEY, project_id TEXT NOT NULL, parent_id INTEGER NOT NULL REFERENCES parent)');
+
+        try {
+            (new SqliteTransactions($pdo))->runBulk(
+                static fn() => $pdo->exec("INSERT INTO child(id, project_id, parent_id) VALUES (1, 'mine', 999)"),
+                ['child'],
+                'mine',
+            );
+            self::fail('A dangling reference must refuse the commit.');
+        } catch (RuntimeException $error) {
+            assertSame('Refusing to commit a graph with 1 dangling reference(s) in table child.', $error->getMessage());
+        }
+    }
+
+    /** A key of two columns is matched on both: a parent that shares one of them is not the parent. */
+    #[Group('store')]
+    public function testAKeyOfTwoColumnsIsMatchedOnBoth(): void
+    {
+        $pdo = SqliteConnection::open(':memory:');
+        $pdo->exec('CREATE TABLE parent(a INTEGER NOT NULL, b INTEGER NOT NULL, PRIMARY KEY (a, b))');
+        $pdo->exec('CREATE TABLE child(id INTEGER PRIMARY KEY, project_id TEXT NOT NULL, a INTEGER, b INTEGER, FOREIGN KEY (a, b) REFERENCES parent(a, b))');
+        $pdo->exec('INSERT INTO parent(a, b) VALUES (1, 2)');
+
+        (new SqliteTransactions($pdo))->runBulk(
+            static fn() => $pdo->exec("INSERT INTO child(id, project_id, a, b) VALUES (1, 'mine', 1, 2), (2, 'mine', 1, NULL)"),
+            ['child'],
+            'mine',
+        );
+        assertSame('2', (string) $pdo->query('SELECT COUNT(*) FROM child')->fetchColumn());
+
+        try {
+            (new SqliteTransactions($pdo))->runBulk(
+                static fn() => $pdo->exec("INSERT INTO child(id, project_id, a, b) VALUES (3, 'mine', 1, 3)"),
+                ['child'],
+                'mine',
+            );
+            self::fail('A parent that matches one column of two is not a parent.');
+        } catch (RuntimeException $error) {
+            assertSame('Refusing to commit a graph with 1 dangling reference(s) in table child.', $error->getMessage());
+        }
+    }
+
     /** A table with no project column cannot be held to a project, so it is checked whole. */
     #[Group('store')]
     public function testATableWithoutAProjectColumnIsCheckedWhole(): void
