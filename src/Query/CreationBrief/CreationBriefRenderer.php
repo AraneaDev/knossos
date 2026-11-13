@@ -32,7 +32,7 @@ final class CreationBriefRenderer
      */
     public static function lines(array $data, ?array $staleness = null): string
     {
-        $body = self::body($data);
+        $body = array_map(self::oneLine(...), self::body($data));
         if ($body === []) {
             return '';
         }
@@ -136,6 +136,21 @@ final class CreationBriefRenderer
         $lines[] = $current;
 
         return $lines;
+    }
+
+    /**
+     * The text with every control character and Unicode line break replaced by a space.
+     *
+     * Paths, type names, boundary names and gate commands all come from the
+     * repository, and one carrying a line break would forge a line of the brief
+     * the reader takes for Knossos's own. Every line passes through here, so a
+     * line of the brief is always one line of the output and the 14-line cap
+     * counts real lines.
+     */
+    private static function oneLine(string $text): string
+    {
+        // Matched as bytes, so a string that is not valid UTF-8 is still cleaned rather than dropped.
+        return (string) preg_replace('/[\x00-\x1F\x7F]|\xC2\x85|\xE2\x80[\xA8\xA9]/', ' ', $text);
     }
 
     /**

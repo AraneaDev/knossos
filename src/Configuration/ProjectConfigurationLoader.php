@@ -277,9 +277,9 @@ final class ProjectConfigurationLoader
             if (!is_string($command) || $command === '' || strlen($command) > 300) {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates entry ' . $name . ' needs a command of 1 to 300 characters.');
             }
-            // A command reaches the model's context at session start, so a line break in it could carry text that is not a command.
-            if (preg_match('/[\x00-\x1F\x7F]/', $command) === 1) {
-                throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates entry ' . $name . ' has a command with a control character.');
+            // A command reaches the model's context at session start, so a line break in it, Unicode ones included, could carry text that is not a command.
+            if (preg_match('/[\x00-\x1F\x7F\x{0085}\x{2028}\x{2029}]/u', $command) !== 0) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates entry ' . $name . ' has a command with a control character or a line break.');
             }
             if (isset($seen[$name])) {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates name ' . $name . ' is used twice.');

@@ -50,6 +50,9 @@ final readonly class FolderCompanionsBuilder
      */
     private const MAX_PATHS_PER_COMMIT = 200;
 
+    /** Longest path, in bytes, that may be stored as a companion. */
+    private const MAX_PATH_BYTES = 200;
+
     private GitProcessRunnerInterface $runner;
 
     public function __construct(private FolderFactsStore $store, ?GitProcessRunnerInterface $runner = null)
@@ -100,14 +103,14 @@ final readonly class FolderCompanionsBuilder
             }
             $added = [];
             foreach ($entries as [$status, $path]) {
-                if ($status === 'A') {
+                if ($status === 'A' && self::storable($path)) {
                     $added[PathParts::directory($path)][$path] = true;
                 }
             }
             foreach ($added as $directory => $paths) {
                 $additions[$directory] = ($additions[$directory] ?? 0) + 1;
                 foreach (array_unique(array_column($entries, 1)) as $path) {
-                    if (!isset($paths[$path])) {
+                    if (!isset($paths[$path]) && self::storable($path)) {
                         $changed[$directory][$path] = ($changed[$directory][$path] ?? 0) + 1;
                     }
                 }
@@ -131,6 +134,18 @@ final readonly class FolderCompanionsBuilder
         ksort($byDirectory, SORT_STRING);
 
         return $byDirectory;
+    }
+
+    /**
+     * Whether a path from git may count and be stored: one line, and short.
+     *
+     * A tracked file name can hold a line break, and a companion is quoted to the
+     * agent that is about to write a file. A name that could forge a line of that
+     * brief, or that is longer than any real registry path, is left out altogether.
+     */
+    private static function storable(string $path): bool
+    {
+        return strlen($path) <= self::MAX_PATH_BYTES && preg_match('/[\x00-\x1F\x7F]|\xC2\x85|\xE2\x80[\xA8\xA9]/', $path) !== 1;
     }
 
     /**

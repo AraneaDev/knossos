@@ -82,6 +82,14 @@ final class ProjectGatesTest extends KnossosTestCase
         }
     }
 
+    /** The Unicode line breaks end a line as surely as `\n` does, so they are refused too. */
+    public function testACommandWithAUnicodeLineBreakIsRefused(): void
+    {
+        foreach (["a\u{2028}b", "a\u{2029}b", "a\u{0085}b"] as $command) {
+            $this->assertRefused(['gates' => [['name' => 'cs', 'command' => $command]]], 'cs');
+        }
+    }
+
     /** A name is lowercase letters, digits and hyphens. */
     public function testANameWithASpaceAndCapitalsIsRefused(): void
     {

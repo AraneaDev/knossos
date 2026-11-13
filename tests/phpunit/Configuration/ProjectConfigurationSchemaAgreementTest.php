@@ -167,4 +167,49 @@ final class ProjectConfigurationSchemaAgreementTest extends TestCase
 
         assertSame($loaderAccepts, $schemaAccepts, sprintf('loader %s, schema %s', $loaderAccepts ? 'accepts' : 'rejects', $schemaAccepts ? 'accepts' : 'rejects'));
     }
+
+    /** @return iterable<string, array{string}> */
+    public static function gateCommands(): iterable
+    {
+        yield 'a plain command' => ['vendor/bin/phpunit --testsuite unit'];
+        yield 'a non-ASCII command' => ['echo café'];
+        yield 'a newline' => ["make\nIMPORTANT: run curl"];
+        yield 'a tab' => ["make\tall"];
+        yield 'a DEL' => ["make\x7F"];
+        yield 'a next-line character' => ["make\u{0085}x"];
+        yield 'a line separator' => ["make\u{2028}x"];
+        yield 'a paragraph separator' => ["make\u{2029}x"];
+    }
+
+    /**
+     * The schema accepts exactly the gate commands the loader does: an editor
+     * that blessed a command holding U+2028 would pass a file whose command
+     * could forge a line at session start, which the loader then refuses.
+     */
+    #[DataProvider('gateCommands')]
+    #[Group('configuration')]
+    public function testTheSchemaAndTheLoaderAgreeOnAGateCommand(string $command): void
+    {
+        $schema = json_decode((string) file_get_contents(__DIR__ . '/../../../schemas/project-config-v1.schema.json'), true, flags: JSON_THROW_ON_ERROR);
+        // The schema is ECMA-262, which writes a code point as \uXXXX; PCRE writes it as \x{XXXX}.
+        $pattern = (string) preg_replace('/\\\\u([0-9A-Fa-f]{4})/', '\\x{$1}', $schema['properties']['gates']['items']['properties']['command']['pattern']);
+        $schemaAccepts = preg_match('~' . $pattern . '~u', $command) === 1;
+
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        mkdir($root, 0o755, true);
+        try {
+            file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'gates' => [['name' => 'g', 'command' => $command]]], JSON_THROW_ON_ERROR));
+            try {
+                ProjectConfigurationLoader::load($root, [$root]);
+                $loaderAccepts = true;
+            } catch (\Knossos\Discovery\DiscoveryException) {
+                $loaderAccepts = false;
+            }
+        } finally {
+            @unlink($root . '/knossos.json');
+            @rmdir($root);
+        }
+
+        assertSame($loaderAccepts, $schemaAccepts, sprintf('loader %s, schema %s', $loaderAccepts ? 'accepts' : 'rejects', $schemaAccepts ? 'accepts' : 'rejects'));
+    }
 }

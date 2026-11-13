@@ -215,7 +215,7 @@
           },
           "command": {
             "type": "string",
-            "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+            "pattern": "^[^\\u0000-\\u001F\\u007F\\u0085\\u2028\\u2029]+$",
             "minLength": 1,
             "maxLength": 300
           },
