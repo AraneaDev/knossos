@@ -215,6 +215,18 @@ impl Walk<'_> {
             Some(_) => return None,
             None => {}
         }
+        // A path below a child module that the module only re-exports
+        // (`visit::go()` beside `mod visit;`, where `visit` has `pub use
+        // impls::go;`) is declared nowhere at that address. Followed to the
+        // one declaration the re-export names, it is as certain as a name
+        // the index holds, and must not become a guess this file has to
+        // confirm: the declaring file is another one.
+        if !single_segment {
+            let through = self.exported(own.clone());
+            if through != own && matches!(self.declarations.get(&through), Some(1)) {
+                return Some((own, false));
+            }
+        }
         // A type the module declares itself shadows any a glob brings in,
         // so a path below it (`Widget::new`) stays in the module, to be
         // confirmed by this file like any other guess there.
