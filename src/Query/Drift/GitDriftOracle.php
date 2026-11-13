@@ -7,7 +7,7 @@ namespace Knossos\Query\Drift;
 use Knossos\Discovery\FileFingerprint;
 use Knossos\Git\DirtyPathSet;
 use Knossos\Git\GitCommand;
-use Knossos\Git\GitProcessRunner;
+use Knossos\Git\GitListingRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Store\ChunkedInQuery;
 use PDO;
@@ -148,12 +148,16 @@ final readonly class GitDriftOracle implements DriftOracle
 
     private GitProcessRunnerInterface $runner;
 
-    /** Defaults to a real subprocess runner; a test double replaces it without touching callers. */
+    /**
+     * Defaults to a real subprocess runner; a test double replaces it without
+     * touching callers. Sized for a listing: `ls-files --cached` names every
+     * tracked path, so its output follows the repository and not the change.
+     */
     public function __construct(
         private PDO $pdo,
         ?GitProcessRunnerInterface $runner = null,
     ) {
-        $this->runner = $runner ?? new GitProcessRunner();
+        $this->runner = $runner ?? GitListingRunner::create();
     }
 
     /**

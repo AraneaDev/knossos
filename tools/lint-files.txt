@@ -183,7 +183,9 @@ php	src/Git/DirtyPathSet.php
 php	src/Git/GitCommand.php
 php	src/Git/GitHeadResolver.php
 php	src/Git/GitHistoryProvider.php
+php	src/Git/GitListingRunner.php
 php	src/Git/GitLogRecords.php
+php	src/Git/GitOutputLimitExceeded.php
 php	src/Git/GitProcessRunner.php
 php	src/Git/GitProcessRunnerInterface.php
 php	src/Git/GitWorkingTreeProvider.php
@@ -634,8 +636,10 @@ php	tests/phpunit/Framework/TypescriptEndpointsTest.php
 php	tests/phpunit/Git/DirtyPathCaptureTest.php
 php	tests/phpunit/Git/GitCommandTest.php
 php	tests/phpunit/Git/GitHeadResolverTest.php
+php	tests/phpunit/Git/GitListingRunnerTest.php
 php	tests/phpunit/Git/GitLogRecordsTest.php
 php	tests/phpunit/Git/GitProcessRunnerHardeningTest.php
+php	tests/phpunit/Git/ProcessGitProviderLimitsTest.php
 php	tests/phpunit/Git/ProcessGitProviderTest.php
 php	tests/phpunit/Git/RecordingGitRunner.php
 php	tests/phpunit/InfectionExclusionsTest.php

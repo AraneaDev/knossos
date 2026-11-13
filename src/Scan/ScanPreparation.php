@@ -56,5 +56,13 @@ final readonly class ScanPreparation
          * directory that merely happens to be called `Livewire` stays plain.
          */
         public bool $livewire = false,
+        /**
+         * Why git could not list the tree of {@see self::$gitHead}, or null
+         * when it could or was never asked. Set exactly when a commit was
+         * recorded and {@see self::$dirtyPaths} is null for that reason, which
+         * is the case the scan result has to report: the freshness check
+         * cannot answer from git for a snapshot with no recorded set.
+         */
+        public ?string $dirtyPathsFailure = null,
     ) {}
 }
