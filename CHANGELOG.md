@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.0](https://github.com/AraneaDev/knossos/compare/v0.45.0...v0.46.0) (2026-11-13)
+
+
+### Features
+
+* brief an agent on a new file from stored folder facts ([#481](https://github.com/AraneaDev/knossos/issues/481)) ([596ce9e](https://github.com/AraneaDev/knossos/commit/596ce9e5cbd0b005351ab6a13cdf580ffe9f67d1))
+
 ## [0.45.0](https://github.com/AraneaDev/knossos/compare/v0.44.7...v0.45.0) (2026-11-13)
 
 
