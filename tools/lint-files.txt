@@ -196,6 +196,7 @@ php	src/Maintenance/DatabaseMaintenanceService.php
 php	src/Maintenance/ProjectMoveService.php
 php	src/Mcp/BoundaryLegend.php
 php	src/Mcp/ComponentLegend.php
+php	src/Mcp/CreationBriefToolDefinition.php
 php	src/Mcp/HttpEndpoint.php
 php	src/Mcp/HttpSessionStore.php
 php	src/Mcp/JsonRpc.php
@@ -554,6 +555,7 @@ php	tests/phpunit/Cli/CliTest.php
 php	tests/phpunit/Cli/CommandRouterTest.php
 php	tests/phpunit/Cli/CommandsTest.php
 php	tests/phpunit/Cli/CoverageMergeTest.php
+php	tests/phpunit/Cli/CreationBriefCommandTest.php
 php	tests/phpunit/Cli/DependencyFanoutTest.php
 php	tests/phpunit/Cli/DockerIgnoreTest.php
 php	tests/phpunit/Cli/DocstringCoverageTest.php
@@ -671,6 +673,7 @@ php	tests/phpunit/Mcp/CancellationBookkeepingTest.php
 php	tests/phpunit/Mcp/ComponentLegendShapeTest.php
 php	tests/phpunit/Mcp/ComponentLegendTest.php
 php	tests/phpunit/Mcp/ConcurrencyTest.php
+php	tests/phpunit/Mcp/CreationBriefToolTest.php
 php	tests/phpunit/Mcp/DigQuestionToolsTest.php
 php	tests/phpunit/Mcp/DiskToolRootsTest.php
 php	tests/phpunit/Mcp/EnvelopeBudgetTest.php

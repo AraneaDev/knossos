@@ -323,8 +323,8 @@ final readonly class ToolCatalog
                 ],
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
             ],
-            self::fileMetricsDefinition(),
-            self::untestedCodeDefinition(),
+            self::fileMetricsDefinition(), self::untestedCodeDefinition(),
+            CreationBriefToolDefinition::definition(),
             [
                 'name' => 'file_context',
                 'title' => 'File context',
@@ -826,7 +826,7 @@ final readonly class ToolCatalog
      *
      * @return array<string, mixed>
      */
-    private static function commonReadProperties(bool $withRefresh = true): array
+    public static function commonReadProperties(bool $withRefresh = true): array
     {
         $properties = [
             // These three ride on every read tool, so each word here is paid

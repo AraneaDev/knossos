@@ -33,6 +33,7 @@ final class DigQuestionToolsTest extends KnossosTestCase
         'quality_gate' => 'gate',
         'export_agent_brief' => 'export',
         'export_diagram' => 'export',
+        'creation_brief' => 'creation',
     ];
 
     #[Group('mcp')]

@@ -173,6 +173,28 @@ This is the one query path that reads project source. It uses the scan's root
 guard and degrades to `unavailable` where a scan would fail, and it never needs
 write access.
 
+## Creation brief
+
+`creation_brief` (CLI: `knossos creation-brief <path|project-id> <file>`) says
+what a file about to be created should look like. It takes a project and a path
+that need not exist, relative to the project root or absolute under it, and
+reads only what the last scan stored, so the same graph gives the same answer
+and git is never run.
+
+`data` holds `placement` (the declared boundary the path lands in and the
+boundaries it may not use), `neighbours` (at most three existing files to copy
+from), `conventions` (each with the number of files that follow it, shown only
+when the folder has at least five files of that kind and four in five follow it),
+`goes_with` (the test the folder's own pattern expects, then the files that
+usually change when a file is added there), `gates` (the checks in
+`knossos.json` that apply to the path, with their commands), `notes` (how many
+notes sit on the neighbours and the boundary) and a `signature` that ignores
+counts and neighbours. A folder with fewer than five files of the path's
+extension and role borrows from the nearest ancestor that has them, and `basis`
+says so. Without a `knossos.json` that can be read, placement and gates are
+empty and a warning carries the loader's message. The CLI prints the brief as
+text, at most 14 lines and 1,200 characters, or the envelope with `--json`.
+
 ## Component annotations
 
 Use `annotate_component` to record a durable judgment on a component and

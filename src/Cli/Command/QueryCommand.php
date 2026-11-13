@@ -14,6 +14,8 @@ use Knossos\Mcp\ToolArgumentPreflight;
 use Knossos\Mcp\ToolArgumentSpec;
 use Knossos\Mcp\ToolBindings;
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\CreationBrief\CreationBriefRenderer;
+use Knossos\Query\StalenessProbe;
 use Knossos\Result\ResultEnvelope;
 
 /**
@@ -38,7 +40,7 @@ final class QueryCommand implements CliCommand
         'find-component', 'inspect-component', 'list-usages', 'architecture-summary', 'file-metrics', 'untested-code', 'explain-flow', 'impact-analysis',
         'dependency-cycles', 'architecture-health', 'check-architecture', 'suggest-location', 'change-impact',
         'changed-files-impact', 'test-impact', 'review-diff', 'architecture-context', 'export-diagram', 'export-agent-brief', 'list-boundaries',
-        'search-architecture', 'annotate-component', 'list-annotations',
+        'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief',
     ];
 
     /** {@inheritDoc} */
@@ -173,6 +175,7 @@ final class QueryCommand implements CliCommand
         $text = match ($command) {
             'list-projects' => self::projectLines($result),
             'untested-code' => self::untestedLines($result),
+            'creation-brief' => CreationBriefRenderer::lines($result->data, $json ? null : (new StalenessProbe($context->database()))->probe($result->projectId)),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],
             'export-agent-brief' => self::writeBrief($result, $context->options->single($options, 'out')),

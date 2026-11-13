@@ -93,6 +93,7 @@ const NOT_QUESTIONS: Record<string, string> = {
   export_notes: 'writes the notes to a file, an export rather than an answer',
   import_notes: 'reads a notes file into the project, a write rather than a question',
   annotate_component: 'records what a dig found: it ends a dig rather than starting one',
+  creation_brief: 'briefs a file about to be written, before there is anything to check an answer against',
 }
 
 describe('the server catalog', () => {
