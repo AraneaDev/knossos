@@ -46,6 +46,14 @@ final readonly class ScanResultFactory
         if ($leftOut !== '') {
             $warnings[] = sprintf("SCANNER_FILES_LEFT_OUT: %s Each file's diagnostic names the limit.", $leftOut);
         }
+        $treeFailure = $plan->preparation->dirtyPathsFailure;
+        if ($treeFailure !== null) {
+            $warnings[] = sprintf(
+                'GIT_HEAD_TREE_UNAVAILABLE: Git could not list the tree of the scanned commit (%s). The graph itself is complete, '
+                . 'but the freshness check cannot answer from git for this snapshot: it walks the project instead, and reports unverified where the walk is over its own limit.',
+                $treeFailure,
+            );
+        }
         $degraded = array_values(array_unique(array_column($language->workerDiagnostics, 'owner')));
         $data = [
             'files' => $result->files,

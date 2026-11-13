@@ -33,10 +33,14 @@ final readonly class DirtyPathResolver
 
     private GitProcessRunnerInterface $runner;
 
-    /** Defaults to a real subprocess runner; a test double replaces it without touching callers. */
+    /**
+     * Defaults to a real subprocess runner; a test double replaces it without
+     * touching callers. Sized for a listing, not for an ordinary answer: the
+     * tree is listed whole, so the output follows the number of tracked files.
+     */
     public function __construct(?GitProcessRunnerInterface $runner = null)
     {
-        $this->runner = $runner ?? new GitProcessRunner();
+        $this->runner = $runner ?? GitProcessRunner::forListings();
     }
 
     /**
@@ -52,10 +56,16 @@ final readonly class DirtyPathResolver
      * "cannot be compared" must not resolve to "matched".
      *
      * @param list<DiscoveredFile> $files what discovery read, with the blob id of the bytes it read
+     * @param ?string $failure set to why git could not answer, and to null when it did, so the scan can report it
      */
-    public function resolve(string $projectRoot, string $head, array $files): ?DirtyPathSet
+    public function resolve(string $projectRoot, string $head, array $files, ?string &$failure = null): ?DirtyPathSet
     {
-        $tree = $this->tree($projectRoot, $head);
+        $failure = null;
+        $read = [];
+        foreach ($files as $file) {
+            $read[$file->relativePath] = true;
+        }
+        $tree = $this->tree($projectRoot, $head, $read, $failure);
         if ($tree === null) {
             return null;
         }
@@ -82,9 +92,15 @@ final readonly class DirtyPathResolver
      * not blobs (a submodule's commit entry) are dropped: nothing discovery
      * read is one.
      *
+     * Only entries discovery read are kept. The listing covers every tracked
+     * file under the root, which can be many times what the scan read, and
+     * nothing else is ever looked up.
+     *
+     * @param array<string, true> $read the relative paths discovery read
+     * @param ?string $failure set to the reason when git could not answer
      * @return array<string, string>|null relative path => blob id, or null when git could not answer
      */
-    private function tree(string $projectRoot, string $head): ?array
+    private function tree(string $projectRoot, string $head, array $read, ?string &$failure): ?array
     {
         try {
             $output = $this->runner->run(
@@ -93,11 +109,12 @@ final readonly class DirtyPathResolver
                 'scan head tree',
             );
         } catch (Throwable $error) {
-            // A scan with no recorded set degrades to an oracle that declines,
-            // which looks like nothing at all from outside: no warning, just a
-            // probe that never gets cheaper. Never stdout, which carries MCP
-            // protocol frames.
+            // A scan with no recorded set degrades to an oracle that declines.
+            // The reason goes to the caller, which reports it in the scan
+            // result, and to stderr for a process nobody reads the result of.
+            // Never stdout, which carries MCP protocol frames.
             error_log('knossos scan head tree: git could not answer (' . $error->getMessage() . ')');
+            $failure = $error->getMessage();
 
             return null;
         }
@@ -115,7 +132,10 @@ final readonly class DirtyPathResolver
             if (count($fields) !== 3 || $fields[1] !== 'blob') {
                 continue;
             }
-            $tree[substr($entry, $tab + 1)] = $fields[2];
+            $path = substr($entry, $tab + 1);
+            if (isset($read[$path])) {
+                $tree[$path] = $fields[2];
+            }
         }
 
         return $tree;

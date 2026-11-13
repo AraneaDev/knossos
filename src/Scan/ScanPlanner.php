@@ -171,7 +171,8 @@ final readonly class ScanPlanner
         // Derived from the bytes the walk just read, against the commit
         // captured before it. Only asked when there is a commit to be dirty
         // against; a gitless project has no such question.
-        $dirtyPaths = $gitHead === null ? null : $this->dirtyPaths->resolve($rootRealpath, $gitHead, $discovery->files);
+        $dirtyPathsFailure = null;
+        $dirtyPaths = $gitHead === null ? null : $this->dirtyPaths->resolve($rootRealpath, $gitHead, $discovery->files, $dirtyPathsFailure);
         $started = hrtime(true);
         $php = [];
         $crates = [];
@@ -211,6 +212,7 @@ final readonly class ScanPlanner
             gitHead: $gitHead,
             dirtyPaths: $dirtyPaths,
             livewire: $php['livewire'],
+            dirtyPathsFailure: $dirtyPathsFailure,
         );
     }
 

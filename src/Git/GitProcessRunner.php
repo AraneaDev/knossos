@@ -172,6 +172,19 @@ final readonly class GitProcessRunner implements GitProcessRunnerInterface
     public const MAX_DRIVER_OVERRIDE_BYTES = 131_072;
 
     /**
+     * Output ceiling, in bytes, for a call that lists every tracked path
+     * (`ls-tree -r`, `ls-files`).
+     *
+     * Such an answer grows with the repository rather than with the question:
+     * `ls-tree -r` spends some 55 bytes an entry before the path, so 20,000
+     * tracked files pass the 2 MB default, and a caller held to that default
+     * loses its answer on exactly the repositories it matters most for. 64 MB
+     * is a listing of about half a million files, and still a bound: a
+     * runaway child is stopped long before it can exhaust the process.
+     */
+    public const LISTING_OUTPUT_BYTES = 64_000_000;
+
+    /**
      * @param bool $hardenGitConfig Whether to force the config overrides above
      *   and enumerate the repository's filter/diff drivers. It does *not*
      *   control the environment: {@see self::execute()} applies the restricted
@@ -187,6 +200,12 @@ final readonly class GitProcessRunner implements GitProcessRunnerInterface
         private int $maxErrorBytes = 65_536,
         private bool $hardenGitConfig = true,
     ) {}
+
+    /** A runner for calls that list every tracked path, read under {@see self::LISTING_OUTPUT_BYTES}. */
+    public static function forListings(): self
+    {
+        return new self(self::LISTING_OUTPUT_BYTES);
+    }
 
     /**
      * Run a git command under a deadline with bounded, non-blocking reads.

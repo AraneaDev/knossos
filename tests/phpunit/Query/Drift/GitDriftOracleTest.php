@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Query\Drift;
 use Knossos\Discovery\ProjectUnit;
 use Knossos\Discovery\UnitInputSet;
 use Knossos\Git\DirtyPathSet;
+use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Query\Drift\DriftCounts;
 use Knossos\Query\Drift\FirstAnsweringDriftOracle;
@@ -15,6 +16,7 @@ use Knossos\Query\Drift\WalkDriftOracle;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
+use ReflectionProperty;
 use RuntimeException;
 
 /**
@@ -27,6 +29,24 @@ use RuntimeException;
 final class GitDriftOracleTest extends KnossosTestCase
 {
     private const HEAD = '3f1a9c2b4d5e6f708192a3b4c5d6e7f8091a2b3c';
+
+    /**
+     * `ls-files --cached` names every tracked path, so its size follows the
+     * repository. Read under the 2 MB that bounds an ordinary git answer, it
+     * fails at some 20,000 tracked files and the oracle declines on every
+     * probe of exactly the repositories the walk is slowest for.
+     */
+    #[Group('git')]
+    public function testTheDefaultRunnerIsSizedForAListingOfEveryTrackedPath(): void
+    {
+        $runner = (new ReflectionProperty(GitDriftOracle::class, 'runner'))->getValue(new GitDriftOracle($this->freshTestDatabase()));
+
+        self::assertInstanceOf(GitProcessRunner::class, $runner);
+        self::assertSame(
+            GitProcessRunner::LISTING_OUTPUT_BYTES,
+            (new ReflectionProperty(GitProcessRunner::class, 'maxOutputBytes'))->getValue($runner),
+        );
+    }
 
     /**
      * The defect this oracle was rewritten for. `git diff <recorded head>`
