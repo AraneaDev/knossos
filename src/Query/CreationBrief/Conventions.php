@@ -17,8 +17,11 @@ final class Conventions
     /** Fewest files a population needs before any convention is stated. */
     public const MIN_FILES = 5;
 
-    /** Smallest share of the population a pattern must cover, as a fraction; compared in integers. */
-    public const MIN_SHARE = 0.8;
+    /** Smallest share of the population a pattern must cover, as a fraction (4/5); compared in integers. */
+    public const SHARE_NUMERATOR = 4;
+
+    /** The denominator of the share above. */
+    public const SHARE_DENOMINATOR = 5;
 
     private const KIND_TEXT = [
         'one_class' => 'one class per file',
@@ -85,7 +88,7 @@ final class Conventions
     /** Whether `$count` of `$files` reaches the share, as `count * 5 >= files * 4`. */
     private static function passes(int $count, int $files): bool
     {
-        return $count * 5 >= $files * 4;
+        return $count * self::SHARE_DENOMINATOR >= $files * self::SHARE_NUMERATOR;
     }
 
     /** One entry of a count map, zero when the map or the entry is absent. */

@@ -32,6 +32,32 @@ final readonly class FolderFactsStore
      */
     public function replace(string $projectId, array $rows): int
     {
+        $own = !$this->pdo->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $changed = $this->write($projectId, $rows);
+            if ($own) {
+                $this->pdo->commit();
+            }
+        } catch (\Throwable $failure) {
+            if ($own && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $failure;
+        }
+
+        return $changed;
+    }
+
+    /**
+     * The deletes and upserts of `replace`, run inside whatever transaction is open.
+     *
+     * @param list<array{directory: string, extension: string, role: string, files: int, facts: array<string, mixed>}> $rows
+     */
+    private function write(string $projectId, array $rows): int
+    {
         $wanted = [];
         foreach ($rows as $row) {
             $wanted[self::keyOf($row['directory'], $row['extension'], $row['role'])] = $row;

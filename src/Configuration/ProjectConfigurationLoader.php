@@ -270,7 +270,7 @@ final class ProjectConfigurationLoader
         foreach ($entries as $index => $entry) {
             self::knownKeys($entry, self::GATE_KEYS, 'gate');
             $name = $entry['name'] ?? null;
-            if (!is_string($name) || preg_match('/^[a-z0-9][a-z0-9-]{0,39}$/', $name) !== 1) {
+            if (!is_string($name) || preg_match('/^[a-z0-9][a-z0-9-]{0,39}$/D', $name) !== 1) {
                 throw new DiscoveryException('PROJECT_CONFIG_INVALID: gates entry ' . $index . ' needs a name of 1 to 40 lowercase letters, digits and hyphens.');
             }
             $command = $entry['command'] ?? null;

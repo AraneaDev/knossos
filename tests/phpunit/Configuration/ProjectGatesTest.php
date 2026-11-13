@@ -68,6 +68,26 @@ final class ProjectGatesTest extends KnossosTestCase
         $this->assertRefused(['gates' => $gates], 'gates');
     }
 
+    /** `$` alone would let a trailing newline through; the name ends where it ends. */
+    public function testANameWithATrailingNewlineIsRefused(): void
+    {
+        $this->assertRefused(['gates' => [['name' => "cs\n", 'command' => 'true']]], 'gates');
+    }
+
+    /** A name is lowercase letters, digits and hyphens. */
+    public function testANameWithASpaceAndCapitalsIsRefused(): void
+    {
+        $this->assertRefused(['gates' => [['name' => 'Bad Name', 'command' => 'true']]], 'gates');
+    }
+
+    /** `applies_to` is bounded at ten entries. */
+    public function testElevenAppliesToEntriesAreRefused(): void
+    {
+        $globs = array_map(static fn(int $index): string => 'src/' . $index . '/*', range(1, 11));
+
+        $this->assertRefused(['gates' => [['name' => 'cs', 'command' => 'true', 'applies_to' => $globs]]], 'gates');
+    }
+
     /** No `gates` key, no gates. */
     public function testAProjectWithoutGatesHasNone(): void
     {

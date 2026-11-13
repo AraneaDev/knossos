@@ -89,6 +89,63 @@ final class FolderFactsStoreTest extends KnossosTestCase
         self::assertSame([], $store->companionsOf($ids['project'], 'src/Query'));
     }
 
+    /** A row that cannot be stored must not leave the earlier deletes and upserts of the same call behind. */
+    public function testAFailingReplaceLeavesTheTableAsItWas(): void
+    {
+        [$pdo, , $ids] = $this->storeFixture();
+        $store = new FolderFactsStore($pdo);
+        $store->replace($ids['project'], [self::row('src/Old', 'php', 'source', 5, [])]);
+
+        $failed = false;
+        try {
+            $store->replace($ids['project'], [
+                self::row('src/New', 'php', 'source', 6, []),
+                self::row('src/Bad', 'php', 'source', 7, ['x' => NAN]),
+            ]);
+        } catch (\Throwable) {
+            $failed = true;
+        }
+
+        self::assertTrue($failed);
+        self::assertFalse($pdo->inTransaction());
+        self::assertSame(1, self::rowCount($pdo, 'folder_facts'));
+        self::assertNotNull($store->of($ids['project'], 'src/Old', 'php', 'source'));
+    }
+
+    /** A row that violates the role CHECK is rolled back the same way. */
+    public function testARoleOutsideTheCheckRollsTheWholeReplaceBack(): void
+    {
+        [$pdo, , $ids] = $this->storeFixture();
+        $store = new FolderFactsStore($pdo);
+
+        $failed = false;
+        try {
+            $store->replace($ids['project'], [
+                self::row('src/A', 'php', 'source', 5, []),
+                self::row('src/B', 'php', 'nonsense', 5, []),
+            ]);
+        } catch (\Throwable) {
+            $failed = true;
+        }
+
+        self::assertTrue($failed);
+        self::assertSame(0, self::rowCount($pdo, 'folder_facts'));
+    }
+
+    /** A caller's open transaction is joined, not committed behind its back. */
+    public function testReplaceJoinsAnOpenTransaction(): void
+    {
+        [$pdo, , $ids] = $this->storeFixture();
+        $store = new FolderFactsStore($pdo);
+
+        $pdo->beginTransaction();
+        $store->replace($ids['project'], [self::row('src/A', 'php', 'source', 5, [])]);
+        self::assertTrue($pdo->inTransaction());
+        $pdo->rollBack();
+
+        self::assertSame(0, self::rowCount($pdo, 'folder_facts'));
+    }
+
     /** Both tables belong to the project: removing it removes them. */
     public function testRemovingTheProjectRemovesItsFacts(): void
     {
