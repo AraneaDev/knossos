@@ -7,15 +7,20 @@ namespace Knossos\Tests\Phpunit\Cli;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
-/** The release gate runs the suite once and says what it runs. */
+/** The release gate runs what only a release needs, and says what it runs. */
 final class ReleaseWorkflowTest extends KnossosTestCase
 {
     #[Group('packaging')]
-    public function testTheReleaseGateRunsPhpunitOnlyUnderCoverage(): void
+    public function testTheReleaseGateRunsOnlyTheReleaseLane(): void
     {
         $workflow = (string) file_get_contents(self::repositoryRoot() . '/.github/workflows/release-please.yml');
+        $step = self::step(self::steps($workflow), 'name: Run the release lane');
 
-        self::assertStringContainsString('KNOSSOS_PHPUNIT_IN_COVERAGE=1', $workflow, 'The coverage lane already runs the whole suite; the tests lane must not repeat it.');
+        // The commit a release cuts passed every lane on its pull request;
+        // the full profile repeated them serially for 25 to 37 minutes.
+        self::assertStringContainsString('knossos:quality full release', $step);
+        self::assertStringNotContainsString('knossos:quality full' . "\n", $workflow, 'The release job must not run the full profile again.');
+        self::assertStringNotContainsString('KNOSSOS_PHPUNIT_IN_COVERAGE', $workflow, 'No PHPUnit run happens in the release lane.');
         self::assertStringNotContainsString('mutation included', $workflow, 'No quality profile runs mutation testing.');
     }
 
@@ -72,7 +77,7 @@ final class ReleaseWorkflowTest extends KnossosTestCase
         $build = self::step($steps, 'name: Build pinned quality image');
         self::assertStringContainsString("steps.published.outputs.reuse == 'true'", self::condition($reuse));
         self::assertStringContainsString("steps.published.outputs.reuse != 'true'", self::condition($build));
-        self::assertStringContainsString('KNOSSOS_RUNTIME_IMAGE_GIVEN=1', self::step($steps, 'name: Run full quality profile'));
+        self::assertStringContainsString('KNOSSOS_RUNTIME_IMAGE_GIVEN=1', self::step($steps, 'name: Run the release lane'));
         self::assertStringContainsString('docker tag knossos:quality-runtime knossos:release', self::step($steps, 'name: Verify the released runtime image reports its version'));
     }
 
