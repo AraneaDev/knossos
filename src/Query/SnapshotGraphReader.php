@@ -145,7 +145,8 @@ final readonly class SnapshotGraphReader
         $blob = $this->payloadBlob($scanId);
         if ($blob !== null) {
             try {
-                $read = fread($blob, strlen(self::PREFIX)) === self::PREFIX && $this->streamed(self::pieces($blob), $columns, $counting) !== null;
+                $base64 = self::isBase64((string) fread($blob, self::PREFIX_LENGTH));
+                $read = $base64 !== null && $this->streamed(self::compressed(self::pieces($blob), $base64), $columns, $counting) !== null;
             } finally {
                 fclose($blob);
             }
@@ -164,7 +165,8 @@ final readonly class SnapshotGraphReader
         if (!is_string($stored)) {
             throw new InvalidArgumentException(sprintf('Snapshot facts are not retained: %s', $scanId));
         }
-        if (str_starts_with($stored, self::PREFIX) && $this->streamed(self::slices($stored), $columns, $counting) !== null) {
+        $base64 = self::isBase64($stored);
+        if ($base64 !== null && $this->streamed(self::compressed(self::slices($stored), $base64), $columns, $counting) !== null) {
             return;
         }
         if ($emitted->rows > 0) {
@@ -184,7 +186,8 @@ final readonly class SnapshotGraphReader
      */
     private function read(string $storedPayload, string $scanId, array $columns): array
     {
-        $facts = str_starts_with($storedPayload, self::PREFIX) ? $this->streamed(self::slices($storedPayload), $columns) : null;
+        $base64 = self::isBase64($storedPayload);
+        $facts = $base64 !== null ? $this->streamed(self::compressed(self::slices($storedPayload), $base64), $columns) : null;
 
         return $facts ?? $this->decodedWhole($storedPayload, $scanId, $columns);
     }
@@ -208,7 +211,8 @@ final readonly class SnapshotGraphReader
         $blob = $this->payloadBlob($scanId);
         if ($blob !== null) {
             try {
-                $facts = fread($blob, strlen(self::PREFIX)) === self::PREFIX ? $this->streamed(self::pieces($blob), $columns) : null;
+                $base64 = self::isBase64((string) fread($blob, self::PREFIX_LENGTH));
+                $facts = $base64 !== null ? $this->streamed(self::compressed(self::pieces($blob), $base64), $columns) : null;
             } finally {
                 fclose($blob);
             }
@@ -269,7 +273,7 @@ final readonly class SnapshotGraphReader
      */
     private static function slices(string $storedPayload): \Generator
     {
-        for ($at = strlen(self::PREFIX), $length = strlen($storedPayload); $at < $length; $at += self::SLICE) {
+        for ($at = self::PREFIX_LENGTH, $length = strlen($storedPayload); $at < $length; $at += self::SLICE) {
             yield substr($storedPayload, $at, self::SLICE);
         }
     }
@@ -291,12 +295,56 @@ final readonly class SnapshotGraphReader
         }
     }
 
-    /** Marks a compressed payload, as {@see SnapshotPayload} writes it. */
-    private const PREFIX = 'gzip64:';
+    /** The length both of {@see SnapshotPayload}'s prefixes have, so one read of this many bytes tells them apart. */
+    private const PREFIX_LENGTH = 7;
 
     /**
-     * How much stored payload (base64 text, a multiple of 4) is decoded and
-     * inflated in one step: 4,096 characters, 3,072 compressed bytes.
+     * How a compressed payload's bytes are stored, from its first bytes: true
+     * for base64 text, false for the gzip bytes themselves, null when it is
+     * neither and has to be decoded whole.
+     */
+    private static function isBase64(string $head): ?bool
+    {
+        return match (substr($head, 0, self::PREFIX_LENGTH)) {
+            SnapshotPayload::PREFIX => true,
+            SnapshotPayload::BINARY_PREFIX => false,
+            default => null,
+        };
+    }
+
+    /**
+     * The gzip bytes of a stored payload, a piece at a time; a piece of false
+     * when the base64 text is not base64, or ends inside a group.
+     *
+     * Base64 text arrives in pieces of any length (a stream need not return
+     * whole slices), so each step decodes the longest run of whole
+     * four-character groups it has and carries the rest to the next.
+     *
+     * @param iterable<string> $pieces the stored payload after its prefix
+     * @return \Generator<int, string|false>
+     */
+    private static function compressed(iterable $pieces, bool $base64): \Generator
+    {
+        if (!$base64) {
+            yield from $pieces;
+
+            return;
+        }
+        $carry = '';
+        foreach ($pieces as $piece) {
+            $text = $carry . $piece;
+            $whole = strlen($text) - strlen($text) % 4;
+            $carry = substr($text, $whole);
+            yield base64_decode(substr($text, 0, $whole), true);
+        }
+        if ($carry !== '') {
+            yield false;
+        }
+    }
+
+    /**
+     * How much stored payload is inflated in one step: 4,096 bytes of gzip,
+     * or 4,096 characters of base64 text (a multiple of 4), which is 3,072.
      *
      * Small on purpose. What one step inflates to is its input times the
      * compression ratio, and zlib's ratio reaches about 1,032:1; a megabyte
@@ -320,11 +368,7 @@ final readonly class SnapshotGraphReader
      * not laid out as the archive writes it (or cannot be inflated), so the
      * caller decodes it whole.
      *
-     * The base64 text arrives in pieces of any length (a stream need not
-     * return whole slices); each step decodes the longest run of whole
-     * four-character groups it has and carries the rest to the next.
-     *
-     * @param iterable<string> $pieces the stored text after its prefix
+     * @param iterable<string|false> $pieces the payload's gzip bytes, see {@see self::compressed()}
      * @param array<string, list<string>|null> $columns
      * @param (Closure(array<string, mixed>): void)|null $sink takes each kept row instead of the result
      * @return array<string, list<array<string, mixed>>>|null
@@ -337,18 +381,13 @@ final readonly class SnapshotGraphReader
         }
         $facts = array_fill_keys(array_keys($columns), []);
         $state = ['phase' => 'head', 'table' => null, 'buffer' => ''];
-        $carry = '';
-        foreach ($pieces as $piece) {
-            $text = $carry . $piece;
-            $whole = strlen($text) - strlen($text) % 4;
-            $carry = substr($text, $whole);
-            $compressed = base64_decode(substr($text, 0, $whole), true);
+        foreach ($pieces as $compressed) {
             $chunk = $compressed === false ? false : @inflate_add($inflate, $compressed, ZLIB_SYNC_FLUSH);
             if ($chunk === false || !$this->take($state, $chunk, $facts, $columns, $sink)) {
                 return null;
             }
         }
-        $chunk = $carry === '' ? @inflate_add($inflate, '', ZLIB_FINISH) : false;
+        $chunk = @inflate_add($inflate, '', ZLIB_FINISH);
         if ($chunk === false || !$this->take($state, $chunk, $facts, $columns, $sink)) {
             return null;
         }

@@ -21,7 +21,7 @@ final class SnapshotCompressionTest extends KnossosTestCase
         $repository->archiveActiveSnapshot($ids['project'], hash('sha256', '{}'), 5);
 
         $stored = (string) $pdo->query('SELECT payload_json FROM scan_snapshots')->fetchColumn();
-        $this->assertStringStartsWith('gzip64:', $stored);
+        $this->assertStringStartsWith('gzipb1:', $stored);
         // byte_size stays the size of the facts, not of their storage: it
         // answers "how big is this snapshot", which a reader compares across
         // scans and which compression must not silently redefine.

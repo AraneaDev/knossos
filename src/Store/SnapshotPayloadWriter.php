@@ -30,7 +30,7 @@ final class SnapshotPayloadWriter
     private bool $exceeded = false;
 
     /**
-     * @param non-empty-string $prefix marker distinguishing a compressed payload from a plain one
+     * @param non-empty-string $prefix marker of a payload stored as raw gzip bytes
      * @param int $maxBytes uncompressed ceiling past which the payload is abandoned
      */
     public function __construct(private readonly string $prefix, int $level, private readonly int $maxBytes)
@@ -74,11 +74,11 @@ final class SnapshotPayloadWriter
         return $this->bytes;
     }
 
-    /** Close the stream and return the stored representation. */
+    /** Close the stream and return the stored representation: the prefix, then the gzip bytes as they are. */
     public function finish(): string
     {
         $this->compressed .= deflate_add($this->deflate, '', ZLIB_FINISH);
 
-        return $this->prefix . base64_encode($this->compressed);
+        return $this->prefix . $this->compressed;
     }
 }
