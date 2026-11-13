@@ -70,15 +70,15 @@ final class SqliteGraphPrunerTest extends KnossosTestCase
         [$pdo] = $this->storeFixture();
 
         foreach (['edges', 'nodes', 'classifications'] as $table) {
-            $plan = $pdo->prepare('EXPLAIN QUERY PLAN ' . SqliteGraphPruner::pruneSql($table, 400));
+            $plan = $pdo->prepare('EXPLAIN QUERY PLAN ' . SqliteGraphPruner::pruneSql($table, array_fill(0, 400, 'id')));
             $plan->execute([...array_fill(0, 400, 'id'), 'project']);
             $detail = implode(' | ', array_column($plan->fetchAll(), 'detail'));
 
             assertSame(1, preg_match('/\\(id=\\?\\)/', $detail), $table . ': ' . $detail);
             assertSame(false, str_contains($detail, 'project_id'), $table . ': ' . $detail);
         }
-        assertSame('DELETE FROM files WHERE id IN (?,?) AND project_id = ?', SqliteGraphPruner::pruneSql('files', 2));
-        assertSame('DELETE FROM edges WHERE id IN (?,?) AND +project_id = ?', SqliteGraphPruner::pruneSql('edges', 2));
+        assertSame('DELETE FROM files WHERE id IN (?,?) AND project_id = ?', SqliteGraphPruner::pruneSql('files', ['a', 'b']));
+        assertSame('DELETE FROM edges WHERE id IN (?,?) AND +project_id = ?', SqliteGraphPruner::pruneSql('edges', ['a', 'b']));
     }
 
     #[Group('store')]
