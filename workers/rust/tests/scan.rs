@@ -6309,3 +6309,118 @@ pub fn pick() {
         "{imports:?}"
     );
 }
+
+#[test]
+fn a_call_through_a_pub_use_reaches_the_type_that_module_re_exports() {
+    // Two `Decoder`s: the root's `frame` and `v2`'s own `frame`, each
+    // re-exported by its parent. `v2::Decoder::new()` is `v2::frame`'s.
+    let contributions = scan_fixture(
+        "reexported-twins",
+        &[
+            (
+                "src/lib.rs",
+                "mod frame;\npub mod v2;\npub mod pump;\npub use frame::Decoder;\n",
+            ),
+            ("src/frame.rs", "pub struct Decoder;\nimpl Decoder { pub fn new() -> Self { Decoder } }\n"),
+            ("src/v2/mod.rs", "mod frame;\npub use frame::{Decoder};\n"),
+            ("src/v2/frame.rs", "pub struct Decoder;\nimpl Decoder { pub fn new() -> Self { Decoder } }\n"),
+            (
+                "src/pump.rs",
+                "use crate::v2;\npub fn start() { let _ = v2::Decoder::new(); }\npub fn root() { let _ = crate::Decoder::new(); }\n",
+            ),
+        ],
+    );
+    let news = |source: &str| -> Vec<String> {
+        method_calls(&contributions, source)
+            .into_iter()
+            .map(|(target, _)| target)
+            .filter(|target| target.ends_with("::new"))
+            .collect()
+    };
+
+    assert_eq!(
+        vec!["rust:method:crate::v2::frame::Decoder::new".to_owned()],
+        news("rust:function:crate::pump::start")
+    );
+    assert_eq!(
+        vec!["rust:method:crate::frame::Decoder::new".to_owned()],
+        news("rust:function:crate::pump::root")
+    );
+}
+
+#[test]
+fn a_result_combinator_before_the_question_mark_keeps_the_ok_type() {
+    // `CursorRecord::evidence(..) -> Result<Self, ErrorCode>`, then
+    // `.map_err(error)?`: the binding is a `CursorRecord`.
+    let source = r#"
+pub struct ErrorCode;
+pub struct QueryError;
+fn error(_: ErrorCode) -> QueryError { QueryError }
+pub struct CursorRecord;
+impl CursorRecord {
+    pub fn evidence(_: u8) -> Result<Self, ErrorCode> { Ok(CursorRecord) }
+    pub fn change_token(&self) -> u8 { 0 }
+    pub fn revision(&self) -> u8 { 0 }
+    pub fn found(&self) -> u8 { 0 }
+}
+pub fn run(found: Option<CursorRecord>) -> Result<u8, QueryError> {
+    let cursor = CursorRecord::evidence(1).map_err(error)?;
+    let other = found.ok_or(QueryError)?;
+    let third = CursorRecord::evidence(2).ok().ok_or_else(|| QueryError)?;
+    Ok(cursor.change_token() + other.revision() + third.found())
+}
+"#;
+    let contributions = scan_fixture("result-chain", &[("src/lib.rs", source)]);
+    let mut targets: Vec<String> = method_targets(&contributions, "rust:function:crate::run")
+        .into_iter()
+        .filter(|target| !target.ends_with("::evidence"))
+        .collect();
+    targets.dedup();
+
+    assert_eq!(
+        vec![
+            "rust:method:crate::CursorRecord::change_token".to_owned(),
+            "rust:method:crate::CursorRecord::found".to_owned(),
+            "rust:method:crate::CursorRecord::revision".to_owned()
+        ],
+        targets
+    );
+}
+
+#[test]
+fn a_closure_of_and_then_after_a_map_to_a_variant_takes_the_enum() {
+    // Every arm is `from_value(..).map(ToolCall::Variant)`, a `Result` of
+    // `ToolCall`, so `.and_then(|call| ..)` hands the closure a `ToolCall`.
+    let source = r#"
+pub struct StartArgs;
+pub struct ListArgs;
+pub struct ArgumentError;
+pub enum ToolCall {
+    RunStart(StartArgs),
+    RunList(ListArgs),
+}
+impl ToolCall {
+    pub fn validate(&self) -> Result<(), ArgumentError> { Ok(()) }
+}
+fn parse<T>(_: &str) -> Result<T, ()> { Err(()) }
+pub fn tool_call(name: &str) -> Option<Result<ToolCall, ArgumentError>> {
+    let result = match name {
+        "run_start" => parse(name).map(ToolCall::RunStart),
+        "run_list" => parse(name).map(ToolCall::RunList),
+        _ => return None,
+    }
+    .map_err(|_| ArgumentError)
+    .and_then(|call| {
+        call.validate()?;
+        Ok(call)
+    });
+    Some(result)
+}
+"#;
+    let contributions = scan_fixture("variant-map", &[("src/lib.rs", source)]);
+
+    assert_eq!(
+        vec!["rust:method:crate::ToolCall::validate".to_owned()],
+        method_targets(&contributions, "rust:function:crate::tool_call")
+    );
+}
