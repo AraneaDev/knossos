@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Query;
 
+use Knossos\Git\GitProcessRunner;
+use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Query\BranchDiffService;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanOptions;
@@ -16,6 +18,7 @@ use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 
 use PHPUnit\Framework\Attributes\Group;
+use RuntimeException;
 
 /**
  * What a branch did to the architecture: the graph now against the retained
@@ -298,6 +301,38 @@ final class BranchDiffServiceTest extends KnossosTestCase
             assertSame('no-snapshot', $diff['status']);
             assertSame(['after', 1], [$diff['base']['match'], $diff['base']['commits']]);
             assertSame(0, $diff['comparison']['cycles']['count']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A commit count git could not give is not a count of zero. Read as zero
+     * it called a branch with work of its own the default branch.
+     */
+    #[Group('query')]
+    public function testACountGitCouldNotGiveIsAnErrorNotTheDefaultBranch(): void
+    {
+        [$pdo, $root] = $this->repository();
+        try {
+            $this->branchWork($pdo, $root);
+            $git = new class implements GitProcessRunnerInterface {
+                /** Real git, except that counting commits times out. */
+                public function run(array $command, int $timeoutMs, string $operation): string
+                {
+                    if (in_array('rev-list', $command, true)) {
+                        throw new RuntimeException('Git branch diff timed out.');
+                    }
+
+                    return (new GitProcessRunner())->run($command, $timeoutMs, $operation);
+                }
+            };
+
+            $diff = (new BranchDiffService($pdo, $git))->diff($root);
+
+            assertSame('error', $diff['status']);
+            assertSame(1, preg_match('/^Git could not count the commits this branch is ahead of \\S+\\.$/', $diff['reason']));
+            assertSame('ok', (new BranchDiffService($pdo))->diff($root)['status']);
         } finally {
             $this->removeTempTree($root);
         }

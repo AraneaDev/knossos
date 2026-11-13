@@ -25,7 +25,13 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
 {
     private GitProcessRunnerInterface $runner;
 
-    public function __construct(int $maxOutputBytes = 2_000_000, int $maxErrorBytes = 65_536, ?GitProcessRunnerInterface $runner = null)
+    /**
+     * Sized for a listing by default. The untracked listing names every file
+     * no `.gitignore` in the tree excludes, so a directory ignored only by
+     * `.git/info/exclude` or a global ignore is listed file by file, and the
+     * `max_files` bound can only be applied to an answer that was read.
+     */
+    public function __construct(int $maxOutputBytes = GitListingRunner::OUTPUT_BYTES, int $maxErrorBytes = 65_536, ?GitProcessRunnerInterface $runner = null)
     {
         $this->runner = $runner ?? new GitProcessRunner($maxOutputBytes, $maxErrorBytes);
     }
@@ -71,7 +77,9 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
                 }
             }
         }
-        $paths = array_keys($paths);
+        // Keyed by path, so a path of digits alone ("123") came back an int:
+        // strings again before anything typed for a path reads them.
+        $paths = array_map('strval', array_keys($paths));
         sort($paths, SORT_STRING);
         $truncated = count($paths) > $maxFiles;
         return ['paths' => array_slice($paths, 0, $maxFiles), 'renames' => $renames, 'truncated' => $truncated];

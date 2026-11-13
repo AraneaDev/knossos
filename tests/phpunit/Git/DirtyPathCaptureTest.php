@@ -140,6 +140,50 @@ final class DirtyPathCaptureTest extends KnossosTestCase
         }
     }
 
+    /** The reason travels back to the caller, because a scan that only logs it to stderr reports nothing a user can see. */
+    #[Group('git')]
+    public function testAFailedListingNamesItsReason(): void
+    {
+        $previous = ini_set('error_log', '/dev/null');
+        try {
+            $failure = null;
+            $set = (new DirtyPathResolver($this->failingRunner()))->resolve('/tmp/knossos-dirty', self::HEAD, [], $failure);
+
+            self::assertNull($set);
+            self::assertSame('timed out after 2000 ms', $failure);
+        } finally {
+            ini_set('error_log', $previous === false ? '' : $previous);
+        }
+    }
+
+    /** A listing that answered leaves no reason behind, so a caller cannot report a failure that did not happen. */
+    #[Group('git')]
+    public function testAnAnsweredListingNamesNoReason(): void
+    {
+        $failure = 'left over from an earlier call';
+        (new DirtyPathResolver($this->runner('')))->resolve('/tmp/knossos-dirty', self::HEAD, [], $failure);
+
+        self::assertNull($failure);
+    }
+
+    /**
+     * Only the paths discovery read are kept from the listing. A monorepo
+     * package scanned on its own lists every tracked file under its root, and
+     * holding all of them to answer for the few that were read is memory spent
+     * on nothing.
+     */
+    #[Group('git')]
+    public function testEntriesDiscoveryDidNotReadDoNotDecideAnything(): void
+    {
+        $set = $this->resolve(
+            ['assets/logo.png' => 'eeee', 'src/a.php' => 'aaaa', 'docs/guide.md' => 'ffff'],
+            [$this->discovered('src/a.php', 'changed')],
+        );
+
+        self::assertNotNull($set);
+        self::assertSame(['src/a.php'], $set->paths);
+    }
+
     /**
      * Runs the resolver against a faked `ls-tree` listing built from the given
      * committed blobs.

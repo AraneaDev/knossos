@@ -27,6 +27,9 @@ final readonly class ProcessGitHistoryProvider implements GitHistoryProvider
     /** What every commit header in the log starts with, after the NUL the format puts before it; the fields follow it. */
     private const MARKER = "KNOSSOS_COMMIT\x1f";
 
+    /** What the commit count is divided by for the one retry after a log that outgrew the output limit. */
+    private const FEWER_COMMITS_DIVISOR = 10;
+
     private GitProcessRunnerInterface $runner;
 
     public function __construct(int $maxOutputBytes = 2_000_000, int $maxErrorBytes = 65_536, ?GitProcessRunnerInterface $runner = null)
@@ -43,12 +46,37 @@ final readonly class ProcessGitHistoryProvider implements GitHistoryProvider
         if ($maxCommits < 1 || $maxCommits > 5000) {
             throw new RuntimeException('max_commits must be between 1 and 5000.');
         }
-        $output = $this->runner->run([
-            ...GitCommand::checked($projectRoot, $timeoutMs), 'log',
-            '--since=' . $sinceDays . ' days ago', '--max-count=' . ($maxCommits + 1),
+        $git = GitCommand::checked($projectRoot, $timeoutMs);
+        try {
+            return $this->parse($this->log($git, $sinceDays, $maxCommits + 1, $timeoutMs), $maxCommits);
+        } catch (GitOutputLimitExceeded $tooLarge) {
+            // The log grows with the commits asked for and the files each one
+            // touched. A tenth of the commits is an answer that says it was
+            // cut, which ranks better than no change signal at all.
+            $fewer = intdiv($maxCommits, self::FEWER_COMMITS_DIVISOR);
+            if ($fewer < 1) {
+                throw $tooLarge;
+            }
+            try {
+                return ['truncated' => true] + $this->parse($this->log($git, $sinceDays, $fewer, $timeoutMs), $fewer);
+            } catch (GitOutputLimitExceeded) {
+                throw $tooLarge;
+            }
+        }
+    }
+
+    /**
+     * The `git log -z` output for the newest `$count` commits in the window.
+     *
+     * @param non-empty-list<string> $git the git prefix that runs in the project root
+     */
+    private function log(array $git, int $sinceDays, int $count, int $timeoutMs): string
+    {
+        return $this->runner->run([
+            ...$git, 'log',
+            '--since=' . $sinceDays . ' days ago', '--max-count=' . $count,
             '--format=%x00KNOSSOS_COMMIT%x1f%H%x1f%aI%x1f%at%x1f%ae', '-z', '--name-only', '--no-renames', '--relative', '--', '.',
         ], $timeoutMs, 'history');
-        return $this->parse($output, $maxCommits);
     }
 
     /**

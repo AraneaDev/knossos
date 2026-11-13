@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Query;
 
+use Knossos\Git\GitListingRunner;
+use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Query\LedgeredScanner;
 use Knossos\Query\SessionChangesService;
 use Knossos\Scan\ProjectScanService;
@@ -18,6 +20,7 @@ use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertTrue;
 
 use PHPUnit\Framework\Attributes\Group;
+use RuntimeException;
 
 /**
  * What changed in a project since a session began, whoever changed it, read
@@ -338,6 +341,121 @@ final class SessionChangesServiceTest extends KnossosTestCase
             assertSame(3, count(self::working($pdo, $root)['files']));
             $this->git($root, ['commit', '--quiet', '-m', 'second']);
             assertSame([], self::working($pdo, $root)['files']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A git runner that runs real git, records each call, and fails the calls naming `$failing`.
+     *
+     * @return GitProcessRunnerInterface&object{commands: list<list<string>>}
+     */
+    private static function watchedGit(?string $failing = null): GitProcessRunnerInterface
+    {
+        return new class ($failing) implements GitProcessRunnerInterface {
+            /** @var list<list<string>> */
+            public array $commands = [];
+
+            public function __construct(private ?string $failing) {}
+
+            /** Records the call, then fails it or hands it to real git. */
+            public function run(array $command, int $timeoutMs, string $operation): string
+            {
+                $this->commands[] = $command;
+                if ($this->failing !== null && in_array($this->failing, $command, true)) {
+                    throw new RuntimeException('Git ' . $operation . ' timed out.');
+                }
+
+                return GitListingRunner::create()->run($command, $timeoutMs, $operation);
+            }
+        };
+    }
+
+    /**
+     * Which changed files HEAD holds is one question, however many files
+     * changed. Asked per file it was two processes each, so a full pane of
+     * 200 files spawned 400.
+     */
+    #[Group('query')]
+    public function testTheCommittedFilesAreAskedForInOneCall(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            $this->git($root, ['add', '.']);
+            $this->git($root, ['commit', '--quiet', '-m', 'first']);
+            file_put_contents($root . '/src/Core/Greeter.php', "\n// edited\n", FILE_APPEND);
+            file_put_contents($root . '/src/Edge/Caller.php', "\n// edited\n", FILE_APPEND);
+            file_put_contents($root . '/src/Core/Added.php', "<?php\nnamespace App;\nfinal class Added {}\n");
+            $git = self::watchedGit();
+
+            $changes = json_decode((string) json_encode((new SessionChangesService($pdo, $git))->workingChanges($root)), true);
+
+            assertSame(['src/Core/Greeter.php' => 'changed', 'src/Core/Added.php' => 'added', 'src/Edge/Caller.php' => 'changed'], self::statusesOf($changes));
+            assertCount(1, array_filter($git->commands, static fn(array $command): bool => in_array('ls-tree', $command, true)));
+            assertCount(0, array_filter($git->commands, static fn(array $command): bool => in_array('cat-file', $command, true)));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A git too slow to say which files HEAD holds is an error with its reason, never a tracked file called added. */
+    #[Group('query')]
+    public function testAGitThatCannotSayWhatHeadHoldsIsAnErrorNotAnAddition(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            $this->git($root, ['add', '.']);
+            $this->git($root, ['commit', '--quiet', '-m', 'first']);
+            file_put_contents($root . '/src/Core/Greeter.php', "\n// edited\n", FILE_APPEND);
+
+            $changes = json_decode((string) json_encode((new SessionChangesService($pdo, self::watchedGit('ls-tree')))->workingChanges($root)), true);
+
+            assertSame(['error', 'Git could not say which of the changed files HEAD holds.', []], [$changes['status'], $changes['reason'], $changes['files']]);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A listing git could not give is an error that says why, so the pane has more to show than a bare status. */
+    #[Group('query')]
+    public function testAFailedListingCarriesGitsReason(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            $this->git($root, ['add', '.']);
+            $this->git($root, ['commit', '--quiet', '-m', 'first']);
+
+            $changes = json_decode((string) json_encode((new SessionChangesService($pdo, self::watchedGit('diff')))->workingChanges($root)), true);
+
+            assertSame(['error', 'Git working-tree query timed out.'], [$changes['status'], $changes['reason']]);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A file whose name is digits alone is a path like any other. As an array
+     * key PHP turns "123" into an int, and an int handed to anything typed
+     * for a path failed the whole answer.
+     */
+    #[Group('query')]
+    public function testAChangedFileNamedInDigitsAloneIsListed(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
+            $this->git($root, ['add', '.']);
+            $this->git($root, ['commit', '--quiet', '-m', 'first']);
+            file_put_contents($root . '/123', "notes\n");
+
+            $changes = self::working($pdo, $root);
+
+            assertSame('ok', $changes['status']);
+            assertSame(['123' => 'added'], self::statusesOf($changes));
         } finally {
             $this->removeTempTree($root);
         }

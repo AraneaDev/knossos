@@ -147,12 +147,18 @@ final readonly class SessionChangesService
         try {
             // No base ref: the provider compares with HEAD, or with the index on a branch that has none.
             $listing = $this->git->changes($root, null, self::MAX_FILES, self::GIT_TIMEOUT_MS);
-        } catch (Throwable) {
-            return ['status' => 'error'] + $base;
+        } catch (Throwable $error) {
+            return ['status' => 'error', 'reason' => $error->getMessage()] + $base;
         }
+        $present = array_values(array_filter($listing['paths'], static fn(string $file): bool => file_exists($root . '/' . $file) || is_link($root . '/' . $file)));
+        $committed = $this->committed($root, $present);
+        if ($committed === null) {
+            return ['status' => 'error', 'reason' => 'Git could not say which of the changed files HEAD holds.'] + $base;
+        }
+        $there = array_fill_keys($present, true);
         $statuses = [];
         foreach ($listing['paths'] as $file) {
-            $statuses[$file] = !file_exists($root . '/' . $file) && !is_link($root . '/' . $file) ? 'deleted' : ($this->succeeds($root, ['cat-file', '-e', 'HEAD:./' . $file]) ? 'changed' : 'added');
+            $statuses[$file] = !isset($there[$file]) ? 'deleted' : (isset($committed[$file]) ? 'changed' : 'added');
         }
         return ['status' => 'ok', 'complete' => true] + $this->listed($projectId, $root, $statuses, [], [], $listing['truncated']) + $base;
     }
@@ -169,7 +175,33 @@ final readonly class SessionChangesService
     }
 
     /**
-     * Whether a git command succeeds in `$dir`.
+     * Which of `$files` HEAD holds, asked in one call; null when git could not say.
+     *
+     * One listing for all of them, not a `cat-file` per file: every run is
+     * two processes, so a pane of 200 changed files cost 400.
+     *
+     * @param list<string> $files paths relative to `$root`
+     * @return array<string, true>|null
+     */
+    private function committed(string $root, array $files): ?array
+    {
+        if ($files === []) {
+            return [];
+        }
+        try {
+            $listed = $this->runner->run([...GitCommand::in($root), 'ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', ...$files], self::GIT_TIMEOUT_MS, 'session changes');
+        } catch (Throwable) {
+            // A branch with no commit holds nothing, so every file is an add.
+            // Any other failure is not an answer: calling a tracked file
+            // added because git was slow is a wrong status, not a missing one.
+            return $this->succeeds($root, ['rev-parse', '--verify', '-q', 'HEAD']) ? null : [];
+        }
+
+        return array_fill_keys(array_filter(explode("\0", $listed), static fn(string $path): bool => $path !== ''), true);
+    }
+
+    /**
+     * Whether a git command in `$dir` exits cleanly within its timeout.
      *
      * @param list<string> $args
      */
@@ -207,7 +239,8 @@ final readonly class SessionChangesService
      */
     private function listed(string $projectId, string $root, array $statuses, array $fileScans, array $chain, bool $cut = false): array
     {
-        $live = array_keys(array_filter($statuses, static fn(string $s): bool => $s !== 'deleted'));
+        // Keyed by path, so a path of digits alone came back an int; strings again for everything typed for a path.
+        $live = array_map('strval', array_keys(array_filter($statuses, static fn(string $s): bool => $s !== 'deleted')));
         $impact = (new FileFanInQuery($this->pdo))->forPaths($projectId, $live, 0);
         $files = [];
         foreach ($statuses as $file => $status) {
@@ -221,7 +254,7 @@ final readonly class SessionChangesService
             ];
         }
         uksort($files, static fn(string $a, string $b): int => $files[$b]['dependents'] <=> $files[$a]['dependents'] ?: strcmp($a, $b));
-        $sources = array_slice(array_values(array_filter(array_keys($files), static fn(string $f): bool => $files[$f]['status'] !== 'deleted')), 0, self::MAX_TEST_SOURCES);
+        $sources = array_slice(array_map('strval', array_values(array_filter(array_keys($files), static fn(string $f): bool => $files[$f]['status'] !== 'deleted'))), 0, self::MAX_TEST_SOURCES);
         $queries = QueryServices::wire($this->pdo);
         $tests = $sources === [] ? ['tests' => [], 'truncated' => false] : FileTestReach::testsOf($queries->changeQueries, $projectId, $sources, self::MAX_TESTS);
         foreach ((new FileTestReach($this->pdo, services: $queries))->reach($projectId, $sources) as $file => $reached) {

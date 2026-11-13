@@ -13,6 +13,7 @@ use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
+use RuntimeException;
 
 /**
  * A scan has to record which of its stored hashes may be of uncommitted
@@ -61,6 +62,70 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
             self::assertNotNull($recorded, 'A scan that records nothing leaves the oracle no choice but to decline for the rest of that graph.');
             self::assertSame(['src/Existing.php'], $recorded->paths);
             self::assertContains(self::HEAD, $dirty->commands[0] ?? [], 'The tree must be the one this scan recorded a commit for, not a symbolic HEAD that may have moved since.');
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A tree git could not list leaves the scan with no recorded set, and the
+     * freshness check then never answers from git for that snapshot. Logged to
+     * stderr alone, that is invisible: the scan result has to say so.
+     */
+    #[Group('scan')]
+    public function testAScanWhoseTreeCouldNotBeListedSaysSo(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o777, true);
+        file_put_contents($root . '/src/Existing.php', "<?php\n\nfinal class Existing {}\n");
+        $previous = ini_set('error_log', '/dev/null');
+        try {
+            $service = new ProjectScanService(
+                $this->freshTestDatabase(),
+                self::repositoryRoot(),
+                [$root],
+                new GitHeadResolver($this->fixedRunner(self::HEAD . "\n")),
+                new DirtyPathResolver(new class implements GitProcessRunnerInterface {
+                    /** Fails the way a listing past the output ceiling does. */
+                    public function run(array $command, int $timeoutMs, string $operation): string
+                    {
+                        throw new RuntimeException('Git scan head tree output exceeded its configured byte limit.');
+                    }
+                }),
+            );
+
+            $warnings = array_values(array_filter(
+                $service->scan($root)->warnings,
+                static fn(string $warning): bool => str_starts_with($warning, 'GIT_HEAD_TREE_UNAVAILABLE: '),
+            ));
+
+            self::assertCount(1, $warnings);
+            self::assertStringContainsString('Git scan head tree output exceeded its configured byte limit.', $warnings[0]);
+        } finally {
+            ini_set('error_log', $previous === false ? '' : $previous);
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A tree that was listed raises no such warning, and neither does a project with no commit to list. */
+    #[Group('scan')]
+    public function testAScanWhoseTreeWasListedDoesNotWarn(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src', 0o777, true);
+        file_put_contents($root . '/src/Existing.php', "<?php\n\nfinal class Existing {}\n");
+        try {
+            foreach ([self::HEAD . "\n", "fatal: not a git repository\n"] as $head) {
+                $service = new ProjectScanService(
+                    $this->freshTestDatabase(),
+                    self::repositoryRoot(),
+                    [$root],
+                    new GitHeadResolver($this->fixedRunner($head)),
+                    new DirtyPathResolver($this->fixedRunner('')),
+                );
+
+                self::assertStringNotContainsString('GIT_HEAD_TREE_UNAVAILABLE', implode("\n", $service->scan($root)->warnings));
+            }
         } finally {
             $this->removeTempTree($root);
         }
