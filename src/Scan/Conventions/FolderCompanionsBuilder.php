@@ -50,12 +50,22 @@ final readonly class FolderCompanionsBuilder
      */
     private const MAX_PATHS_PER_COMMIT = 200;
 
+    /**
+     * A commit adding files in more than this many folders is a scaffold or a sweep,
+     * and counting it would cost a pair per folder and path.
+     */
+    private const MAX_ADDED_DIRECTORIES_PER_COMMIT = 20;
+
+    /** Most (folder, path) counters kept; ones already present keep counting past it. */
+    private const MAX_COUNTERS = 200000;
+
     /** Longest path, in bytes, that may be stored as a companion. */
     private const MAX_PATH_BYTES = 200;
 
     private GitProcessRunnerInterface $runner;
 
-    public function __construct(private FolderFactsStore $store, ?GitProcessRunnerInterface $runner = null)
+    /** @param int $maxCounters most (folder, path) counters kept while counting */
+    public function __construct(private FolderFactsStore $store, ?GitProcessRunnerInterface $runner = null, private int $maxCounters = self::MAX_COUNTERS)
     {
         $this->runner = $runner ?? GitListingRunner::create();
     }
@@ -76,11 +86,11 @@ final readonly class FolderCompanionsBuilder
         }
         try {
             $output = $this->runner->run(
-                [...GitCommand::in($root), 'log', '--since=' . self::WINDOW_DAYS . '.days.ago', '--max-count=' . self::MAX_COMMITS, '--no-merges', '--no-renames', '-z', '--name-status', '--format=' . self::MARKER_FORMAT, '--relative', '--', '.'],
+                [...GitCommand::in($root), 'log', $gitHead, '--since=' . self::WINDOW_DAYS . '.days.ago', '--max-count=' . self::MAX_COMMITS, '--no-merges', '--no-renames', '-z', '--name-status', '--format=' . self::MARKER_FORMAT, '--relative', '--', '.'],
                 self::GIT_TIMEOUT_MS,
                 'folder companions',
             );
-            $this->store->saveCompanions($projectId, $gitHead, 'ok', self::companions($output));
+            $this->store->saveCompanions($projectId, $gitHead, 'ok', $this->companions($output));
         } catch (Throwable $failure) {
             error_log('knossos folder facts: companions unavailable: ' . $failure->getMessage());
             if ($this->store->companionsHead($projectId) === null) {
@@ -94,12 +104,13 @@ final readonly class FolderCompanionsBuilder
      *
      * @return array<string, list<array{path: string, commits: int, of: int}>>
      */
-    private static function companions(string $output): array
+    private function companions(string $output): array
     {
         /** @var array<string, int> $additions commits that added a file, per directory */
         $additions = [];
         /** @var array<string, array<string, int>> $changed commits per directory in which each other path changed */
         $changed = [];
+        $counters = 0;
         foreach (GitLogRecords::parse($output, self::MARKER) as $record) {
             $entries = self::entries($record['paths']);
             if (count($entries) > self::MAX_PATHS_PER_COMMIT) {
@@ -111,12 +122,22 @@ final readonly class FolderCompanionsBuilder
                     $added[PathParts::directory($path)][$path] = true;
                 }
             }
+            if (count($added) > self::MAX_ADDED_DIRECTORIES_PER_COMMIT) {
+                continue;
+            }
             foreach ($added as $directory => $paths) {
                 $additions[$directory] = ($additions[$directory] ?? 0) + 1;
                 foreach (array_unique(array_column($entries, 1)) as $path) {
-                    if (!isset($paths[$path]) && self::storable($path)) {
-                        $changed[$directory][$path] = ($changed[$directory][$path] ?? 0) + 1;
+                    if (isset($paths[$path]) || !self::storable($path)) {
+                        continue;
                     }
+                    if (!isset($changed[$directory][$path])) {
+                        if ($counters >= $this->maxCounters) {
+                            continue;
+                        }
+                        ++$counters;
+                    }
+                    $changed[$directory][$path] = ($changed[$directory][$path] ?? 0) + 1;
                 }
             }
         }
@@ -141,7 +162,7 @@ final readonly class FolderCompanionsBuilder
     }
 
     /**
-     * Whether a path from git may count and be stored: one line, and short.
+     * Whether a path from git may count and be stored: one line, short, and valid UTF-8 (JSON encoding refuses anything else).
      *
      * A tracked file name can hold a line break, and a companion is quoted to the
      * agent that is about to write a file. A name that could forge a line of that
@@ -149,7 +170,7 @@ final readonly class FolderCompanionsBuilder
      */
     private static function storable(string $path): bool
     {
-        return strlen($path) <= self::MAX_PATH_BYTES && preg_match('/[\x00-\x1F\x7F]|\xC2\x85|\xE2\x80[\xA8\xA9]/', $path) !== 1;
+        return strlen($path) <= self::MAX_PATH_BYTES && mb_check_encoding($path, 'UTF-8') && preg_match('/[\x00-\x1F\x7F]|\xC2\x85|\xE2\x80[\xA8\xA9]/', $path) !== 1;
     }
 
     /**

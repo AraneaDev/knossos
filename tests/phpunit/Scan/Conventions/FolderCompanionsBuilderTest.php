@@ -59,6 +59,9 @@ final class FolderCompanionsBuilderTest extends KnossosTestCase
         self::assertCount(1, $runner->commands);
         self::assertContains('--name-status', $runner->commands[0]);
         self::assertContains('--no-merges', $runner->commands[0]);
+        $command = $runner->commands[0];
+        self::assertSame('head1', $command[array_search('log', $command, true) + 1], 'the history is read at the recorded commit, not at whatever HEAD is');
+        self::assertLessThan(array_search('--', $command, true), array_search('head1', $command, true));
         self::assertSame([3000], $runner->timeouts);
     }
 
