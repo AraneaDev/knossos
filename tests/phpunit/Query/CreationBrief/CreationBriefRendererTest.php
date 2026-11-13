@@ -101,14 +101,61 @@ final class CreationBriefRendererTest extends KnossosTestCase
     public function testTheCharacterBudgetCutsWholeLines(): void
     {
         $data = self::brief();
-        $data['gates'] = [['name' => 'long', 'command' => str_repeat('x', 1300)]];
+        $data['gates'] = [];
+        $data['neighbours'] = [str_repeat('n', 1180)];
 
         $text = CreationBriefRenderer::lines($data);
 
         self::assertLessThanOrEqual(1200, strlen($text));
-        self::assertStringNotContainsString('gates:', $text);
+        self::assertStringNotContainsString('like:', $text);
+        self::assertStringNotContainsString('here:', $text);
         self::assertStringNotContainsString('notes:', $text);
-        self::assertStringContainsString('goes with:', $text);
+        self::assertStringContainsString('may not use:', $text);
+    }
+
+    /**
+     * Twenty gates with long commands cannot all be quoted, and the gates line does
+     * not vanish: it names every gate and says where the commands are, kept through the cut.
+     */
+    public function testGatesTooLongToQuoteFallBackToTheirNames(): void
+    {
+        $data = self::brief();
+        $data['gates'] = array_map(static fn(int $i): array => ['name' => 'gate' . $i, 'command' => str_repeat('c', 300)], range(1, 20));
+
+        $text = CreationBriefRenderer::lines($data, ['state' => 'stale', 'age_seconds' => 7200, 'changed_files_since' => 1]);
+        $lines = explode("\n", $text);
+
+        self::assertLessThanOrEqual(1200, strlen($text));
+        self::assertLessThanOrEqual(14, count($lines));
+        self::assertStringNotContainsString('ccc', $text);
+        self::assertSame('gates: ' . implode(' · ', array_map(static fn(int $i): string => 'gate' . $i, range(1, 20))) . '. Commands: the "gates" list in knossos.json', $lines[count($lines) - 2]);
+        self::assertStringStartsWith('graph is behind', $lines[count($lines) - 1]);
+        self::assertSame('knossos · new file in Query', $lines[0]);
+    }
+
+    /** The fallback gates line survives a body that fills all fourteen lines. */
+    public function testTheFallbackGatesLineIsNeverCut(): void
+    {
+        $data = self::brief();
+        $data['gates'] = [['name' => 'long', 'command' => str_repeat('x', 300)]];
+        $data['conventions'] = [];
+        for ($i = 0; $i < 40; ++$i) {
+            $data['conventions'][] = ['id' => 'uses:T' . $i, 'text' => 'use SomeLongTypeName' . $i, 'files' => 30, 'of' => 33];
+        }
+
+        $lines = explode("\n", CreationBriefRenderer::lines($data));
+
+        self::assertCount(14, $lines);
+        self::assertSame('gates: long. Commands: the "gates" list in knossos.json', $lines[13]);
+    }
+
+    /** Gates that fit are quoted in full where they belong, before the notes. */
+    public function testGatesThatFitAreQuotedInFull(): void
+    {
+        $lines = explode("\n", CreationBriefRenderer::lines(self::brief()));
+
+        self::assertSame('gates: cs · docblocks. Run: vendor/bin/php-cs-fixer fix; php tools/docstring-report.php', $lines[5]);
+        self::assertStringStartsWith('notes:', $lines[6]);
     }
 
     /** The stale line is the last of the 14 even when the other lines are cut. */
@@ -124,10 +171,20 @@ final class CreationBriefRendererTest extends KnossosTestCase
         $data['gates'] = [];
         $data['notes'] = 0;
 
-        $lines = explode("\n", CreationBriefRenderer::lines($data, ['state' => 'stale', 'changed_files_since' => 4, 'added_files_since' => 2, 'deleted_files_since' => 1]));
+        $lines = explode("\n", CreationBriefRenderer::lines($data, ['state' => 'stale', 'age_seconds' => 3 * 86_400 + 5, 'changed_files_since' => 4, 'added_files_since' => 2, 'deleted_files_since' => 1]));
 
         self::assertCount(14, $lines);
-        self::assertSame('graph is behind: 4 changed, 2 added, 1 deleted since the scan', $lines[13]);
+        self::assertSame('graph is behind (scanned 3d ago): 4 changed, 2 added, 1 deleted since the scan', $lines[13]);
+    }
+
+    /** The age reads as the session brief writes it, and an unknown age says so. */
+    public function testTheStaleLineGivesTheAgeAsTheSessionBriefDoes(): void
+    {
+        $minutes = CreationBriefRenderer::lines(self::brief(), ['state' => 'stale', 'age_seconds' => 125]);
+        $unknown = CreationBriefRenderer::lines(self::brief(), ['state' => 'stale']);
+
+        self::assertStringEndsWith('graph is behind (scanned 2m ago): 0 changed, 0 added, 0 deleted since the scan', $minutes);
+        self::assertStringEndsWith('graph is behind (scanned unknown ago): 0 changed, 0 added, 0 deleted since the scan', $unknown);
     }
 
     /** A graph that is not stale adds no line. */

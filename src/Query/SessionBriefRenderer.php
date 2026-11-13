@@ -240,16 +240,16 @@ final readonly class SessionBriefRenderer
     private function stateClause(SessionBrief $brief): string
     {
         return match ($brief->state) {
-            'fresh' => sprintf('FRESH (scanned %s ago)', $this->age($brief->ageSeconds)),
+            'fresh' => sprintf('FRESH (scanned %s ago)', self::age($brief->ageSeconds)),
             'stale' => sprintf(
                 'STALE (%d files, %s)',
                 $brief->changedFiles,
-                $this->age($brief->ageSeconds),
+                self::age($brief->ageSeconds),
             ),
             'unverified' => sprintf(
                 'UNVERIFIED (%d files, over probe limit; scanned %s ago)',
                 $brief->trackedFiles,
-                $this->age($brief->ageSeconds),
+                self::age($brief->ageSeconds),
             ),
             'missing' => 'NO GRAPH',
             default => 'NOT SCANNED',
@@ -257,7 +257,7 @@ final readonly class SessionBriefRenderer
     }
 
     /** Coarse, single-token age. Minute precision on a seventeen-day-old graph is noise. */
-    private function age(?int $seconds): string
+    public static function age(?int $seconds): string
     {
         return match (true) {
             $seconds === null => 'unknown',

@@ -31,13 +31,19 @@ use Knossos\Store\FolderFactsStore;
  */
 final readonly class CreationBriefQueryService extends AbstractArchitectureQueryService
 {
+    /** Most companions looked up on disk, so a brief stays a few reads however much is stored. */
+    private const MAX_COMPANIONS_CHECKED = 5;
+
     /** The brief of a new file at `$path` in the project. */
     public function creationBrief(string $projectId, string $path): ResultEnvelope
     {
         $project = $this->project($projectId);
         $root = rtrim((string) $project['root_realpath'], '/');
+        if (self::namesTheRoot($root, $path)) {
+            throw new InvalidArgumentException(sprintf('%s names a directory; a brief is for a file.', $path));
+        }
         $relative = ProjectRelativePath::of($root, $path);
-        if (str_ends_with($relative, '/')) {
+        if (str_ends_with($relative, '/') || str_ends_with('/' . $relative, '/.')) {
             throw new InvalidArgumentException(sprintf('%s names a directory; a brief is for a file.', $path));
         }
         $directory = PathParts::directory($relative);
@@ -63,7 +69,7 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
             (new NeighbourCandidates($this->pdo))->of($projectId, $basis['directory'], $extension, $role, $relative),
         );
         $conventions = $population === null ? [] : Conventions::shown($population['files'], $population['facts']);
-        $goesWith = $this->goesWith($facts, $projectId, $relative, $basis === null ? $directory : $basis['directory'], $role, $population);
+        $goesWith = $this->goesWith($facts, $projectId, $root, $relative, $basis, $directory, $role, $population);
         $gates = [];
         foreach ($configuration->gates as $gate) {
             if ($gate->appliesTo($relative)) {
@@ -116,25 +122,62 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
     }
 
     /**
+     * Whether `$path` names the project root itself, `.` and `..` segments included.
+     *
+     * Read lexically, so `.`, `./` and `src/..` are refused as the directory they
+     * name. A path that climbs out of the root is not the root, and is left to
+     * {@see ProjectRelativePath} to refuse as outside the project.
+     */
+    private static function namesTheRoot(string $root, string $path): bool
+    {
+        $normalised = trim(str_replace('\\', '/', $path));
+        if ($normalised === $root || str_starts_with($normalised, $root . '/')) {
+            $normalised = substr($normalised, strlen($root));
+        } elseif (str_starts_with($normalised, '/')) {
+            return false;
+        }
+        $depth = 0;
+        foreach (explode('/', $normalised) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            $depth += $segment === '..' ? -1 : 1;
+            if ($depth < 0) {
+                return false;
+            }
+        }
+
+        return $depth === 0;
+    }
+
+    /**
      * The expected test first, then the files that usually change with a new file in the folder.
      *
+     * A test path is named only when the folder's own pattern says where it goes:
+     * a pattern borrowed from an ancestor that names a literal test folder would
+     * put the test beside the ancestor's tests, which is a guess, so only a
+     * `<dir>` pattern survives the borrowing. A companion whose file is gone is
+     * left out, so the brief never names a path that no longer exists.
+     *
+     * @param array{directory: string, files: int, borrowed: bool}|null $basis
      * @param array{files: int, facts: array<string, mixed>}|null $population
      * @return list<array{path: string, commits?: int, of?: int, kind: 'test'|'companion'}>
      */
-    private function goesWith(FolderFactsStore $facts, string $projectId, string $relative, string $directory, string $role, ?array $population): array
+    private function goesWith(FolderFactsStore $facts, string $projectId, string $root, string $relative, ?array $basis, string $directory, string $role, ?array $population): array
     {
         $goesWith = [];
         $testPath = $population['facts']['test_path'] ?? null;
-        if ($role === 'source' && is_array($testPath) && is_string($testPath['pattern'] ?? null) && is_int($testPath['files'] ?? null) && $testPath['files'] * Conventions::SHARE_DENOMINATOR >= $population['files'] * Conventions::SHARE_NUMERATOR) {
+        if ($role === 'source' && is_array($testPath) && is_string($testPath['pattern'] ?? null) && is_int($testPath['files'] ?? null) && $testPath['files'] * Conventions::SHARE_DENOMINATOR >= $population['files'] * Conventions::SHARE_NUMERATOR
+            && (($basis['borrowed'] ?? false) === false || str_contains($testPath['pattern'], '<dir>'))) {
             $test = TestPathPattern::apply($testPath['pattern'], $relative);
             if ($test !== $relative) {
                 $goesWith[] = ['path' => $test, 'kind' => 'test'];
             }
         }
-        $companions = $facts->companionsOf($projectId, $directory);
+        $companions = $facts->companionsOf($projectId, $basis === null ? $directory : $basis['directory']);
         usort($companions, static fn(array $a, array $b): int => [$b['commits'], $a['path']] <=> [$a['commits'], $b['path']]);
-        foreach ($companions as $companion) {
-            if ($companion['path'] !== $relative && $companion['path'] !== ($goesWith[0]['path'] ?? null)) {
+        foreach (array_slice($companions, 0, self::MAX_COMPANIONS_CHECKED) as $companion) {
+            if ($companion['path'] !== $relative && $companion['path'] !== ($goesWith[0]['path'] ?? null) && ProjectFile::exists($root, $companion['path'])) {
                 $goesWith[] = ['path' => $companion['path'], 'commits' => $companion['commits'], 'of' => $companion['of'], 'kind' => 'companion'];
             }
         }

@@ -64,8 +64,10 @@ final readonly class FolderCompanionsBuilder
      * Bring the stored companions up to `$gitHead`, running git only when that commit is new.
      *
      * Does nothing without a commit, and nothing when the stored companions are already
-     * for this one. A git that fails is recorded as `unavailable` for the commit, so it is
-     * not asked again until the commit changes, and never throws.
+     * for this one. A git that fails never throws and is only logged: companions already
+     * stored are kept with their commit, so the next scan asks again and a brief keeps
+     * the last good answer meanwhile. Only a project with nothing stored yet records
+     * `unavailable` for the commit, so it is not asked again until the commit changes.
      */
     public function refresh(string $projectId, string $root, ?string $gitHead): void
     {
@@ -81,7 +83,9 @@ final readonly class FolderCompanionsBuilder
             $this->store->saveCompanions($projectId, $gitHead, 'ok', self::companions($output));
         } catch (Throwable $failure) {
             error_log('knossos folder facts: companions unavailable: ' . $failure->getMessage());
-            $this->store->saveCompanions($projectId, $gitHead, 'unavailable', []);
+            if ($this->store->companionsHead($projectId) === null) {
+                $this->store->saveCompanions($projectId, $gitHead, 'unavailable', []);
+            }
         }
     }
 

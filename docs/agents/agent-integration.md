@@ -194,7 +194,12 @@ counts and neighbours. A folder with fewer than five files of the path's
 extension and role borrows from the nearest ancestor that has them, and `basis`
 says so. Without a `knossos.json` that can be read, placement and gates are
 empty and a warning carries the loader's message. The CLI prints the brief as
-text, at most 14 lines and 1,200 characters, or the envelope with `--json`.
+text, at most 14 lines and 1,200 characters, or the envelope with `--json`. The
+text is cut from the bottom, with two lines kept through the cut: on a stale
+graph, `graph is behind (scanned 2h ago): ...` with the files changed since,
+and, when the gate commands do not fit, the gate names with a pointer to the
+`gates` list in `knossos.json`. A path that names a directory, the project root
+included, is refused, and a companion whose file has been deleted is not named.
 
 ### Before creating a file
 

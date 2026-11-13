@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Query\CreationBrief;
 
+use Knossos\Scan\Conventions\SupportThreshold;
+
 /**
  * Turns the facts of one folder population into the conventions worth stating.
  *
@@ -14,14 +16,14 @@ namespace Knossos\Query\CreationBrief;
  */
 final class Conventions
 {
-    /** Fewest files a population needs before any convention is stated. */
-    public const MIN_FILES = 5;
+    /** Fewest files a population needs before any convention is stated ({@see SupportThreshold}). */
+    public const MIN_FILES = SupportThreshold::MIN_FILES;
 
     /** Smallest share of the population a pattern must cover, as a fraction (4/5); compared in integers. */
-    public const SHARE_NUMERATOR = 4;
+    public const SHARE_NUMERATOR = SupportThreshold::SHARE_NUMERATOR;
 
     /** The denominator of the share above. */
-    public const SHARE_DENOMINATOR = 5;
+    public const SHARE_DENOMINATOR = SupportThreshold::SHARE_DENOMINATOR;
 
     private const KIND_TEXT = [
         'one_class' => 'one class per file',

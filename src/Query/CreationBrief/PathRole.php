@@ -42,7 +42,7 @@ final readonly class PathRole
                 break;
             }
         }
-        foreach ($this->facts->testPathPatterns($projectId, $extension) as $pattern) {
+        foreach ($this->facts->testPathPatterns($projectId, $extension, Conventions::MIN_FILES, Conventions::SHARE_NUMERATOR, Conventions::SHARE_DENOMINATOR) as $pattern) {
             if (preg_match(self::regex($pattern), $path) === 1) {
                 return 'test';
             }

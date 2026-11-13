@@ -103,7 +103,7 @@ final class FolderCompanionsBuilderTest extends KnossosTestCase
         self::assertCount(2, $runner->commands);
     }
 
-    /** A git that fails is remembered as unavailable for that commit and does not surface. */
+    /** A git that fails on a project with nothing stored is remembered as unavailable for that commit and does not surface. */
     public function testAGitThatFailsRecordsUnavailableAndDoesNotThrow(): void
     {
         $runner = new RecordingGitRunner(static function (): string {
@@ -119,6 +119,37 @@ final class FolderCompanionsBuilderTest extends KnossosTestCase
         self::assertCount(1, $runner->commands, 'the failure is not retried for the same commit');
         self::assertStringContainsString('knossos folder facts:', $lines);
         self::assertSame(1, substr_count(trim($lines), "\n") + 1);
+    }
+
+    /**
+     * A git that fails once does not cost the companions already stored: they and
+     * their commit stay, so the brief keeps them and the next scan asks again.
+     */
+    public function testAGitThatFailsKeepsTheStoredCompanionsAndRetries(): void
+    {
+        $calls = 0;
+        $commits = array_map(static fn(int $i): array => [['A', 'src/Q/X' . $i . '.php'], ['M', 'tools/list.txt']], range(1, 3));
+        // The second run, the first for head2, fails; the others answer.
+        $runner = new RecordingGitRunner(static function () use (&$calls, $commits): string {
+            if (++$calls === 2) {
+                throw new RuntimeException('git timed out');
+            }
+
+            return self::log($commits);
+        });
+        $builder = new FolderCompanionsBuilder($this->store, $runner);
+        $builder->refresh($this->project, '/repo', 'head1');
+
+        $logged = $this->errorLogOf(fn() => $builder->refresh($this->project, '/repo', 'head2'));
+
+        self::assertStringContainsString('companions unavailable', $logged);
+        self::assertSame('ok', $this->storedStatus());
+        self::assertSame('head1', $this->store->companionsHead($this->project));
+        self::assertEquals([['path' => 'tools/list.txt', 'commits' => 3, 'of' => 3]], $this->store->companionsOf($this->project, 'src/Q'));
+
+        $builder->refresh($this->project, '/repo', 'head2');
+        self::assertCount(3, $runner->commands, 'the failed commit is asked for again');
+        self::assertSame('head2', $this->store->companionsHead($this->project));
     }
 
     /** No commit, nothing to ask and nothing to store. */

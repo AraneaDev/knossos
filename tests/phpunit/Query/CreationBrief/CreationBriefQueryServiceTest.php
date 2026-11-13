@@ -207,6 +207,66 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         self::assertSame(['directory' => 'tests/phpunit', 'files' => 5, 'borrowed' => true], $data['basis']);
     }
 
+    /**
+     * A literal test folder borrowed from an ancestor would name a test beside the
+     * ancestor's tests, which is a guess; a `<dir>` pattern says where it goes and stays.
+     */
+    public function testABorrowedLiteralTestPatternNamesNoTest(): void
+    {
+        $service = $this->scanned();
+
+        $literal = $service->creationBrief($this->projectId, 'src/Query/Deep/New/X.php')->data;
+        $this->pdo->prepare("UPDATE folder_facts SET facts_json = json_set(facts_json, '$.test_path', json(?)) WHERE project_id = ? AND directory = 'src/Query' AND extension = 'php' AND role = 'source'")
+            ->execute([json_encode(['pattern' => '<dir>/<name>.spec.php', 'files' => 6], JSON_THROW_ON_ERROR), $this->projectId]);
+        $relative = $service->creationBrief($this->projectId, 'src/Query/Deep/New/X.php')->data;
+
+        self::assertTrue($literal['basis']['borrowed']);
+        self::assertNotContains('test', array_column($literal['goes_with'], 'kind'));
+        self::assertSame(['path' => 'src/Query/Deep/New/X.spec.php', 'kind' => 'test'], $relative['goes_with'][0] ?? null);
+    }
+
+    /** A one-file folder's test pattern is below the floor, so it makes no path a test. */
+    public function testAOneFileFoldersPatternDoesNotMakeATest(): void
+    {
+        $service = $this->scanned();
+        $this->pdo->prepare('INSERT INTO folder_facts (project_id, directory, extension, role, files, facts_json) VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([$this->projectId, 'lib/old', 'php', 'source', 1, json_encode(['test_path' => ['pattern' => '<dir>/<name>.spec.php', 'files' => 1]], JSON_THROW_ON_ERROR)]);
+
+        self::assertSame('source', $service->creationBrief($this->projectId, 'lib/new/Thing.spec.php')->data['role']);
+    }
+
+    /** A companion whose file has since been deleted is not named. */
+    public function testADeletedCompanionIsLeftOut(): void
+    {
+        $service = $this->scanned();
+        (new FolderFactsStore($this->pdo))->saveCompanions($this->projectId, 'head', 'ok', ['src/Query' => [
+            ['path' => 'tools/gone.txt', 'commits' => 6, 'of' => 6],
+            ['path' => 'knossos.json', 'commits' => 5, 'of' => 6],
+        ]]);
+
+        $goesWith = $service->creationBrief($this->projectId, 'src/Query/FooService.php')->data['goes_with'];
+
+        self::assertSame(['tests/phpunit/Query/FooServiceTest.php', 'knossos.json'], array_column($goesWith, 'path'));
+    }
+
+    /** The root itself, however it is spelt, is a directory and gets no brief. */
+    public function testThePathOfTheRootIsRefusedAsADirectory(): void
+    {
+        $service = $this->scanned();
+        $root = (string) realpath($this->root);
+
+        foreach (['.', './', './.', 'src/..', 'src/Query/../..', $root, $root . '/', $root . '/.', 'src/Query/.'] as $path) {
+            try {
+                $service->creationBrief($this->projectId, $path);
+                self::fail($path . ' was briefed.');
+            } catch (InvalidArgumentException $error) {
+                self::assertStringContainsString('names a directory', $error->getMessage(), $path);
+            }
+        }
+        $this->expectExceptionMessage('is outside the project');
+        $service->creationBrief($this->projectId, 'src/../../x.php');
+    }
+
     public function testAnExistingPathSaysSo(): void
     {
         $data = $this->scanned()->creationBrief($this->projectId, 'src/Query/AService.php')->data;

@@ -390,6 +390,7 @@ php	src/Scan/Conventions/FolderFactsBuilder.php
 php	src/Scan/Conventions/FolderFactsRefresher.php
 php	src/Scan/Conventions/NameWords.php
 php	src/Scan/Conventions/PathParts.php
+php	src/Scan/Conventions/SupportThreshold.php
 php	src/Scan/Conventions/TestPathPattern.php
 php	src/Scan/DegradedRescanGuard.php
 php	src/Scan/FatalWatch.php

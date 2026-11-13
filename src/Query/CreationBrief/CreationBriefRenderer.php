@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Knossos\Query\CreationBrief;
 
+use Knossos\Query\SessionBriefRenderer;
+
 /**
  * Renders a creation brief as the few lines an agent reads before it writes a file.
  *
@@ -11,7 +13,9 @@ namespace Knossos\Query\CreationBrief;
  * empty string, so a caller can tell "no brief" from a short one. The text is
  * cut from the bottom to 14 lines and 1,200 characters; the one line about a
  * stale graph is kept through the cut, because every other line may be wrong
- * when the graph is behind.
+ * when the graph is behind. A gates line too long to survive the cut is not
+ * dropped: it falls back to the gate names and where their commands are, and
+ * that line is kept through the cut as well.
  */
 final class CreationBriefRenderer
 {
@@ -32,34 +36,57 @@ final class CreationBriefRenderer
      */
     public static function lines(array $data, ?array $staleness = null): string
     {
-        $body = array_map(self::oneLine(...), self::body($data));
+        $gates = is_array($data['gates'] ?? null) ? $data['gates'] : [];
+        $full = $gates === [] ? null : self::oneLine(sprintf('gates: %s. Run: %s', implode(' · ', array_column($gates, 'name')), implode('; ', array_column($gates, 'command'))));
+        $body = array_map(self::oneLine(...), self::body($data, $full));
         if ($body === []) {
             return '';
         }
         $tail = [];
         if (($staleness['state'] ?? null) === 'stale') {
             $tail[] = sprintf(
-                'graph is behind: %d changed, %d added, %d deleted since the scan',
+                'graph is behind (scanned %s ago): %d changed, %d added, %d deleted since the scan',
+                SessionBriefRenderer::age(is_int($staleness['age_seconds'] ?? null) ? $staleness['age_seconds'] : null),
                 (int) ($staleness['changed_files_since'] ?? 0),
                 (int) ($staleness['added_files_since'] ?? 0),
                 (int) ($staleness['deleted_files_since'] ?? 0),
             );
         }
-        $body = array_slice($body, 0, self::MAX_LINES - count($tail));
+        $kept = self::cut($body, $tail);
+        if ($full === null || in_array($full, $kept, true)) {
+            return implode("\n", [...$kept, ...$tail]);
+        }
+        $short = self::oneLine(sprintf('gates: %s. Commands: the "gates" list in knossos.json', implode(' · ', array_column($gates, 'name'))));
+        $tail = [$short, ...$tail];
+
+        return implode("\n", [...self::cut(array_map(self::oneLine(...), self::body($data, null)), $tail), ...$tail]);
+    }
+
+    /**
+     * The lines of `$body` that fit beside `$tail`: cut from the bottom to MAX_LINES and MAX_CHARACTERS in all.
+     *
+     * @param list<string> $body
+     * @param list<string> $tail lines kept whatever the cut, after the body
+     * @return list<string>
+     */
+    private static function cut(array $body, array $tail): array
+    {
+        $body = array_slice($body, 0, max(0, self::MAX_LINES - count($tail)));
         while ($body !== [] && strlen(implode("\n", [...$body, ...$tail])) > self::MAX_CHARACTERS) {
             array_pop($body);
         }
 
-        return implode("\n", [...$body, ...$tail]);
+        return $body;
     }
 
     /**
      * The lines of the brief before any cut, none when nothing is worth saying.
      *
      * @param array<string, mixed> $data
+     * @param string|null $gatesLine the gates line to place among the others, or null to leave it out
      * @return list<string>
      */
-    private static function body(array $data): array
+    private static function body(array $data, ?string $gatesLine): array
     {
         $placement = is_array($data['placement'] ?? null) ? $data['placement'] : [];
         $boundary = is_string($placement['boundary'] ?? null) ? $placement['boundary'] : null;
@@ -89,8 +116,8 @@ final class CreationBriefRenderer
         if ($goesWith !== []) {
             $lines[] = 'goes with: ' . implode(' · ', array_map(static fn(array $entry): string => $entry['path'] . (isset($entry['commits'], $entry['of']) ? sprintf(' (%d of %d additions)', $entry['commits'], $entry['of']) : ''), $goesWith));
         }
-        if ($gates !== []) {
-            $lines[] = sprintf('gates: %s. Run: %s', implode(' · ', array_column($gates, 'name')), implode('; ', array_column($gates, 'command')));
+        if ($gatesLine !== null) {
+            $lines[] = $gatesLine;
         }
         if ($notes > 0) {
             $lines[] = sprintf('notes: %d on the neighbours and the boundary (list_annotations)', $notes);
