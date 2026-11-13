@@ -214,10 +214,14 @@ The gates come from the `gates` key of `knossos.json`: each has a `name`, a
 every path, and `*` crosses `/`, so `src/*` covers `src/Query/A.php`. A project
 may declare up to 20 gates.
 
-The session brief shows the same gates when a session starts, at most six
-lines. With more than five gates it lists the first four and counts the rest.
-A project that declares none gets one line naming the scripts found in its
-`composer.json` and `package.json`.
+The session brief shows the same gates when a session starts, in every state
+whose folder can be read, because they come from `knossos.json` and not from the
+graph: a stale graph or a folder that was never scanned still shows them. Up to
+five gates are listed with their commands. With more, the block is three lines:
+the heading, every gate name in declared order, and a pointer to the `gates`
+list in `knossos.json` or to `creation_brief` for one path. A project that
+declares none gets one line naming the scripts found in its `composer.json` and
+`package.json`.
 
 ## Component annotations
 

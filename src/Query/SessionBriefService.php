@@ -201,6 +201,9 @@ final readonly class SessionBriefService
             pathAllowed: $rootStatus['allowed'],
             pathExists: $rootStatus['exists'],
             rootsFile: $rootStatus['roots_file'],
+            // The gates live in knossos.json, which a folder that exists and is
+            // allowed can be read for whether or not it was ever scanned.
+            gates: $rootStatus['exists'] && $rootStatus['allowed'] ? SessionGates::forRoot($absolute) : ['declared' => [], 'found' => []],
         );
     }
 

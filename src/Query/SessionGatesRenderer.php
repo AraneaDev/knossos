@@ -7,12 +7,12 @@ namespace Knossos\Query;
 /**
  * The gates block of the session brief, at most six lines.
  *
- * Five gates are all listed; more than that and the first four are listed with
- * a last line counting the rest, so the block never outgrows its six lines.
+ * Up to five gates are listed with their commands. More than that and the
+ * block names every gate on one line and says where the commands are, so it
+ * stays at three lines and hides no gate.
  */
 final readonly class SessionGatesRenderer
 {
-    private const LISTED_WHEN_CUT = 4;
     private const FITS = 5;
 
     /**
@@ -34,13 +34,18 @@ final readonly class SessionGatesRenderer
                 implode(', ', $gates['found']),
             )];
         }
-        $shown = count($declared) > self::FITS ? array_slice($declared, 0, self::LISTED_WHEN_CUT) : $declared;
-        $lines = ['Gates this project declares (run before pushing):'];
-        foreach ($shown as $gate) {
-            $lines[] = sprintf('- %s: %s', $gate['name'], $gate['command']);
+        $heading = 'Gates this project declares (run before pushing):';
+        if (count($declared) > self::FITS) {
+            // Every name, because the gates an agent trips over are as likely to be the sixth as the first.
+            return [
+                $heading,
+                '- ' . implode(', ', array_map(static fn(array $gate): string => $gate['name'], $declared)),
+                '- commands: the "gates" list in knossos.json, or creation_brief for one path',
+            ];
         }
-        if (count($shown) < count($declared)) {
-            $lines[] = sprintf('- and %d more in knossos.json', count($declared) - count($shown));
+        $lines = [$heading];
+        foreach ($declared as $gate) {
+            $lines[] = sprintf('- %s: %s', $gate['name'], $gate['command']);
         }
 
         return $lines;

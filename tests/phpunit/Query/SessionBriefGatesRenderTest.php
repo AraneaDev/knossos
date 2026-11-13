@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use Knossos\Query\SessionBrief;
 use Knossos\Query\SessionBriefRenderer;
+use Knossos\Query\SessionBriefService;
 use Knossos\Query\SessionGates;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
@@ -35,9 +36,9 @@ final class SessionBriefGatesRenderTest extends KnossosTestCase
     }
 
     #[Group('query')]
-    public function testAnUnscannedBriefShowsNoGates(): void
+    public function testAnUnscannedBriefWithNothingReadShowsNoGates(): void
     {
-        $brief = new SessionBrief('unscanned', null, null, '/work/shop', null, 0, 0, gates: ['declared' => [['name' => 'cs', 'command' => 'fix']], 'found' => []]);
+        $brief = new SessionBrief('unscanned', null, null, '/work/shop', null, 0, 0);
 
         assertSame(false, str_contains((new SessionBriefRenderer())->render($brief), 'Gates'));
     }
@@ -66,6 +67,34 @@ final class SessionBriefGatesRenderTest extends KnossosTestCase
             file_put_contents($root . '/composer.json', '{"scripts":{"cs":"z"}}');
 
             assertSame(['declared' => [], 'found' => ['cs', 'lint', 'test']], SessionGates::forRoot($root));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    #[Group('query')]
+    public function testAStaleBriefWithALongRulesSectionStillShowsTheFullGatesBlock(): void
+    {
+        $gates = ['declared' => [['name' => 'cs', 'command' => 'fix'], ['name' => 'lint', 'command' => 'check']], 'found' => []];
+        $brief = new SessionBrief('stale', 'project_1', 'Shop', '/work/shop', 7200, 3, 10, rules: array_fill(0, 30, 'core -x-> tests and a long rule'), gates: $gates);
+
+        $text = (new SessionBriefRenderer())->render($brief);
+
+        assertSame(false, str_contains($text, 'core -x->'));
+        assertSame(true, str_contains($text, "Gates this project declares (run before pushing):\n- cs: fix\n- lint: check\n"));
+    }
+
+    #[Group('query')]
+    public function testAnAllowedButUnscannedFolderShowsItsGates(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(4));
+        mkdir($root);
+        try {
+            file_put_contents($root . '/knossos.json', '{"version":1,"gates":[{"name":"cs","command":"fix"}]}');
+
+            $text = (new SessionBriefRenderer())->render(SessionBriefService::unscanned($root));
+
+            assertSame(true, str_contains($text, "Gates this project declares (run before pushing):\n- cs: fix\n"));
         } finally {
             $this->removeTempTree($root);
         }

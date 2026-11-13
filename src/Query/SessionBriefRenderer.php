@@ -56,8 +56,9 @@ final readonly class SessionBriefRenderer
     {
         $budget = self::BUDGETS[$brief->state] ?? self::BUDGETS['unscanned'];
         $verdict = $this->verdict($brief);
+        $gates = SessionGatesRenderer::lines($brief->gates);
         if ($brief->state === 'unscanned') {
-            return $this->fit([$verdict], [], $budget);
+            return $this->fit([$verdict, ...$gates], [], $budget);
         }
 
         $sections = [
@@ -66,9 +67,10 @@ final readonly class SessionBriefRenderer
             // After Notes, so a tight budget drops this line before the notes themselves.
             $this->section('Orphaned', self::missingNotes($brief->missingNotes)),
         ];
-        $gates = SessionGatesRenderer::lines($brief->gates);
+        // Read from knossos.json, not the graph, so exempt from the budget in every state.
+        $gatesBlock = implode("\n", $gates);
         if ($gates !== []) {
-            $sections[] = implode("\n", $gates);
+            $sections[] = $gatesBlock;
         }
         if ($brief->state === 'fresh') {
             $sections[] = $this->section('Entry', $brief->entryPoints);
@@ -79,6 +81,7 @@ final readonly class SessionBriefRenderer
             array_filter($sections, static fn(?string $section): bool => $section !== null),
             $budget,
             implode("\n", [self::NOTE_RULE, ...self::checks($brief->checks)]),
+            $gates === [] ? null : $gatesBlock,
         );
     }
 
@@ -328,14 +331,15 @@ final readonly class SessionBriefRenderer
      * @param list<string> $floor lines always kept, in order
      * @param array<int, string> $sections optional sections in order, kept while they fit
      * @param string|null $rule a line always kept just before the pointer, outside the budget
+     * @param string|null $always a section kept whatever the budget, in its place among the others
      */
-    private function fit(array $floor, array $sections, int $budget, ?string $rule = null): string
+    private function fit(array $floor, array $sections, int $budget, ?string $rule = null, ?string $always = null): string
     {
         $tail = "\n" . self::POINTER;
         $out = implode("\n", $floor);
         foreach ($sections as $line) {
             $candidate = $out . "\n" . $line;
-            if (strlen($candidate) + strlen($tail) <= $budget) {
+            if ($line === $always || strlen($candidate) + strlen($tail) <= $budget) {
                 $out = $candidate;
             }
         }

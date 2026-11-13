@@ -47,14 +47,16 @@ final class SessionGatesTest extends KnossosTestCase
     }
 
     #[Group('query')]
-    public function testFiveGatesFitAndSevenAreCut(): void
+    public function testFiveGatesFitAndSevenAreNamedOnOneLine(): void
     {
         assertSame(6, count(self::lines(self::gates(5))));
 
         $seven = self::lines(self::gates(7));
-        assertSame(6, count($seven));
-        assertSame('- gate-4: run 4', $seven[4]);
-        assertSame('- and 3 more in knossos.json', $seven[5]);
+        assertSame([
+            'Gates this project declares (run before pushing):',
+            '- gate-1, gate-2, gate-3, gate-4, gate-5, gate-6, gate-7',
+            '- commands: the "gates" list in knossos.json, or creation_brief for one path',
+        ], $seven);
     }
 
     #[Group('query')]
