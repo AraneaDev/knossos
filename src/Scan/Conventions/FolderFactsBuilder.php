@@ -53,8 +53,8 @@ final readonly class FolderFactsBuilder
         $statement = $this->pdo->prepare('SELECT id, relative_path, line_count FROM files WHERE project_id = ?');
         $statement->execute([$projectId]);
         foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$id, $path, $lines]) {
-            $directory = self::directoryOf((string) $path);
-            $extension = self::extensionOf((string) $path);
+            $directory = PathParts::directory((string) $path);
+            $extension = PathParts::extension((string) $path);
             $role = isset($tests[(string) $id]) ? 'test' : 'source';
             $key = $directory . "\0" . $extension . "\0" . $role;
             $files[(string) $id] = ['directory' => $directory, 'extension' => $extension, 'role' => $role, 'path' => (string) $path, 'lines' => (int) $lines, 'key' => $key];
@@ -210,7 +210,7 @@ final readonly class FolderFactsBuilder
                 continue;
             }
             $testPath = $files[(string) $testFile]['path'];
-            $stem = TestPathPattern::stemOf($files[(string) $sourceFile]['path']);
+            $stem = PathParts::stem($files[(string) $sourceFile]['path']);
             if ($stem === '' || !str_contains(basename($testPath), $stem)) {
                 continue;
             }
@@ -325,22 +325,5 @@ final readonly class FolderFactsBuilder
         }
 
         return $suffixes;
-    }
-
-    /** The directory of a path, empty for a file at the root. */
-    private static function directoryOf(string $path): string
-    {
-        $directory = dirname($path);
-
-        return $directory === '.' ? '' : $directory;
-    }
-
-    /** The lower-case part of the file name after its last dot, empty without one. */
-    private static function extensionOf(string $path): string
-    {
-        $base = basename($path);
-        $dot = strrpos($base, '.');
-
-        return $dot === false ? '' : strtolower(substr($base, $dot + 1));
     }
 }

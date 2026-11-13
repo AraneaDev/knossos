@@ -9,7 +9,9 @@ use Knossos\Git\DirtyPathSet;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Query\Drift\GitDriftOracle;
+use Knossos\Scan\Conventions\FolderCompanionsBuilder;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Store\FolderFactsStore;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
@@ -52,6 +54,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
                 [$root],
                 new GitHeadResolver($this->fixedRunner(self::HEAD . "\n")),
                 new DirtyPathResolver($dirty),
+                companions: $this->quietCompanions($pdo),
             );
 
             $result = $service->scan($root);
@@ -116,12 +119,14 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
         file_put_contents($root . '/src/Existing.php', "<?php\n\nfinal class Existing {}\n");
         try {
             foreach ([self::HEAD . "\n", "fatal: not a git repository\n"] as $head) {
+                $pdo = $this->freshTestDatabase();
                 $service = new ProjectScanService(
-                    $this->freshTestDatabase(),
+                    $pdo,
                     self::repositoryRoot(),
                     [$root],
                     new GitHeadResolver($this->fixedRunner($head)),
                     new DirtyPathResolver($this->fixedRunner('')),
+                    companions: $this->quietCompanions($pdo),
                 );
 
                 self::assertStringNotContainsString('GIT_HEAD_TREE_UNAVAILABLE', implode("\n", $service->scan($root)->warnings));
@@ -147,6 +152,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
                 [$root],
                 new GitHeadResolver($this->fixedRunner("fatal: not a git repository\n")),
                 new DirtyPathResolver($dirty),
+                companions: $this->quietCompanions($pdo),
             );
 
             $result = $service->scan($root);
@@ -190,6 +196,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
                 new DirtyPathResolver($this->fixedRunner(
                     '100644 blob ' . self::blobId($committed) . "\tsrc/Existing.php\0",
                 )),
+                companions: $this->quietCompanions($pdo),
             );
 
             $result = $service->scan($root);
@@ -274,6 +281,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
                 [$root],
                 new GitHeadResolver($this->fixedRunner(str_repeat('a', 64) . "\n")),
                 new DirtyPathResolver($this->fixedRunner($tree)),
+                companions: $this->quietCompanions($pdo),
             );
 
             $result = $service->scan($root);
@@ -319,5 +327,11 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
                 return $this->output;
             }
         };
+    }
+
+    /** A companions builder whose git answers nothing, so a scan under a made-up commit does not run the real one. */
+    private function quietCompanions(PDO $pdo): FolderCompanionsBuilder
+    {
+        return new FolderCompanionsBuilder(new FolderFactsStore($pdo), $this->fixedRunner(''));
     }
 }

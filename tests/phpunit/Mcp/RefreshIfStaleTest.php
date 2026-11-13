@@ -176,9 +176,8 @@ final class RefreshIfStaleTest extends KnossosTestCase
                 self::repositoryRoot(),
                 [$root],
                 new GitHeadResolver($this->runnerAnswering(self::GIT_HEAD . "\n")),
-                new DirtyPathResolver($this->runnerAnswering(
-                    '100644 blob 1111111111111111111111111111111111111111' . "\tsrc/CheckoutService.php\0",
-                )),
+                new DirtyPathResolver($this->runnerAnswering('100644 blob 1111111111111111111111111111111111111111' . "\tsrc/CheckoutService.php\0")),
+                companions: new \Knossos\Scan\Conventions\FolderCompanionsBuilder(new \Knossos\Store\FolderFactsStore($pdo), $this->runnerAnswering('')),
             );
             $projectId = $scanner->scan($root)->projectId;
             // See scanTempFixture(): the directories this copy just created can

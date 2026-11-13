@@ -376,8 +376,10 @@ php	src/Scan/AnalysisHash.php
 php	src/Scan/CachedReads.php
 php	src/Scan/ContributionCacheService.php
 php	src/Scan/ContributionPartition.php
+php	src/Scan/Conventions/FolderCompanionsBuilder.php
 php	src/Scan/Conventions/FolderFactsBuilder.php
 php	src/Scan/Conventions/FolderFactsRefresher.php
+php	src/Scan/Conventions/PathParts.php
 php	src/Scan/Conventions/TestPathPattern.php
 php	src/Scan/FatalWatch.php
 php	src/Scan/InvalidationWalk.php
@@ -923,6 +925,7 @@ php	tests/phpunit/Scan/ContributionCacheDiagnosticsTest.php
 php	tests/phpunit/Scan/ContributionCacheServiceTest.php
 php	tests/phpunit/Scan/ContributionOrderTest.php
 php	tests/phpunit/Scan/ContributionPartitionTest.php
+php	tests/phpunit/Scan/Conventions/FolderCompanionsBuilderTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsBuilderTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsScanTest.php
 php	tests/phpunit/Scan/Conventions/TestPathPatternTest.php

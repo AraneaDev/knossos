@@ -42,7 +42,7 @@ final class ProjectScanService implements ProjectScanner
      * @param \Knossos\Roots\AllowedRoots|list<string> $allowedRoots
      * @param ?GitHeadResolver $gitHead injected only so a test can drive the
      *        commit capture without a subprocess; production builds its own.
-     * @param ?DirtyPathResolver $dirtyPaths injected for the same reason.
+     * @param ?DirtyPathResolver $dirtyPaths injected for the same reason, as is `$companions`.
      * @param ?EnrichersFile $enrichers the installation's enrichers file; null
      *        means the installation defines no enrichers.
      * @param ?ScanFailureLog $failures where a scan's failure is kept with its
@@ -56,6 +56,7 @@ final class ProjectScanService implements ProjectScanner
         ?DirtyPathResolver $dirtyPaths = null,
         ?EnrichersFile $enrichers = null,
         private ?ScanFailureLog $failures = null,
+        private ?\Knossos\Scan\Conventions\FolderCompanionsBuilder $companions = null,
     ) {
         $this->planner = new ScanPlanner($pdo, $allowedRoots, $gitHead, $dirtyPaths);
         $this->workerPool = new LanguageWorkerPool();
@@ -279,7 +280,7 @@ final class ProjectScanService implements ProjectScanner
             self::undiscoveredVerifier($preparation, $language, $plan),
         );
         $clock->recordAll($result->phaseMilliseconds, 'reconciliation.');
-        (new \Knossos\Scan\Conventions\FolderFactsRefresher($this->pdo))->refresh($projectId);
+        (new \Knossos\Scan\Conventions\FolderFactsRefresher($this->pdo, $this->companions))->refresh($projectId, $preparation->discovery->rootRealpath, $preparation->gitHead);
         return $result;
     }
 
