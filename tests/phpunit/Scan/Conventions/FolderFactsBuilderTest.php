@@ -204,6 +204,9 @@ final class FolderFactsBuilderTest extends KnossosTestCase
     /**
      * A graph shaped like a real one (half the nodes in test files, tens of thousands of edges
      * leaving them) is folded within the scan's budget, test pairing included.
+     *
+     * The bound is 1,500 ms where a developer machine measures about 370 ms: CI runs under pcov on
+     * slower runners. It catches a change of complexity class, not a regression of tens of milliseconds.
      */
     public function testRowsForARealisticGraphAreBuiltQuickly(): void
     {
@@ -231,7 +234,7 @@ final class FolderFactsBuilderTest extends KnossosTestCase
         $milliseconds = (hrtime(true) - $started) / 1e6;
 
         self::assertGreaterThan(40, count($rows));
-        self::assertLessThan(450.0, $milliseconds);
+        self::assertLessThan(1500.0, $milliseconds);
     }
 
     /** Directories compare as strings, so `10` sorts before `9` even though both are numeric. */
