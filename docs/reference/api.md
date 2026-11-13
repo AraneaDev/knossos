@@ -45,7 +45,7 @@ This file is generated from enforced PHP interface docblocks and the isolated PH
 ### `Knossos\Store\GraphRepository`
 
 - `transaction(callable $operation): mixed`: Execute an operation atomically and return its result
-- `bulkTransaction(callable $operation): mixed`: Execute a whole-graph rewrite atomically, checking referential integrity
+- `bulkTransaction(callable $operation, ?string $projectId = null): mixed`: Execute a whole-graph rewrite atomically, checking referential integrity
 - `saveProject(string $id, string $name, string $rootRealpath, array $config = []): void`: Create or update project identity and non-secret configuration metadata
 - `findProject(string $id): ?array`: Find one project by stable ID
 - `createScan(string $id, string $projectId, string $mode, string $scannerSetHash, ?string $gitHead = null, ?string $dirtyPathsJson = null, ?string $unitInputsJson = null): void`: Record the start of a scan before graph reconciliation

@@ -167,7 +167,9 @@ final class ReconciliationTest extends KnossosTestCase
         );
         $third = $reconciler->reconcile($retainedRequest);
         assertSame($second->scanId, (string) $pdo->query('SELECT scan_id FROM scan_snapshots')->fetchColumn());
-        assertSame(2, (int) $pdo->query('SELECT COUNT(*) FROM scans')->fetchColumn());
+        // The first scan lost its snapshot, but the rows it wrote and no later scan changed still name it, so its row stays.
+        assertSame(3, (int) $pdo->query('SELECT COUNT(*) FROM scans')->fetchColumn());
+        assertSame([], $pdo->query('PRAGMA foreign_key_check')->fetchAll());
         $listed = ArchitectureQueryService::forDatabase($pdo)->services()->catalogQueries->listSnapshots($third->projectId);
         assertSame([$third->scanId, $second->scanId], array_column($listed->data['snapshots'], 'scan_id'));
         assertSame([true, false], array_column($listed->data['snapshots'], 'active'));

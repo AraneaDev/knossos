@@ -110,7 +110,7 @@ final readonly class GraphReconciler
             // bookkeeping write, not worth its own phase.
             $this->repository->completeScan($graph->projectId, $graph->scanId);
             $timer->mark('save_diagnostics');
-        });
+        }, $graph->projectId);
 
         return $diagnosticCount;
     }

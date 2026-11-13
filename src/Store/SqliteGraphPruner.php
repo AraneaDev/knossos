@@ -28,6 +28,9 @@ final class SqliteGraphPruner
         'files' => 'id',
     ];
 
+    /** The tables whose obsolete rows are found by primary key, see {@see self::pruneSql()}. */
+    private const PRUNED_BY_PRIMARY_KEY = ['classifications', 'edges', 'nodes'];
+
     /**
      * The ids a project's graph currently holds, per table.
      *
@@ -85,11 +88,31 @@ final class SqliteGraphPruner
                 continue;
             }
             foreach (array_chunk($obsolete, 400) as $chunk) {
-                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                $statement = $this->statements->prepare(sprintf('DELETE FROM %s WHERE project_id = ? AND id IN (%s)', $table, $placeholders));
-                $statement->execute([$projectId, ...$chunk]);
+                $this->statements->prepare(self::pruneSql($table, $chunk))->execute([...$chunk, $projectId]);
             }
         }
+    }
+
+    /**
+     * The delete for the obsolete `$ids` of `$table`, bound as the ids first, then the project.
+     *
+     * On the large tables the project guard carries a unary plus, which keeps
+     * it as a filter but stops SQLite choosing it as the index. Left free,
+     * the planner read every row of the project through a project index for
+     * each chunk of 400 ids, so a delete cost the size of the project rather
+     * than the size of the chunk. The small tables keep the plain guard: there
+     * the plus turns the lookup into a scan of the whole table.
+     *
+     * @param list<string> $ids
+     */
+    public static function pruneSql(string $table, array $ids): string
+    {
+        return sprintf(
+            'DELETE FROM %s WHERE id IN (%s) AND %sproject_id = ?',
+            $table,
+            implode(',', array_fill(0, count($ids), '?')),
+            in_array($table, self::PRUNED_BY_PRIMARY_KEY, true) ? '+' : '',
+        );
     }
 
     /**
@@ -117,18 +140,33 @@ final class SqliteGraphPruner
     }
 
     /**
-     * Attribute every surviving graph row to the scan that just confirmed it.
+     * The tables whose every row is moved onto the scan that confirmed it.
      *
-     * Rows a scan left untouched are still current, and `last_scan_id` is what
-     * keeps scan cleanup from deleting history the graph still points at — a row
-     * left on an older scan would pin that scan forever. Nothing indexes this
-     * column, so the update rewrites rows without touching an index: on this
-     * repository's graph it costs about a tenth of a second against the couple
-     * of seconds a full rewrite spent on index maintenance alone.
+     * `files`, because "the files of the active scan" is a question the
+     * freshness check and the project summary ask by `last_scan_id`, and
+     * `boundaries`, which is a handful of rows. Not the large tables: see
+     * {@see self::stampGraphScan()}.
+     */
+    public const STAMPED_TABLES = ['boundaries', 'files'];
+
+    /** The tables whose rows stay on the scan that last wrote them, and so keep that scan's row alive. */
+    public const WRITER_STAMPED_TABLES = ['boundary_memberships', 'classifications', 'edges', 'nodes'];
+
+    /**
+     * Attribute the surviving files and boundaries to the scan that just confirmed them.
+     *
+     * Nodes, edges, classifications and memberships are left on the scan
+     * that last wrote them. Moving them too rewrote every row of the project
+     * on every scan: the update itself was quick, but the pages it dirtied
+     * were about 100 MB of write-ahead log for a graph of 105,000 edges,
+     * however little the scan changed, and the commit paid for all of it.
+     * Nothing reads those four columns as "confirmed by"; what they still
+     * do is reference a scan row, so scan cleanup keeps a scan that any of
+     * them names ({@see SqliteScanLifecycle}).
      */
     public function stampGraphScan(string $projectId, string $scanId): void
     {
-        foreach (array_keys(self::GRAPH_TABLES) as $table) {
+        foreach (self::STAMPED_TABLES as $table) {
             $statement = $this->statements->prepare(sprintf('UPDATE %s SET last_scan_id = :scan WHERE project_id = :project AND last_scan_id <> :scan', $table));
             $statement->execute(['scan' => $scanId, 'project' => $projectId]);
         }

@@ -76,12 +76,13 @@ final class SqliteGraphRepository implements GraphRepository
      *
      * @template T
      * @param callable(GraphRepository): T $operation
+     * @param ?string $projectId the one project the rewrite touches; null checks every row of the scan-owned tables
      *
      * @return T
      */
-    public function bulkTransaction(callable $operation): mixed
+    public function bulkTransaction(callable $operation, ?string $projectId = null): mixed
     {
-        return $this->transactions->runBulk(fn(): mixed => $operation($this), self::SCAN_OWNED_TABLES);
+        return $this->transactions->runBulk(fn(): mixed => $operation($this), self::SCAN_OWNED_TABLES, $projectId);
     }
 
     /** Upsert by id: a rescan of the same root updates the name/config rather than creating a second project. */
@@ -212,14 +213,9 @@ final class SqliteGraphRepository implements GraphRepository
     }
 
     /**
-     * Attribute every surviving graph row to the scan that just confirmed it.
+     * Attribute the surviving files and boundaries to the scan that just confirmed them.
      *
-     * Rows a scan left untouched are still current, and `last_scan_id` is what
-     * keeps scan cleanup from deleting history the graph still points at — a row
-     * left on an older scan would pin that scan forever. Nothing indexes this
-     * column, so the update rewrites rows without touching an index: on this
-     * repository's graph it costs about a tenth of a second against the couple
-     * of seconds a full rewrite spent on index maintenance alone.
+     * @see SqliteGraphPruner::stampGraphScan() for why the large tables are left on the scan that wrote them.
      */
     public function stampGraphScan(string $projectId, string $scanId): void
     {
