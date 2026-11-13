@@ -34,7 +34,14 @@ final class FileLengthCheckTest extends KnossosTestCase
 
     public function testTheRepositoryKeepsToItsOwnBaseline(): void
     {
-        [$exit, $output, $errors] = $this->check(self::repositoryRoot(), self::repositoryRoot() . '/file-length-baseline.json');
+        // The quality image has no .git; the lanes mount the checkout and
+        // name it, and the static lane runs this check there.
+        $checkout = getenv('KNOSSOS_GATE_REPO') ?: self::repositoryRoot();
+        [$isCheckout] = $this->runFixtureCommandOutput(['git', '-c', 'safe.directory=' . $checkout, '-C', $checkout, 'rev-parse', '--is-inside-work-tree']);
+        if ($isCheckout !== 0) {
+            self::markTestSkipped('No git checkout to measure: ' . $checkout);
+        }
+        [$exit, $output, $errors] = $this->check($checkout, self::repositoryRoot() . '/file-length-baseline.json');
 
         assertSame(0, $exit, $errors);
         assertContains('File lengths passed:', $output);

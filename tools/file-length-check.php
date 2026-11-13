@@ -9,7 +9,8 @@ declare(strict_types=1);
  *
  *   php tools/file-length-check.php [--root=DIR] [--baseline=FILE] [--write]
  *
- * --root is the tree checked, this checkout when it is not given; --baseline
+ * --root is the git checkout checked, this one when it is not given (the
+ * quality image has no .git, so CI passes the mounted checkout); --baseline
  * the list, the root's file-length-baseline.json when it is not given.
  * --write rewrites the list from the tree as it is, for after a split shrinks
  * a file. The files are the ones git tracks with a code extension, less test
@@ -58,7 +59,9 @@ printf("File lengths passed: %d files, %d listed over %d lines, none longer than
 function fileLengths(string $root): array
 {
     $listing = [];
-    exec('git -C ' . escapeshellarg($root) . ' ls-files -z 2>/dev/null', $listing, $status);
+    // The quality image carries no .git; CI hands the checkout over on a
+    // mount another user owns, which git refuses without safe.directory.
+    exec('git -c safe.directory=' . escapeshellarg($root) . ' -C ' . escapeshellarg($root) . ' ls-files -z 2>/dev/null', $listing, $status);
     if ($status !== 0) {
         fwrite(STDERR, "file-length-check: {$root} is not a git checkout.\n");
         exit(1);
