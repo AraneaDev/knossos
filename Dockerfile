@@ -425,7 +425,6 @@ COPY --chown=knossos:knossos README.md CONTRIBUTING.md CHANGELOG.md LICENSE ./
 COPY --chown=knossos:knossos version.txt release-please-config.json .release-please-manifest.json ./
 COPY --chown=knossos:knossos coverage-budgets.json ./
 COPY --chown=knossos:knossos maintainability-budgets.json ./
-COPY --chown=knossos:knossos file-length-baseline.json ./
 # The `gate` lane scans this repository and holds it to its own budgets, which
 # live here along with the boundaries and policies the scan needs to reproduce
 # the numbers those budgets were set from.
