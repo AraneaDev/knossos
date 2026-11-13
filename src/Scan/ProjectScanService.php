@@ -12,8 +12,8 @@ use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Reconciliation\{FullScanRequest, GraphReconciler, Milliseconds, NamedFiles, ReconciliationResult, ScannerSetHash};
 use Knossos\Result\ResultEnvelope;
-use Knossos\Scanner\Worker\WorkerErrorCode;
-use Knossos\Scanner\Worker\WorkerException;
+use Knossos\Scan\Conventions\FolderCompanionsBuilder;
+use Knossos\Scan\Conventions\FolderFactsRefresher;
 use Knossos\Store\ProjectRepository;
 use Knossos\Store\ScanBusyException;
 use Knossos\Store\SqliteGraphRepository;
@@ -37,16 +37,19 @@ final class ProjectScanService implements ProjectScanner
     private readonly ScanSnapshotValidator $snapshotValidator;
     private readonly ScanResultFactory $resultFactory;
     private readonly EnrichmentPhase $enrichment;
+    private readonly FolderFactsRefresher $folderFacts;
 
     /**
      * @param \Knossos\Roots\AllowedRoots|list<string> $allowedRoots
      * @param ?GitHeadResolver $gitHead injected only so a test can drive the
      *        commit capture without a subprocess; production builds its own.
-     * @param ?DirtyPathResolver $dirtyPaths injected for the same reason, as is `$companions`.
+     * @param ?DirtyPathResolver $dirtyPaths injected for the same reason.
      * @param ?EnrichersFile $enrichers the installation's enrichers file; null
      *        means the installation defines no enrichers.
      * @param ?ScanFailureLog $failures where a scan's failure is kept with its
      *        reason; null keeps none, as for an in-memory database.
+     * @param ?FolderCompanionsBuilder $companions injected so a test can drive
+     *        the companions' git run without a subprocess.
      */
     public function __construct(
         private PDO $pdo,
@@ -56,7 +59,7 @@ final class ProjectScanService implements ProjectScanner
         ?DirtyPathResolver $dirtyPaths = null,
         ?EnrichersFile $enrichers = null,
         private ?ScanFailureLog $failures = null,
-        private ?\Knossos\Scan\Conventions\FolderCompanionsBuilder $companions = null,
+        ?FolderCompanionsBuilder $companions = null,
     ) {
         $this->planner = new ScanPlanner($pdo, $allowedRoots, $gitHead, $dirtyPaths);
         $this->workerPool = new LanguageWorkerPool();
@@ -71,7 +74,9 @@ final class ProjectScanService implements ProjectScanner
         $this->snapshotValidator = new ScanSnapshotValidator();
         $this->resultFactory = new ScanResultFactory($installationRoot);
         $this->enrichment = new EnrichmentPhase($pdo, $enrichers);
+        $this->folderFacts = new FolderFactsRefresher($pdo, $companions);
     }
+
     /** Shut the worker pool down, including when a scan failed or was cancelled. */
     public function __destruct()
     {
@@ -148,7 +153,7 @@ final class ProjectScanService implements ProjectScanner
                 // Cancellation wins over fidelity reporting: an abandoned scan
                 // must surface ScanCancelledException, not a worker degradation.
                 $cancellation->throwIfCancelled();
-                $this->refuseDegradedRescan($plan, $language, $projectId);
+                (new DegradedRescanGuard($this->pdo))->check($plan, $language, $projectId);
                 $this->recordKilledWorkers($language, $preparation->discovery->rootRealpath, $options, $startedAt);
                 // The workers read every file themselves, so their facts descend
                 // from bytes this process never hashed. Discovery's own files are
@@ -171,10 +176,14 @@ final class ProjectScanService implements ProjectScanner
                     : null;
                 if ($fastPath !== null) {
                     $clock->record('reconciliation', Milliseconds::since($reconciliationStarted));
+                    // Nothing changed on disk, but the facts may never have been built and the commit may have moved.
+                    $this->folderFacts->refreshUnchanged($projectId, $preparation->discovery->rootRealpath, $preparation->gitHead, $clock);
+
                     return $this->resultFactory->create($plan, $language, $fastPath, $startedAt, $clock->stages(), 'no_change', $analysis->warnings);
                 }
                 $result = $this->reconcileFull($preparation, $plan, $language, $analysis, $projectConfig, $named, $options, $cancellation, $lease, $repository, $clock);
                 $clock->record('reconciliation', Milliseconds::since($reconciliationStarted));
+                $this->folderFacts->refresh($projectId, $preparation->discovery->rootRealpath, $preparation->gitHead, $clock);
                 // What rebuilding this graph cost, end to end, recorded here
                 // because this is the only place that knows it: reconciliation
                 // completes the scan row but sees neither discovery nor analysis.
@@ -280,7 +289,7 @@ final class ProjectScanService implements ProjectScanner
             self::undiscoveredVerifier($preparation, $language, $plan),
         );
         $clock->recordAll($result->phaseMilliseconds, 'reconciliation.');
-        (new \Knossos\Scan\Conventions\FolderFactsRefresher($this->pdo, $this->companions))->refresh($projectId, $preparation->discovery->rootRealpath, $preparation->gitHead);
+
         return $result;
     }
 
@@ -338,41 +347,6 @@ final class ProjectScanService implements ProjectScanner
     private function projectExists(string $projectId): bool
     {
         return (new ProjectRepository($this->pdo))->exists($projectId);
-    }
-
-    /**
-     * Refuse a rescan that would reconcile away a failed language's facts.
-     *
-     * A rescan must never do so, whatever its mode: doing so prunes the last
-     * good facts for a worker that failed and can replace a healthy graph with
-     * an empty one. That holds for a requested full rescan as much as an
-     * incremental one, so such a scan fails closed and the caller can repair
-     * the worker and retry without data loss. A full rescan whose failed
-     * languages hold no facts in the graph has nothing to lose, and degrades
-     * per language as a first scan does; refusing it would leave no way to
-     * update the other languages until the broken worker is repaired.
-     */
-    private function refuseDegradedRescan(ScanPlan $plan, LanguageScanResult $language, string $projectId): void
-    {
-        if (!$plan->hadActiveScan || $language->workerDiagnostics === []) {
-            return;
-        }
-        $owners = array_values(array_unique(array_map(
-            static fn(array $diagnostic): string => (string) ($diagnostic['owner'] ?? 'unknown'),
-            $language->workerDiagnostics,
-        )));
-        if ($plan->effectiveMode !== 'full' || $this->graphHoldsFactsOf($projectId, $owners)) {
-            $failed = array_map(
-                static fn(array $diagnostic): string => ($diagnostic['owner'] ?? 'unknown') . ': ' . ($diagnostic['code'] ?? WorkerErrorCode::Failed->value),
-                $language->workerDiagnostics,
-            );
-            throw new WorkerException(
-                WorkerErrorCode::DegradedIncremental->value,
-                'Scan aborted to preserve the last good graph. Failed workers: ' . implode(', ', $failed)
-                    . '. Fix the worker (run `knossos doctor`) and rescan; the graph is unchanged.',
-                terminatingSignal: array_values(array_filter(array_column($language->workerDiagnostics, 'terminating_signal')))[0] ?? null,
-            );
-        }
     }
 
     /**
@@ -435,34 +409,6 @@ final class ProjectScanService implements ProjectScanner
         } catch (\Throwable) {
             // Ignore: the original failure is what matters.
         }
-    }
-
-    /**
-     * Whether the project's graph holds any node owned by one of these scanners.
-     *
-     * Every fact a scanner contributes is owned by a key that starts with its
-     * id and a colon, and every file it analysed carries at least its file
-     * node, so a scanner with no node under that prefix has nothing to lose.
-     *
-     * @param list<string> $scannerIds
-     */
-    private function graphHoldsFactsOf(string $projectId, array $scannerIds): bool
-    {
-        $statement = $this->pdo->prepare(
-            'SELECT 1 FROM nodes WHERE project_id = :project AND owner_key >= :low AND owner_key < :high LIMIT 1',
-        );
-        foreach ($scannerIds as $scannerId) {
-            // ';' is the character after ':', so the range is exactly the
-            // keys that start with "<id>:" and the owner index can serve it.
-            $statement->execute(['project' => $projectId, 'low' => $scannerId . ':', 'high' => $scannerId . ';']);
-            $found = $statement->fetchColumn() !== false;
-            $statement->closeCursor();
-            if ($found) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -621,8 +567,8 @@ final class ProjectScanService implements ProjectScanner
             $repository->refreshScanCompletion($projectId, $activeScanId);
         });
     }
-    /** Node and edge counts before reconciliation, for the scan report's delta. */
 
+    /** Node and edge counts before reconciliation, for the scan report's delta. */
     private function currentGraphCounts(string $projectId, string $activeScanId): ReconciliationResult
     {
         $count = function (string $sql) use ($projectId): int {

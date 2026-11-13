@@ -17,7 +17,6 @@
     "src/Query/SnapshotMetrics.php": 631,
     "src/Reconciliation/EdgeTargetResolver.php": 872,
     "src/Scan/LanguageScanRunner.php": 609,
-    "src/Scan/ProjectScanService.php": 643,
     "src/Scanner/Worker/NdjsonRpcChannel.php": 636,
     "tests/phpunit/Boundary/BoundaryInferenceTest.php": 837,
     "tests/phpunit/Bundle/GraphBundleDecoderTest.php": 676,

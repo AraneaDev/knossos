@@ -84,6 +84,20 @@ final readonly class FolderFactsStore
     }
 
     /**
+     * Whether any folder facts are stored for the project.
+     *
+     * A project scanned before folder facts existed has none, and a scan that
+     * finds nothing changed uses this to know it must build them anyway.
+     */
+    public function has(string $projectId): bool
+    {
+        $statement = $this->pdo->prepare('SELECT 1 FROM folder_facts WHERE project_id = ? LIMIT 1');
+        $statement->execute([$projectId]);
+
+        return $statement->fetchColumn() !== false;
+    }
+
+    /**
      * The facts of one folder population, or null when none were stored.
      *
      * @return array{files: int, facts: array<string, mixed>}|null

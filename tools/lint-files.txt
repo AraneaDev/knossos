@@ -390,6 +390,7 @@ php	src/Scan/Conventions/FolderFactsBuilder.php
 php	src/Scan/Conventions/FolderFactsRefresher.php
 php	src/Scan/Conventions/PathParts.php
 php	src/Scan/Conventions/TestPathPattern.php
+php	src/Scan/DegradedRescanGuard.php
 php	src/Scan/FatalWatch.php
 php	src/Scan/InvalidationWalk.php
 php	src/Scan/LanguageBatchRun.php
@@ -946,6 +947,7 @@ php	tests/phpunit/Scan/ContributionPartitionTest.php
 php	tests/phpunit/Scan/Conventions/FolderCompanionsBuilderTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsBuilderTest.php
 php	tests/phpunit/Scan/Conventions/FolderFactsScanTest.php
+php	tests/phpunit/Scan/Conventions/FolderFactsUnchangedScanTest.php
 php	tests/phpunit/Scan/Conventions/TestPathPatternTest.php
 php	tests/phpunit/Scan/EndpointRouteFlowTest.php
 php	tests/phpunit/Scan/EndpointRouteScanTest.php
@@ -1098,6 +1100,7 @@ php	tests/phpunit/Store/BulkTransactionTest.php
 php	tests/phpunit/Store/ChunkedInQueryTest.php
 php	tests/phpunit/Store/ContributionCacheEntryTest.php
 php	tests/phpunit/Store/ContributionCacheWriteTest.php
+php	tests/phpunit/Store/FolderFactsStoreHasTest.php
 php	tests/phpunit/Store/FolderFactsStoreTest.php
 php	tests/phpunit/Store/FolderFactsStoreTestPathsTest.php
 php	tests/phpunit/Store/MigrationRunnerRaceTest.php
