@@ -107,9 +107,9 @@ final class InstallationTest extends KnossosTestCase
         assertSame(null, $installation->pluginDataDir());
 
         mkdir($data . '/plugin/hooks/scripts', 0o755, true);
-        foreach (["/graph's here" => "KNOSSOS_INSTALLED_DATA_DIR='/graph'\\''s here'", null => "KNOSSOS_INSTALLED_DATA_DIR=''"] as $expected => $line) {
+        foreach ([["/graph's here", "KNOSSOS_INSTALLED_DATA_DIR='/graph'\\''s here'"], [null, "KNOSSOS_INSTALLED_DATA_DIR=''"], [null, "KNOSSOS_INSTALLED_DATA_DIR='relative'"]] as [$expected, $line]) {
             file_put_contents($data . '/plugin/hooks/scripts/lib.sh', "# x\n" . $line . "\ncase x in esac\n");
-            assertSame($expected === '' ? null : $expected, $installation->pluginDataDir());
+            assertSame($expected, $installation->pluginDataDir(), $line);
         }
         file_put_contents($data . '/plugin/hooks/scripts/lib.sh', "KNOSSOS_INSTALLED_DATA_DIR='__KNOSSOS_DATA_DIR__'\n");
         assertSame(null, $installation->pluginDataDir());

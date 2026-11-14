@@ -700,6 +700,7 @@ php	tests/phpunit/InfectionExclusionsTest.php
 php	tests/phpunit/Install/FakeProbe.php
 php	tests/phpunit/Install/ForbiddenSource.php
 php	tests/phpunit/Install/GitHubReleaseSourceTest.php
+php	tests/phpunit/Install/InstallFailurePathsTest.php
 php	tests/phpunit/Install/InstallFixtures.php
 php	tests/phpunit/Install/InstallationTest.php
 php	tests/phpunit/Install/ProcessReleaseProbeTest.php

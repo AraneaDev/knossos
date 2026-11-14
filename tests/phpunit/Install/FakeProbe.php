@@ -14,7 +14,8 @@ final class FakeProbe implements ReleaseProbe
     /** @var list<array{string, string, string, string}> release, plugin dir, launcher and data dir of each plugin call */
     public array $plugins = [];
 
-    public function __construct(public ?string $doctorFailure = null, public bool $versionWorks = true, public ?string $pluginFailure = null) {}
+    /** @param (\Closure(): void)|null $onPlugin run when the plugin is asked for, before it answers */
+    public function __construct(public ?string $doctorFailure = null, public bool $versionWorks = true, public ?string $pluginFailure = null, public ?\Closure $onPlugin = null) {}
 
     /** {@inheritDoc} */
     public function doctor(string $releaseDir, string $scratchDir): ?string
@@ -34,6 +35,9 @@ final class FakeProbe implements ReleaseProbe
     public function plugin(string $releaseDir, string $pluginDir, string $launcher, string $dataDir, string $scratchDir): ?string
     {
         $this->plugins[] = [basename($releaseDir), $pluginDir, $launcher, $dataDir];
+        if ($this->onPlugin !== null) {
+            ($this->onPlugin)();
+        }
         if ($this->pluginFailure !== null) {
             return $this->pluginFailure;
         }
