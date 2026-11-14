@@ -11,8 +11,10 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * A class that asks Angular's `inject()` for another depends on it as one
  * that takes it in its constructor does. Only a class asked for in a property
- * initialiser or directly in the constructor counts: a constant token, a call
- * in a method or a nested function, and another module's `inject` do not.
+ * initialiser or directly in the constructor counts: a constant token (also
+ * one sharing its name with an interface), a decorator's argument, a call in a
+ * method or a nested function, and another module's `inject` do not. A class
+ * sharing its name with an interface is the class.
  */
 #[Group('typescript-scanner')]
 final class TypescriptAngularInjectTest extends KnossosTestCase
@@ -40,11 +42,12 @@ final class TypescriptAngularInjectTest extends KnossosTestCase
         sort($injects);
 
         assertSame([
-            'Panel -> class:src/services.ts#Api (line 9)',
-            'Panel -> class:src/services.ts#Logger (line 19)',
-            'Panel -> class:src/services.ts#Logger (line 20)',
-            'Panel -> class:src/services.ts#Store (line 10)',
-            'Panel -> class:src/services.ts#Unused (line 11)',
+            'Panel -> class:src/services.ts#Api (line 10)',
+            'Panel -> class:src/services.ts#Logger (line 24)',
+            'Panel -> class:src/services.ts#Logger (line 25)',
+            'Panel -> class:src/services.ts#Shared (line 18)',
+            'Panel -> class:src/services.ts#Store (line 11)',
+            'Panel -> class:src/services.ts#Unused (line 12)',
         ], $injects);
     }
 }

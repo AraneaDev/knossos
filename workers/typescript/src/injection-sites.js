@@ -26,16 +26,16 @@ function isAngularInject(call, checker) {
     );
 }
 
-/** Every `inject(X)` call below `node` that is not inside a nested function or class. */
+/** Every `inject(X)` call at or below `node` that is not inside a nested function or class. */
 function injectCalls(node, checker, found = []) {
+    if (ts.isFunctionLike(node) || ts.isClassLike(node)) return found;
+    if (
+        ts.isCallExpression(node) &&
+        node.arguments.length > 0 &&
+        isAngularInject(node, checker)
+    )
+        found.push(node);
     ts.forEachChild(node, (child) => {
-        if (ts.isFunctionLike(child) || ts.isClassLike(child)) return;
-        if (
-            ts.isCallExpression(child) &&
-            child.arguments.length > 0 &&
-            isAngularInject(child, checker)
-        )
-            found.push(child);
         injectCalls(child, checker, found);
     });
     return found;
@@ -43,33 +43,28 @@ function injectCalls(node, checker, found = []) {
 
 /**
  * Whether what `inject()` is asked for can be a class: an identifier or a
- * qualified name that does not resolve to something else. A token that is a
- * constant (`inject(API_URL)`) names a value, not a dependency on a class.
+ * qualified name that resolves to a class, or to nothing at all (its package
+ * is not installed). A token that is a constant names a value, not a
+ * dependency on a class: `inject(API_URL)`, and equally a constant that
+ * shares its name with an interface, as an injection token for one does.
  */
 function mayBeAClass(token, checker) {
     if (!ts.isIdentifier(token) && !ts.isPropertyAccessExpression(token))
         return false;
     let symbol = checker.getSymbolAtLocation(token);
-    if (symbol !== undefined && symbol.flags & ts.SymbolFlags.Alias) {
-        try {
-            symbol = checker.getAliasedSymbol(symbol);
-        } catch {
-            return true;
-        }
-    }
+    if (symbol !== undefined && symbol.flags & ts.SymbolFlags.Alias)
+        symbol = checker.getAliasedSymbol(symbol);
     const declarations = symbol?.declarations ?? [];
     return (
         declarations.length === 0 ||
-        declarations.some(
-            (item) => ts.isClassLike(item) || ts.isInterfaceDeclaration(item),
-        )
+        declarations.some((item) => ts.isClassLike(item))
     );
 }
 
 /**
  * What a class or interface is injected with, in source order: `type` for a
  * constructor parameter's annotation, `token` for the argument of an Angular
- * `inject()` call in a property initialiser or directly in the constructor's
+ * `inject()` call in a property's initialiser or directly in the constructor's
  * body. `at` is the node the fact is evidenced by.
  *
  * @returns {Array<{type?: ts.TypeNode, token?: ts.Expression, at: ts.Node}>}
@@ -83,10 +78,12 @@ export function injectionSites(node, checker) {
                     sites.push({ type: parameter.type, at: parameter });
             }
         }
+        // The initialiser alone: a decorator's arguments and a computed
+        // name are part of the property but give the class nothing.
         const scope = ts.isConstructorDeclaration(member)
             ? member.body
             : ts.isPropertyDeclaration(member)
-              ? member
+              ? member.initializer
               : undefined;
         if (scope === undefined) continue;
         for (const call of injectCalls(scope, checker)) {
