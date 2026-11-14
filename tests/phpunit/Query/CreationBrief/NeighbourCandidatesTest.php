@@ -47,6 +47,29 @@ final class NeighbourCandidatesTest extends KnossosTestCase
         self::assertNotContains('src/Pop/b/F160.php', $paths);
     }
 
+    /** 250 tests under `src/__tests__` sort before the sources beside the new file, and still do not crowd them out. */
+    public function testTestsBelowDoNotCrowdOutTheSourcesOfASubtree(): void
+    {
+        $this->files('src/__tests__/t%03d.spec.ts', 250, test: true);
+        $this->files('src/s%d.ts', 6);
+
+        $paths = array_column($this->candidates('src', 'src/foo.ts', true, 'ts'), 'path');
+
+        self::assertSame(['src/s0.ts', 'src/s1.ts', 'src/s2.ts', 'src/s3.ts', 'src/s4.ts', 'src/s5.ts'], $paths);
+    }
+
+    /** A new test weighs the tests of the subtree, cut to 200, and no source. */
+    public function testATestWeighsOnlyTheTestsOfASubtree(): void
+    {
+        $this->files('src/__tests__/t%03d.spec.ts', 250, test: true);
+        $this->files('src/s%d.ts', 6);
+
+        $paths = array_column($this->candidates('src', 'src/__tests__/new.spec.ts', true, 'ts', 'test'), 'path');
+
+        self::assertCount(200, $paths);
+        self::assertSame([], array_values(array_filter($paths, static fn(string $path): bool => !str_starts_with($path, 'src/__tests__/'))));
+    }
+
     /** A direct population is weighed whole, however large. */
     public function testADirectPopulationIsWeighedWhole(): void
     {
@@ -56,18 +79,24 @@ final class NeighbourCandidatesTest extends KnossosTestCase
     }
 
     /** @return list<array{path: string, uses: list<string>}> */
-    private function candidates(string $directory, string $exclude, bool $subtree): array
+    private function candidates(string $directory, string $exclude, bool $subtree, string $extension = 'php', string $role = 'source'): array
     {
-        return (new NeighbourCandidates($this->pdo))->of($this->projectId, $directory, 'php', 'source', $exclude, $subtree);
+        return (new NeighbourCandidates($this->pdo))->of($this->projectId, $directory, $extension, $role, $exclude, $subtree);
     }
 
-    /** Insert `$count` files named by the `sprintf` pattern. */
-    private function files(string $pattern, int $count): void
+    /** Insert `$count` files named by the `sprintf` pattern; a test file holds a module classified as a test. */
+    private function files(string $pattern, int $count, bool $test = false): void
     {
         $insert = $this->pdo->prepare('INSERT INTO files (id, project_id, relative_path, content_hash, size, mtime, language, scanner_version, last_scan_id, line_count) VALUES (?, ?, ?, ?, 1, 1, ?, ?, ?, 9)');
+        $node = $this->pdo->prepare('INSERT INTO nodes (id, project_id, language, kind, canonical_name, display_name, parent_id, file_id, origin, confidence, attributes_json, owner_key, last_scan_id) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)');
+        $classify = $this->pdo->prepare('INSERT INTO classifications (id, project_id, node_id, role, origin, confidence, rule_id, file_id, last_scan_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
         for ($i = 0; $i < $count; ++$i) {
             $path = sprintf($pattern, $i);
             $insert->execute(['f:' . $path, $this->projectId, $path, 'h', 'php', '1', $this->ids['scan']]);
+            if ($test) {
+                $node->execute(['n:' . $path, $this->projectId, 'ts', 'module', $path, $path, 'f:' . $path, 'ast', 'certain', '{}', 'k:' . $path, $this->ids['scan']]);
+                $classify->execute(['c:' . $path, $this->projectId, 'n:' . $path, 'quality.test_module', 'rule', 'certain', 'r', 'f:' . $path, $this->ids['scan']]);
+            }
         }
     }
 }

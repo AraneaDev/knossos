@@ -52,7 +52,11 @@ final readonly class NeighbourCandidates
         ) as $fileId) {
             $tests[(string) $fileId] = true;
         }
-        $population = array_values(array_filter($ids, static fn(string $id): bool => isset($tests[$id]) === ($role === 'test')));
+        $population = array_filter($files, static fn(int|string $id): bool => isset($tests[$id]) === ($role === 'test'), ARRAY_FILTER_USE_KEY);
+        if ($subtree) {
+            $population = self::nearest($population, PathParts::directory($exclude));
+        }
+        $population = array_map('strval', array_keys($population));
 
         $uses = $this->uses($population, $files);
         $candidates = [];
@@ -82,15 +86,16 @@ final readonly class NeighbourCandidates
             }
         }
 
-        return $subtree ? self::nearest($files, PathParts::directory($exclude)) : $files;
+        return $files;
     }
 
     /**
      * The MAX_SUBTREE_CANDIDATES files nearest a directory, cut on the paths alone before any edge is read.
      *
      * Nearest is the longest directory path shared with `$directory`, then the
-     * path, so the same tree always keeps the same files. The cut comes before
-     * the files are split by role, so a subtree that mixes roles may keep fewer.
+     * path, so the same tree always keeps the same files. The files are already
+     * of the wanted role, so tests beside the new file cannot crowd out its
+     * sources (or the other way round).
      *
      * @param array<string, string> $files relative path by file id
      * @return array<string, string>
