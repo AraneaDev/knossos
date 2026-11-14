@@ -125,10 +125,7 @@ final class VersionSwitch
         if (strlen($here) > 3800) {
             throw new InstallException(sprintf('Path too long in the archive: %s', self::printable($directory)));
         }
-        if (!is_readable($here) || !is_executable($here)) {
-            throw new InstallException(sprintf('Unreadable directory in the archive: %s', self::printable($directory)));
-        }
-        $entries = scandir($here);
+        $entries = is_readable($here) && is_executable($here) ? scandir($here) : false;
         if ($entries === false) {
             throw new InstallException(sprintf('Unreadable directory in the archive: %s', self::printable($directory)));
         }

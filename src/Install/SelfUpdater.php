@@ -209,10 +209,8 @@ final class SelfUpdater
      */
     private function locked(callable $work): mixed
     {
+        // It exists: an installation is only one when its install.json is readable there.
         $directory = $this->installation->directory();
-        if (!is_dir($directory) && !@mkdir($directory, 0o700, true) && !is_dir($directory)) {
-            throw new InstallException('Could not create ' . $directory);
-        }
         $lock = @fopen($directory . '/self-update.lock', 'c');
         if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
             throw new InstallException('Another knossos self-update is running; try again when it has finished');

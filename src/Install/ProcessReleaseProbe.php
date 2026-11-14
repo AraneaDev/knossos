@@ -14,6 +14,9 @@ namespace Knossos\Install;
  */
 final class ProcessReleaseProbe implements ReleaseProbe
 {
+    /** @param int|null $deadlineSeconds replaces every command's own deadline; only a test passes one */
+    public function __construct(private readonly ?int $deadlineSeconds = null) {}
+
     /** {@inheritDoc} */
     public function doctor(string $releaseDir, string $scratchDir): ?string
     {
@@ -90,7 +93,7 @@ final class ProcessReleaseProbe implements ReleaseProbe
         if (!is_resource($process)) {
             return [-1, 'could not start ' . $releaseDir . '/bin/knossos'];
         }
-        $deadline = time() + $seconds;
+        $deadline = time() + ($this->deadlineSeconds ?? $seconds);
         $status = proc_get_status($process);
         while ($status['running'] && time() < $deadline) {
             usleep(50_000);
