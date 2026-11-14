@@ -1042,6 +1042,7 @@ php	tests/phpunit/Scanner/PhpCommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/PhpLivewireBladeTest.php
 php	tests/phpunit/Scanner/PhpScannerReceiverFactsTest.php
 php	tests/phpunit/Scanner/PhpScannerTest.php
+php	tests/phpunit/Scanner/PhpSignaturesTest.php
 php	tests/phpunit/Scanner/PhpWorkerScopeAndRouteFactsTest.php
 php	tests/phpunit/Scanner/PropertyReceiverTest.php
 php	tests/phpunit/Scanner/Protocol/ConfidenceRankTest.php
@@ -1238,6 +1239,7 @@ php	workers/php/src/ReceiverTypeInference.php
 php	workers/php/src/RefusedAfterReadException.php
 php	workers/php/src/ResolvesClassName.php
 php	workers/php/src/ResolvesDeclarationName.php
+php	workers/php/src/Signature.php
 php	workers/php/src/SymfonyFactCollector.php
 php	workers/php/src/UnreadableFileException.php
 php	workers/php/src/VariableTypeScope.php
