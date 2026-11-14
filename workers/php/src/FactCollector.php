@@ -462,8 +462,8 @@ final class FactCollector extends NodeVisitorAbstract
         $attributes = $this->attributeNames($node->attrGroups);
         $this->addNode($id, 'method', $name, $node->name->toString(), $node, [
             'visibility' => $node->isPublic() ? 'public' : ($node->isProtected() ? 'protected' : 'private'),
-            'static' => $node->isStatic(),
-            'abstract' => $node->isAbstract(),
+            'static' => $node->isStatic(), 'abstract' => $node->isAbstract(),
+            'signature' => Signature::of($node),
             'php_attributes' => $attributes,
             ...(self::isVirtualProperty($node, $attributes) || self::isEloquentConvention($this->typeNames($node->returnType), $attributes) ? ['runtime_invoked' => true] : []),
             ...(self::overridesSupertypeMember($node, $attributes, $class) ? ['overrides' => true] : []),
@@ -600,7 +600,7 @@ final class FactCollector extends NodeVisitorAbstract
     {
         $name = $this->declarationName($node, $this->relativePath);
         $id = self::reference('function', $name);
-        $this->addNode($id, 'function', $name, $node->name->toString(), $node);
+        $this->addNode($id, 'function', $name, $node->name->toString(), $node, ['signature' => Signature::of($node)]);
         $this->callables[] = ['id' => $id];
         $this->parametersAndReturn($node->params, $node->returnType, $id, false);
         $this->documentedElementTypes($node);
