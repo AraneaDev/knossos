@@ -22,7 +22,7 @@ final class CreationBriefRendererTest extends KnossosTestCase
             'extension' => 'php',
             'role' => 'source',
             'placement' => ['boundary' => 'Query', 'may_not_use' => ['Cli', 'Mcp']],
-            'basis' => ['directory' => 'src/Query', 'files' => 6, 'borrowed' => false],
+            'basis' => ['directory' => 'src/Query', 'files' => 6, 'borrowed' => false, 'subtree' => false],
             'neighbours' => ['src/Query/AService.php', 'src/Query/BService.php', 'src/Query/CService.php'],
             'conventions' => [
                 ['id' => 'kind', 'text' => 'one class per file', 'files' => 6, 'of' => 6],
@@ -54,11 +54,12 @@ final class CreationBriefRendererTest extends KnossosTestCase
         self::assertSame($expected, CreationBriefRenderer::lines(self::brief()));
     }
 
-    /** A borrowed population says where it came from, and a line with nothing to say is left out. */
+    /** A subtree population says where it came from, and a line with nothing to say is left out. */
     public function testABorrowedFolderIsNamedAndEmptyLinesAreOmitted(): void
     {
         $data = self::brief();
         $data['basis']['borrowed'] = true;
+        $data['basis']['subtree'] = true;
         $data['placement'] = ['boundary' => null, 'may_not_use' => []];
         $data['neighbours'] = [];
         $data['goes_with'] = [];
@@ -66,7 +67,7 @@ final class CreationBriefRendererTest extends KnossosTestCase
         $data['notes'] = 0;
 
         self::assertSame(
-            "knossos · new file in src/Query\nhere (in src/Query, the nearest folder with enough files): 6 of 6 one class per file · 6 of 6 final · median 12 lines, largest 20",
+            "knossos · new file in src/Query\nhere (across src/Query and below): 6 of 6 one class per file · 6 of 6 final · median 12 lines, largest 20",
             CreationBriefRenderer::lines($data),
         );
     }

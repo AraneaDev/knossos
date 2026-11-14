@@ -97,7 +97,7 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
 
         self::assertFalse($data['exists']);
         self::assertSame('source', $data['role']);
-        self::assertSame(['directory' => 'src/Query', 'files' => 6, 'borrowed' => false], $data['basis']);
+        self::assertSame(['directory' => 'src/Query', 'files' => 6, 'borrowed' => false, 'subtree' => false], $data['basis']);
         foreach (['kind', 'modifier:final', 'modifier:readonly', 'suffix'] as $id) {
             self::assertContains($id, self::ids($data));
         }
@@ -129,9 +129,10 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         self::assertNotSame([], $data['conventions']);
     }
 
+    /** No folder of the project holds a file of the extension, so not even the whole project is a basis. */
     public function testWithNoPopulatedAncestorOnlyPlacementAndGatesRemain(): void
     {
-        $data = $this->scanned()->creationBrief($this->projectId, 'lib/X.php')->data;
+        $data = $this->scanned()->creationBrief($this->projectId, 'lib/X.rs')->data;
 
         self::assertNull($data['basis']);
         self::assertSame([], $data['neighbours']);
@@ -273,7 +274,7 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         $data = (new CreationBriefQueryService($this->pdo))->creationBrief($this->projectId, 'tests/phpunit/NewDir/FooTest.php')->data;
 
         self::assertSame('test', $data['role']);
-        self::assertSame(['directory' => 'tests/phpunit', 'files' => 5, 'borrowed' => true], $data['basis']);
+        self::assertSame(['directory' => 'tests/phpunit', 'files' => 11, 'borrowed' => true, 'subtree' => true], $data['basis']);
     }
 
     /**

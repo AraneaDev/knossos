@@ -121,6 +121,30 @@ final readonly class FolderFactsStore
     }
 
     /**
+     * The populations of a directory and of every directory below it, for one extension and role, in directory order.
+     *
+     * The root, the empty directory, holds every row. Below another directory
+     * a row is matched by the byte range `dir/` to `dir0` (the character after
+     * the slash), so a `%` or `_` in a name is only a character and case counts,
+     * which a LIKE would get wrong on both.
+     *
+     * @return list<array{directory: string, files: int, facts: array<string, mixed>}>
+     */
+    public function under(string $projectId, string $directory, string $extension, string $role): array
+    {
+        $sql = 'SELECT directory, files, facts_json FROM folder_facts WHERE project_id = ? AND extension = ? AND role = ?';
+        $statement = $this->pdo->prepare($directory === '' ? $sql : $sql . ' AND (directory = ? OR (directory >= ? AND directory < ?))');
+        $statement->execute($directory === '' ? [$projectId, $extension, $role] : [$projectId, $extension, $role, $directory, $directory . '/', $directory . '0']);
+        $rows = [];
+        foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$name, $files, $json]) {
+            $rows[] = ['directory' => (string) $name, 'files' => (int) $files, 'facts' => self::decode((string) $json)];
+        }
+        usort($rows, static fn(array $a, array $b): int => strcmp($a['directory'], $b['directory']));
+
+        return $rows;
+    }
+
+    /**
      * The test-path patterns the project's source folders show for an extension, sorted and distinct.
      *
      * A pattern counts when its folder has at least `$minFiles` files and at least

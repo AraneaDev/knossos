@@ -27,7 +27,8 @@ use Knossos\Store\FolderFactsStore;
  *
  * The conventions come from the folder the path would sit in when that folder
  * holds at least {@see Conventions::MIN_FILES} files of the path's extension and
- * role, otherwise from the nearest ancestor that does, and the brief says so.
+ * role. Otherwise they come from the nearest folder, its own or an ancestor,
+ * whose whole subtree holds that many ({@see SubtreeFacts}), and the brief says so.
  */
 final readonly class CreationBriefQueryService extends AbstractArchitectureQueryService
 {
@@ -62,11 +63,10 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
         }
 
         $placement = $readable ? (new Placement($this->pdo))->of($projectId, $relative, $configuration->policies) : ['boundary' => null, 'may_not_use' => []];
-        $basis = $this->basis($facts, $projectId, $directory, $extension, $role);
-        $population = $basis === null ? null : $facts->of($projectId, $basis['directory'], $extension, $role);
+        [$basis, $population] = $this->basis($facts, $projectId, $directory, $extension, $role);
         $neighbours = $basis === null ? [] : Neighbours::rank(
             PathParts::stem($relative),
-            (new NeighbourCandidates($this->pdo))->of($projectId, $basis['directory'], $extension, $role, $relative),
+            (new NeighbourCandidates($this->pdo))->of($projectId, $basis['directory'], $extension, $role, $relative, $basis['subtree']),
         );
         $conventions = $population === null ? [] : Conventions::shown($population['files'], $population['facts'], $role);
         $goesWith = $this->goesWith($facts, $projectId, $root, $relative, $basis, $directory, $role, $population);
@@ -104,19 +104,27 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
     }
 
     /**
-     * The folder the conventions come from: the path's own or the nearest ancestor with enough files.
+     * The folder the conventions come from, and its population.
      *
-     * @return array{directory: string, files: int, borrowed: bool}|null
+     * The path's own folder when it holds MIN_FILES files directly; otherwise the
+     * first of the folder and its ancestors whose subtree holds that many, its
+     * rows merged; none when not even the project does.
+     *
+     * @return array{0: array{directory: string, files: int, borrowed: bool, subtree: bool}|null, 1: array{files: int, facts: array<string, mixed>}|null}
      */
-    private function basis(FolderFactsStore $facts, string $projectId, string $directory, string $extension, string $role): ?array
+    private function basis(FolderFactsStore $facts, string $projectId, string $directory, string $extension, string $role): array
     {
+        $own = $facts->of($projectId, $directory, $extension, $role);
+        if ($own !== null && $own['files'] >= Conventions::MIN_FILES) {
+            return [['directory' => $directory, 'files' => $own['files'], 'borrowed' => false, 'subtree' => false], $own];
+        }
         for ($candidate = $directory;; $candidate = PathParts::directory($candidate)) {
-            $population = $facts->of($projectId, $candidate, $extension, $role);
-            if ($population !== null && $population['files'] >= Conventions::MIN_FILES) {
-                return ['directory' => $candidate, 'files' => $population['files'], 'borrowed' => $candidate !== $directory];
+            $population = SubtreeFacts::merge($facts->under($projectId, $candidate, $extension, $role));
+            if ($population['files'] >= Conventions::MIN_FILES) {
+                return [['directory' => $candidate, 'files' => $population['files'], 'borrowed' => true, 'subtree' => true], $population];
             }
             if ($candidate === '') {
-                return null;
+                return [null, null];
             }
         }
     }
@@ -159,7 +167,7 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
      * `<dir>` pattern survives the borrowing. A companion whose file is gone is
      * left out, so the brief never names a path that no longer exists.
      *
-     * @param array{directory: string, files: int, borrowed: bool}|null $basis
+     * @param array{directory: string, files: int, borrowed: bool, subtree: bool}|null $basis
      * @param array{files: int, facts: array<string, mixed>}|null $population
      * @return list<array{path: string, commits?: int, of?: int, kind: 'test'|'companion'}>
      */

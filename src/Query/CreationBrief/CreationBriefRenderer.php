@@ -109,8 +109,7 @@ final class CreationBriefRenderer
             $lines[] = 'like: ' . implode(', ', $neighbours);
         }
         if ($conventions !== []) {
-            $basis = is_array($data['basis'] ?? null) ? $data['basis'] : [];
-            $label = ($basis['borrowed'] ?? false) === true ? sprintf('here (in %s, the nearest folder with enough files): ', (string) ($basis['directory'] ?? '')) : 'here: ';
+            $label = self::hereLabel(is_array($data['basis'] ?? null) ? $data['basis'] : []);
             array_push($lines, ...self::wrapped($label, array_map(self::convention(...), $conventions)));
         }
         if ($goesWith !== []) {
@@ -124,6 +123,21 @@ final class CreationBriefRenderer
         }
 
         return $lines;
+    }
+
+    /**
+     * The label of the `here` line: where the conventions were learnt when that is more than the path's own folder.
+     *
+     * @param array<string, mixed> $basis
+     */
+    private static function hereLabel(array $basis): string
+    {
+        if (($basis['subtree'] ?? false) !== true) {
+            return 'here: ';
+        }
+        $directory = (string) ($basis['directory'] ?? '');
+
+        return $directory === '' ? 'here (across the project): ' : sprintf('here (across %s and below): ', $directory);
     }
 
     /**

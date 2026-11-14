@@ -12,8 +12,9 @@ use PDO;
  * Reads the files of one folder population from the graph, as {@see Neighbours::rank()} wants them.
  *
  * A population is the direct children of a directory with one extension and
- * one role, the same grouping the folder facts count. Each file brings the
- * distinct targets it depends on outside its own folder.
+ * one role, the same grouping the folder facts count, or, for a subtree, every
+ * file of that extension and role at or below the directory. Each file brings
+ * the distinct targets it depends on outside its own folder.
  */
 final readonly class NeighbourCandidates
 {
@@ -28,11 +29,12 @@ final readonly class NeighbourCandidates
     /**
      * The files of the population except `$exclude`, in path order.
      *
+     * @param bool $subtree whether files in the directories below count too
      * @return list<array{path: string, uses: list<string>}>
      */
-    public function of(string $projectId, string $directory, string $extension, string $role, string $exclude): array
+    public function of(string $projectId, string $directory, string $extension, string $role, string $exclude, bool $subtree = false): array
     {
-        $files = $this->files($projectId, $directory, $extension, $exclude);
+        $files = $this->files($projectId, $directory, $extension, $exclude, $subtree);
         if ($files === []) {
             return [];
         }
@@ -49,7 +51,7 @@ final readonly class NeighbourCandidates
         }
         $population = array_values(array_filter($ids, static fn(string $id): bool => isset($tests[$id]) === ($role === 'test')));
 
-        $uses = $this->uses($population, $directory);
+        $uses = $this->uses($population, $files);
         $candidates = [];
         foreach ($population as $id) {
             $candidates[] = ['path' => $files[$id], 'uses' => $uses[$id] ?? []];
@@ -60,11 +62,11 @@ final readonly class NeighbourCandidates
     }
 
     /**
-     * The direct children of the directory with the extension, by file id.
+     * The files with the extension directly in the directory, or anywhere below it for a subtree, by file id.
      *
      * @return array<string, string> relative path by file id
      */
-    private function files(string $projectId, string $directory, string $extension, string $exclude): array
+    private function files(string $projectId, string $directory, string $extension, string $exclude, bool $subtree): array
     {
         $statement = $this->pdo->prepare('SELECT id, relative_path FROM files WHERE project_id = ? AND relative_path >= ? AND relative_path < ?');
         // Every path under `dir/` sorts between `dir/` and `dir0`, the character after the slash.
@@ -72,7 +74,7 @@ final readonly class NeighbourCandidates
         $files = [];
         foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$id, $path]) {
             $path = (string) $path;
-            if ($path !== $exclude && PathParts::directory($path) === $directory && PathParts::extension($path) === $extension) {
+            if ($path !== $exclude && ($subtree || PathParts::directory($path) === $directory) && PathParts::extension($path) === $extension) {
                 $files[(string) $id] = $path;
             }
         }
@@ -84,9 +86,10 @@ final readonly class NeighbourCandidates
      * What each file depends on outside its own folder, sorted.
      *
      * @param list<string> $fileIds
+     * @param array<string, string> $paths relative path by file id
      * @return array<string, list<string>>
      */
-    private function uses(array $fileIds, string $directory): array
+    private function uses(array $fileIds, array $paths): array
     {
         $uses = [];
         foreach (ChunkedInQuery::rows(
@@ -97,7 +100,7 @@ final readonly class NeighbourCandidates
             $fileIds,
             mode: PDO::FETCH_NUM,
         ) as [$fileId, $target, $targetPath]) {
-            if ($targetPath === null || PathParts::directory((string) $targetPath) !== $directory) {
+            if ($targetPath === null || PathParts::directory((string) $targetPath) !== PathParts::directory($paths[(string) $fileId])) {
                 $uses[(string) $fileId][(string) $target] = (string) $target;
             }
         }

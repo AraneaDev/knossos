@@ -191,9 +191,12 @@ usually change when a file is added there), `gates` (the checks in
 `knossos.json` that apply to the path, with their commands), `notes` (how many
 notes sit on the neighbours and the boundary) and a `signature` that ignores
 counts and neighbours. A folder with fewer than five files of the path's
-extension and role borrows from the nearest ancestor that has them, and `basis`
-says so. Without a `knossos.json` that can be read, placement and gates are
-empty and a warning carries the loader's message. The CLI prints the brief as
+extension and role learns from the nearest folder, its own or an ancestor,
+whose whole subtree holds five: `basis` has `subtree: true` and the brief reads
+`here (across <folder> and below)`, or `here (across the project)` for the
+root. Across a subtree the used and injected types and the line counts are not
+stated, since they do not add up from folder to folder. Without a
+`knossos.json` that can be read, placement and gates are empty and a warning carries the loader's message. The CLI prints the brief as
 text, at most 14 lines and 1,200 characters, or the envelope with `--json`. The
 text is cut from the bottom, with two lines kept through the cut: on a stale
 graph, `graph is behind (scanned 2h ago): ...` with the files changed since,
