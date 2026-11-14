@@ -126,6 +126,9 @@ final class PluginCommand implements CliCommand
     {
         // `db` is accepted and has no effect: the installer opens no graph,
         // and refusing it now would break a command line that passed it.
+        // execute, no-register, plugin-dir, bin and data-dir are what an older
+        // release's self-update passes to this one: never rename or remove them
+        // (ProcessReleaseProbe::pluginArguments, PluginRefreshContractTest).
         return ['db', 'json', 'scope', 'execute', 'out', 'data', 'image', 'data-dir', 'plugin-dir', 'bin', 'no-register'];
     }
 

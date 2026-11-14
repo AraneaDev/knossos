@@ -44,6 +44,18 @@ final class PluginTargetTest extends KnossosTestCase
     }
 
     #[Group('cli')]
+    public function testAnInstalledReleaseWhoseRecordNamesNoLauncherIsRefused(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        file_put_contents($data . '/install.json', '{"mode": "native", "version": "1.0.0"}');
+
+        $error = self::captureThrown(static fn() => PluginTarget::resolve($data . '/current', null, null), \Knossos\Install\InstallException::class);
+
+        assertSame('The install record ' . $data . '/install.json does not name where the launcher is; run the installer again.', $error->getMessage());
+        assertSame(false, file_exists($this->work . '/home/.local'));
+    }
+
+    #[Group('cli')]
     public function testNothingInsideVersionsAndNoRelativePathIsAccepted(): void
     {
         $data = $this->installed('d', '1.0.0');

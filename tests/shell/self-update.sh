@@ -117,8 +117,15 @@ case $out in *"knossos $NEW is available (you have $OLD): run knossos self-updat
 kn doctor --json >/dev/null
 if [ -f "$GRAPH/knossos.sqlite" ] && [ ! -e "$DATA/knossos.sqlite" ]; then pass 'the graph is kept in KNOSSOS_DATA_DIR, apart from the release'; else fail "graph location: $(find "$GRAPH" "$DATA" -maxdepth 1 | tr '\n' ' ')"; fi
 
+# The graph directory set by hand on the plugin, the way Ruling A allows,
+# must survive the update and the rollback.
+kn install-agent-plugin --data-dir="$GRAPH" --execute --no-register >/dev/null
+baked_graph() { grep -xF "KNOSSOS_INSTALLED_DATA_DIR='$GRAPH'" "$LIB" >/dev/null; }
+if baked_graph; then pass 'the plugin was pointed at a hand-set graph directory'; else fail "hand-set graph: $(grep -n KNOSSOS_INSTALLED_DATA_DIR "$LIB")"; fi
+
 out=$(kn self-update); status=$?
 got=$(kn version)
+if baked_graph; then pass 'self-update keeps the hand-set graph directory'; else fail "after update: $(grep -n KNOSSOS_INSTALLED_DATA_DIR "$LIB")"; fi
 if [ "$status" -eq 0 ] && [ "$got" = "Knossos $NEW" ] && [ "$(readlink "$DATA/current")" = "versions/$NEW" ]; then
     pass 'self-update installs the newer release and switches current'
 else
@@ -163,6 +170,7 @@ case $out in *"already the latest"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a second self-update says it is already the latest'; else fail "second update: $status, $out"; fi
 
 out=$(kn self-update --rollback); status=$?
+if baked_graph; then pass '--rollback keeps the hand-set graph directory'; else fail "after rollback: $(grep -n KNOSSOS_INSTALLED_DATA_DIR "$LIB")"; fi
 got=$(kn version)
 if [ "$status" -eq 0 ] && [ "$got" = "Knossos $OLD" ]; then pass '--rollback switches back to the kept version'; else fail "rollback: $status, $out, version said $got"; fi
 if [ "$(manifest_version)" = "$OLD" ] && grep -qxF "KNOSSOS_INSTALLED_BIN='$BIN/knossos'" "$LIB"; then pass '--rollback rewrites the plugin from the version it returns to'; else fail "plugin after rollback: manifest $(manifest_version)"; fi

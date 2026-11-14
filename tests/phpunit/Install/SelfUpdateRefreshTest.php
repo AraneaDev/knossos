@@ -62,7 +62,8 @@ final class SelfUpdateRefreshTest extends KnossosTestCase
         $installJson = (string) file_get_contents($data . '/install.json');
         $this->publish($this->work . '/r', '2.0.0');
 
-        $this->refused(fn() => $this->updater($data, new FakeProbe(pluginFailure: 'disk full'))->update(null), "could not write its plugin:\ndisk full; 1.0.0 is current again");
+        $error = self::captureThrown(fn() => $this->updater($data, new FakeProbe(pluginFailure: 'disk full'))->update(null), InstallException::class);
+        assertSame('Release 2.0.0 could not write its plugin: disk full; 1.0.0 is current again', $error->getMessage());
 
         assertSame('1.0.0', (new VersionSwitch($data))->current());
         assertSame($installJson, file_get_contents($data . '/install.json'));
@@ -106,19 +107,74 @@ final class SelfUpdateRefreshTest extends KnossosTestCase
     }
 
     #[Group('install')]
-    public function testARecordWithoutABinDirectoryMeansTheDefaultOne(): void
+    public function testARecordWithoutABinDirectoryIsRefusedAndNothingChanges(): void
     {
         $data = $this->installed('d', '1.0.0');
+        $this->publish($this->work . '/r', '2.0.0');
         file_put_contents($data . '/install.json', '{"mode": "native", "version": "1.0.0"}');
         $installation = new Installation($data . '/current');
+        $message = 'The install record ' . $data . '/install.json does not name where the launcher is; run the installer again.';
 
-        // HOME is the test's own (see InstallFixtures), never the real one.
-        assertSame($this->work . '/home/.local/bin', $installation->binDir());
-        assertSame($this->work . '/home/.local/bin/knossos', $installation->launcher());
-        assertSame($data . '/plugin', $installation->pluginDir());
-        putenv('HOME');
-        $error = self::captureThrown(static fn() => $installation->binDir(), InstallException::class);
-        assertSame(true, str_contains($error->getMessage(), 'HOME is not set'));
+        foreach ([static fn() => $installation->binDir(), static fn() => $installation->launcher()] as $call) {
+            assertSame($message, self::captureThrown($call, InstallException::class)->getMessage());
+        }
+        $probe = new FakeProbe();
+        assertSame($message, self::captureThrown(fn() => $this->updater($data, $probe)->update(null), InstallException::class)->getMessage());
+        assertSame($message, self::captureThrown(fn() => $this->updater($data, $probe)->rollback(), InstallException::class)->getMessage());
+
+        assertSame('1.0.0', (new VersionSwitch($data))->current());
+        assertSame(['1.0.0'], array_map('basename', glob($data . '/versions/*')));
+        assertSame(0, $probe->doctorRuns);
+        assertSame(false, file_exists($this->work . '/home/.local'));
+        assertSame('{"mode": "native", "version": "1.0.0"}', file_get_contents($data . '/install.json'));
+    }
+
+    #[Group('install')]
+    public function testALauncherThatCannotBeWrittenIsNamedOnceAndThePreviousReleaseIsCurrentAgain(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        mkdir($data . '/plugin');
+        mkdir($this->work . '/d-bin');
+        file_put_contents($this->work . '/d-bin/knossos', "old launcher\n");
+        chmod($this->work . '/d-bin', 0o555);
+        $this->publish($this->work . '/r', '2.0.0');
+        $probe = new FakeProbe();
+        try {
+            if (@file_put_contents($this->work . '/d-bin/probe', 'x') !== false) {
+                // Root writes anyway: stand in with a bin directory whose launcher path is a directory.
+                chmod($this->work . '/d-bin', 0o755);
+                unlink($this->work . '/d-bin/probe');
+                unlink($this->work . '/d-bin/knossos');
+                mkdir($this->work . '/d-bin/knossos');
+            }
+            $error = self::captureThrown(fn() => $this->updater($data, $probe)->update(null), InstallException::class);
+        } finally {
+            chmod($this->work . '/d-bin', 0o755);
+        }
+
+        assertSame('Could not write the launcher ' . $this->work . '/d-bin/knossos; 1.0.0 is current again', $error->getMessage());
+        assertSame('1.0.0', (new VersionSwitch($data))->current());
+        assertSame([], $probe->plugins);
+    }
+
+    #[Group('install')]
+    public function testAHandSetGraphDirectorySurvivesAnUpdateAndARollback(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        mkdir($data . '/plugin/hooks/scripts', 0o755, true);
+        file_put_contents($data . '/plugin/hooks/scripts/lib.sh', "KNOSSOS_INSTALLED_DATA_DIR='/srv/my graph'\n");
+        $this->publish($this->work . '/r', '2.0.0');
+        $probe = new FakeProbe();
+        $updater = $this->updater($data, $probe);
+
+        $updater->update(null);
+        $updater->rollback();
+
+        assertSame(['/srv/my graph', '/srv/my graph'], array_column($probe->plugins, 3));
+        // A plugin without a baked directory gets the install directory.
+        unlink($data . '/plugin/hooks/scripts/lib.sh');
+        $updater->rollback();
+        assertSame($data, $probe->plugins[2][3]);
     }
 
     #[Group('install')]

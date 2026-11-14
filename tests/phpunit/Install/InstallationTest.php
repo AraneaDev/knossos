@@ -75,20 +75,57 @@ final class InstallationTest extends KnossosTestCase
     }
 
     #[Group('install')]
+    public function testCodeUnderVersionsIsAReleaseOnlyWhenTheRecordBesideItNamesThatVersion(): void
+    {
+        // A checkout that happens to be cloned to <x>/versions/0.47: nothing beside it vouches for it.
+        mkdir($this->work . '/src/versions/0.47/bin', 0o755, true);
+        $checkout = new Installation($this->work . '/src/versions/0.47');
+        assertSame(true, $checkout->isSourceCheckout());
+        assertSame($this->work . '/src', $checkout->layoutDir);
+        assertSame('source checkout at ' . $this->work . '/src/versions/0.47', $checkout->describe());
+
+        foreach (['not json', '{"version": "0.47"}', '{"mode": "native", "version": "0.46"}', '{"mode": 1, "version": "0.47"}'] as $record) {
+            file_put_contents($this->work . '/src/install.json', $record);
+            assertSame(true, (new Installation($this->work . '/src/versions/0.47'))->isSourceCheckout(), $record);
+        }
+
+        file_put_contents($this->work . '/src/install.json', '{"mode": "native", "version": "0.47"}');
+        $installed = new Installation($this->work . '/src/versions/0.47');
+        assertSame($this->work . '/src', $installed->installDir);
+        assertSame($this->work . '/src', $installed->layoutDir);
+        // A version that is no longer the recorded one is not the installation either.
+        $data = $this->installed('d', '1.0.0', '0.9.0');
+        assertSame(null, (new Installation($data . '/versions/0.9.0'))->installDir);
+        assertSame($data, (new Installation($data . '/versions/1.0.0'))->installDir);
+    }
+
+    #[Group('install')]
+    public function testTheBakedGraphDirectoryOfThePluginIsReadBack(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        $installation = new Installation($data . '/current');
+        assertSame(null, $installation->pluginDataDir());
+
+        mkdir($data . '/plugin/hooks/scripts', 0o755, true);
+        foreach (["/graph's here" => "KNOSSOS_INSTALLED_DATA_DIR='/graph'\\''s here'", null => "KNOSSOS_INSTALLED_DATA_DIR=''"] as $expected => $line) {
+            file_put_contents($data . '/plugin/hooks/scripts/lib.sh', "# x\n" . $line . "\ncase x in esac\n");
+            assertSame($expected === '' ? null : $expected, $installation->pluginDataDir());
+        }
+        file_put_contents($data . '/plugin/hooks/scripts/lib.sh', "KNOSSOS_INSTALLED_DATA_DIR='__KNOSSOS_DATA_DIR__'\n");
+        assertSame(null, $installation->pluginDataDir());
+    }
+
+    #[Group('install')]
     public function testTheRecordIsReadWhateverItHolds(): void
     {
         mkdir($this->work . '/d/versions/1.0.0', 0o755, true);
-        $installation = new Installation($this->work . '/d/versions/1.0.0');
-        assertSame(null, $installation->record());
-        assertSame(null, $installation->mode());
-        assertSame('unrecorded mode unknown version at ' . $this->work . '/d/versions/1.0.0', $installation->describe());
+        $root = $this->work . '/d/versions/1.0.0';
 
         file_put_contents($this->work . '/d/install.json', '{"mode": "container", "version": "1.0.0"}');
-        assertSame('container', $installation->mode());
-        file_put_contents($this->work . '/d/install.json', '{"mode": "weird"}');
-        assertSame(null, $installation->mode());
-        file_put_contents($this->work . '/d/install.json', 'nope');
-        assertSame(null, $installation->record());
+        assertSame('container', (new Installation($root))->mode());
+        file_put_contents($this->work . '/d/install.json', '{"mode": "weird", "version": "1.0.0"}');
+        assertSame(null, (new Installation($root))->mode());
+        assertSame('unrecorded mode 1.0.0 at ' . $root, (new Installation($root))->describe());
     }
 
     #[Group('install')]

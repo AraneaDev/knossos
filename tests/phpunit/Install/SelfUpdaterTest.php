@@ -35,7 +35,7 @@ final class SelfUpdaterTest extends KnossosTestCase
         assertSame('1.0.0', $switch->previous());
         assertSame(['1.0.0', '2.0.0'], array_map('basename', glob($data . '/versions/*')));
         assertSame(1, $probe->doctorRuns);
-        assertSame('2.0.0', (new Installation($data . '/versions/1.0.0'))->record()['version']);
+        assertSame('2.0.0', (new Installation($data . '/current'))->record()['version']);
         assertSame('2.0.0', (new UpdateCheck($data))->read()['latest']);
         assertSame(false, file_exists($data . '/self-update.tmp'));
     }
@@ -135,6 +135,7 @@ final class SelfUpdaterTest extends KnossosTestCase
     public function testWithoutACurrentLinkThereIsNothingToUpdate(): void
     {
         mkdir($this->work . '/empty/versions/1.0.0', 0o755, true);
+        file_put_contents($this->work . '/empty/install.json', '{"mode": "native", "version": "1.0.0", "bin_dir": "' . $this->work . '/empty-bin"}');
 
         $this->refused(fn() => $this->updater($this->work . '/empty')->update(null), 'no installed release');
         $this->refused(fn() => $this->updater($this->work . '/empty')->rollback(), 'no installed release');
@@ -152,7 +153,7 @@ final class SelfUpdaterTest extends KnossosTestCase
         $switch = new VersionSwitch($data);
         assertSame('1.0.0', $switch->current());
         assertSame('2.0.0', $switch->previous());
-        assertSame('1.0.0', (new Installation($data . '/versions/1.0.0'))->record()['version']);
+        assertSame('1.0.0', (new Installation($data . '/current'))->record()['version']);
 
         assertSame('2.0.0', $updater->rollback()['to']);
     }
@@ -214,14 +215,15 @@ final class SelfUpdaterTest extends KnossosTestCase
     {
         $data = $this->installed('d', '1.0.0');
         $this->publish($this->work . '/r', '2.0.0');
-        // A directory where install.json belongs: the rename over it fails after the link has moved.
-        unlink($data . '/install.json');
-        mkdir($data . '/install.json');
+        // A directory where previous-version belongs: the rename over it fails after the link has moved.
+        mkdir($data . '/previous-version');
+        $installJson = (string) file_get_contents($data . '/install.json');
 
         $this->refused(fn() => $this->updater($data)->update(null), 'Could not write');
 
         assertSame('1.0.0', (new VersionSwitch($data))->current());
-        assertSame(false, is_file($data . '/previous-version'));
+        assertSame($installJson, file_get_contents($data . '/install.json'));
+        assertSame(true, is_dir($data . '/previous-version'));
     }
 
     #[Group('install')]

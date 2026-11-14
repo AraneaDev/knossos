@@ -33,16 +33,36 @@ final class ProcessReleaseProbe implements ReleaseProbe
     /** {@inheritDoc} */
     public function plugin(string $releaseDir, string $pluginDir, string $launcher, string $dataDir, string $scratchDir): ?string
     {
-        [$status, $output] = $this->run($releaseDir, $scratchDir, [
+        [$status, $output] = $this->run($releaseDir, $scratchDir, self::pluginArguments($pluginDir, $launcher, $dataDir), 60);
+        // The child names its error code; the caller names its own, so one is enough.
+        $output = trim((string) preg_replace('/^KNOSSOS_[A-Z_]+: /m', '', $output));
+
+        return $status === 0 ? null : ($output === '' ? 'install-agent-plugin did not finish' : $output);
+    }
+
+    /**
+     * The command line self-update gives ANOTHER release's CLI: the one it updates to, or on `--rollback` an older one.
+     *
+     * A contract between versions: a release already published calls a
+     * future release with exactly these options, so `install-agent-plugin`
+     * may gain options but must never rename or remove one of these, nor
+     * change what `--no-register` means (write the plugin, run no `claude`
+     * command). PluginRefreshContractTest runs the real command with this
+     * list. Every release that self-update can reach was built from a tree
+     * that has these options, so there is no older form to fall back to.
+     *
+     * @return non-empty-list<string>
+     */
+    public static function pluginArguments(string $pluginDir, string $launcher, string $dataDir): array
+    {
+        return [
             'install-agent-plugin',
             '--execute',
             '--no-register',
             '--plugin-dir=' . $pluginDir,
             '--bin=' . $launcher,
             '--data-dir=' . $dataDir,
-        ], 60);
-
-        return $status === 0 ? null : ($output === '' ? 'install-agent-plugin did not finish' : $output);
+        ];
     }
 
     /**

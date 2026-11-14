@@ -23,10 +23,21 @@ final readonly class Installation
     /** Where the release lives (the directory holding `versions/`), or null for a source checkout. */
     public ?string $installDir;
 
+    /**
+     * The directory holding the `versions/` the code sits in, whether or not its record vouches for it.
+     *
+     * Equal to {@see $installDir} for an installed release. Set while
+     * `$installDir` is null when the code sits at `<dir>/versions/<version>`
+     * but `<dir>/install.json` is missing, unreadable or records another
+     * version, so a refusal can say so instead of calling it a checkout.
+     */
+    public ?string $layoutDir;
+
     /** @param string $root where the running code lives (the directory holding `bin/` and `src/`) */
     public function __construct(public string $root)
     {
-        $this->installDir = self::installDirOf($root);
+        $this->layoutDir = self::layoutDirOf($root);
+        $this->installDir = $this->layoutDir !== null && self::recordsVersion($this->layoutDir, (string) basename((string) realpath($root))) ? $this->layoutDir : null;
     }
 
     /** Whether the running code is anything other than `<install dir>/versions/<version>`. */
@@ -72,23 +83,38 @@ final readonly class Installation
     /**
      * The directory the launcher was written to, as `install.json` records it.
      *
-     * A record without `bin_dir` was written before the field existed, when the
-     * launcher could only be in the default place, so that is the answer then.
+     * Every release writes `bin_dir`. A record without it is not guessed at:
+     * writing a launcher to a default place could replace whatever is there,
+     * and would leave the launcher the MCP registration names behind.
      *
-     * @throws InstallException when there is no record of it and HOME is not set either
+     * @throws InstallException when the record does not name an absolute bin directory
      */
     public function binDir(): string
     {
         $recorded = $this->record()['bin_dir'] ?? null;
-        if (is_string($recorded) && str_starts_with($recorded, '/')) {
-            return rtrim($recorded, '/') === '' ? '/' : rtrim($recorded, '/');
-        }
-        $home = getenv('HOME');
-        if (!is_string($home) || $home === '') {
-            throw new InstallException('install.json names no bin directory and HOME is not set; run the installer again');
+        if (!is_string($recorded) || !str_starts_with($recorded, '/')) {
+            throw new InstallException(sprintf('The install record %s/install.json does not name where the launcher is; run the installer again.', $this->directory()));
         }
 
-        return rtrim($home, '/') . '/.local/bin';
+        return rtrim($recorded, '/') === '' ? '/' : rtrim($recorded, '/');
+    }
+
+    /**
+     * The graph directory the materialised plugin's hooks were given, or null when there is no such plugin or value.
+     *
+     * Read back from `<install dir>/plugin/hooks/scripts/lib.sh`, where
+     * `install-agent-plugin --data-dir` baked it, so that refreshing the plugin
+     * keeps a directory someone chose by hand.
+     */
+    public function pluginDataDir(): ?string
+    {
+        $library = @file_get_contents($this->pluginDir() . '/hooks/scripts/lib.sh');
+        if ($library === false || preg_match("/^KNOSSOS_INSTALLED_DATA_DIR='((?:[^']|'\\\\'')*)'$/m", $library, $match) !== 1) {
+            return null;
+        }
+        $value = str_replace("'\\''", "'", $match[1]);
+
+        return $value === '' || !str_starts_with($value, '/') ? null : $value;
     }
 
     /** The launcher's path: `<bin dir>/knossos`. @throws InstallException see {@see binDir()} */
@@ -124,7 +150,7 @@ final readonly class Installation
      * A partial unpack (`<version>.partial.<pid>`), which runs its doctor
      * before it is a version, is not one.
      */
-    private static function installDirOf(string $root): ?string
+    private static function layoutDirOf(string $root): ?string
     {
         $real = realpath($root);
         if ($real === false) {
@@ -137,5 +163,20 @@ final readonly class Installation
         }
 
         return dirname($versions);
+    }
+
+    /**
+     * Whether `<dir>/install.json` is a readable record of a mode and of `$version`.
+     *
+     * Without it the code is not a release this install made: a checkout
+     * that merely sits in a directory called `versions/`, or a version that
+     * is no longer the recorded one.
+     */
+    private static function recordsVersion(string $directory, string $version): bool
+    {
+        $bytes = @file_get_contents($directory . '/install.json');
+        $record = $bytes === false ? null : json_decode($bytes, true);
+
+        return is_array($record) && is_string($record['mode'] ?? null) && ($record['version'] ?? null) === $version;
     }
 }

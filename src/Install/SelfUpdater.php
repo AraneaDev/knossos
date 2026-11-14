@@ -59,6 +59,8 @@ final class SelfUpdater
     public function update(?string $requested): array
     {
         return $this->locked(function () use ($requested): array {
+            // Before anything is fetched: an install record that does not say where the launcher is cannot be updated.
+            $this->installation->launcher();
             $current = $this->versions->current() ?? throw new InstallException('There is no installed release to update: current is missing; run the installer again');
             $target = $requested === null ? $this->source->latest() : ReleaseAsset::assertVersion(ltrim($requested, 'v'));
             if ($requested === null ? version_compare($target, $current, '<=') : $target === $current) {
@@ -84,6 +86,7 @@ final class SelfUpdater
     public function rollback(): array
     {
         return $this->locked(function (): array {
+            $this->installation->launcher();
             $current = $this->versions->current() ?? throw new InstallException('There is no installed release: current is missing; run the installer again');
             $previous = $this->versions->previous() ?? throw new InstallException('There is no previous version to roll back to');
             $this->switchAndRefresh($previous, $current, verify: false);
@@ -103,7 +106,14 @@ final class SelfUpdater
      *    there, naming the launcher, and runs no `claude` command. The directory is the
      *    one Claude Code has registered, so the registration stays valid.
      * A failure at any step puts back the link, both files and the launcher as they were;
-     * the plugin step is all or nothing by itself, and it comes last.
+     * the plugin step is all or nothing by itself, and it comes last. The message names
+     * that one failure: a launcher write that fails leaves the old launcher in place (it
+     * is a rename), so there is nothing to put back, and a launcher that cannot be put
+     * back after a later failure is added to the message, never put in its place.
+     *
+     * The plugin keeps the graph directory its hooks already had, so a directory
+     * someone set with `install-agent-plugin --data-dir` survives the refresh; only a
+     * plugin without one gets the install directory.
      *
      * @throws InstallException
      */
@@ -113,28 +123,35 @@ final class SelfUpdater
         $launcher = $this->installation->launcher();
         $snapshot = $this->versions->snapshot();
         $launcherBefore = Launcher::read($launcher);
-        $launcherTouched = false;
+        $launcherWritten = false;
+        $pluginDir = $this->installation->pluginDir();
+        $dataDir = $this->installation->pluginDataDir() ?? $this->installation->directory();
         try {
             $this->versions->switchTo($version, $from, $binDir);
             if ($verify && $this->probe->version($this->versions->versionDir($version), $this->scratch('post')) !== $version) {
                 throw new InstallException(sprintf('Release %s did not start after the switch', $version));
             }
-            $launcherTouched = true;
             Launcher::write($this->versions->versionDir($version) . '/launcher/knossos', $this->installation->directory(), $launcher);
-            $pluginDir = $this->installation->pluginDir();
+            $launcherWritten = true;
             if (is_dir($pluginDir)) {
-                $failure = $this->probe->plugin($this->versions->versionDir($version), $pluginDir, $launcher, $this->installation->directory(), $this->scratch('plugin'));
+                // The release's own CLI writes the plugin: see ProcessReleaseProbe::pluginArguments for the contract.
+                $failure = $this->probe->plugin($this->versions->versionDir($version), $pluginDir, $launcher, $dataDir, $this->scratch('plugin'));
                 if ($failure !== null) {
-                    throw new InstallException(sprintf("Release %s could not write its plugin:\n%s", $version, $failure));
+                    throw new InstallException(sprintf('Release %s could not write its plugin: %s', $version, $failure));
                 }
             }
         } catch (InstallException $error) {
             // The link may have moved before a later step failed: put everything back.
             $this->versions->restore($snapshot);
-            if ($launcherTouched) {
-                Launcher::restore($launcher, $launcherBefore);
+            $message = sprintf('%s; %s is current again', rtrim($error->getMessage(), '.'), $from);
+            if ($launcherWritten) {
+                try {
+                    Launcher::restore($launcher, $launcherBefore);
+                } catch (InstallException) {
+                    $message .= sprintf(', but the launcher %s could not be put back: run the installer again', $launcher);
+                }
             }
-            throw new InstallException(sprintf('%s; %s is current again', rtrim($error->getMessage(), '.'), $from), 0, $error);
+            throw new InstallException($message, 0, $error);
         }
     }
 

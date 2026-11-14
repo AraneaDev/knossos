@@ -89,11 +89,14 @@ final class SelfUpdateCommandTest extends KnossosTestCase
     public function testAMissingRecordSendsYouBackToTheInstaller(): void
     {
         $data = $this->installed('d', '1.0.0');
+        $installation = $this->native($data);
         unlink($data . '/install.json');
 
-        $error = self::captureThrown(fn() => $this->invoke([], $this->native($data), new ForbiddenSource()), InstallException::class);
+        $error = self::captureThrown(fn() => $this->invoke([], new Installation($installation->root), new ForbiddenSource()), InstallException::class);
 
-        assertSame(true, str_contains($error->getMessage(), 'run the installer again'));
+        assertSame(sprintf('This code sits in %1$s/versions, but %1$s/install.json does not record it as the installed release: run the installer again, or update a source checkout with git pull.', $data), $error->getMessage());
+        // The hook's quiet check stays silent about it.
+        assertSame([CliCommand::EXIT_OK, ''], $this->invoke(['check' => ['true'], 'quiet' => ['true']], new Installation($installation->root), new ForbiddenSource()));
     }
 
     #[Group('cli')]

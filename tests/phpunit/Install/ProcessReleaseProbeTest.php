@@ -57,6 +57,8 @@ final class ProcessReleaseProbeTest extends KnossosTestCase
             file_get_contents($this->work . '/scratch/args'),
         );
         assertSame('nope', (new ProcessReleaseProbe())->plugin($this->release('echo nope; exit 2'), '/i/plugin', '/b/knossos', '/i', $this->work . '/scratch'));
+        // The child's own error code is dropped: the caller reports the failure under its own.
+        assertSame('Unable to create /i/plugin.', (new ProcessReleaseProbe())->plugin($this->release('echo "KNOSSOS_INVALID_ARGUMENT: Unable to create /i/plugin." >&2; exit 2'), '/i/plugin', '/b/knossos', '/i', $this->work . '/scratch'));
         assertSame('install-agent-plugin did not finish', (new ProcessReleaseProbe())->plugin($this->release('exit 2'), '/i/plugin', '/b/knossos', '/i', $this->work . '/scratch'));
     }
 
