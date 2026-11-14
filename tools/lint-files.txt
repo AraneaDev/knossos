@@ -1418,6 +1418,8 @@ js	tools/eval/answer.mjs
 js	tools/eval/answer.spec.mjs
 js	tools/eval/arms.mjs
 js	tools/eval/arms.spec.mjs
+js	tools/eval/backtest.mjs
+js	tools/eval/backtest.spec.mjs
 js	tools/eval/calibrate.mjs
 js	tools/eval/calibrate.spec.mjs
 js	tools/eval/config.mjs
