@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Knossos\Query\CreationBrief;
 
+use Knossos\Scan\Conventions\NameCase;
+
 /**
  * The facts of a directory and everything below it, merged from the stored rows of each folder.
  *
- * Only what transfers to a new folder is merged: the suffix and the name case,
- * summed per value, the one with the most files winning and the name breaking
- * ties, and a test pattern with `<dir>` (a literal test folder names where one
+ * Only what transfers to a new folder is merged: the suffix, summed per value,
+ * the one with the most files winning and the name breaking ties; the name case,
+ * derived by {@see NameCase} from each row's files per style (`name_styles`), so
+ * folders too small to have a name case of their own still count; and a test
+ * pattern with `<dir>` (a literal test folder names where one
  * folder's tests live, not where a new folder's would). Kinds and modifiers are
  * left out: in the 2026-11-14 backtest a kind learnt from a folder's own files was
  * followed 87% of the time and one learnt across a subtree 55%, modifiers 88%
@@ -27,10 +31,16 @@ final class SubtreeFacts
     public static function merge(array $rows): array
     {
         $files = 0;
-        $sums = ['suffix' => [], 'name_case' => [], 'test_path' => []];
+        $sums = ['suffix' => [], 'test_path' => []];
+        $styles = [];
         foreach ($rows as $row) {
             $files += $row['files'];
-            foreach (['suffix' => 'value', 'name_case' => 'value', 'test_path' => 'pattern'] as $key => $field) {
+            foreach (is_array($row['facts']['name_styles'] ?? null) ? $row['facts']['name_styles'] : [] as $style => $count) {
+                if (is_int($count)) {
+                    $styles[(string) $style] = ($styles[(string) $style] ?? 0) + $count;
+                }
+            }
+            foreach (['suffix' => 'value', 'test_path' => 'pattern'] as $key => $field) {
                 $fact = $row['facts'][$key] ?? null;
                 if (is_array($fact) && is_string($fact[$field] ?? null) && is_int($fact['files'] ?? null) && ($key !== 'test_path' || str_contains($fact[$field], '<dir>'))) {
                     $sums[$key][$fact[$field]] = ($sums[$key][$fact[$field]] ?? 0) + $fact['files'];
@@ -39,11 +49,15 @@ final class SubtreeFacts
         }
 
         $facts = [];
-        foreach (['suffix' => 'value', 'name_case' => 'value', 'test_path' => 'pattern'] as $key => $field) {
+        foreach (['suffix' => 'value', 'test_path' => 'pattern'] as $key => $field) {
             $best = self::most($sums[$key]);
             if ($best !== null) {
                 $facts[$key] = [$field => $best, 'files' => $sums[$key][$best]];
             }
+        }
+        $nameCase = NameCase::of($styles);
+        if ($nameCase !== null) {
+            $facts['name_case'] = $nameCase;
         }
 
         return ['files' => $files, 'facts' => $facts];

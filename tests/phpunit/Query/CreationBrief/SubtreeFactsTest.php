@@ -24,17 +24,50 @@ final class SubtreeFactsTest extends KnossosTestCase
         self::assertSame(['files' => 8, 'facts' => []], $merged);
     }
 
-    /** The suffix and the name case most files have across the rows win, the name breaking a tie. */
-    public function testTheValueWithTheMostFilesWinsAndTiesGoByName(): void
+    /** The suffix most files have across the rows wins, the name breaking a tie. */
+    public function testTheSuffixWithTheMostFilesWinsAndTiesGoByName(): void
     {
         $merged = SubtreeFacts::merge([
-            self::row(5, ['suffix' => ['value' => 'Service', 'files' => 3], 'name_case' => ['value' => 'pascal', 'files' => 4]]),
-            self::row(5, ['suffix' => ['value' => 'Command', 'files' => 4], 'name_case' => ['value' => 'kebab', 'files' => 2]]),
-            self::row(5, ['suffix' => ['value' => 'Service', 'files' => 1], 'name_case' => ['value' => 'camel', 'files' => 2]]),
+            self::row(5, ['suffix' => ['value' => 'Service', 'files' => 3]]),
+            self::row(5, ['suffix' => ['value' => 'Command', 'files' => 4]]),
+            self::row(5, ['suffix' => ['value' => 'Service', 'files' => 1]]),
         ]);
 
         self::assertSame(['value' => 'Command', 'files' => 4], $merged['facts']['suffix'], 'four and four: Command sorts first');
-        self::assertSame(['value' => 'pascal', 'files' => 4], $merged['facts']['name_case']);
+    }
+
+    /** Three folders of two PascalCase files each store no name case of their own, and together have one. */
+    public function testSmallFoldersTogetherHaveANameCase(): void
+    {
+        $merged = SubtreeFacts::merge([
+            self::row(2, ['name_styles' => ['pascal' => 2]]),
+            self::row(2, ['name_styles' => ['pascal' => 2]]),
+            self::row(2, ['name_styles' => ['pascal' => 2]]),
+        ]);
+
+        self::assertSame(['value' => 'pascal', 'files' => 6], $merged['facts']['name_case']);
+        self::assertArrayNotHasKey('name_styles', $merged['facts']);
+    }
+
+    /** Small kebab folders with single-word files beside them: the words count with kebab case once it has three files. */
+    public function testSingleWordsCountWithKebabCaseAcrossFolders(): void
+    {
+        $merged = SubtreeFacts::merge([
+            self::row(3, ['name_styles' => ['kebab' => 2, 'word' => 1]]),
+            self::row(3, ['name_styles' => ['kebab' => 1, 'word' => 1, 'pascal' => 1]]),
+        ]);
+        $two = SubtreeFacts::merge([self::row(4, ['name_styles' => ['kebab' => 2, 'word' => 2]])]);
+
+        self::assertSame(['value' => 'kebab', 'files' => 5], $merged['facts']['name_case']);
+        self::assertArrayNotHasKey('name_case', $two['facts'], 'two kebab names are not enough, however many words agree');
+    }
+
+    /** A row's own name case is not summed: the counts per style are, so a folder is never counted twice. */
+    public function testTheRowsNameCaseIsNotSummed(): void
+    {
+        $merged = SubtreeFacts::merge([self::row(5, ['name_case' => ['value' => 'kebab', 'files' => 5]])]);
+
+        self::assertArrayNotHasKey('name_case', $merged['facts']);
     }
 
     /** A `<dir>` test pattern merges across the rows; a literal test folder is one folder's and is dropped. */

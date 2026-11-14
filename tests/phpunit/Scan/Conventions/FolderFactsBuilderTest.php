@@ -151,14 +151,15 @@ final class FolderFactsBuilderTest extends KnossosTestCase
         self::assertSame(['value' => 'kebab', 'files' => 5], $this->facts('hooks', 'ts')['name_case']);
     }
 
-    /** Two names in a style are not enough, however many single words agree with them. */
+    /** Two names in a style are not enough, however many single words agree with them; the counts per style are kept for a subtree. */
     public function testFewerThanThreeFilesStrictlyInTheStyleStoreNothing(): void
     {
-        foreach (['annotate-actions', 'diff-actions', 'state', 'watcher', 'flash'] as $name) {
+        foreach (['annotate-actions', 'diff-actions', 'state', 'watcher', 'flash', 'Odd Name'] as $name) {
             $this->file('hooks/' . $name . '.ts', 10, [], 'typescript');
         }
 
         self::assertArrayNotHasKey('name_case', $this->facts('hooks', 'ts'));
+        self::assertSame(['kebab' => 2, 'word' => 3], $this->facts('hooks', 'ts')['name_styles']);
     }
 
     /** A folder of PHP classes is PascalCase, and a single lower-case word does not count for it. */
@@ -189,6 +190,7 @@ final class FolderFactsBuilderTest extends KnossosTestCase
         }
 
         self::assertArrayNotHasKey('name_case', $this->facts('build', ''));
+        self::assertArrayNotHasKey('name_styles', $this->facts('build', ''));
     }
 
     /** The suffix is the last word most files share, and a name is never its own suffix. */

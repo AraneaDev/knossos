@@ -389,6 +389,7 @@ php	src/Scan/ContributionPartition.php
 php	src/Scan/Conventions/FolderCompanionsBuilder.php
 php	src/Scan/Conventions/FolderFactsBuilder.php
 php	src/Scan/Conventions/FolderFactsRefresher.php
+php	src/Scan/Conventions/NameCase.php
 php	src/Scan/Conventions/NameWords.php
 php	src/Scan/Conventions/PathParts.php
 php	src/Scan/Conventions/SupportThreshold.php

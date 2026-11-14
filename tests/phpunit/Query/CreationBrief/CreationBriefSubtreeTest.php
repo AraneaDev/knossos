@@ -45,17 +45,17 @@ final class CreationBriefSubtreeTest extends KnossosTestCase
     }
 
     /**
-     * A new folder under `src/App` is briefed from all eight classes there, with only what transfers between folders.
-     * Its kinds and modifiers are not stated, and only six of the eight names count towards a name case
-     * (`src/App` itself has two files, below the three a stored name case needs), so nothing is said and no here line is drawn.
+     * A new folder under `src/App` is briefed from all eight classes there, with only what transfers between folders:
+     * the name case, which counts the two files of `src/App` too though that folder alone has too few to store one.
+     * The per-style counts behind it never reach the brief.
      */
     public function testANewFolderLearnsFromItsAncestorsSubtree(): void
     {
         $data = $this->brief('src/App/New/X.php');
 
         self::assertSame(['directory' => 'src/App', 'files' => 8, 'borrowed' => true, 'subtree' => true], $data['basis']);
-        self::assertSame([], $data['conventions']);
-        self::assertStringNotContainsString('here', CreationBriefRenderer::lines($data));
+        self::assertSame([['id' => 'name_case', 'text' => 'PascalCase file names', 'files' => 8, 'of' => 8]], $data['conventions']);
+        self::assertStringNotContainsString('name_styles', CreationBriefRenderer::lines($data) . json_encode($data, JSON_THROW_ON_ERROR));
         self::assertCount(3, $data['neighbours']);
         foreach ($data['neighbours'] as $neighbour) {
             self::assertStringStartsWith('src/App/', $neighbour);
@@ -112,7 +112,7 @@ final class CreationBriefSubtreeTest extends KnossosTestCase
         $data = $this->brief('lib/New/X.php');
 
         self::assertSame(['directory' => '', 'files' => 13, 'borrowed' => true, 'subtree' => true], $data['basis']);
-        self::assertStringContainsString("\nhere (across the project): 11 of 13 PascalCase file names", CreationBriefRenderer::lines($data));
+        self::assertStringContainsString("\nhere (across the project): 13 of 13 PascalCase file names", CreationBriefRenderer::lines($data));
     }
 
     /** @return array<string, mixed> */
