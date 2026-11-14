@@ -165,13 +165,20 @@ final class SelfUpdateCommandTest extends KnossosTestCase
         $data = $this->installed('d', '1.0.0');
         $this->publish($this->work . '/r', '2.0.0');
 
-        assertSame([0, 'Updated Knossos from 1.0.0 to 2.0.0.'], $this->invoke([], $this->native($data)));
+        $restart = 'A running Claude Code session keeps the previous release loaded until you restart it.';
+        assertSame([0, "Updated Knossos from 1.0.0 to 2.0.0.\n" . $restart], $this->invoke([], $this->native($data)));
+        // Nothing switched, nothing to restart.
         assertSame([0, 'Knossos 2.0.0 is already the latest version.'], $this->invoke([], $this->native($data)));
         [$status, $output] = $this->invoke(['rollback' => ['true'], 'json' => ['true']], $this->native($data));
         assertSame(0, $status);
-        assertSame(['status' => 'rolled back', 'from' => '2.0.0', 'to' => '1.0.0'], json_decode($output, true));
-        assertSame([0, 'Updated Knossos from 1.0.0 to 2.0.0.'], $this->invoke(['version' => ['2.0.0']], $this->native($data)));
-        assertSame([0, 'Rolled back from 2.0.0 to 1.0.0.'], $this->invoke(['rollback' => ['true']], $this->native($data)));
+        assertSame(['status' => 'rolled back', 'from' => '2.0.0', 'to' => '1.0.0', 'restart' => $restart], json_decode($output, true));
+        [, $output] = $this->invoke(['json' => ['true']], $this->native($data));
+        assertSame(['status' => 'updated', 'from' => '1.0.0', 'to' => '2.0.0', 'restart' => $restart], json_decode($output, true));
+        [, $output] = $this->invoke(['json' => ['true']], $this->native($data));
+        assertSame(['status' => 'current', 'from' => '2.0.0', 'to' => '2.0.0'], json_decode($output, true));
+        assertSame([0, "Rolled back from 2.0.0 to 1.0.0.\n" . $restart], $this->invoke(['rollback' => ['true']], $this->native($data)));
+        // --quiet goes only with --check, and a check prints nothing at all.
+        assertSame([0, ''], $this->invoke(['check' => ['true'], 'quiet' => ['true']], $this->native($data)));
     }
 
     /** An installation whose code lives in the data dir's versions, like a real one. */

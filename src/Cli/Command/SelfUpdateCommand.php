@@ -32,6 +32,9 @@ final class SelfUpdateCommand implements CliCommand
     /** The exit status of `--check` when a newer release exists. */
     public const EXIT_UPDATE_AVAILABLE = 10;
 
+    /** Said after a switch, because a running session goes on with the release it started with. */
+    public const RESTART_NOTE = 'A running Claude Code session keeps the previous release loaded until you restart it.';
+
     /**
      * @param Installation|null $installation defaults to the one this process runs from
      * @param ReleaseSource|null $source defaults to GitHub, or `KNOSSOS_RELEASE_BASE`
@@ -108,7 +111,14 @@ final class SelfUpdateCommand implements CliCommand
             'rolled back' => sprintf('Rolled back from %s to %s.', $result['from'], $result['to']),
             default => sprintf('Updated Knossos from %s to %s.', $result['from'], $result['to']),
         };
-        $context->output(['status' => $result['status'], 'from' => $result['from'], 'to' => $result['to']], $json, $text);
+        $payload = ['status' => $result['status'], 'from' => $result['from'], 'to' => $result['to']];
+        if ($result['status'] !== 'current') {
+            // The MCP server and a running watch are long-lived: they keep the code they started with, and a
+            // later prune removes it from under them. (--quiet only goes with --check, so it never reaches here.)
+            $payload['restart'] = self::RESTART_NOTE;
+            $text .= PHP_EOL . self::RESTART_NOTE;
+        }
+        $context->output($payload, $json, $text);
 
         return CliCommand::EXIT_OK;
     }
