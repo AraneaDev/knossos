@@ -21,19 +21,14 @@
 #   KNOSSOS_MCP_NAME      MCP server name                       (default: knossos)
 #   KNOSSOS_MCP_SCOPE     claude mcp scope: local|user|project  (default: user)
 #
-# Nothing is changed until the download has been checked and the new release
-# has passed `knossos doctor` (run against a throwaway data dir, so the real
-# database is never migrated by a release that is not installed yet); a failed
-# install leaves the previous release working.
+# Nothing changes until the download is checked and the new release has passed
+# `knossos doctor` (against a throwaway data dir); a failed install leaves the
+# previous release working. The checksum guards against a corrupted download;
+# it comes from the same origin as the tarball, so it does not protect against
+# a compromised release origin.
 #
-# The checksum guards against a corrupted or truncated download. It comes from
-# the same origin as the tarball, so it does not protect against a compromised
-# release origin.
-#
-# Everything below sits in one brace group that ends with `main "$@"; exit`.
-# The shell has to read the closing brace before it runs any of it, so a
-# download cut off anywhere, even between main and its arguments, runs nothing.
-# The group is not indented, to keep the file short.
+# Everything below sits in one brace group that ends with `main "$@"; exit`, so
+# a download cut off anywhere runs nothing. The group is not indented.
 # shellcheck disable=SC2317 # cleanup runs from a trap, which the `; exit` below hides from the check.
 {
 set -eu
@@ -53,8 +48,7 @@ usage: install.sh [--mode=native|container] [--version=V] [--data-dir=DIR]
 USAGE
 }
 
-# Absolute paths, so a relative argument keeps its meaning after any cd. The
-# directory may not exist yet, so nothing is resolved.
+# Absolute paths, so a relative argument survives any cd; nothing is resolved.
 absolute() {
     case $1 in
         /*) printf '%s' "$1" ;;
@@ -62,8 +56,7 @@ absolute() {
     esac
 }
 
-# A version is digits and dots with an optional pre-release suffix after a
-# hyphen. It ends up in paths and URLs, so anything else is refused.
+# Digits and dots, optional pre-release after a hyphen; it lands in paths and URLs.
 validate_version() {
     case $1 in
         '' | *[!0-9A-Za-z.-]* | *..* | -* | .* | [!0-9]*) die "not a valid version: $1" ;;
@@ -74,8 +67,7 @@ validate_version() {
     esac
 }
 
-# Where an asset of the chosen version lives. A release URL keeps each version
-# under download/v<version>/; a local directory is flat.
+# Where an asset lives: download/v<version>/ on a release URL, flat in a directory.
 asset_location() {
     if [ "$REMOTE" = 1 ]; then
         printf '%s/download/v%s/%s' "$BASE" "$VERSION" "$1"
@@ -84,10 +76,9 @@ asset_location() {
     fi
 }
 
-# fetch ASSET DESTINATION: copy or download one release asset. A plain copy
-# serves a local directory because `curl file://` is not available everywhere.
-# Every child gets /dev/null as stdin: under `curl | sh` the script itself is
-# stdin, and a child that read it would eat the rest of the script.
+# fetch ASSET DESTINATION: copy or download one release asset (a plain copy for
+# a directory: `curl file://` is not everywhere). Children get /dev/null as
+# stdin: under `curl | sh` a child that read it would eat the script.
 fetch() {
     location=$(asset_location "$1")
     if [ "$REMOTE" = 1 ]; then
@@ -134,10 +125,59 @@ sha256_of() {
 # A complete version is reused: it was checked and doctored when it went in.
 version_complete() { [ -x "$VERSION_DIR/bin/knossos" ] && [ -f "$VERSION_DIR/VERSION" ]; }
 
-# Runs on every exit. After the switch has begun (SWITCHED=1) a failure of any
-# kind, including an interrupt, puts the previous release back; the flag is
-# cleared once the installed launcher has answered. Temporary files left beside the real ones
-# go either way.
+# Walk the release without following links: files, directories and relative
+# links that resolve inside the tree (the rule of VersionSwitch, in PHP). The
+# path is an argument, never code; -I imports nothing from the cwd.
+check_release_links() {
+    python3 -I -c '
+import os, sys
+root = os.path.realpath(sys.argv[1])
+inside = lambda p: p == root or p.startswith(root + "/")
+def ok(cur, t):
+    q, miss, hops = t.split("/"), 0, 0
+    if not t or t[0] == "/": return False
+    while q:
+        s = q.pop(0)
+        n = cur + "/" + s
+        if s in ("", "."): continue
+        if s == "..":
+            if miss: miss -= 1
+            else:
+                cur = os.path.dirname(cur)
+                if not inside(cur): return False
+        elif miss: miss += 1
+        elif not os.path.lexists(n): miss = 1
+        else:
+            try: os.stat(n)
+            except OSError:
+                l = os.readlink(n) if os.path.islink(n) else ""
+                hops += 1
+                if hops > 40 or not l or l[0] == "/": return False
+                q[:0] = l.split("/")
+                continue
+            cur = os.path.realpath(n)
+            if not inside(cur): return False
+    return True
+todo = [""]
+while todo:
+    d = todo.pop()
+    here = os.path.realpath(os.path.join(root, d))
+    try:
+        if not os.access(here, os.R_OK | os.X_OK): raise OSError
+        entries = list(os.scandir(here))
+    except OSError:
+        sys.exit("unreadable directory " + ascii(d))
+    for e in entries:
+        m = os.path.join(d, e.name)
+        if e.is_symlink():
+            if not ok(here, os.readlink(e.path)): sys.exit("link " + ascii(m) + " -> " + ascii(os.readlink(e.path)))
+        elif e.is_dir(follow_symlinks=False): todo.append(m)
+        elif not e.is_file(follow_symlinks=False): sys.exit("not a file, directory or link: " + ascii(m))
+' "$1" 2>&1 </dev/null
+}
+
+# Runs on every exit. After the switch has begun (SWITCHED=1) any failure,
+# interrupts included, puts the previous release back; temporary files go either way.
 cleanup() {
     if [ "$SWITCHED" = 1 ]; then rollback_switch || true; fi
     rm -rf "$TMP"
@@ -146,13 +186,10 @@ cleanup() {
     if [ -n "$DATA_DIR" ]; then rm -f "$DATA_DIR/install.json.tmp.$$" "$DATA_DIR/current.tmp.$$"; fi
 }
 
-# Point a link at a target in one atomic step: build the new symlink under a
-# temporary name in the same directory, then rename it over the old one.
-# `mv -T` (GNU) treats the destination as a plain name and never moves into the
-# directory the old link points at. BSD and macOS mv have no -T, so there the
-# rename is done by python3, which native mode requires anyway, through
-# os.replace (rename(2), also atomic). `ln -sfn` is the last resort: it
-# removes the old link before making the new one, so it is not atomic.
+# Point a link at a target atomically: build it under a temporary name, rename
+# it over the old one. `mv -T` (GNU) never moves into the directory the old link
+# points at; BSD and macOS have no -T, so python3 os.replace does the rename.
+# `ln -sfn` is the last, non-atomic resort.
 atomic_link() {
     target=$1
     link=$2
@@ -170,8 +207,7 @@ atomic_link() {
 }
 
 # Write the launcher from the release's template to PATH. The data directory
-# goes into the template inside single quotes, so a quote in the path is
-# closed, escaped and reopened.
+# goes in inside single quotes, a quote in the path closed, escaped, reopened.
 write_launcher() {
     quoted=$(printf '%s' "$DATA_DIR" | sed "s/'/'\\\\''/g")
     while IFS= read -r line || [ -n "$line" ]; do
@@ -203,7 +239,7 @@ rollback_switch() {
     fi
 }
 
-# Merge a project root into the roots file, never overwriting what is there.
+# Merge a project root into the roots file.
 merge_root() {
     mkdir -p "$(dirname -- "$ROOTS_FILE")"
     # shellcheck disable=SC2016 # the $-prefixed names in this php -r program are PHP variables.
@@ -238,10 +274,7 @@ printf("  %d root(s) granted\n", count($roots));
 ' </dev/null || warn "could not update the roots file $ROOTS_FILE"
 }
 
-# Which directory, if any, to grant. An explicit KNOSSOS_ALLOW_ROOT always
-# wins. Otherwise the directory the installer ran from is granted, except when
-# nobody is at a terminal and that directory is / or the home directory: a
-# piped install from there says nothing about which project was meant.
+# Which directory to grant: KNOSSOS_ALLOW_ROOT, else the one run from (not / or home without a terminal).
 choose_root() {
     if [ -n "${KNOSSOS_ALLOW_ROOT:-}" ]; then
         printf '%s' "$KNOSSOS_ALLOW_ROOT"
@@ -314,8 +347,6 @@ main() {
     DATA_DIR=$(absolute "$DATA_DIR")
     BIN_DIR=$(absolute "$BIN_DIR")
 
-    # ---- detect ------------------------------------------------------------
-
     # What is wrong with each runtime, by version and not just by presence.
     missing=''
     add_missing() { missing="$missing
@@ -373,8 +404,6 @@ main() {
         *) die "unsupported architecture: $(uname -m)" ;;
     esac
 
-    # ---- release source ----------------------------------------------------
-
     case $BASE in
         http://* | https://*) REMOTE=1 ;;
         file://*)
@@ -394,8 +423,6 @@ main() {
     VERSION_DIR="$DATA_DIR/versions/$VERSION"
     ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$DATA_DIR/roots.json}"
     ROOT_TO_GRANT=$(choose_root)
-
-    # ---- dry run -----------------------------------------------------------
 
     if [ "$DRY_RUN" = 1 ]; then
         say 'Dry run: nothing is created or changed.'
@@ -418,8 +445,6 @@ main() {
         fi
         exit 0
     fi
-
-    # ---- download and verify -----------------------------------------------
 
     TMP=$(mktemp -d "${TMPDIR:-/tmp}/knossos-install.XXXXXX")
     trap cleanup EXIT
@@ -445,8 +470,7 @@ main() {
         [ "$actual" = "$expected" ] || die "checksum mismatch for $ASSET (expected $expected, got $actual); nothing was changed"
         log 'checksum verified'
 
-        # Everything in the archive must sit under knossos-<version>/ and stay
-        # inside it.
+        # Everything must sit under knossos-<version>/ and stay inside it.
         tar -tzf "$TMP/$ASSET" > "$TMP/listing" 2>/dev/null </dev/null || die "$ASSET is not a readable archive; nothing was changed"
         while IFS= read -r entry; do
             case $entry in
@@ -464,14 +488,15 @@ main() {
         rm -rf "$PARTIAL"
         mkdir "$PARTIAL"
         tar -xzf "$TMP/$ASSET" -C "$PARTIAL" --strip-components=1 </dev/null || die "could not unpack $ASSET; nothing was changed"
+        if ! bad_link=$(check_release_links "$PARTIAL"); then
+            die "unsafe release, ${bad_link:-the link check could not run}; nothing was changed"
+        fi
         if [ ! -x "$PARTIAL/bin/knossos" ] || [ "$(cat "$PARTIAL/VERSION" 2>/dev/null)" != "$VERSION" ]; then
             die "$ASSET does not hold a complete release of $VERSION; nothing was changed"
         fi
 
-        # The new release must run before anything points at it. It runs against
-        # a throwaway data dir: doctor opens and migrates the database it finds,
-        # and the live one must not be migrated by a release that is not
-        # installed yet.
+        # The new release must run before anything points at it, against a
+        # throwaway data dir: doctor migrates the database it finds.
         log 'running knossos doctor on the new release'
         mkdir "$TMP/doctor-data"
         if ! KNOSSOS_DATA_DIR="$TMP/doctor-data" "$PARTIAL/bin/knossos" doctor > "$TMP/doctor.out" 2>&1 </dev/null; then
@@ -479,9 +504,7 @@ main() {
             die 'knossos doctor failed on the new release; the previous release, if any, is untouched'
         fi
 
-        # Rename into place. A directory renamed onto an existing one would land
-        # inside it, so an existing target (another installer won the race, or an
-        # earlier incomplete unpack) is dealt with first.
+        # Rename into place; an existing target would swallow the directory, so deal with it first.
         if [ -e "$VERSION_DIR" ] && ! version_complete; then rm -rf "$VERSION_DIR"; fi
         if [ -e "$VERSION_DIR" ]; then
             rm -rf "$PARTIAL"
@@ -491,25 +514,19 @@ main() {
         PARTIAL=''
     fi
 
-    # ---- the launcher, checked before anything is switched -----------------
-
     TEMPLATE="$VERSION_DIR/launcher/knossos"
     [ -f "$TEMPLATE" ] || die "the release has no launcher template at $TEMPLATE; nothing was switched"
     mkdir -p "$BIN_DIR"
     LAUNCHER="$BIN_DIR/knossos"
     NEW_LAUNCHER="$BIN_DIR/.knossos.tmp.$$"
     write_launcher "$NEW_LAUNCHER"
-    # Run the new launcher against a scratch data dir whose current already
-    # points at the new release, so a launcher that cannot start the release
-    # is caught while the real current is untouched.
+    # Run the new launcher against a scratch data dir, so one that cannot start the release is caught first.
     mkdir "$TMP/probe"
     ln -s "$VERSION_DIR" "$TMP/probe/current"
     if ! probe=$(KNOSSOS_DATA_DIR="$TMP/probe" "$NEW_LAUNCHER" version 2>&1 </dev/null); then
         rm -f "$NEW_LAUNCHER"
         die "the launcher does not run the new release: $probe; nothing was switched"
     fi
-
-    # ---- switch ------------------------------------------------------------
 
     if [ -L "$DATA_DIR/current" ]; then PREV_LINK=$(readlink "$DATA_DIR/current"); fi
     if [ -f "$DATA_DIR/install.json" ]; then cp "$DATA_DIR/install.json" "$TMP/install.json.prev"; fi
@@ -535,8 +552,6 @@ main() {
     else
         die "the installed launcher does not run ($installed); the previous state was restored"
     fi
-
-    # ---- roots, plugin, MCP ------------------------------------------------
 
     if [ -n "$ROOT_TO_GRANT" ]; then
         merge_root "$ROOT_TO_GRANT"

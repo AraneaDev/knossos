@@ -206,9 +206,27 @@ make_release() {
     tar -xzf "$RELEASE/$ASSET" -C "$rdir.x"
     printf '%s\n' "$2" > "$rdir.x/knossos-$VERSION/bin/knossos"
     chmod +x "$rdir.x/knossos-$VERSION/bin/knossos"
-    tar -czf "$rdir/$ASSET" -C "$rdir.x" "knossos-$VERSION"
-    if command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum "$rdir/$ASSET" | cut -d ' ' -f 1); else sum=$(shasum -a 256 "$rdir/$ASSET" | cut -d ' ' -f 1); fi
-    printf '%s  %s\n' "$sum" "$ASSET" > "$rdir/SHA256SUMS"
+    pack_release "$rdir"
+}
+
+# pack_release DIR: repack DIR.x and write the matching SHA256SUMS line.
+pack_release() {
+    tar -czf "$1/$ASSET" -C "$1.x" "knossos-$VERSION"
+    if command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum "$1/$ASSET" | cut -d ' ' -f 1); else sum=$(shasum -a 256 "$1/$ASSET" | cut -d ' ' -f 1); fi
+    printf '%s  %s\n' "$sum" "$ASSET" > "$1/SHA256SUMS"
+}
+
+# link_release DIR NAME TARGET...: the real release with extra links, in pairs.
+link_release() {
+    rdir=$1; shift
+    mkdir -p "$rdir" "$rdir.x"
+    tar -xzf "$RELEASE/$ASSET" -C "$rdir.x"
+    while [ "$#" -ge 2 ]; do
+        mkdir -p "$(dirname "$rdir.x/knossos-$VERSION/$1")"
+        ln -s "$2" "$rdir.x/knossos-$VERSION/$1"
+        shift 2
+    done
+    pack_release "$rdir"
 }
 
 # The stub's doctor writes into whatever data dir it is given and exits with
@@ -392,6 +410,36 @@ if [ -e "$T20/mark" ] && [ "$status" -ne 0 ] && [ "$(readlink "$T20/data dir/cur
 else
     fail "interrupt: status $status, mark $([ -e "$T20/mark" ] && echo yes || echo no), current $(readlink "$T20/data dir/current"), left: $left"
 fi
+
+# ---- links that point outside the release ------------------------------------
+
+# Each hostile release is the real one plus links, repacked with a matching
+# checksum, so the installer refuses at the link check and not earlier.
+# expect_link_refusal NAME MEMBER ARGS...
+expect_link_refusal() {
+    label=$1; member=$2; shift 2
+    tdir="$WORK/links-$label"
+    link_release "$tdir/rel" "$@"
+    mkdir -p "$tdir/home"
+    out=$(BASE_OVERRIDE="$tdir/rel" run_install "$tdir/home" --version="$VERSION"); status=$?
+    left=$(find "$tdir/home" -name '*.partial*' -o -name current | head -n 3)
+    case $out in *"$member"*) named=1 ;; *) named=0 ;; esac
+    if [ "$status" -ne 0 ] && [ "$named" = 1 ] && [ -z "$left" ] && [ ! -e "$tdir/home/data dir/versions/$VERSION" ]; then
+        pass "a release with $label is refused, names the member and leaves nothing"
+    else
+        fail "$label: status $status, named $named, left: $left, output: $out"
+    fi
+}
+expect_link_refusal 'a link to /etc' evil evil /etc
+expect_link_refusal 'a chain of links' d/B d/S .. d/B S/../../etc
+expect_link_refusal 'a dangling link that climbs' g g nothere/../../etc
+expect_link_refusal 'a link to itself' self self self
+
+T24="$WORK/links-ok"
+mkdir -p "$T24"
+link_release "$T24/rel" h nothere/../bin
+out=$(BASE_OVERRIDE="$T24/rel" run_install "$T24" --version="$VERSION"); status=$?
+if [ "$status" -eq 0 ] && [ -L "$T24/data dir/current" ]; then pass 'a dangling link that stays inside the release is accepted'; else fail "inside link: $status $out"; fi
 
 # ---- a cut that keeps main but loses its arguments (N2) ---------------------
 
