@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyPattern, caseOf, companionsFor, parseStoredCompanions, conventionScore, countFor, dominant, extensionOf, goesWithScore, looksLikeTest, nameFacts, parseLog, pickCommits, render, renderWhatIf, stemOf, summarise, whatIf, wordsOf } from "./backtest.mjs";
+import { applyPattern, caseOf, companionsFor, nameCaseFits, saidBy, parseStoredCompanions, conventionScore, countFor, dominant, extensionOf, goesWithScore, looksLikeTest, nameFacts, parseLog, pickCommits, render, renderWhatIf, stemOf, summarise, whatIf, wordsOf } from "./backtest.mjs";
 
 describe("the creation brief backtest", () => {
     it("reads added and changed paths per commit from a name-status log", () => {
@@ -61,12 +61,40 @@ describe("the creation brief backtest", () => {
         ];
         const before = { kinds: { one_class: 5 }, modifiers: { final: 5 } };
         const after = { kinds: { one_class: 7 }, modifiers: { final: 5 } };
-        expect(conventionScore(conventions, before, after, 2)).toEqual([
+        expect(conventionScore(conventions, before, after, ["src/A.php", "src/B.php"])).toEqual([
             { id: "kind", text: "one class per file", shown: 2, followed: 2 },
             { id: "modifier:final", text: "final", shown: 2, followed: 0 },
         ]);
         // Another file changed in the same commit cannot make one new file count twice.
-        expect(conventionScore(conventions, before, { kinds: { one_class: 9 }, modifiers: { final: 4 } }, 1).map((c) => c.followed)).toEqual([1, 0]);
+        expect(conventionScore(conventions, before, { kinds: { one_class: 9 }, modifiers: { final: 4 } }, ["src/A.php"]).map((c) => c.followed)).toEqual([1, 0]);
+    });
+
+    it("scores the name case from each added file's own name, not from counts a new folder never stored", () => {
+        const conventions = [{ id: "name_case", text: "kebab-case file names" }];
+        const paths = ["web/new/port-type.ts", "web/new/state.ts", "web/new/NewThing.ts"];
+        expect(conventionScore(conventions, null, null, paths)).toEqual([{ id: "name_case", text: "kebab-case file names", shown: 3, followed: 2 }]);
+    });
+
+    it("reads a file's name case as the product does: up to the first dot, a single lower-case word fitting the lower-case styles", () => {
+        expect(nameCaseFits("a/foo-bar.service.ts", "kebab-case file names")).toBe(true);
+        expect(nameCaseFits("a/state.ts", "kebab-case file names")).toBe(true);
+        expect(nameCaseFits("a/state.ts", "camelCase file names")).toBe(true);
+        expect(nameCaseFits("a/state.ts", "snake_case file names")).toBe(true);
+        expect(nameCaseFits("a/state.ts", "PascalCase file names")).toBe(false);
+        expect(nameCaseFits("a/FooService.php", "PascalCase file names")).toBe(true);
+        expect(nameCaseFits("a/fooBar.ts", "camelCase file names")).toBe(true);
+        expect(nameCaseFits("a/foo_bar.py", "kebab-case file names")).toBe(false);
+        expect(nameCaseFits("a/Foo-Bar.ts", "kebab-case file names")).toBe(false);
+    });
+
+    it("counts the learned lines a brief carries: conventions but lines, the test line, each companion", () => {
+        const brief = {
+            conventions: [{ id: "kind" }, { id: "name_case" }, { id: "lines" }],
+            test: { path: "tests/ATest.php", files: 4, of: 5 },
+            goes_with: [{ path: "a.txt" }, { path: "b.txt" }],
+        };
+        expect(saidBy(brief)).toBe(5);
+        expect(saidBy({ conventions: [{ id: "lines" }], test: null, goes_with: [] })).toBe(0);
     });
 
     it("scores what goes with a file against what the commit touched", () => {
@@ -106,19 +134,19 @@ describe("the creation brief backtest", () => {
 
     it("sums a replay and gives shares only where there is something to divide by", () => {
         const rows = [
-            { basis: true, borrowed: false, companions: 2, companionHits: 1, changedOthers: 4, changedOthersNamed: 1, test: 1, testHit: 1, conventions: [{ id: "modifier:final", shown: 1, followed: 1 }, { id: "kind", shown: 1, followed: 0 }] },
-            { basis: true, borrowed: true, subtree: true, companions: 0, companionHits: 0, changedOthers: 0, changedOthersNamed: 0, test: 0, testHit: 0, conventions: [{ id: "modifier:readonly", shown: 2, followed: 1 }] },
+            { basis: true, borrowed: false, said: 3, companions: 2, companionHits: 1, changedOthers: 4, changedOthersNamed: 1, test: 1, testHit: 1, conventions: [{ id: "modifier:final", shown: 1, followed: 1 }, { id: "kind", shown: 1, followed: 0 }] },
+            { basis: true, borrowed: true, subtree: true, said: 0, companions: 0, companionHits: 0, changedOthers: 0, changedOthersNamed: 0, test: 0, testHit: 0, conventions: [{ id: "modifier:readonly", shown: 2, followed: 1 }] },
             { basis: false, borrowed: false, companions: 0, companionHits: 0, changedOthers: 0, changedOthersNamed: 0, test: 0, testHit: 0, conventions: [] },
         ];
         const summary = summarise(rows);
-        expect(summary).toMatchObject({ files: 3, briefed: 2, borrowed: 1, subtree: 1, empty: 1 });
+        expect(summary).toMatchObject({ files: 3, briefed: 2, borrowed: 1, subtree: 1, empty: 1, saysSomething: 1 });
         expect(summary.test).toEqual({ predicted: 1, hit: 1, precision: 100 });
         expect(summary.companions).toEqual({ predicted: 2, hit: 1, precision: 50, otherFilesChanged: 4, recall: 25 });
         expect(summary.conventions).toEqual({ kind: { shown: 1, followed: 0, followedShare: 0 }, modifier: { shown: 3, followed: 2, followedShare: 66.7 } });
         expect(summarise([]).test.precision).toBeNull();
         expect(render("repo", summary)).toContain("convention modifier: shown for 3 new files, followed by 2 (66.7%)");
         expect(render("repo", summarise([]))).toContain("(n/a)");
-        expect(render("repo", summary)).toContain("2 with a folder to learn from (1 borrowed, 1 across a subtree)");
+        expect(render("repo", summary)).toContain("2 with a folder to learn from (1 borrowed, 1 across a subtree), 1 say something learned,");
     });
 
     it("names how a stem is written and what words it holds", () => {

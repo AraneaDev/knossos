@@ -105,22 +105,50 @@ export function countFor(convention, facts) {
     return 0;
 }
 
+/** Each naming style as the folder facts read it, from a file name up to its first dot. */
+const NAME_STYLES = {
+    kebab: /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/,
+    snake: /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/,
+    pascal: /^[A-Z][A-Za-z0-9]*$/,
+    camel: /^[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*$/,
+};
+
+/**
+ * Whether a file's own name follows a name-case convention, by the rule the
+ * product stores it with: the base name up to its first dot is in the style,
+ * or is a single lower-case word and the style is kebab, snake or camel case.
+ */
+export function nameCaseFits(file, text) {
+    const style = NAME_CASE_VALUES[text];
+    const base = file.slice(file.lastIndexOf("/") + 1);
+    const dot = base.indexOf(".");
+    const name = dot <= 0 ? base : base.slice(0, dot);
+    if (style === undefined) return false;
+    return NAME_STYLES[style].test(name) || (style !== "pascal" && /^[a-z][a-z0-9]*$/.test(name));
+}
+
 /**
  * How the files one commit added to one folder population did against the
- * conventions the brief showed for it: per convention, how many of the
- * `added` new files hold the fact, read off the folder's counts before and
- * after. `lines` is a description, not a rule, and is left out.
+ * conventions the brief showed for it: per convention, how many of the new
+ * files at `paths` hold the fact. Most are read off the folder's counts before
+ * and after; the name case is read from each new file's own name, since a new
+ * folder stores no name case until three files share one and its count would
+ * never move. `lines` is a description, not a rule, and is left out.
  */
-export function conventionScore(conventions, before, after, added) {
+export function conventionScore(conventions, before, after, paths) {
+    const added = paths.length;
     return conventions
         .filter((c) => c.id !== "lines")
         .map((c) => ({
             id: c.id,
             text: c.text,
             shown: added,
-            followed: Math.max(0, Math.min(added, countFor(c, after) - countFor(c, before))),
+            followed: c.id === "name_case" ? paths.filter((file) => nameCaseFits(file, c.text)).length : Math.max(0, Math.min(added, countFor(c, after) - countFor(c, before))),
         }));
 }
+
+/** How many learned lines a brief carries: each convention but `lines`, one for the expected test, one per companion. */
+export const saidBy = (brief) => brief.conventions.filter((c) => c.id !== "lines").length + (brief.test ? 1 : 0) + brief.goes_with.length;
 
 /** A file name without its directory and its last extension. */
 export const stemOf = (file) => {
@@ -226,6 +254,7 @@ export function summarise(rows) {
         briefed: rows.filter((r) => r.basis).length,
         borrowed: rows.filter((r) => r.borrowed).length,
         subtree: rows.filter((r) => r.subtree).length,
+        saysSomething: rows.filter((r) => (r.said ?? 0) > 0).length,
         empty: rows.filter((r) => !r.basis && r.companions === 0 && r.test === 0).length,
         test: { predicted: sum("test"), hit: sum("testHit"), precision: share(sum("testHit"), sum("test")) },
         companions: {
@@ -320,7 +349,12 @@ export async function replay(source, limit, work, log = () => {}) {
         for (const group of groups.values()) {
             const [{ brief, before }] = group;
             const after = await factsOf(database, project, brief);
-            const scored = conventionScore(brief.conventions, before, after, group.length);
+            const scored = conventionScore(
+                brief.conventions,
+                before,
+                after,
+                group.map((entry) => entry.brief.path),
+            );
             for (const [at, entry] of group.entries()) {
                 rows.push({
                     commit: commit.hash.slice(0, 8),
@@ -329,6 +363,7 @@ export async function replay(source, limit, work, log = () => {}) {
                     basis: entry.brief.basis !== null,
                     borrowed: entry.brief.basis?.borrowed === true,
                     subtree: entry.brief.basis?.subtree === true,
+                    said: saidBy(entry.brief),
                     conventions: at === 0 ? scored : [],
                     shares: at === 0 ? entry.brief.conventions.filter((c) => c.id !== "lines").map((c, i) => ({ id: c.id, files: c.files, of: c.of, shown: scored[i].shown, followed: scored[i].followed })) : [],
                     raw: entry.raw,
@@ -386,7 +421,7 @@ export function renderWhatIf(name, tables) {
 export function render(name, summary) {
     const pct = (value) => (value === null ? "n/a" : `${value}%`);
     const lines = [
-        `${name}: ${summary.files} added files replayed, ${summary.briefed} with a folder to learn from (${summary.borrowed} borrowed, ${summary.subtree} across a subtree), ${summary.empty} with nothing to say`,
+        `${name}: ${summary.files} added files replayed, ${summary.briefed} with a folder to learn from (${summary.borrowed} borrowed, ${summary.subtree} across a subtree), ${summary.saysSomething} say something learned, ${summary.empty} with nothing to say`,
         `  expected test: predicted ${summary.test.predicted}, the commit touched it ${summary.test.hit} (${pct(summary.test.precision)})`,
         `  goes with: predicted ${summary.companions.predicted}, the commit touched ${summary.companions.hit} (${pct(summary.companions.precision)}); of ${summary.companions.otherFilesChanged} other files the commits changed, ${pct(summary.companions.recall)} were named`,
     ];
