@@ -17,6 +17,7 @@
  * No model is involved, so the same history gives the same numbers.
  */
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -207,15 +208,16 @@ export const looksLikeTest = (file) => /(^|\/)(tests?|__tests__|spec)\/|\.(test|
 
 /**
  * The stored companions the brief weighs for a file before it applies its bar:
- * its own folder's, the basis folder's when its own has none, ordered as the
- * query orders them (most commits, then path) and cut to the five it checks,
- * without the file itself and its expected test. The brief names fewer, so the what-if table
+ * its own folder's, the basis folder's when its own has none, without those
+ * `exists` says are gone from the tree (the brief never names a deleted file),
+ * ordered as the query orders them (most commits, then path) and cut to the
+ * five it checks, without the file itself and its expected test. The brief names fewer, so the what-if table
  * reads these to show what a lower bar would have named.
  */
-export function companionsFor(stored, brief) {
+export function companionsFor(stored, brief, exists = () => true) {
     const own = stored[brief.directory] ?? [];
     const list = own.length > 0 || brief.basis === null ? own : (stored[brief.basis.directory] ?? []);
-    const ordered = [...list].sort((a, b) => b.commits - a.commits || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    const ordered = list.filter((c) => exists(c.path)).sort((a, b) => b.commits - a.commits || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     return ordered.slice(0, COMPANIONS_CHECKED).filter((c) => c.path !== brief.path && c.path !== brief.test?.path);
 }
 
@@ -332,7 +334,7 @@ export async function replay(source, limit, work, log = () => {}) {
                 brief,
                 before: own?.facts ?? null,
                 raw: {
-                    companions: companionsFor(stored, brief).map((c) => ({ commits: c.commits, of: c.of, hit: touched.has(c.path) })),
+                    companions: companionsFor(stored, brief, (file) => existsSync(path.join(clone, file))).map((c) => ({ commits: c.commits, of: c.of, hit: touched.has(c.path) })),
                     testPattern: usable ? { files: pattern.files, of: learnt.files, hit: touched.has(applyPattern(pattern.pattern, file)) } : null,
                     names: nameFacts(siblings, file),
                 },

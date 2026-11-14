@@ -122,6 +122,28 @@ describe("the creation brief backtest", () => {
         expect(companionsFor({}, { ...brief, basis: null })).toEqual([]);
     });
 
+    it("leaves out stored companions whose file is gone from the tree, before they are ranked and cut to five", () => {
+        const stored = {
+            src: [
+                { path: "gone.txt", commits: 9, of: 9 },
+                { path: "a.txt", commits: 5, of: 5 },
+                { path: "b.txt", commits: 4, of: 5 },
+                { path: "c.txt", commits: 4, of: 5 },
+                { path: "d.txt", commits: 3, of: 5 },
+                { path: "e.txt", commits: 3, of: 5 },
+            ],
+        };
+        const asked = [];
+        const exists = (file) => {
+            asked.push(file);
+            return file !== "gone.txt";
+        };
+        const brief = { path: "src/New.ts", directory: "src", basis: null, test: null };
+        expect(companionsFor(stored, brief, exists).map((c) => c.path)).toEqual(["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]);
+        expect(asked).toContain("gone.txt");
+        expect(companionsFor(stored, brief).map((c) => c.path)).toEqual(["gone.txt", "a.txt", "b.txt", "c.txt", "d.txt"]);
+    });
+
     it("weighs the stored companions in the query's order, most commits first and the path breaking ties", () => {
         // As sqlite3 prints a stored companions_json: two directories, keys sorted, a trailing newline.
         const stored = parseStoredCompanions(
