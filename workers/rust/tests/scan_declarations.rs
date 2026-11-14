@@ -411,3 +411,45 @@ pub fn unknown(code: Unknown) {
     // A name nothing here declares or implements stays untyped.
     assert!(method_targets(&contributions, "rust:function:crate::unknown").is_empty());
 }
+
+#[test]
+fn functions_and_methods_carry_their_signature() {
+    let contributions = scan_fixture(
+        "signatures",
+        &[(
+            "src/lib.rs",
+            "pub struct Store;\n\npub trait Finder {\n    fn find(&self, id: u64) -> Option<String>;\n}\n\nimpl Store {\n    pub fn get(&self, key: &str) -> Option<&str> {\n        None\n    }\n}\n\nimpl Finder for Store {\n    fn find(&self, id: u64) -> Option<String> {\n        None\n    }\n}\n\npub fn scan(root: &std::path::Path, limit: usize) -> Vec<String> {\n    Vec::new()\n}\n",
+        )],
+    );
+    let nodes = contributions[0]["nodes"].as_array().unwrap();
+    let signature = |local_id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["local_id"] == local_id)
+            .unwrap_or_else(|| panic!("no node {local_id}"))["attributes"]["signature"]
+            .clone()
+    };
+    assert_eq!(
+        serde_json::json!({
+            "params": [{"name": "root", "type": "&std::path::Path"}, {"name": "limit", "type": "usize"}],
+            "returns": "Vec<String>",
+        }),
+        signature("rust:function:crate::scan"),
+    );
+    assert_eq!(
+        serde_json::json!({"params": [{"name": "key", "type": "&str"}], "returns": "Option<&str>"}),
+        signature("rust:method:crate::Store::get"),
+    );
+    let find =
+        serde_json::json!({"params": [{"name": "id", "type": "u64"}], "returns": "Option<String>"});
+    assert_eq!(find, signature("rust:method:crate::Finder::find"));
+    let methods: Vec<&str> = nodes
+        .iter()
+        .filter(|node| node["kind"] == "method")
+        .map(|node| node["local_id"].as_str().unwrap())
+        .collect();
+    for method in &methods {
+        assert!(signature(method).is_object(), "{method} has no signature");
+    }
+    assert_eq!(3, methods.len(), "{methods:?}");
+}
