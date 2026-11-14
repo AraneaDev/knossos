@@ -80,6 +80,10 @@ OUT=$(CDPATH='' cd -- "$OUT" && pwd)
 
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/knossos-release.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT INT TERM HUP
+# The physical path: on macOS the temp directory sits behind a symlink
+# (/var to /private/var), and npm reads a prefix reached through one as
+# another package, so `npm ci` refused the lockfile there.
+STAGE=$(cd "$STAGE" && pwd -P)
 # What a dependency step printed, shown only when that step fails.
 LOG=$STAGE/step.log
 TREE="$STAGE/$NAME"
@@ -134,8 +138,8 @@ composer install --working-dir="$TREE" --no-dev --classmap-authoritative \
 composer install --working-dir="$TREE/workers/php" --no-dev --classmap-authoritative \
     --no-interaction --no-progress --no-scripts >"$LOG" 2>&1 \
     || { cat "$LOG" >&2; die 'composer install failed for the PHP worker dependencies'; }
-npm ci --prefix "$TREE/workers/typescript" --omit=dev --ignore-scripts \
-    --no-audit --no-fund >"$LOG" 2>&1 \
+(cd "$TREE/workers/typescript" && npm ci --omit=dev --ignore-scripts \
+    --no-audit --no-fund) >"$LOG" 2>&1 \
     || { cat "$LOG" >&2; die 'npm ci failed for the TypeScript worker dependencies'; }
 
 # The Rust worker. The build reuses the working tree's target directory (or
