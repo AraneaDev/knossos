@@ -12,6 +12,7 @@ import path from "node:path";
 import ts from "typescript";
 import { ComponentFrameworkEnricher } from "./component-framework-enricher.js";
 import {
+    externalName,
     ambientAttributes,
     boundFunction,
     callableKind,
@@ -32,7 +33,6 @@ import {
 } from "./declaration-kinds.js";
 import { DynamicImportCollector } from "./dynamic-import-collector.js";
 import { FactAccumulator } from "./fact-accumulator.js";
-import { externalName } from "./external-names.js";
 import {
     hasMainGuard,
     importMetaUrlModule,
