@@ -20,20 +20,21 @@ final readonly class UpdateCheck
     /**
      * The cached answer, or null when there is none or it is not readable.
      *
-     * @return array{checked_at: string, latest: string}|null
+     * @return array{checked_at: string, latest: string|null}|null
      */
     public function read(): ?array
     {
         $bytes = @file_get_contents($this->path());
         $decoded = $bytes === false ? null : json_decode($bytes, true);
-        if (!is_array($decoded) || !is_string($decoded['checked_at'] ?? null) || !is_string($decoded['latest'] ?? null)) {
+        $latest = is_array($decoded) ? ($decoded['latest'] ?? null) : null;
+        if (!is_array($decoded) || !is_string($decoded['checked_at'] ?? null) || ($latest !== null && !is_string($latest))) {
             return null;
         }
 
-        return ['checked_at' => $decoded['checked_at'], 'latest' => $decoded['latest']];
+        return ['checked_at' => $decoded['checked_at'], 'latest' => $latest];
     }
 
-    /** Whether a new look is due: no usable answer, or one older than 24 hours. */
+    /** Whether a new look is due: no usable record, or an attempt more than 24 hours ago. */
     public function due(?int $now = null): bool
     {
         $cached = $this->read();
@@ -42,9 +43,15 @@ final readonly class UpdateCheck
         return $at === false || ($now ?? time()) - $at >= self::MAX_AGE_SECONDS;
     }
 
-    /** Remember that `$latest` was the newest release at `$now`. */
-    public function record(string $latest, ?int $now = null): void
+    /**
+     * Remember that a look was taken at `$now`, and what it found.
+     *
+     * A null `$latest` records a failed look: the time moves, so the next look
+     * is a day away, and the last known answer is kept.
+     */
+    public function record(?string $latest, ?int $now = null): void
     {
+        $latest ??= $this->read()['latest'] ?? null;
         if (!is_dir($this->dataDir) && !@mkdir($this->dataDir, 0o700, true) && !is_dir($this->dataDir)) {
             return;
         }

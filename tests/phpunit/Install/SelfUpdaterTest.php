@@ -209,6 +209,20 @@ final class SelfUpdaterTest extends KnossosTestCase
         assertSame('1.0.0', (new VersionSwitch($data))->current());
     }
 
+    #[Group('install')]
+    public function testAFailedCheckStillRecordsTheAttempt(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        (new UpdateCheck($data))->record('1.2.0', 1_000_000);
+        mkdir($this->work . '/r');
+
+        $this->refused(fn() => $this->updater($data)->check('1.0.0'), 'No release asset');
+
+        $cached = (new UpdateCheck($data))->read();
+        assertSame('1.2.0', $cached['latest']);
+        assertSame(false, (new UpdateCheck($data))->due());
+    }
+
     private function updater(string $data, ?ReleaseProbe $probe = null): SelfUpdater
     {
         return new SelfUpdater(

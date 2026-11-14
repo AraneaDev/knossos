@@ -128,7 +128,9 @@ final class SelfUpdateCommandTest extends KnossosTestCase
         $data = $this->installed('d', Version::CURRENT);
 
         assertSame([0, ''], $this->invoke(['check' => ['true'], 'quiet' => ['true']], $this->native($data), new ForbiddenSource()));
-        self::assertSame(null, (new UpdateCheck($data))->read());
+        // The failed look is recorded as an attempt, so the next session start does not try again.
+        self::assertSame(null, (new UpdateCheck($data))->read()['latest']);
+        self::assertSame(false, (new UpdateCheck($data))->due());
         // Without --quiet the same failure is an error.
         self::captureThrown(fn() => $this->invoke(['check' => ['true']], $this->native($data), new ForbiddenSource()), InstallException::class);
     }

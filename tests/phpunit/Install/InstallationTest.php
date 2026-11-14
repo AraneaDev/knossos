@@ -99,4 +99,35 @@ final class InstallationTest extends KnossosTestCase
         assertSame(null, $check->newerThan('1.10.0'));
         assertSame(null, $check->newerThan('2.0.0'));
     }
+
+    #[Group('install')]
+    public function testAFailedLookupIsRecordedAndKeepsTheKnownLatest(): void
+    {
+        $check = new UpdateCheck($this->work . '/c');
+
+        $check->record(null, 1_000_000);
+        assertSame(['checked_at' => gmdate('Y-m-d\TH:i:s\Z', 1_000_000), 'latest' => null], $check->read());
+        assertSame(false, $check->due(1_000_000 + 3600));
+        assertSame(true, $check->due(1_000_000 + 86_400));
+        assertSame(null, $check->newerThan('1.0.0'));
+
+        $check->record('1.5.0', 2_000_000);
+        $check->record(null, 2_100_000);
+        assertSame(['checked_at' => gmdate('Y-m-d\TH:i:s\Z', 2_100_000), 'latest' => '1.5.0'], $check->read());
+        assertSame('1.5.0', $check->newerThan('1.0.0'));
+    }
+
+    #[Group('install')]
+    public function testACorruptCacheIsDueAndIsReplaced(): void
+    {
+        mkdir($this->work . '/c');
+        file_put_contents($this->work . '/c/update-check.json', '{broken');
+        $check = new UpdateCheck($this->work . '/c');
+
+        assertSame(true, $check->due());
+        $check->record(null);
+
+        assertSame(false, $check->due());
+        assertSame(null, $check->read()['latest']);
+    }
 }

@@ -27,15 +27,22 @@ final class SelfUpdater
     }
 
     /**
-     * Look up the newest release and cache the answer.
+     * Look up the newest release and cache the answer; a failed lookup is cached as an attempt.
      *
      * @param string $current the running version
      * @return array{current: string, latest: string, update: bool}
      */
     public function check(string $current): array
     {
-        $latest = $this->source->latest();
-        (new UpdateCheck($this->installation->dataDir))->record($latest);
+        $cache = new UpdateCheck($this->installation->dataDir);
+        try {
+            $latest = $this->source->latest();
+        } catch (InstallException $error) {
+            // A failed look counts as a look: an offline host must not retry at every session start.
+            $cache->record(null);
+            throw $error;
+        }
+        $cache->record($latest);
 
         return ['current' => $current, 'latest' => $latest, 'update' => version_compare($latest, $current, '>')];
     }
