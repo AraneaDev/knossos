@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyPattern, caseOf, conventionScore, countFor, dominant, extensionOf, goesWithScore, looksLikeTest, nameFacts, parseLog, pickCommits, render, renderWhatIf, stemOf, summarise, whatIf, wordsOf } from "./backtest.mjs";
+import { applyPattern, caseOf, companionsFor, conventionScore, countFor, dominant, extensionOf, goesWithScore, looksLikeTest, nameFacts, parseLog, pickCommits, render, renderWhatIf, stemOf, summarise, whatIf, wordsOf } from "./backtest.mjs";
 
 describe("the creation brief backtest", () => {
     it("reads added and changed paths per commit from a name-status log", () => {
@@ -45,6 +45,14 @@ describe("the creation brief backtest", () => {
         expect(countFor({ id: "kind", text: "one class per file" }, null)).toBe(0);
     });
 
+    it("counts the file-name case and a folder of types only", () => {
+        const facts = { kinds: { types_only: 4 }, name_case: { value: "kebab", files: 5 } };
+        expect(countFor({ id: "kind", text: "types only" }, facts)).toBe(4);
+        expect(countFor({ id: "name_case", text: "kebab-case file names" }, facts)).toBe(5);
+        expect(countFor({ id: "name_case", text: "PascalCase file names" }, facts)).toBe(0);
+        expect(countFor({ id: "name_case", text: "kebab-case file names" }, { kinds: {} })).toBe(0);
+    });
+
     it("scores conventions by how far the folder's counts moved, never past the files added", () => {
         const conventions = [
             { id: "kind", text: "one class per file" },
@@ -64,31 +72,43 @@ describe("the creation brief backtest", () => {
     it("scores what goes with a file against what the commit touched", () => {
         const brief = {
             path: "src/New.php",
+            test: { path: "tests/NewTest.php", files: 4, of: 6 },
             goes_with: [
-                { kind: "test", path: "tests/NewTest.php" },
-                { kind: "companion", path: "tools/list.txt" },
-                { kind: "companion", path: "docs/api.md" },
+                { path: "tools/list.txt", commits: 4, of: 5 },
+                { path: "docs/api.md", commits: 5, of: 5 },
             ],
         };
         const commit = { added: ["src/New.php", "tests/NewTest.php"], changed: ["tools/list.txt", "composer.json"] };
         expect(goesWithScore(brief, commit)).toEqual({ companions: 2, companionHits: 1, changedOthers: 2, changedOthersNamed: 1, test: 1, testHit: 1 });
-        expect(goesWithScore({ path: "a.ts", goes_with: [] }, commit)).toEqual({ companions: 0, companionHits: 0, changedOthers: 2, changedOthersNamed: 0, test: 0, testHit: 0 });
+        expect(goesWithScore({ path: "a.ts", test: null, goes_with: [] }, commit)).toEqual({ companions: 0, companionHits: 0, changedOthers: 2, changedOthersNamed: 0, test: 0, testHit: 0 });
+    });
+
+    it("keeps the companions stored below the brief's bar, so the what-if table can still lower it", () => {
+        const stored = {
+            "src/Query": [{ path: "a.txt", commits: 5, of: 5 }, { path: "tests/NewTest.php", commits: 4, of: 5 }, { path: "b.txt", commits: 3, of: 5 }],
+            src: [{ path: "c.txt", commits: 3, of: 3 }],
+        };
+        const brief = { path: "src/Query/New.php", directory: "src/Query", basis: { directory: "src" }, test: { path: "tests/NewTest.php" } };
+        expect(companionsFor(stored, brief)).toEqual([{ path: "a.txt", commits: 5, of: 5 }, { path: "b.txt", commits: 3, of: 5 }]);
+        expect(companionsFor(stored, { ...brief, directory: "src/Query/New", test: null })).toEqual([{ path: "c.txt", commits: 3, of: 3 }]);
+        expect(companionsFor({}, { ...brief, basis: null })).toEqual([]);
     });
 
     it("sums a replay and gives shares only where there is something to divide by", () => {
         const rows = [
             { basis: true, borrowed: false, companions: 2, companionHits: 1, changedOthers: 4, changedOthersNamed: 1, test: 1, testHit: 1, conventions: [{ id: "modifier:final", shown: 1, followed: 1 }, { id: "kind", shown: 1, followed: 0 }] },
-            { basis: true, borrowed: true, companions: 0, companionHits: 0, changedOthers: 0, changedOthersNamed: 0, test: 0, testHit: 0, conventions: [{ id: "modifier:readonly", shown: 2, followed: 1 }] },
+            { basis: true, borrowed: true, subtree: true, companions: 0, companionHits: 0, changedOthers: 0, changedOthersNamed: 0, test: 0, testHit: 0, conventions: [{ id: "modifier:readonly", shown: 2, followed: 1 }] },
             { basis: false, borrowed: false, companions: 0, companionHits: 0, changedOthers: 0, changedOthersNamed: 0, test: 0, testHit: 0, conventions: [] },
         ];
         const summary = summarise(rows);
-        expect(summary).toMatchObject({ files: 3, briefed: 2, borrowed: 1, empty: 1 });
+        expect(summary).toMatchObject({ files: 3, briefed: 2, borrowed: 1, subtree: 1, empty: 1 });
         expect(summary.test).toEqual({ predicted: 1, hit: 1, precision: 100 });
         expect(summary.companions).toEqual({ predicted: 2, hit: 1, precision: 50, otherFilesChanged: 4, recall: 25 });
         expect(summary.conventions).toEqual({ kind: { shown: 1, followed: 0, followedShare: 0 }, modifier: { shown: 3, followed: 2, followedShare: 66.7 } });
         expect(summarise([]).test.precision).toBeNull();
         expect(render("repo", summary)).toContain("convention modifier: shown for 3 new files, followed by 2 (66.7%)");
         expect(render("repo", summarise([]))).toContain("(n/a)");
+        expect(render("repo", summary)).toContain("2 with a folder to learn from (1 borrowed, 1 across a subtree)");
     });
 
     it("names how a stem is written and what words it holds", () => {
