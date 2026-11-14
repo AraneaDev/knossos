@@ -7,6 +7,7 @@
  * are pressable by an index into the view's walkable list, so the marker,
  * `o` and a click all address the same component.
  */
+import { detailHead } from './detail-head'
 import { diffBlock } from './diff'
 import type { DiffView } from './diff'
 import { NOTE_ROOM, noteOf, windowOf, windowedTable } from './cards'
@@ -23,7 +24,7 @@ import { absolute, placeOf } from './paths'
 import { blank, button, dimRow, inList, notListedRow, segmentsWidth, tintedRow } from './rows'
 import { MARK, numberWidth, tableHead, tableRow, tableSpec } from './table'
 import { chip, SWATCH } from './chips'
-import { cells, displayName, fit, fitStart, pathSegments, grouped, shortName, spaces, wrapWords } from './text'
+import { cells, displayName, fit, fitStart, grouped, shortName, spaces, wrapWords } from './text'
 import { unreadablePolicies, unreadableText } from './policies'
 import { opensFile } from './editor'
 import type { Loc, Row, Segment } from './types'
@@ -97,6 +98,8 @@ export type DetailInput = {
     boundary: string | null
     place: string | null
     loc: Loc | null
+    /** How a function or method is called; null for anything else and from an older knossos. */
+    signature?: string | null
     usedBy: Side
     uses: Side
     /** Each with its author: `user` written in the pane, `model` by an agent; absent from an older knossos, read as the person's. */
@@ -280,6 +283,7 @@ export function detailInput(shown: Inspected, state: DetailState | null, root: s
       boundary: c.boundary ?? c.boundaries[0] ?? null,
       place: c.path === null ? null : `${c.path}${c.line === null ? '' : `:${c.line}`}`,
       loc: locIn(root, c.path, c.line),
+      signature: c.signature ?? null,
       usedBy: sideOf('Used by', c.used_by),
       uses: sideOf('Uses', c.uses),
       annotations: c.annotations ?? [],
@@ -618,17 +622,7 @@ export function detailArrangement(detail: DetailInput, tier: Tier, hues: Hues = 
     }
     return { left: [head, ...diff] }
   }
-  const label: Segment[] = [{ text: c.kind, dim: true }, ...(c.boundary === null ? [] : [{ text: ' · ', dim: true }, ...chip(c.boundary, hues)])]
-  const head: Block = {
-    key: 'detail',
-    make: columns => {
-      const body: Row[] = []
-      if (c.place !== null) body.push({ key: 'detail-place', segments: pathSegments(c.place, columns, c.loc) })
-      if (c.canonical !== c.name) body.push(dimRow('detail-canonical', c.canonical, columns))
-      if (body.length === 0) body.push(dimRow('detail-place', 'declared nowhere the graph knows', columns))
-      return { key: 'detail', title: c.name, note: label, body }
-    },
-  }
+  const head = detailHead(c, hues)
   const items = (side: Side, offset: number): HoodItem[] => side.items.map((item, i) => ({ name: item.name, boundary: item.boundary, edges: item.edges, press: `rel:${offset + i}` }))
   const hood = hoodBlock(
     { name: c.name, boundary: c.boundary },

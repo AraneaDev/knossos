@@ -25,6 +25,21 @@ final class ComponentDetailServiceTest extends KnossosTestCase
 {
     private const FIXTURE = 'turn-brief';
 
+    /** The pane's detail card shows how a function is called; the line comes from the signature the worker stored. */
+    #[Group('query')]
+    public function testAMethodReportsTheLineItIsCalledBy(): void
+    {
+        [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
+        try {
+            $d = (new ComponentDetailService($pdo))->detail($root, 'App\\Caller::run');
+
+            assertSame('ok', $d['status']);
+            assertSame('run(): string', $d['component']['signature']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     #[Group('query')]
     public function testAComponentReportsWhereItIsAndWhoUsesIt(): void
     {
@@ -46,6 +61,7 @@ final class ComponentDetailServiceTest extends KnossosTestCase
             assertSame($c['used_by']['count'], count($c['used_by']['names']));
             assertSame(['count', 'truncated', 'names', 'items'], array_keys($c['uses']));
             assertSame('Greeter', $c['display_name']);
+            assertSame(null, $c['signature'], 'A class is not called, so it has no signature.');
             // The dashboard's label: the declared boundary.
             assertSame('Core', $c['boundary']);
             assertSame([], $c['annotations']);

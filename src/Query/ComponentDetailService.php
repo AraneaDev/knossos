@@ -89,6 +89,7 @@ final readonly class ComponentDetailService
             'name' => (string) $component['canonical_name'],
             'display_name' => (string) $component['display_name'],
             'kind' => (string) $component['kind'],
+            'signature' => isset($component['signature']) ? (string) $component['signature'] : null,
             'path' => $place === null ? null : (string) $place['path'],
             'line' => isset($place['start_line']) ? (int) $place['start_line'] : null,
             'boundary' => $labels->of($component['boundaries']),

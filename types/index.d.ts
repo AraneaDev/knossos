@@ -275,6 +275,8 @@ export type ComponentDetail = {
     kind: string
     path: string | null
     line: number | null
+    /** How a function or method is called, as one line; absent for anything else and from a knossos older than the mod. */
+    signature?: string | null
     /** The one boundary the pane labels it with, as the dashboard does. */
     boundary?: string | null
     boundaries: string[]

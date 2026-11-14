@@ -1278,6 +1278,8 @@ js	hooks/lib/churn.spec.ts
 js	hooks/lib/churn.ts
 js	hooks/lib/cycles.spec.ts
 js	hooks/lib/cycles.ts
+js	hooks/lib/detail-head.spec.ts
+js	hooks/lib/detail-head.ts
 js	hooks/lib/diagram.spec.ts
 js	hooks/lib/diagram.ts
 js	hooks/lib/diff.spec.ts
