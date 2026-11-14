@@ -85,8 +85,8 @@ final class CreationBriefSubtreeTest extends KnossosTestCase
         $this->pattern('<dir>/<name>.spec.php');
         $relative = $this->brief('src/App/New/X.php');
 
-        self::assertSame([], $literal['goes_with']);
-        self::assertSame([['path' => 'src/App/New/X.spec.php', 'kind' => 'test']], $relative['goes_with']);
+        self::assertNull($literal['test']);
+        self::assertSame(['path' => 'src/App/New/X.spec.php', 'files' => 8, 'of' => 8], $relative['test']);
     }
 
     /** With nothing nearer, the whole project is the basis, and the brief says so. */

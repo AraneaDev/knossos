@@ -101,7 +101,7 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         foreach (['kind', 'modifier:final', 'modifier:readonly', 'suffix'] as $id) {
             self::assertContains($id, self::ids($data));
         }
-        self::assertSame(['path' => 'tests/phpunit/Query/FooServiceTest.php', 'kind' => 'test'], $data['goes_with'][0]);
+        self::assertSame(['path' => 'tests/phpunit/Query/FooServiceTest.php', 'files' => 6, 'of' => 6], $data['test']);
         self::assertSame(['cs'], array_column($data['gates'], 'name'));
         self::assertSame(['boundary' => 'Query', 'may_not_use' => ['Mcp']], $data['placement']);
         self::assertSame(['src/Query/AService.php', 'src/Query/BService.php', 'src/Query/CService.php'], $data['neighbours']);
@@ -151,7 +151,7 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         self::assertSame([], $data['conventions']);
         self::assertSame([], $data['neighbours']);
         self::assertSame('source', $data['role']);
-        self::assertSame([['path' => 'knossos.json', 'commits' => 4, 'of' => 5, 'kind' => 'companion']], $data['goes_with']);
+        self::assertSame([['path' => 'knossos.json', 'commits' => 4, 'of' => 5]], $data['goes_with']);
     }
 
     /**
@@ -175,33 +175,33 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
     }
 
     /**
-     * Stored companions follow the expected test, most commits first and the path
-     * breaking ties, without repeating the test; adding one changes the signature.
+     * Stored companions are named most commits first and the path breaking ties,
+     * without repeating the expected test; adding one changes the signature.
      */
     public function testCompanionsFollowTheTestInOrderAndCountInTheSignature(): void
     {
         $service = $this->scanned();
         $store = new FolderFactsStore($this->pdo);
         $store->saveCompanions($this->projectId, 'head1', 'ok', ['src/Query' => [
-            ['path' => 'src/Mcp/Tool.php', 'commits' => 4, 'of' => 6],
+            ['path' => 'src/Mcp/Tool.php', 'commits' => 5, 'of' => 6],
             ['path' => 'tests/phpunit/Query/FooServiceTest.php', 'commits' => 6, 'of' => 6],
-            ['path' => 'knossos.json', 'commits' => 5, 'of' => 6],
+            ['path' => 'knossos.json', 'commits' => 6, 'of' => 6],
         ]]);
         $before = $service->creationBrief($this->projectId, 'src/Query/FooService.php')->data;
         $store->saveCompanions($this->projectId, 'head2', 'ok', ['src/Query' => [
-            ['path' => 'src/Mcp/Tool.php', 'commits' => 4, 'of' => 6],
+            ['path' => 'src/Mcp/Tool.php', 'commits' => 5, 'of' => 6],
             ['path' => 'tests/phpunit/Query/FooServiceTest.php', 'commits' => 6, 'of' => 6],
-            ['path' => 'knossos.json', 'commits' => 5, 'of' => 6],
-            ['path' => 'tests/phpunit/Query/AServiceTest.php', 'commits' => 4, 'of' => 6],
+            ['path' => 'knossos.json', 'commits' => 6, 'of' => 6],
+            ['path' => 'tests/phpunit/Query/AServiceTest.php', 'commits' => 5, 'of' => 6],
         ]]);
         $after = $service->creationBrief($this->projectId, 'src/Query/FooService.php')->data;
 
+        self::assertSame('tests/phpunit/Query/FooServiceTest.php', $before['test']['path']);
         self::assertSame([
-            ['path' => 'tests/phpunit/Query/FooServiceTest.php', 'kind' => 'test'],
-            ['path' => 'knossos.json', 'commits' => 5, 'of' => 6, 'kind' => 'companion'],
-            ['path' => 'src/Mcp/Tool.php', 'commits' => 4, 'of' => 6, 'kind' => 'companion'],
+            ['path' => 'knossos.json', 'commits' => 6, 'of' => 6],
+            ['path' => 'src/Mcp/Tool.php', 'commits' => 5, 'of' => 6],
         ], $before['goes_with']);
-        self::assertSame(['src/Mcp/Tool.php', 'tests/phpunit/Query/AServiceTest.php'], array_column(array_slice($after['goes_with'], 2), 'path'));
+        self::assertSame(['src/Mcp/Tool.php', 'tests/phpunit/Query/AServiceTest.php'], array_column(array_slice($after['goes_with'], 1), 'path'));
         self::assertNotSame($before['signature'], $after['signature']);
     }
 
@@ -211,7 +211,7 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
 
         self::assertSame('test', $data['role']);
         self::assertSame('tests/phpunit/Query', $data['basis']['directory']);
-        self::assertNotContains('test', array_column($data['goes_with'], 'kind'));
+        self::assertNull($data['test']);
     }
 
     /** A test in a folder that holds no files yet is a test when the project's source folders name tests that way. */
@@ -291,8 +291,8 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         $relative = $service->creationBrief($this->projectId, 'src/Query/Deep/New/X.php')->data;
 
         self::assertTrue($literal['basis']['borrowed']);
-        self::assertNotContains('test', array_column($literal['goes_with'], 'kind'));
-        self::assertSame(['path' => 'src/Query/Deep/New/X.spec.php', 'kind' => 'test'], $relative['goes_with'][0] ?? null);
+        self::assertNull($literal['test']);
+        self::assertSame(['path' => 'src/Query/Deep/New/X.spec.php', 'files' => 6, 'of' => 6], $relative['test']);
     }
 
     /** A one-file folder's test pattern is below the floor, so it makes no path a test. */
@@ -316,7 +316,7 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
 
         $goesWith = $service->creationBrief($this->projectId, 'src/Query/FooService.php')->data['goes_with'];
 
-        self::assertSame(['tests/phpunit/Query/FooServiceTest.php', 'knossos.json'], array_column($goesWith, 'path'));
+        self::assertSame(['knossos.json'], array_column($goesWith, 'path'));
     }
 
     /** The root itself, however it is spelt, is a directory and gets no brief. */

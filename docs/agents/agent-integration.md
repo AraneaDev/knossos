@@ -185,9 +185,11 @@ and git is never run.
 in, and the boundaries that one or any declared boundary containing it may not
 use), `neighbours` (at most three existing files to copy
 from), `conventions` (each with the number of files that follow it, shown only
-when the folder has at least five files of that kind and four in five follow it),
-`goes_with` (the test the folder's own pattern expects, then the files that
-usually change when a file is added there), `gates` (the checks in
+when the folder has at least five files of that kind and four in five follow it,
+nine in ten for a type the files use or inject), `test` (the path the folder's
+own pattern expects for the new file's test, with how many of the folder's files
+have theirs there, when three in five do), `goes_with` (the files that changed
+in four in five of the commits that added a file there), `gates` (the checks in
 `knossos.json` that apply to the path, with their commands), `notes` (how many
 notes sit on the neighbours and the boundary) and a `signature` that ignores
 counts and neighbours. A folder with fewer than five files of the path's

@@ -149,6 +149,16 @@ final class ConventionsTest extends KnossosTestCase
         self::assertSame([], Conventions::shown(5, ['name_case' => ['value' => 'kebab', 'files' => 5]], 'test'));
     }
 
+    /** A used or injected type needs nine in ten files: eight is not enough, though it is for a modifier. */
+    public function testAUsedTypeNeedsNineInTen(): void
+    {
+        $eight = Conventions::shown(10, ['uses' => [['type' => 'A', 'files' => 8]], 'injects' => [['type' => 'B', 'files' => 8]], 'modifiers' => ['final' => 8]]);
+        $nine = Conventions::shown(10, ['uses' => [['type' => 'A', 'files' => 9]], 'injects' => [['type' => 'B', 'files' => 9]]]);
+
+        self::assertSame(['modifier:final'], array_column(self::without($eight, 'lines'), 'id'));
+        self::assertSame(['injects:B', 'uses:A'], array_column($nine, 'id'));
+    }
+
     /** A folder of interface and type-alias files says so. */
     public function testTypesOnlyHasItsWording(): void
     {

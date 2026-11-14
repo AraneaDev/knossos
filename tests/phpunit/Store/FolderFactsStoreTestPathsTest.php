@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('store')]
 final class FolderFactsStoreTestPathsTest extends KnossosTestCase
 {
-    /** Only a pattern that four in five of a folder's files follow counts; the result is distinct and sorted. */
+    /** Only a pattern that three in five of a folder's files follow counts; the result is distinct and sorted. */
     public function testOnlyWellSupportedPatternsAreReturnedSortedAndDistinct(): void
     {
         [$pdo, , $ids] = $this->storeFixture();
@@ -22,13 +22,14 @@ final class FolderFactsStoreTestPathsTest extends KnossosTestCase
         $store->replace($ids['project'], [
             $row('src/a', 'php', 'source', 5, ['test_path' => ['pattern' => 'tests/a/<name>Test.php', 'files' => 4]]),
             $row('src/b', 'php', 'source', 5, ['test_path' => ['pattern' => '<dir>/<name>Spec.php', 'files' => 3]]),
+            $row('src/f', 'php', 'source', 5, ['test_path' => ['pattern' => '<dir>/<name>Check.php', 'files' => 2]]),
             $row('src/c', 'php', 'source', 5, ['test_path' => ['pattern' => 'tests/a/<name>Test.php', 'files' => 5]]),
             $row('src/d', 'php', 'source', 5, ['test_path' => ['pattern' => '<dir>/<name>.test.php', 'files' => 5]]),
             $row('src/e', 'ts', 'source', 5, ['test_path' => ['pattern' => '<dir>/<name>.spec.ts', 'files' => 5]]),
             $row('tests/a', 'php', 'test', 5, []),
         ]);
 
-        self::assertSame(['<dir>/<name>.test.php', 'tests/a/<name>Test.php'], self::patterns($store, $ids['project'], 'php'));
+        self::assertSame(['<dir>/<name>.test.php', '<dir>/<name>Spec.php', 'tests/a/<name>Test.php'], self::patterns($store, $ids['project'], 'php'));
         self::assertSame([], self::patterns($store, $ids['project'], 'rs'));
     }
 
@@ -49,6 +50,6 @@ final class FolderFactsStoreTestPathsTest extends KnossosTestCase
     /** @return list<string> the patterns at the threshold a brief applies */
     private static function patterns(FolderFactsStore $store, string $project, string $extension): array
     {
-        return $store->testPathPatterns($project, $extension, SupportThreshold::MIN_FILES, SupportThreshold::SHARE_NUMERATOR, SupportThreshold::SHARE_DENOMINATOR);
+        return $store->testPathPatterns($project, $extension, SupportThreshold::MIN_FILES, SupportThreshold::TEST_SHARE_NUMERATOR, SupportThreshold::TEST_SHARE_DENOMINATOR);
     }
 }

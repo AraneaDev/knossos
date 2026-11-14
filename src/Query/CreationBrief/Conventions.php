@@ -11,8 +11,9 @@ use Knossos\Scan\Conventions\SupportThreshold;
  *
  * A brief that says "files here are final" when five of eleven are would send a
  * new file the wrong way, so a pattern is shown only above a support threshold:
- * at least MIN_FILES files, and at least 80% of them. The share is compared as
- * integers, so exactly four in five is in and there is no float to round.
+ * at least MIN_FILES files, and at least 80% of them, 90% for a used or injected
+ * type. The share is compared as integers, so exactly four in five is in and
+ * there is no float to round.
  */
 final class Conventions
 {
@@ -103,10 +104,10 @@ final class Conventions
         return $shown;
     }
 
-    /** Whether `$count` of `$files` reaches the share, as `count * 5 >= files * 4`. */
-    private static function passes(int $count, int $files): bool
+    /** Whether `$count` of `$files` reaches the share, as `count * 5 >= files * 4` by default. */
+    private static function passes(int $count, int $files, int $numerator = self::SHARE_NUMERATOR, int $denominator = self::SHARE_DENOMINATOR): bool
     {
-        return $count * self::SHARE_DENOMINATOR >= $files * self::SHARE_NUMERATOR;
+        return $count * $denominator >= $files * $numerator;
     }
 
     /** One entry of a count map, zero when the map or the entry is absent. */
@@ -116,7 +117,7 @@ final class Conventions
     }
 
     /**
-     * The most widespread types that pass, most files first and the name breaking ties.
+     * The most widespread types that nine in ten files have, most files first and the name breaking ties.
      *
      * @return list<array{type: string, files: int}>
      */
@@ -127,7 +128,7 @@ final class Conventions
         }
         $passing = [];
         foreach ($types as $entry) {
-            if (is_array($entry) && is_string($entry['type'] ?? null) && is_int($entry['files'] ?? null) && self::passes($entry['files'], $files)) {
+            if (is_array($entry) && is_string($entry['type'] ?? null) && is_int($entry['files'] ?? null) && self::passes($entry['files'], $files, SupportThreshold::TYPE_SHARE_NUMERATOR, SupportThreshold::TYPE_SHARE_DENOMINATOR)) {
                 $passing[] = ['type' => $entry['type'], 'files' => $entry['files']];
             }
         }

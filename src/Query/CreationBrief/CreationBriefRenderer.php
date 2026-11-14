@@ -93,10 +93,11 @@ final class CreationBriefRenderer
         $denied = self::strings($placement['may_not_use'] ?? null);
         $neighbours = self::strings($data['neighbours'] ?? null);
         $conventions = is_array($data['conventions'] ?? null) ? $data['conventions'] : [];
+        $test = is_array($data['test'] ?? null) && is_string($data['test']['path'] ?? null) ? $data['test'] : null;
         $goesWith = is_array($data['goes_with'] ?? null) ? $data['goes_with'] : [];
         $gates = is_array($data['gates'] ?? null) ? $data['gates'] : [];
         $notes = is_int($data['notes'] ?? null) ? $data['notes'] : 0;
-        if ($boundary === null && $denied === [] && $neighbours === [] && $conventions === [] && $goesWith === [] && $gates === [] && $notes === 0) {
+        if ($boundary === null && $denied === [] && $neighbours === [] && $conventions === [] && $test === null && $goesWith === [] && $gates === [] && $notes === 0) {
             return [];
         }
 
@@ -111,6 +112,9 @@ final class CreationBriefRenderer
         if ($conventions !== []) {
             $label = self::hereLabel(is_array($data['basis'] ?? null) ? $data['basis'] : []);
             array_push($lines, ...self::wrapped($label, array_map(self::convention(...), $conventions)));
+        }
+        if ($test !== null) {
+            $lines[] = sprintf('test: %s (%d of %d here have theirs there)', $test['path'], (int) ($test['files'] ?? 0), (int) ($test['of'] ?? 0));
         }
         if ($goesWith !== []) {
             $lines[] = 'goes with: ' . implode(' · ', array_map(static fn(array $entry): string => $entry['path'] . (isset($entry['commits'], $entry['of']) ? sprintf(' (%d of %d additions)', $entry['commits'], $entry['of']) : ''), $goesWith));

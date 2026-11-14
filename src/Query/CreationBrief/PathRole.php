@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Query\CreationBrief;
 
 use Knossos\Scan\Conventions\PathParts;
+use Knossos\Scan\Conventions\SupportThreshold;
 use Knossos\Store\FolderFactsStore;
 use PDO;
 
@@ -42,7 +43,7 @@ final readonly class PathRole
                 break;
             }
         }
-        foreach ($this->facts->testPathPatterns($projectId, $extension, Conventions::MIN_FILES, Conventions::SHARE_NUMERATOR, Conventions::SHARE_DENOMINATOR) as $pattern) {
+        foreach ($this->facts->testPathPatterns($projectId, $extension, SupportThreshold::MIN_FILES, SupportThreshold::TEST_SHARE_NUMERATOR, SupportThreshold::TEST_SHARE_DENOMINATOR) as $pattern) {
             if (preg_match(self::regex($pattern), $path) === 1) {
                 return 'test';
             }
