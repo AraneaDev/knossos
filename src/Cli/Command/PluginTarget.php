@@ -44,11 +44,14 @@ final readonly class PluginTarget
      * The target for the code at `$root`, with the `--plugin-dir` and `--bin` options applied.
      *
      * @throws InvalidArgumentException for a relative path, or one inside an installed release's `versions/`
-     * @throws \Knossos\Install\InstallException when an installed release cannot tell where its launcher is
+     * @throws \Knossos\Install\InstallException when an installed release cannot tell where its launcher is, or when
+     *         the code sits in a `versions/` directory whose `install.json` does not record it
      */
     public static function resolve(string $root, ?string $directory, ?string $bin): self
     {
         $installation = new Installation($root);
+        // Under versions/ without a record that names it: making the plugin here would put it back inside versions/.
+        $installation->assertNotUnrecorded();
         $installDir = $installation->installDir;
         $directory = self::absolute($directory, 'plugin-dir') ?? ($installDir === null ? $root . self::CHECKOUT_DIRECTORY : $installation->pluginDir());
         $bin = self::absolute($bin, 'bin') ?? ($installDir === null ? $root . '/bin/knossos' : $installation->launcher());

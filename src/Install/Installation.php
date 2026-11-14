@@ -40,6 +40,25 @@ final readonly class Installation
         $this->installDir = $this->layoutDir !== null && self::recordsVersion($this->layoutDir, (string) basename((string) realpath($root))) ? $this->layoutDir : null;
     }
 
+    /**
+     * Refuse code that sits in a `versions/` directory its record does not vouch for.
+     *
+     * Such code is neither a release to update nor a checkout to treat as
+     * one: a plugin made from it would live inside `versions/` again. The one
+     * message every command gives for that state.
+     *
+     * @throws InstallException when `$layoutDir` is set but `$installDir` is not
+     */
+    public function assertNotUnrecorded(): void
+    {
+        if ($this->installDir === null && $this->layoutDir !== null) {
+            throw new InstallException(sprintf(
+                'This code sits in %1$s/versions, but %1$s/install.json does not record it as the installed release: run the installer again, or update a source checkout with git pull.',
+                $this->layoutDir,
+            ));
+        }
+    }
+
     /** Whether the running code is anything other than `<install dir>/versions/<version>`. */
     public function isSourceCheckout(): bool
     {

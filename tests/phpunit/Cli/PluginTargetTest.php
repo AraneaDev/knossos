@@ -71,17 +71,51 @@ final class PluginTargetTest extends KnossosTestCase
         assertSame('bin must be an absolute path, got "bin/knossos".', $error->getMessage());
     }
 
+    /**
+     * Code under `<x>/versions/<v>` whose record is missing, unreadable or names another version: refused, nothing written, no claude.
+     *
+     * Without the refusal it would read as a checkout and materialise `versions/<v>/.plugin` baked to `versions/<v>/bin/knossos`.
+     */
+    #[Group('cli')]
+    public function testCodeUnderVersionsThatItsRecordDoesNotNameInstallsNoPlugin(): void
+    {
+        mkdir($this->work . '/stub');
+        file_put_contents($this->work . '/stub/claude', "#!/bin/sh\n: > " . escapeshellarg($this->work . '/claude-ran') . "\n");
+        chmod($this->work . '/stub/claude', 0o755);
+        $path = getenv('PATH');
+        putenv('PATH=' . $this->work . '/stub:' . (string) $path);
+        try {
+            foreach ([null, 'not json', '{"mode": "native", "version": "0.9.0", "bin_dir": "/b"}'] as $index => $record) {
+                $data = $this->work . '/inst' . $index;
+                $root = $data . '/versions/1.0.0';
+                mkdir($root, 0o755, true);
+                $this->copyPluginSources($root);
+                if ($record !== null) {
+                    file_put_contents($data . '/install.json', $record);
+                }
+                $message = sprintf('This code sits in %1$s/versions, but %1$s/install.json does not record it as the installed release: run the installer again, or update a source checkout with git pull.', $data);
+                $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory($root), ':memory:');
+
+                foreach ([['execute' => ['true']], []] as $options) {
+                    $error = self::captureThrown(static fn() => (new PluginCommand('1.0.0'))->run('install-agent-plugin', [], $options, $context), \Knossos\Install\InstallException::class);
+                    assertSame($message, $error->getMessage());
+                }
+                assertSame(false, file_exists($root . '/.plugin'), (string) $record);
+                assertSame(false, file_exists($data . '/plugin'), (string) $record);
+            }
+        } finally {
+            putenv($path === false ? 'PATH' : 'PATH=' . $path);
+        }
+        assertSame(false, file_exists($this->work . '/claude-ran'));
+    }
+
     /** An installed release that runs the command by hand gets the stable plugin directory and the launcher, and with --no-register no claude command. */
     #[Group('cli')]
     public function testAnInstalledReleaseMaterialisesItsPluginOutsideVersions(): void
     {
         $data = $this->installed('d', '1.0.0');
         $root = $data . '/versions/1.0.0';
-        exec(sprintf(
-            'tar -C %s --exclude=node_modules -cf - hooks .claude-plugin skills types | tar -C %s -xf -',
-            escapeshellarg(self::repositoryRoot()),
-            escapeshellarg($root),
-        ));
+        $this->copyPluginSources($root);
         $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory($data . '/current'), ':memory:');
 
         ob_start();
@@ -100,5 +134,15 @@ final class PluginTargetTest extends KnossosTestCase
         assertSame(true, str_contains($library, "KNOSSOS_INSTALLED_DATA_DIR='" . $data . "'"));
         assertSame(false, str_contains($library, '/versions/'));
         assertSame(false, file_exists($root . '/.plugin'));
+    }
+
+    /** The files a plugin is materialised from, copied from this checkout into a stand-in release. */
+    private function copyPluginSources(string $root): void
+    {
+        exec(sprintf(
+            'tar -C %s --exclude=node_modules -cf - hooks .claude-plugin skills types | tar -C %s -xf -',
+            escapeshellarg(self::repositoryRoot()),
+            escapeshellarg($root),
+        ));
     }
 }

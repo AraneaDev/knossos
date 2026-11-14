@@ -79,13 +79,7 @@ final class SelfUpdateCommand implements CliCommand
         if ($quiet && (getenv('KNOSSOS_NO_UPDATE_CHECK') === '1' || $installation->isSourceCheckout() || $installation->mode() !== 'native')) {
             return CliCommand::EXIT_OK;
         }
-        if ($installation->isSourceCheckout() && $installation->layoutDir !== null) {
-            throw new InstallException(sprintf(
-                'This code sits in %s/versions, but %s/install.json does not record it as the installed release: run the installer again, or update a source checkout with git pull.',
-                $installation->layoutDir,
-                $installation->layoutDir,
-            ));
-        }
+        $installation->assertNotUnrecorded();
         if ($installation->isSourceCheckout()) {
             throw new InstallException('This is a source checkout: update it with git pull.');
         }
