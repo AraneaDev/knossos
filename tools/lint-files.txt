@@ -459,6 +459,7 @@ php	src/Scanner/Worker/NdjsonRpcChannel.php
 php	src/Scanner/Worker/ProcessScannerClient.php
 php	src/Scanner/Worker/ProcessSupervisorInterface.php
 php	src/Scanner/Worker/ReadsMap.php
+php	src/Scanner/Worker/RequestFrame.php
 php	src/Scanner/Worker/RpcChannelInterface.php
 php	src/Scanner/Worker/ScannerProtocolSession.php
 php	src/Scanner/Worker/WorkerErrorCode.php
@@ -1097,6 +1098,7 @@ php	tests/phpunit/Scanner/Worker/FakeWorkerProcess.php
 php	tests/phpunit/Scanner/Worker/InputHashesMapTest.php
 php	tests/phpunit/Scanner/Worker/NdjsonRpcChannelTest.php
 php	tests/phpunit/Scanner/Worker/PipeOnlyWorkerProcess.php
+php	tests/phpunit/Scanner/Worker/RequestFrameTest.php
 php	tests/phpunit/Scanner/Worker/ScannerProtocolSessionContractTest.php
 php	tests/phpunit/Scanner/Worker/ScannerProtocolSessionInputHashesTest.php
 php	tests/phpunit/Scanner/Worker/ScannerProtocolSessionTest.php
