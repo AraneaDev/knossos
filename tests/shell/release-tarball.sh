@@ -89,10 +89,26 @@ fi
 cp -R "$ROOT/tests/Fixtures/php-signatures" "$WORK/project"
 if KNOSSOS_DATA_DIR="$DATA" php "$TREE/bin/knossos" scan "$WORK/project" > "$WORK/scan.log" 2>&1 \
     && KNOSSOS_DATA_DIR="$DATA" php "$TREE/bin/knossos" find-component "$WORK/project" 'App\Finder::find' --json > "$WORK/find.json" 2>&1 \
-    && grep -q 'signature' "$WORK/find.json"; then
-    pass 'scans a project and find-component returns a signature'
+    && grep -qF '"signature":"find(id: int): ?App\\Model\\User"' "$WORK/find.json"; then
+    pass 'scans a project and find-component returns the signature of App\Finder::find'
 else
     fail "scan or find-component failed: $(head -c 600 "$WORK/scan.log") $(head -c 600 "$WORK/find.json" 2>/dev/null)"
+fi
+
+# No host user names in the archive: owner and group are numeric zero.
+owner=$(tar -tvzf "$OUT/$ASSET" | sed -n 1p | awk '{ if ($2 == "0/0" || ($2 == "0" && $3 == "0")) print "zero"; else print $2 " " $3 }')
+if [ "$owner" = zero ]; then pass 'the archive records numeric owner 0'; else fail "the archive records owner: $owner"; fi
+
+# A source side that fails stops the build instead of leaving a partial tree.
+STUB="$WORK/failing tar"
+mkdir -p "$STUB"
+REAL_TAR=$(command -v tar)
+printf '#!/bin/sh\ncase " $* " in *" -cf "*) exit 3 ;; esac\nexec "%s" "$@"\n' "$REAL_TAR" > "$STUB/tar"
+chmod +x "$STUB/tar"
+if PATH="$STUB:$PATH" sh "$ROOT/tools/release-tarball" --out "$WORK/failed out" > "$WORK/failed.log" 2>&1; then
+    fail 'the build succeeded although archiving a source path failed'
+else
+    pass 'a failing source-side tar stops the build'
 fi
 
 printf 'tarball: %s bytes\n' "$(wc -c < "$OUT/$ASSET" | tr -d ' ')"

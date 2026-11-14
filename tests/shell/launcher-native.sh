@@ -86,6 +86,29 @@ case $out in
 esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'container mode is refused clearly'; else fail "container mode (status $status, output $out)"; fi
 
+# No install.json at all means native: the release runs.
+NOJSON="$WORK/nojson"
+mkdir -p "$NOJSON/versions/1.0.0/bin"
+cp "$DATA/versions/1.0.0/bin/knossos" "$NOJSON/versions/1.0.0/bin/knossos"
+ln -s versions/1.0.0 "$NOJSON/current"
+out=$(KNOSSOS_DATA_DIR="$NOJSON" "$LAUNCHER" hello 2>&1); status=$?
+case $out in 'args:[hello]'*) ran=yes ;; *) ran=no ;; esac
+if [ "$status" -eq 0 ] && [ "$ran" = yes ]; then pass 'a missing install.json means native'; else fail "missing install.json (status $status, output $out)"; fi
+
+# No install.json and no release: one line, exit 1.
+BARE_DATA="$WORK/baredata"
+mkdir -p "$BARE_DATA"
+out=$(KNOSSOS_DATA_DIR="$BARE_DATA" "$LAUNCHER" version 2>&1); status=$?
+lines=$(printf '%s\n' "$out" | wc -l | tr -d ' ')
+if [ "$status" -eq 1 ] && [ "$lines" -eq 1 ]; then pass 'no install.json and no release is one line and exit 1'; else fail "bare data dir (status $status, output $out)"; fi
+
+# An unknown mode: one clear line, exit 1.
+printf '{"mode": "weird"}\n' > "$NOJSON/install.json"
+out=$(KNOSSOS_DATA_DIR="$NOJSON" "$LAUNCHER" hello 2>&1); status=$?
+lines=$(printf '%s\n' "$out" | wc -l | tr -d ' ')
+case $out in *"unreadable mode"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$lines" -eq 1 ] && [ "$said" = yes ]; then pass 'an unknown mode is one clear line and exit 1'; else fail "unknown mode (status $status, output $out)"; fi
+
 if [ "$failures" -ne 0 ]; then
     printf '%s failure(s)\n' "$failures"
     exit 1

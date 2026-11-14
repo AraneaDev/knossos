@@ -87,7 +87,9 @@ copy_tree() {
     for path in "$@"; do
         [ -e "$ROOT/$path" ] || die "missing from the working tree: $path"
         mkdir -p "$TREE/$(dirname -- "$path")"
-        tar -C "$ROOT" -cf - \
+        # Through a file, not a pipe: POSIX sh has no pipefail, and a source
+        # side that fails must stop the build rather than leave a partial tree.
+        tar -C "$ROOT" -cf "$STAGE/copy.tar" \
             --exclude='node_modules' \
             --exclude='vendor' \
             --exclude='__pycache__' \
@@ -98,7 +100,9 @@ copy_tree() {
             --exclude='*.test.ts' \
             --exclude='*.test.tsx' \
             --exclude='.DS_Store' \
-            "$path" | tar -C "$TREE" -xf -
+            "$path" || die "could not archive $path"
+        tar -C "$TREE" -xf "$STAGE/copy.tar" || die "could not stage $path"
+        rm -f "$STAGE/copy.tar"
     done
 }
 
@@ -150,13 +154,19 @@ chmod 0755 \
 
 printf '%s\n' "$VERSION" > "$TREE/VERSION"
 
-# A stable file order keeps two builds of the same tree comparable. macOS tar
-# has no --sort, so it is used only where the tar supports it.
-if tar --help 2>&1 | grep -q -- '--sort'; then
-    COPYFILE_DISABLE=1 tar -C "$STAGE" --sort=name -czf "$STAGE/$ASSET" "$NAME"
+# A stable file order and no host user names: owner 0, numeric. GNU tar and
+# bsdtar (macOS) spell these differently, so the tar is probed. macOS tar has
+# no --sort.
+if tar --version 2>&1 | grep -q 'GNU tar'; then
+    TAR_ORDER='--sort=name --owner=0 --group=0 --numeric-owner'
+elif tar --version 2>&1 | grep -qi 'bsdtar'; then
+    TAR_ORDER='--uid 0 --gid 0 --numeric-owner'
 else
-    COPYFILE_DISABLE=1 tar -C "$STAGE" -czf "$STAGE/$ASSET" "$NAME"
+    TAR_ORDER=''
 fi
+# The options are a fixed word list without spaces in any word.
+# shellcheck disable=SC2086
+COPYFILE_DISABLE=1 tar -C "$STAGE" $TAR_ORDER -czf "$STAGE/$ASSET" "$NAME" || die 'could not write the archive'
 
 if command -v sha256sum >/dev/null 2>&1; then
     HASH=$(sha256sum "$STAGE/$ASSET" | cut -d ' ' -f 1)
