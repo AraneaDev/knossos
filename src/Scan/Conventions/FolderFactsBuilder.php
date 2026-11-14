@@ -309,7 +309,8 @@ final readonly class FolderFactsBuilder
         if ($suffix !== null) {
             $facts['suffix'] = $suffix;
         }
-        $nameCase = self::nameCase($population['names']);
+        // A file without an extension (`Makefile`, `Dockerfile`) is named by its tool's convention, not the folder's.
+        $nameCase = $population['extension'] === '' ? null : self::nameCase($population['names']);
         if ($nameCase !== null) {
             $facts['name_case'] = $nameCase;
         }

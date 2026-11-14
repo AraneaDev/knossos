@@ -179,15 +179,20 @@ export const looksLikeTest = (file) => /(^|\/)(tests?|__tests__|spec)\/|\.(test|
 
 /**
  * The stored companions the brief weighs for a file before it applies its bar:
- * its own folder's, the basis folder's when its own has none, without the file
- * itself and its expected test. The brief names fewer, so the what-if table
+ * its own folder's, the basis folder's when its own has none, ordered as the
+ * query orders them (most commits, then path) and cut to the five it checks,
+ * without the file itself and its expected test. The brief names fewer, so the what-if table
  * reads these to show what a lower bar would have named.
  */
 export function companionsFor(stored, brief) {
     const own = stored[brief.directory] ?? [];
     const list = own.length > 0 || brief.basis === null ? own : (stored[brief.basis.directory] ?? []);
-    return list.slice(0, COMPANIONS_CHECKED).filter((c) => c.path !== brief.path && c.path !== brief.test?.path);
+    const ordered = [...list].sort((a, b) => b.commits - a.commits || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    return ordered.slice(0, COMPANIONS_CHECKED).filter((c) => c.path !== brief.path && c.path !== brief.test?.path);
 }
+
+/** A stored `companions_json` as sqlite3 prints it, by directory; empty for no output. */
+export const parseStoredCompanions = (stdout) => (stdout.trim() === "" ? {} : JSON.parse(stdout));
 
 /** One file's "goes with" and expected test against the commit: which predicted paths the commit really touched. */
 export function goesWithScore(brief, commit) {
@@ -258,7 +263,7 @@ async function rowOf(database, project, { directory, extension, role }) {
 /** The project's stored companions by directory, empty when none are stored. */
 async function storedCompanions(database, project) {
     const { stdout } = await run("sqlite3", [`file:${database}?mode=ro`, `SELECT companions_json FROM folder_companions WHERE project_id = '${project.replaceAll("'", "''")}'`]);
-    return stdout.trim() === "" ? {} : JSON.parse(stdout);
+    return parseStoredCompanions(stdout);
 }
 
 /** One folder population's stored facts, or null when it has no row. */

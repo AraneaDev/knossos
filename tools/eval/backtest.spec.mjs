@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyPattern, caseOf, companionsFor, conventionScore, countFor, dominant, extensionOf, goesWithScore, looksLikeTest, nameFacts, parseLog, pickCommits, render, renderWhatIf, stemOf, summarise, whatIf, wordsOf } from "./backtest.mjs";
+import { applyPattern, caseOf, companionsFor, parseStoredCompanions, conventionScore, countFor, dominant, extensionOf, goesWithScore, looksLikeTest, nameFacts, parseLog, pickCommits, render, renderWhatIf, stemOf, summarise, whatIf, wordsOf } from "./backtest.mjs";
 
 describe("the creation brief backtest", () => {
     it("reads added and changed paths per commit from a name-status log", () => {
@@ -92,6 +92,16 @@ describe("the creation brief backtest", () => {
         expect(companionsFor(stored, brief)).toEqual([{ path: "a.txt", commits: 5, of: 5 }, { path: "b.txt", commits: 3, of: 5 }]);
         expect(companionsFor(stored, { ...brief, directory: "src/Query/New", test: null })).toEqual([{ path: "c.txt", commits: 3, of: 3 }]);
         expect(companionsFor({}, { ...brief, basis: null })).toEqual([]);
+    });
+
+    it("weighs the stored companions in the query's order, most commits first and the path breaking ties", () => {
+        // As sqlite3 prints a stored companions_json: two directories, keys sorted, a trailing newline.
+        const stored = parseStoredCompanions(
+            '{"lib":[{"commits":3,"of":3,"path":"x.txt"}],"src":[{"commits":3,"of":5,"path":"f.txt"},{"commits":3,"of":5,"path":"e.txt"},{"commits":5,"of":5,"path":"z.txt"},{"commits":4,"of":5,"path":"b.txt"},{"commits":3,"of":5,"path":"d.txt"},{"commits":3,"of":5,"path":"c.txt"}]}\n',
+        );
+        expect(Object.keys(stored)).toEqual(["lib", "src"]);
+        expect(companionsFor(stored, { path: "src/New.ts", directory: "src", basis: null, test: null }).map((c) => c.path)).toEqual(["z.txt", "b.txt", "c.txt", "d.txt", "e.txt"]);
+        expect(parseStoredCompanions("")).toEqual({});
     });
 
     it("sums a replay and gives shares only where there is something to divide by", () => {

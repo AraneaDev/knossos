@@ -58,7 +58,7 @@ final class Conventions
      * @param string $role the population's role, `source` or `test`
      * @return list<array{id: string, text: string, files: int, of: int}>
      */
-    public static function shown(int $files, array $facts, string $role = 'source'): array
+    public static function shown(int $files, array $facts, string $role): array
     {
         if ($files < self::MIN_FILES) {
             return [];

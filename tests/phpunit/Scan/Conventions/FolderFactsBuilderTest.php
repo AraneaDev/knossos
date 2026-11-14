@@ -181,6 +181,16 @@ final class FolderFactsBuilderTest extends KnossosTestCase
         self::assertSame(['value' => 'camel', 'files' => 4], $this->facts('app', 'ts')['name_case']);
     }
 
+    /** Files without an extension (`Makefile`, `Dockerfile`) are named by convention of their tool, not of the folder. */
+    public function testFilesWithoutAnExtensionGetNoNameCase(): void
+    {
+        foreach (['Makefile', 'Dockerfile', 'Rakefile', 'Procfile'] as $name) {
+            $this->file('build/' . $name, 3);
+        }
+
+        self::assertArrayNotHasKey('name_case', $this->facts('build', ''));
+    }
+
     /** The suffix is the last word most files share, and a name is never its own suffix. */
     public function testTheSharedSuffixIsTheMostCommonLastWord(): void
     {
