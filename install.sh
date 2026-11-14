@@ -176,12 +176,21 @@ while todo:
 ' "$1" 2>&1 </dev/null
 }
 
+# Delete the partial unpack. A release can hold a directory with no read or
+# search bits, which rm -rf cannot enter, so open the tree up first (chmod -R
+# does not follow links). Only ever the partial's own path, and never when unset.
+remove_partial() {
+    [ -n "$PARTIAL" ] || return 0
+    chmod -R u+rwx "$PARTIAL" 2>/dev/null || true
+    rm -rf "$PARTIAL"
+}
+
 # Runs on every exit. After the switch has begun (SWITCHED=1) any failure,
 # interrupts included, puts the previous release back; temporary files go either way.
 cleanup() {
     if [ "$SWITCHED" = 1 ]; then rollback_switch || true; fi
     rm -rf "$TMP"
-    if [ -n "$PARTIAL" ]; then rm -rf "$PARTIAL"; fi
+    remove_partial
     if [ -n "$BIN_DIR" ]; then rm -f "$BIN_DIR/.knossos.tmp.$$"; fi
     if [ -n "$DATA_DIR" ]; then rm -f "$DATA_DIR/install.json.tmp.$$" "$DATA_DIR/current.tmp.$$"; fi
 }
@@ -485,7 +494,7 @@ main() {
         mkdir -p "$DATA_DIR/versions"
         # A name of its own per process, so two installers never share a directory.
         PARTIAL="$DATA_DIR/versions/$VERSION.partial.$$"
-        rm -rf "$PARTIAL"
+        remove_partial
         mkdir "$PARTIAL"
         tar -xzf "$TMP/$ASSET" -C "$PARTIAL" --strip-components=1 </dev/null || die "could not unpack $ASSET; nothing was changed"
         if ! bad_link=$(check_release_links "$PARTIAL"); then
@@ -507,7 +516,7 @@ main() {
         # Rename into place; an existing target would swallow the directory, so deal with it first.
         if [ -e "$VERSION_DIR" ] && ! version_complete; then rm -rf "$VERSION_DIR"; fi
         if [ -e "$VERSION_DIR" ]; then
-            rm -rf "$PARTIAL"
+            remove_partial
         else
             mv "$PARTIAL" "$VERSION_DIR"
         fi

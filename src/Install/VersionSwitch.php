@@ -19,6 +19,14 @@ use Throwable;
  */
 final class VersionSwitch
 {
+    /**
+     * Test seam, never set in production: called with the entry name between the
+     * `lstat` and the `chdir` of {@see emptyHere()}, to stand in for a concurrent swap.
+     *
+     * @var (\Closure(string): void)|null
+     */
+    public static ?\Closure $betweenCheckAndEnter = null;
+
     public function __construct(private readonly string $dataDir) {}
 
     /** Where a version is unpacked. */
@@ -410,7 +418,16 @@ final class VersionSwitch
         @rmdir($absolute);
     }
 
-    /** Delete everything in the current directory, descending by relative names. */
+    /**
+     * Delete everything in the current directory, descending by relative names.
+     *
+     * An entry is entered only if it is still the directory that was looked at:
+     * the device and inode of the directory that `chdir` lands in must match
+     * the `lstat` taken before it. If something swapped the entry for a link
+     * in between, the descent is refused and nothing there is deleted.
+     *
+     * @throws InstallException when an entry was replaced between the check and the descent
+     */
     private static function emptyHere(): void
     {
         foreach (scandir('.') ?: [] as $entry) {
@@ -423,11 +440,28 @@ final class VersionSwitch
                 continue;
             }
             @chmod($entry, 0o700);
-            if (@chdir($entry)) {
+            $seen = @lstat($entry);
+            if (self::$betweenCheckAndEnter !== null) {
+                (self::$betweenCheckAndEnter)($entry);
+            }
+            if ($seen !== false && @chdir($entry)) {
+                if (!self::isSameDirectory($seen)) {
+                    // Not going back by name: `..` of a swapped-in directory is somewhere else.
+                    // The caller's `finally` puts the working directory back.
+                    throw new InstallException('A directory changed while it was being removed; nothing more was deleted');
+                }
                 self::emptyHere();
                 chdir('..');
             }
             @rmdir($entry);
         }
+    }
+
+    /** Whether the current directory is the one an earlier `lstat` described. @param array<int|string, int> $seen */
+    private static function isSameDirectory(array $seen): bool
+    {
+        $now = @stat('.');
+
+        return $now !== false && $now['dev'] === $seen['dev'] && $now['ino'] === $seen['ino'];
     }
 }

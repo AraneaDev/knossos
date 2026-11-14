@@ -13,7 +13,7 @@ ROOT="$HERE/../.."
 INSTALL="${KNOSSOS_TEST_INSTALL:-$ROOT/install.sh}"
 failures=0
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
+trap 'chmod -R u+rwx "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
 
 pass() { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }
@@ -440,6 +440,38 @@ mkdir -p "$T24"
 link_release "$T24/rel" h nothere/../bin
 out=$(BASE_OVERRIDE="$T24/rel" run_install "$T24" --version="$VERSION"); status=$?
 if [ "$status" -eq 0 ] && [ -L "$T24/data dir/current" ]; then pass 'a dangling link that stays inside the release is accepted'; else fail "inside link: $status $out"; fi
+
+# ---- a directory the release makes unreadable --------------------------------
+
+# tar cannot store a directory it cannot read, so the archive is written with
+# tarfile: a mode-0111 directory holding a link out of the release. The
+# installer must refuse it and still remove everything it unpacked.
+T25="$WORK/unreadable"
+mkdir -p "$T25/rel" "$T25/home"
+cat > "$T25/pack.py" <<'PY'
+import sys, tarfile
+src, dst, prefix = sys.argv[1:4]
+with tarfile.open(src, "r:gz") as old, tarfile.open(dst, "w:gz") as new:
+    for member in old.getmembers():
+        new.addfile(member, old.extractfile(member) if member.isfile() else None)
+    hid = tarfile.TarInfo(prefix + "/hid")
+    hid.type, hid.mode = tarfile.DIRTYPE, 0o111
+    new.addfile(hid)
+    evil = tarfile.TarInfo(prefix + "/hid/evil")
+    evil.type, evil.linkname = tarfile.SYMTYPE, "/etc"
+    new.addfile(evil)
+PY
+python3 -I "$T25/pack.py" "$RELEASE/$ASSET" "$T25/rel/$ASSET" "knossos-$VERSION"
+if command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum "$T25/rel/$ASSET" | cut -d ' ' -f 1); else sum=$(shasum -a 256 "$T25/rel/$ASSET" | cut -d ' ' -f 1); fi
+printf '%s  %s\n' "$sum" "$ASSET" > "$T25/rel/SHA256SUMS"
+out=$(BASE_OVERRIDE="$T25/rel" run_install "$T25/home" --version="$VERSION"); status=$?
+left=$(find "$T25/home" \( -name '*.partial*' -o -name current \) 2>/dev/null | head -n 3)
+case $out in *hid*) named=1 ;; *) named=0 ;; esac
+if [ "$status" -ne 0 ] && [ "$named" = 1 ] && [ -z "$left" ]; then
+    pass 'a release with an unreadable directory is refused, names it and leaves no partial unpack'
+else
+    fail "unreadable directory: status $status, named $named, left: $left, output: $out"
+fi
 
 # ---- a cut that keeps main but loses its arguments (N2) ---------------------
 

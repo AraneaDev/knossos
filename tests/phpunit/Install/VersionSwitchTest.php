@@ -410,4 +410,54 @@ PY;
         assertSame([], glob($data . '/versions/*.partial*'));
         assertSame($origin, getcwd());
     }
+
+    #[Group('install')]
+    public function testADirectorySwappedForALinkIsNotEnteredAndTheWorkingDirectoryIsKept(): void
+    {
+        $outside = $this->work . '/outside';
+        mkdir($outside);
+        file_put_contents($outside . '/keep', 'x');
+        $partial = $this->work . '/partial';
+        mkdir($partial . '/a', 0o755, true);
+        file_put_contents($partial . '/a/inner', 'x');
+        $origin = (string) getcwd();
+        VersionSwitch::$betweenCheckAndEnter = static function (string $entry) use ($outside): void {
+            exec('rm -rf ' . escapeshellarg($entry));
+            symlink($outside, $entry);
+        };
+        $method = new \ReflectionMethod(VersionSwitch::class, 'removeFromInside');
+
+        try {
+            $this->refused(static fn() => $method->invoke(null, $partial), 'changed while it was being removed');
+        } finally {
+            VersionSwitch::$betweenCheckAndEnter = null;
+        }
+
+        assertSame(true, is_file($outside . '/keep'));
+        assertSame($origin, getcwd());
+    }
+
+    #[Group('install')]
+    public function testAnUnchangedDirectoryIsStillEmptiedThroughTheSeam(): void
+    {
+        $partial = $this->work . '/plain';
+        mkdir($partial . '/a/b', 0o755, true);
+        file_put_contents($partial . '/a/b/f', 'x');
+        $origin = (string) getcwd();
+        $seen = [];
+        VersionSwitch::$betweenCheckAndEnter = static function (string $entry) use (&$seen): void {
+            $seen[] = $entry;
+        };
+        $method = new \ReflectionMethod(VersionSwitch::class, 'removeFromInside');
+
+        try {
+            $method->invoke(null, $partial);
+        } finally {
+            VersionSwitch::$betweenCheckAndEnter = null;
+        }
+
+        assertSame(['a', 'b'], $seen);
+        assertSame(false, file_exists($partial));
+        assertSame($origin, getcwd());
+    }
 }
