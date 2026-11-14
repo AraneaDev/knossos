@@ -12,6 +12,7 @@ import path from "node:path";
 import ts from "typescript";
 import { ComponentFrameworkEnricher } from "./component-framework-enricher.js";
 import {
+    externalName,
     ambientAttributes,
     boundFunction,
     callableKind,
@@ -1037,20 +1038,16 @@ export class TypeScriptLanguageFactCollector {
                   )
                 : undefined) ?? symbol?.declarations?.find(inProject);
         if (!declaration) {
-            const name = symbol?.getName();
-            return name && !name.startsWith("__")
-                ? reference(`external_${hint}`, name)
-                : null;
+            const name = externalName(this.checker, input, symbol);
+            return name === null ? null : reference(`external_${hint}`, name);
         }
         const relative = relativeInside(
             this.root,
             declaration.getSourceFile().fileName,
         );
         if (relative === null || belowNodeModules(relative)) {
-            const name = symbol?.getName();
-            return name && !name.startsWith("__")
-                ? reference(`external_${hint}`, name)
-                : null;
+            const name = externalName(this.checker, input, symbol);
+            return name === null ? null : reference(`external_${hint}`, name);
         }
         // A call resolves to the arrow or function expression itself; the
         // node is the module-level binding it initialises.
