@@ -253,6 +253,14 @@ final class VersionSwitchTest extends KnossosTestCase
         yield 'a link to the parent of the release' => [static function (string $r): void {
             symlink('..', $r . '/up');
         }, 'up -> ..'];
+        yield 'a chain of links that adds up to an escape' => [static function (string $r): void {
+            mkdir($r . '/d1/d2/d3', 0o755, true);
+            symlink('../../..', $r . '/d1/d2/d3/S');
+            symlink('S/../../../../etc', $r . '/d1/d2/d3/B');
+        }, 'd1/d2/d3/B -> S/../../../../etc'];
+        yield 'a member name that is not valid UTF-8' => [static function (string $r): void {
+            symlink('/etc', $r . "/bad\xff\xfe");
+        }, '/etc'];
         yield 'a fifo' => [static function (string $r): void {
             exec('mkfifo ' . escapeshellarg($r . '/pipe'));
         }, 'pipe'];
@@ -267,6 +275,33 @@ final class VersionSwitchTest extends KnossosTestCase
         $error = self::captureThrown(fn() => $this->unpackReleaseWith($build, $data), \Knossos\Install\InstallException::class);
 
         self::assertStringContainsString($named, $error->getMessage());
+        // The message goes into --json output: it must encode, whatever bytes the member name held.
+        self::assertNotFalse(json_encode($error->getMessage()));
+        assertSame([], glob($data . '/versions/*.partial.*'));
+        assertSame('1.0.0', (new VersionSwitch($data))->current());
+    }
+
+    #[Group('install')]
+    public function testADirectoryTheArchiveMadeUnreadableIsRefusedAndStillRemoved(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        $stage = $this->work . '/hide';
+        $this->writeRelease($stage . '/knossos-2.0.0', '2.0.0');
+        // tar cannot read a directory it must store as mode 0111, so the archive is written by python's tarfile.
+        $script = <<<'PY'
+import sys, tarfile
+src, out = sys.argv[1], sys.argv[2]
+with tarfile.open(out, "w:gz") as t:
+    t.add(src, arcname="knossos-2.0.0")
+    d = tarfile.TarInfo("knossos-2.0.0/hid"); d.type = tarfile.DIRTYPE; d.mode = 0o111; t.addfile(d)
+    l = tarfile.TarInfo("knossos-2.0.0/hid/evil"); l.type = tarfile.SYMTYPE; l.linkname = "/etc"; l.mode = 0o777; t.addfile(l)
+PY;
+        exec(sprintf('python3 -I -c %s %s %s', escapeshellarg($script), escapeshellarg($stage . '/knossos-2.0.0'), escapeshellarg($stage . '.tar.gz')));
+
+        $error = self::captureThrown(fn() => (new VersionSwitch($data))->unpack($stage . '.tar.gz', '2.0.0'), \Knossos\Install\InstallException::class);
+
+        // Permissions do not bind root, which reads the directory and finds the link instead: refused either way.
+        self::assertStringContainsString(posix_geteuid() === 0 ? 'hid/evil -> /etc' : 'Unreadable directory in the archive: hid', $error->getMessage());
         assertSame([], glob($data . '/versions/*.partial.*'));
         assertSame('1.0.0', (new VersionSwitch($data))->current());
     }
@@ -285,6 +320,8 @@ final class VersionSwitchTest extends KnossosTestCase
             symlink('../pkg/tool', $r . '/node_modules/.bin/tool');
             symlink('../../bin/knossos', $r . '/node_modules/.bin/root');
             symlink('node_modules/../bin', $r . '/via-dots');
+            // Dangling, but its longest existing prefix is inside the release.
+            symlink('../does-not-exist', $r . '/node_modules/pkg/missing');
         }, $data);
 
         assertSame(true, is_link($partial . '/node_modules/.bin/tool'));

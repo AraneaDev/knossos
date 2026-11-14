@@ -89,7 +89,7 @@ final class VersionSwitch
             throw new InstallException(sprintf('Could not unpack the archive: %s', self::reason($error)), 0, $error);
         }
         try {
-            self::assertInside($partial);
+            self::assertInside((string) realpath($partial));
         } catch (InstallException $error) {
             self::remove($partial);
             throw $error;
@@ -103,19 +103,30 @@ final class VersionSwitch
     }
 
     /**
-     * Walk an unpacked release without following links and refuse what could reach outside it.
+     * Walk an unpacked release on disk, without following links, and refuse what could reach outside it.
      *
-     * Only regular files, directories and symbolic links are allowed. A symbolic
-     * link must have a relative target that, resolved lexically against the
-     * link's own directory, stays inside the release: `..` may climb to a
-     * sibling directory inside it, never past its root.
+     * Fails closed: a directory that cannot be read and searched, a listing
+     * that fails and a path near PATH_MAX are refusals, never an empty
+     * listing. Only regular files, directories and symbolic links are allowed.
+     * Every link is resolved physically, one component at a time, and no step
+     * may leave the release, so a chain of links cannot add up to an escape.
      *
      * @throws InstallException naming the offending member
      */
     private static function assertInside(string $root, string $directory = ''): void
     {
         $here = $root . ($directory === '' ? '' : '/' . $directory);
-        foreach (scandir($here) ?: [] as $entry) {
+        if (strlen($here) > 3800) {
+            throw new InstallException(sprintf('Path too long in the archive: %s', self::printable($directory)));
+        }
+        if (!is_readable($here) || !is_executable($here)) {
+            throw new InstallException(sprintf('Unreadable directory in the archive: %s', self::printable($directory)));
+        }
+        $entries = scandir($here);
+        if ($entries === false) {
+            throw new InstallException(sprintf('Unreadable directory in the archive: %s', self::printable($directory)));
+        }
+        foreach ($entries as $entry) {
             if ($entry === '.' || $entry === '..') {
                 continue;
             }
@@ -123,36 +134,54 @@ final class VersionSwitch
             $path = $root . '/' . $member;
             if (is_link($path)) {
                 $target = (string) readlink($path);
-                if (!self::resolvesInside($directory, $target)) {
-                    throw new InstallException(sprintf('Unsafe link in the archive: %s -> %s', $member, $target));
+                if (!self::resolvesInside($root, $here, $target)) {
+                    throw new InstallException(sprintf('Unsafe link in the archive: %s -> %s', self::printable($member), self::printable($target)));
                 }
             } elseif (is_dir($path)) {
                 self::assertInside($root, $member);
             } elseif (!is_file($path)) {
-                throw new InstallException(sprintf('Unsupported entry in the archive (not a file, directory or link): %s', $member));
+                throw new InstallException(sprintf('Unsupported entry in the archive (not a file, directory or link): %s', self::printable($member)));
             }
         }
     }
 
-    /** Whether a link target, relative to a directory inside the release, stays inside the release. */
-    private static function resolvesInside(string $directory, string $target): bool
+    /**
+     * Whether a link in `$directory` resolves, step by step on disk, inside `$root`.
+     *
+     * Each component is resolved with realpath, so a `..` after another link
+     * is taken from where that link really leads. A component that does not
+     * exist, or a dangling link, ends the walk at the longest existing prefix,
+     * which has been checked like every other step.
+     */
+    private static function resolvesInside(string $root, string $directory, string $target): bool
     {
-        if ($target === '' || str_starts_with($target, '/')) {
+        $inside = static fn(string $path): bool => $path === $root || str_starts_with($path, $root . '/');
+        $current = realpath($directory);
+        if ($target === '' || str_starts_with($target, '/') || $current === false || !$inside($current)) {
             return false;
         }
-        $stack = $directory === '' ? [] : explode('/', $directory);
         foreach (explode('/', $target) as $segment) {
-            if ($segment === '..') {
-                if ($stack === []) {
-                    return false;
-                }
-                array_pop($stack);
-            } elseif ($segment !== '' && $segment !== '.') {
-                $stack[] = $segment;
+            if ($segment === '' || $segment === '.') {
+                continue;
             }
+            $next = $segment === '..' ? dirname($current) : $current . '/' . $segment;
+            $resolved = @lstat($next) === false ? false : realpath($next);
+            if ($resolved === false) {
+                return true;
+            }
+            if (!$inside($resolved)) {
+                return false;
+            }
+            $current = $resolved;
         }
 
         return true;
+    }
+
+    /** A name fit for a message and for JSON: bytes that are not valid UTF-8 are replaced. */
+    private static function printable(string $name): string
+    {
+        return mb_scrub($name, 'UTF-8');
     }
 
     /** The cause of a failed tar run, without the Git wording of the runner that carried it. */
@@ -313,6 +342,8 @@ final class VersionSwitch
 
             return;
         }
+        // A directory the archive made unreadable still has to go: open it up on the way down.
+        @chmod($path, 0o700);
         foreach (scandir($path) ?: [] as $entry) {
             if ($entry !== '.' && $entry !== '..') {
                 self::remove($path . '/' . $entry);
