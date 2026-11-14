@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.48.0](https://github.com/AraneaDev/knossos/compare/v0.47.0...v0.48.0) (2026-11-14)
+
+
+### Features
+
+* install and update Knossos from a release ([#497](https://github.com/AraneaDev/knossos/issues/497)) ([2cf3402](https://github.com/AraneaDev/knossos/commit/2cf34023b295eb9a46220c2afe167e33a043c181))
+
 ## [0.47.0](https://github.com/AraneaDev/knossos/compare/v0.46.0...v0.47.0) (2026-11-14)
 
 
