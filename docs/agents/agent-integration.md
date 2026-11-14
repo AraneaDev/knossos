@@ -196,14 +196,16 @@ counts and neighbours. A folder with fewer than five files of the path's
 extension and role learns from the nearest folder, its own or an ancestor,
 whose whole subtree holds five: `basis` has `subtree: true` and the brief reads
 `here (across <folder> and below)`, or `here (across the project)` for the
-root. Across a subtree the used and injected types and the line counts are not
-stated, since they do not add up from folder to folder. Without a
-`knossos.json` that can be read, placement and gates are empty and a warning carries the loader's message. The CLI prints the brief as
-text, at most 14 lines and 1,200 characters, or the envelope with `--json`. The
-text is cut from the bottom, with two lines kept through the cut: on a stale
-graph, `graph is behind (scanned 2h ago): ...` with the files changed since,
-and, when the gate commands do not fit, the gate names with a pointer to the
-`gates` list in `knossos.json`. A path that names a directory, the project root
+root. Across a subtree only the suffix and the file-name case are stated: what
+a folder's own files share in declaration kinds, modifiers, used and injected
+types and line counts does not carry over to a new folder. Without a
+`knossos.json` that can be read, placement and gates are empty and a warning
+carries the loader's message. The CLI prints the brief as text, at most 14
+lines and 1,200 characters, or the envelope with `--json`. The text is cut
+from the bottom, with two lines kept through the cut: on a stale graph,
+`graph is behind (scanned 2h ago): ...` with the files changed since, and,
+when the gate commands do not fit, the gate names with a pointer to the `gates`
+list in `knossos.json`. A path that names a directory, the project root
 included, is refused, and a companion whose file has been deleted is not named.
 
 ### Before creating a file

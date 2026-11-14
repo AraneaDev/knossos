@@ -12,8 +12,8 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('creation-brief')]
 final class SubtreeFactsTest extends KnossosTestCase
 {
-    /** Files, kinds and modifiers are summed per key. */
-    public function testCountsAreSummed(): void
+    /** Files are summed; kinds and modifiers do not transfer between folders and are left out. */
+    public function testFilesAreSummedAndKindsAndModifiersLeftOut(): void
     {
         $merged = SubtreeFacts::merge([
             self::row(2, ['kinds' => ['one_class' => 2], 'modifiers' => ['final' => 2]]),
@@ -21,7 +21,7 @@ final class SubtreeFactsTest extends KnossosTestCase
             self::row(3, []),
         ]);
 
-        self::assertSame(['files' => 8, 'facts' => ['kinds' => ['mixed' => 1, 'one_class' => 4], 'modifiers' => ['final' => 5, 'readonly' => 1]]], $merged);
+        self::assertSame(['files' => 8, 'facts' => []], $merged);
     }
 
     /** The suffix and the name case most files have across the rows win, the name breaking a tie. */

@@ -44,17 +44,18 @@ final class CreationBriefSubtreeTest extends KnossosTestCase
         parent::tearDown();
     }
 
-    /** A new folder under `src/App` is briefed from all eight classes there, without the facts a sum would get wrong. */
+    /**
+     * A new folder under `src/App` is briefed from all eight classes there, with only what transfers between folders.
+     * Its kinds and modifiers are not stated, and only six of the eight names count towards a name case
+     * (`src/App` itself has two files, below the three a stored name case needs), so nothing is said and no here line is drawn.
+     */
     public function testANewFolderLearnsFromItsAncestorsSubtree(): void
     {
         $data = $this->brief('src/App/New/X.php');
 
         self::assertSame(['directory' => 'src/App', 'files' => 8, 'borrowed' => true, 'subtree' => true], $data['basis']);
-        self::assertContains(['id' => 'kind', 'text' => 'one class per file', 'files' => 8, 'of' => 8], $data['conventions']);
-        self::assertContains(['id' => 'modifier:final', 'text' => 'final', 'files' => 8, 'of' => 8], $data['conventions']);
-        foreach (array_column($data['conventions'], 'id') as $id) {
-            self::assertDoesNotMatchRegularExpression('/^(uses:|injects:|lines$)/', $id);
-        }
+        self::assertSame([], $data['conventions']);
+        self::assertStringNotContainsString('here', CreationBriefRenderer::lines($data));
         self::assertCount(3, $data['neighbours']);
         foreach ($data['neighbours'] as $neighbour) {
             self::assertStringStartsWith('src/App/', $neighbour);
@@ -77,6 +78,22 @@ final class CreationBriefSubtreeTest extends KnossosTestCase
         self::assertContains('injects:PDO', array_column($data['conventions'], 'id'));
     }
 
+    /**
+     * Every class in `src/App` and below is final and alone in its file, and a subtree still says neither:
+     * a kind or a modifier learnt across folders was followed far less often than one learnt in the folder itself.
+     * The five classes of `src/Big`, the same shape as a direct population, say both.
+     */
+    public function testASubtreeStatesNoKindOrModifierThatADirectPopulationDoes(): void
+    {
+        $subtree = array_column($this->brief('src/App/New/X.php')['conventions'], 'id');
+        $direct = array_column($this->brief('src/Big/U.php')['conventions'], 'id');
+
+        self::assertNotContains('kind', $subtree);
+        self::assertNotContains('modifier:final', $subtree);
+        self::assertContains('kind', $direct);
+        self::assertContains('modifier:final', $direct);
+    }
+
     /** Across a subtree only a `<dir>` test pattern names a test; a literal test folder is one folder's. */
     public function testOnlyADirectoryRelativePatternNamesATestForASubtree(): void
     {
@@ -95,7 +112,7 @@ final class CreationBriefSubtreeTest extends KnossosTestCase
         $data = $this->brief('lib/New/X.php');
 
         self::assertSame(['directory' => '', 'files' => 13, 'borrowed' => true, 'subtree' => true], $data['basis']);
-        self::assertStringContainsString("\nhere (across the project): 13 of 13 one class per file", CreationBriefRenderer::lines($data));
+        self::assertStringContainsString("\nhere (across the project): 11 of 13 PascalCase file names", CreationBriefRenderer::lines($data));
     }
 
     /** @return array<string, mixed> */
