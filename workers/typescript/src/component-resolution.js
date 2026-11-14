@@ -6,54 +6,9 @@
 
 import path from "node:path";
 import ts from "typescript";
+import { buildOutputSources } from "./build-output-sources.js";
 import { componentAliasSuffix, componentDialect } from "./component-source.js";
 import { COMPONENT_ALIAS_MARK, isRegularFile } from "./project-paths.js";
-
-const BUILD_SOURCE_EXTENSIONS = new Map([
-    [".ts", ts.Extension.Ts],
-    [".tsx", ts.Extension.Tsx],
-    [".mts", ts.Extension.Mts],
-    [".cts", ts.Extension.Cts],
-]);
-
-/**
- * A module that resolved to, or only failed to find, another config's build
- * output, which is never read (see allowedCompilerPath), as the source that
- * output is built from: `#shared/x` naming `dist/shared/x.js` is that config's `x.ts`, the
- * file its build keeps the output in step with. Undefined when no failed
- * lookup lies in a known `outDir` or the source is not there.
- */
-function sourceOfBuildOutput(result, outputs, host) {
-    const locations = [
-        ...(result.resolvedModule === undefined
-            ? []
-            : [result.resolvedModule.resolvedFileName]),
-        ...(result.failedLookupLocations ?? []),
-    ];
-    for (const location of locations) {
-        // Every output directory holding it, the nearest first: a config
-        // emitting to `dist/shared` beside one emitting to `dist`.
-        for (const output of outputs) {
-            if (!location.startsWith(output.outDir + "/")) continue;
-            const stem = location
-                .slice(output.outDir.length + 1)
-                .replace(/\.(?:d\.)?[cm]?[jt]sx?$/, "");
-            for (const [suffix, extension] of BUILD_SOURCE_EXTENSIONS) {
-                const candidate = `${output.rootDir}/${stem}${suffix}`;
-                if (host.fileExists(candidate))
-                    return {
-                        resolvedModule: {
-                            resolvedFileName: candidate,
-                            extension,
-                            isExternalLibraryImport: false,
-                        },
-                        failedLookupLocations: result.failedLookupLocations,
-                    };
-            }
-        }
-    }
-    return undefined;
-}
 
 /**
  * Module resolution as the compiler does it, with two corrections for
@@ -78,6 +33,7 @@ export function componentResolver(
     outputs,
     readable,
 ) {
+    const sourceOfBuildOutput = buildOutputSources(outputs, host);
     return (
         literals,
         containingFile,
@@ -111,7 +67,7 @@ export function componentResolver(
                     name,
                     direct.resolvedModule === undefined ||
                         !readable(direct.resolvedModule.resolvedFileName)
-                        ? (sourceOfBuildOutput(direct, outputs, host) ?? direct)
+                        ? (sourceOfBuildOutput(direct) ?? direct)
                         : direct,
                 );
                 if (
