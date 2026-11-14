@@ -1090,6 +1090,7 @@ php	tests/phpunit/Scanner/TypescriptScannerTest.php
 php	tests/phpunit/Scanner/TypescriptStringDispatchTest.php
 php	tests/phpunit/Scanner/TypescriptSupertypeMemberTest.php
 php	tests/phpunit/Scanner/TypescriptTableLookupTest.php
+php	tests/phpunit/Scanner/TypescriptUnresolvedImportNamesTest.php
 php	tests/phpunit/Scanner/TypescriptVirtualSourceTest.php
 php	tests/phpunit/Scanner/TypescriptWorkerEdgeCasesTest.php
 php	tests/phpunit/Scanner/TypescriptWorkerReadsCoverageTest.php
@@ -1570,6 +1571,7 @@ js	workers/typescript/src/declaration-kinds.js
 js	workers/typescript/src/dynamic-import-collector.js
 js	workers/typescript/src/errors.js
 js	workers/typescript/src/exclusions.js
+js	workers/typescript/src/external-names.js
 js	workers/typescript/src/fact-accumulator.js
 js	workers/typescript/src/fallback-groups.js
 js	workers/typescript/src/file-facts.js
