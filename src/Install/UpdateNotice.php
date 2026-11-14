@@ -16,7 +16,7 @@ final class UpdateNotice
         if (getenv('KNOSSOS_NO_UPDATE_CHECK') === '1' || $installation->isSourceCheckout() || $installation->mode() !== 'native') {
             return null;
         }
-        $latest = (new UpdateCheck($installation->dataDir))->newerThan($current);
+        $latest = (new UpdateCheck($installation->directory()))->newerThan($current);
 
         return $latest === null ? null : sprintf('knossos %s is available (you have %s): run knossos self-update', $latest, $current);
     }

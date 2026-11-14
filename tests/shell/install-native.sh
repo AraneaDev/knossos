@@ -1,7 +1,9 @@
 #!/bin/sh
 # install.sh, native path, against a local release directory. Every run uses a
 # temp data dir and a temp bin dir and --no-plugin, so nothing registers with
-# Claude Code and nothing touches the real home.
+# Claude Code and nothing touches the real home. Whatever KNOSSOS_DATA_DIR and
+# KNOSSOS_ROOTS_FILE the caller exported are left in place: the installer and
+# the launcher it writes must not be steered by them.
 #
 # The release is built once with tools/release-tarball. Set
 # KNOSSOS_TEST_RELEASE_DIR to a directory that already holds one (the tarball
@@ -39,7 +41,7 @@ case $(uname -m) in x86_64 | amd64) HOST_ARCH=x86_64 ;; arm64 | aarch64) HOST_AR
 # and bin dir under DIR, both with a space in the name.
 run_install() {
     dir=$1; shift
-    KNOSSOS_RELEASE_BASE="${BASE_OVERRIDE:-$RELEASE}" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE -u KNOSSOS_BIN_DIR \
+    KNOSSOS_RELEASE_BASE="${BASE_OVERRIDE:-$RELEASE}" env -u KNOSSOS_BIN_DIR \
         sh "$INSTALL" --no-plugin --data-dir="$dir/data dir" --bin-dir="$dir/bin dir" "$@" 2>&1 </dev/null
 }
 
@@ -50,7 +52,7 @@ mkdir -p "$T1"
 out=$(run_install "$T1" --version="$VERSION"); status=$?
 if [ "$status" -eq 0 ]; then pass 'a fresh install exits 0'; else fail "fresh install exited $status: $out"; fi
 
-got=$(env -u KNOSSOS_DATA_DIR "$T1/bin dir/knossos" version 2>&1)
+got=$("$T1/bin dir/knossos" version 2>&1)
 if [ "$got" = "Knossos $VERSION" ]; then pass 'the launcher reports the installed version'; else fail "knossos version said: $got"; fi
 
 if [ -L "$T1/data dir/current" ] && [ -d "$T1/data dir/versions/$VERSION" ]; then
@@ -77,6 +79,29 @@ if [ "$status" -eq 0 ] && [ "$before" = "$after" ] && [ "$got" = "Knossos $VERSI
 else
     fail "second run: status $status, $before then $after, version said $got, output $out"
 fi
+
+# ---- a foreign KNOSSOS_DATA_DIR ---------------------------------------------
+
+# Exported by the caller (a checkout setup, or the quality image's /data), it
+# says where the graph goes. The release still goes where --data-dir says, the
+# launcher still finds it, and the foreign directory gets the graph only.
+TF="$WORK/foreign"
+mkdir -p "$TF/graph"
+out=$(KNOSSOS_DATA_DIR="$TF/graph" KNOSSOS_ROOTS_FILE="$TF/graph/roots.json" run_install "$TF" --version="$VERSION"); status=$?
+if [ "$status" -eq 0 ] && [ -d "$TF/data dir/versions/$VERSION" ] && [ -f "$TF/data dir/install.json" ] && [ -z "$(ls -A "$TF/graph")" ]; then
+    pass 'with a foreign KNOSSOS_DATA_DIR exported, the release goes to --data-dir and nothing to the foreign directory'
+else
+    fail "foreign data dir install: status $status, graph holds: $(ls -A "$TF/graph" 2>&1), output $out"
+fi
+got=$(KNOSSOS_DATA_DIR="$TF/graph" "$TF/bin dir/knossos" version 2>&1)
+if [ "$got" = "Knossos $VERSION" ]; then pass 'the launcher finds the release with a foreign KNOSSOS_DATA_DIR exported'; else fail "foreign data dir: version said $got"; fi
+KNOSSOS_DATA_DIR="$TF/graph" "$TF/bin dir/knossos" doctor --json > "$TF/doctor.json" 2>&1 </dev/null
+if [ -f "$TF/graph/knossos.sqlite" ] && [ ! -e "$TF/data dir/knossos.sqlite" ] && [ ! -e "$TF/graph/versions" ] && [ ! -e "$TF/graph/current" ]; then
+    pass 'with a foreign KNOSSOS_DATA_DIR the graph goes there and the release stays in the install directory'
+else
+    fail "foreign data dir graph: graph holds $(ls -A "$TF/graph" 2>&1), doctor said $(head -c 400 "$TF/doctor.json")"
+fi
+case $(cat "$TF/doctor.json") in *"native $VERSION at "*) pass 'doctor names the installed release with a foreign KNOSSOS_DATA_DIR' ;; *) fail "doctor installation line: $(head -c 400 "$TF/doctor.json")" ;; esac
 
 # Latest from a local directory, and a file:// base.
 T1B="$WORK/latest"
@@ -337,7 +362,7 @@ if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/garbage-target" ]; 
 T14="$WORK/it's here"
 mkdir -p "$T14"
 out=$(run_install "$T14" --version="$VERSION"); status=$?
-got=$(env -u KNOSSOS_DATA_DIR "$T14/bin dir/knossos" version 2>&1)
+got=$("$T14/bin dir/knossos" version 2>&1)
 if [ "$status" -eq 0 ] && [ "$got" = "Knossos $VERSION" ]; then pass 'a data dir with an apostrophe works'; else fail "apostrophe: status $status, version said $got, output $out"; fi
 
 # ---- the roots file --------------------------------------------------------
@@ -361,7 +386,7 @@ if [ "$status" -eq 0 ] && [ ! -e "$T16/data dir/roots.json" ]; then pass '--no-r
 # Piped from the home directory or /: nothing is granted, and it says so.
 T17="$WORK/home skip"
 mkdir -p "$T17/home"
-out=$(cd "$T17/home" && HOME="$T17/home" KNOSSOS_RELEASE_BASE=$RELEASE env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE sh "$INSTALL" --no-plugin --data-dir="$T17/data" --bin-dir="$T17/bin" --version="$VERSION" 2>&1 </dev/null); status=$?
+out=$(cd "$T17/home" && HOME="$T17/home" KNOSSOS_RELEASE_BASE=$RELEASE sh "$INSTALL" --no-plugin --data-dir="$T17/data" --bin-dir="$T17/bin" --version="$VERSION" 2>&1 </dev/null); status=$?
 case $out in *"no project root granted"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ ! -e "$T17/data/roots.json" ]; then pass 'run from the home directory without a terminal, no root is granted and it says so'; else fail "home skip: status $status, output $out"; fi
 
@@ -394,7 +419,7 @@ printf '{"mode": "native", "version": "0.0.1"}\n' > "$T20/data dir/install.json"
 cp "$T20/data dir/install.json" "$WORK/install.json.before20"
 printf '#!/bin/sh\necho OLD LAUNCHER\n' > "$T20/bin dir/knossos"
 cp "$T20/bin dir/knossos" "$WORK/launcher.before20"
-KNOSSOS_RELEASE_BASE="$WORK/slow release" STUB_MARK="$T20/mark" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE -u KNOSSOS_BIN_DIR \
+KNOSSOS_RELEASE_BASE="$WORK/slow release" STUB_MARK="$T20/mark" env -u KNOSSOS_BIN_DIR \
     sh "$INSTALL" --no-plugin --data-dir="$T20/data dir" --bin-dir="$T20/bin dir" --version="$VERSION" > "$WORK/interrupt.out" 2>&1 </dev/null &
 installer=$!
 waited=0

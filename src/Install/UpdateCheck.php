@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Install;
 
 /**
- * The cached answer to "is there a newer release", in `<data dir>/update-check.json`.
+ * The cached answer to "is there a newer release", in `<install dir>/update-check.json`.
  *
  * Written only by `knossos self-update --check`. The session brief reads it
  * and nothing else, so the brief never waits for the network.
@@ -15,7 +15,7 @@ final readonly class UpdateCheck
     /** How long an answer stays fresh. */
     public const MAX_AGE_SECONDS = 86400;
 
-    public function __construct(private string $dataDir) {}
+    public function __construct(private string $installDir) {}
 
     /**
      * The cached answer, or null when there is none or it is not readable.
@@ -55,7 +55,7 @@ final readonly class UpdateCheck
     public function record(?string $latest, ?int $now = null): void
     {
         $latest ??= $this->read()['latest'] ?? null;
-        if (!is_dir($this->dataDir) && !@mkdir($this->dataDir, 0o700, true) && !is_dir($this->dataDir)) {
+        if (!is_dir($this->installDir) && !@mkdir($this->installDir, 0o700, true) && !is_dir($this->installDir)) {
             return;
         }
         $bytes = json_encode(['checked_at' => gmdate('Y-m-d\TH:i:s\Z', $now ?? time()), 'latest' => $latest], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
@@ -76,6 +76,6 @@ final readonly class UpdateCheck
     /** The cache file. */
     private function path(): string
     {
-        return rtrim($this->dataDir, '/') . '/update-check.json';
+        return rtrim($this->installDir, '/') . '/update-check.json';
     }
 }

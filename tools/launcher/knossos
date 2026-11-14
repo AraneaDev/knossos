@@ -1,27 +1,38 @@
 #!/bin/sh
 # The knossos launcher that install.sh writes to the bin directory.
 #
-# install.sh copies this file and replaces the value on the INSTALLED_DATA_DIR
-# line with the data directory it installed into. It never searches PATH for
-# itself, and in native mode it starts no process besides the final exec: the
-# mode is read from install.json with shell pattern matching.
+# install.sh copies this file and replaces the value on the INSTALL_DIR line
+# with the directory it installed into: the one holding versions/, current and
+# install.json. self-update rewrites it the same way from the new release. It
+# never searches PATH for itself, and in native mode it starts no process
+# besides the final exec: the mode is read from install.json with shell
+# pattern matching.
+#
+# Two different directories, kept apart on purpose:
+#   - the install directory, baked in below, is where the release lives. It is
+#     the only thing used to find install.json and current.
+#   - KNOSSOS_DATA_DIR is where the graph lives. A caller's value is passed on
+#     untouched; without one it defaults to the install directory. It never
+#     decides which release runs.
+#
+# KNOSSOS_INSTALL_DIR replaces the baked-in install directory. It exists for
+# the installer's own pre-switch check and for tests, not for everyday use.
 
-INSTALLED_DATA_DIR='__KNOSSOS_DATA_DIR__'
+INSTALL_DIR='__KNOSSOS_INSTALL_DIR__'
 
-# A caller's KNOSSOS_DATA_DIR wins, so one launcher can serve a second data dir.
-DATA="${KNOSSOS_DATA_DIR:-$INSTALLED_DATA_DIR}"
-KNOSSOS_DATA_DIR=$DATA
-KNOSSOS_ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$DATA/roots.json}"
+INSTALL_DIR="${KNOSSOS_INSTALL_DIR:-$INSTALL_DIR}"
+KNOSSOS_DATA_DIR="${KNOSSOS_DATA_DIR:-$INSTALL_DIR}"
+KNOSSOS_ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$KNOSSOS_DATA_DIR/roots.json}"
 export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
 
 # The mode comes from install.json: one line or pretty-printed, with or
 # without a space after the colon. A missing file means native.
 mode=native
-if [ -r "$DATA/install.json" ]; then
+if [ -r "$INSTALL_DIR/install.json" ]; then
     content=''
     while IFS= read -r line || [ -n "$line" ]; do
         content="$content$line"
-    done < "$DATA/install.json"
+    done < "$INSTALL_DIR/install.json"
     case $content in
         *'"mode"'*:*)
             rest=${content#*'"mode"'*:}
@@ -42,18 +53,18 @@ fi
 
 case $mode in
     native)
-        if [ ! -x "$DATA/current/bin/knossos" ]; then
-            echo "knossos: no installed release found in $DATA; re-run the installer to repair it." >&2
+        if [ ! -x "$INSTALL_DIR/current/bin/knossos" ]; then
+            echo "knossos: no installed release found in $INSTALL_DIR; re-run the installer to repair it." >&2
             exit 1
         fi
-        exec "$DATA/current/bin/knossos" "$@"
+        exec "$INSTALL_DIR/current/bin/knossos" "$@"
         ;;
     container)
         echo "knossos: container mode is not available in this launcher version; re-run the installer." >&2
         exit 1
         ;;
     *)
-        echo "knossos: unreadable mode in $DATA/install.json; re-run the installer to repair it." >&2
+        echo "knossos: unreadable mode in $INSTALL_DIR/install.json; re-run the installer to repair it." >&2
         exit 1
         ;;
 esac

@@ -11,7 +11,10 @@
 # MCP registration and the plugin's hooks call.
 #
 # Environment:
-#   KNOSSOS_DATA_DIR      data directory                        (default: ~/.knossos)
+#   KNOSSOS_DATA_DIR      install directory, which also holds the graph, when
+#                         --data-dir is not given              (default: ~/.knossos)
+#   KNOSSOS_ROOTS_FILE    the roots file, when --data-dir is not given
+#                         (default: <data dir>/roots.json)
 #   KNOSSOS_BIN_DIR       where the launcher goes               (default: ~/.local/bin)
 #   KNOSSOS_RELEASE_BASE  download base: a releases URL, a file:// URL or a
 #                         plain directory holding the tarball and SHA256SUMS
@@ -228,18 +231,24 @@ atomic_link() {
     ln -sfn "$target" "$link"
 }
 
-# Write the launcher from the release's template to PATH. The data directory
-# goes into the template inside single quotes, so a quote in the path is
-# closed, escaped and reopened.
+# Write the launcher from the release's template to PATH. The install
+# directory goes into the template inside single quotes, so a quote in the
+# path is closed, escaped and reopened. self-update does the same in PHP
+# (Knossos\Install\Launcher), byte for byte.
 write_launcher() {
     quoted=$(printf '%s' "$DATA_DIR" | sed "s/'/'\\\\''/g")
+    baked=0
     while IFS= read -r line || [ -n "$line" ]; do
         case $line in
-            "INSTALLED_DATA_DIR='__KNOSSOS_DATA_DIR__'") printf "INSTALLED_DATA_DIR='%s'\n" "$quoted" ;;
+            "INSTALL_DIR='__KNOSSOS_INSTALL_DIR__'")
+                printf "INSTALL_DIR='%s'\n" "$quoted"
+                baked=1
+                ;;
             *) printf '%s\n' "$line" ;;
         esac
     done < "$TEMPLATE" > "$1"
     chmod 0755 "$1"
+    [ "$baked" = 1 ]
 }
 
 # Undo the switch after a failure that came after it: put the previous link,
@@ -319,7 +328,8 @@ choose_root() {
 main() {
     MODE=auto
     VERSION=''
-    DATA_DIR="${KNOSSOS_DATA_DIR:-}"
+    DATA_DIR=''
+    DATA_DIR_GIVEN=0
     BIN_DIR="${KNOSSOS_BIN_DIR:-}"
     BASE="${KNOSSOS_RELEASE_BASE:-https://github.com/AraneaDev/knossos/releases}"
     NAME="${KNOSSOS_MCP_NAME:-knossos}"
@@ -336,7 +346,10 @@ main() {
         case $1 in
             --mode=*) MODE=${1#--mode=} ;;
             --version=*) VERSION=${1#--version=} ;;
-            --data-dir=*) DATA_DIR=${1#--data-dir=} ;;
+            --data-dir=*)
+                DATA_DIR=${1#--data-dir=}
+                DATA_DIR_GIVEN=1
+                ;;
             --bin-dir=*) BIN_DIR=${1#--bin-dir=} ;;
             --no-plugin) PLUGIN=0 ;;
             --no-roots) ROOTS=0 ;;
@@ -359,7 +372,9 @@ main() {
         *) die "--mode must be native or container, not: $MODE" ;;
     esac
 
-    # HOME is only needed when a directory was not given.
+    # HOME is only needed when a directory was not given. --data-dir wins over
+    # an exported KNOSSOS_DATA_DIR, which only fills in when it is absent.
+    [ -n "$DATA_DIR" ] || DATA_DIR="${KNOSSOS_DATA_DIR:-}"
     if [ -z "$DATA_DIR" ]; then
         [ -n "${HOME:-}" ] || die 'HOME is not set; pass --data-dir'
         DATA_DIR="$HOME/.knossos"
@@ -451,8 +466,22 @@ main() {
     [ -n "$VERSION" ] || resolve_latest
     ASSET="knossos-$VERSION-$OS-$ARCH.tar.gz"
     VERSION_DIR="$DATA_DIR/versions/$VERSION"
-    ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$DATA_DIR/roots.json}"
+    # With --data-dir, the roots file sits beside it whatever the caller
+    # exported; without, an exported KNOSSOS_ROOTS_FILE is honoured.
+    if [ "$DATA_DIR_GIVEN" = 1 ] || [ -z "${KNOSSOS_ROOTS_FILE:-}" ]; then
+        ROOTS_FILE="$DATA_DIR/roots.json"
+    else
+        ROOTS_FILE=$KNOSSOS_ROOTS_FILE
+    fi
     ROOT_TO_GRANT=$(choose_root)
+    # Every child from here on (the launcher, the release, the plugin step)
+    # sees this installation's directories, never what the caller exported.
+    # KNOSSOS_INSTALL_DIR is the launcher's test override and must not steer
+    # the launcher this run writes.
+    KNOSSOS_DATA_DIR=$DATA_DIR
+    KNOSSOS_ROOTS_FILE=$ROOTS_FILE
+    export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
+    unset KNOSSOS_INSTALL_DIR
 
     # ---- dry run -----------------------------------------------------------
 
@@ -536,7 +565,7 @@ main() {
         # installed yet.
         log 'running knossos doctor on the new release'
         mkdir "$TMP/doctor-data"
-        if ! KNOSSOS_DATA_DIR="$TMP/doctor-data" "$PARTIAL/bin/knossos" doctor > "$TMP/doctor.out" 2>&1 </dev/null; then
+        if ! KNOSSOS_DATA_DIR="$TMP/doctor-data" KNOSSOS_ROOTS_FILE="$TMP/doctor-data/roots.json" "$PARTIAL/bin/knossos" doctor > "$TMP/doctor.out" 2>&1 </dev/null; then
             cat "$TMP/doctor.out" >&2
             die 'knossos doctor failed on the new release; the previous release, if any, is untouched'
         fi
@@ -560,13 +589,13 @@ main() {
     mkdir -p "$BIN_DIR"
     LAUNCHER="$BIN_DIR/knossos"
     NEW_LAUNCHER="$BIN_DIR/.knossos.tmp.$$"
-    write_launcher "$NEW_LAUNCHER"
-    # Run the new launcher against a scratch data dir whose current already
+    write_launcher "$NEW_LAUNCHER" || die "the launcher template at $TEMPLATE has no install directory line; nothing was switched"
+    # Run the new launcher against a scratch install dir whose current already
     # points at the new release, so a launcher that cannot start the release is
     # caught while the real current is untouched.
     mkdir "$TMP/probe"
     ln -s "$VERSION_DIR" "$TMP/probe/current"
-    if ! probe=$(KNOSSOS_DATA_DIR="$TMP/probe" "$NEW_LAUNCHER" version 2>&1 </dev/null); then
+    if ! probe=$(KNOSSOS_INSTALL_DIR="$TMP/probe" KNOSSOS_DATA_DIR="$TMP/probe" KNOSSOS_ROOTS_FILE="$TMP/probe/roots.json" "$NEW_LAUNCHER" version 2>&1 </dev/null); then
         rm -f "$NEW_LAUNCHER"
         die "the launcher does not run the new release: $probe; nothing was switched"
     fi
@@ -589,8 +618,9 @@ main() {
     mv -f "$NEW_LAUNCHER" "$LAUNCHER"
     log "launcher written to $LAUNCHER"
 
-    # The real thing, end to end. If it fails, everything goes back.
-    if installed=$("$LAUNCHER" version 2>&1 </dev/null); then
+    # The real thing, end to end, with this installation's directories. If it
+    # fails, everything goes back.
+    if installed=$(KNOSSOS_DATA_DIR="$DATA_DIR" KNOSSOS_ROOTS_FILE="$ROOTS_FILE" "$LAUNCHER" version 2>&1 </dev/null); then
         # Installed and working: the steps below are best effort and never undo it.
         SWITCHED=0
         log "$installed"

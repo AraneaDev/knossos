@@ -12,7 +12,6 @@ use Knossos\Install\UpdateNotice;
 use Knossos\Query\QueryServices;
 use Knossos\Query\SessionBriefRenderer;
 use Knossos\Query\SessionBriefService;
-use Knossos\Runtime\DataDirectory;
 use Knossos\Runtime\Version;
 use Knossos\Store\SqliteConnection;
 use Throwable;
@@ -100,8 +99,7 @@ final class SessionCommand implements CliCommand
     private static function withUpdateNotice(string $brief, CliCommandContext $context): string
     {
         try {
-            $dataDirectory = DataDirectory::resolve() ?? dirname($context->databasePath());
-            $line = UpdateNotice::line(new Installation($dataDirectory, $context->installationRoot()), Version::CURRENT);
+            $line = UpdateNotice::line(new Installation($context->installationRoot()), Version::CURRENT);
         } catch (Throwable) {
             // One line must never cost the whole brief.
             return $brief;

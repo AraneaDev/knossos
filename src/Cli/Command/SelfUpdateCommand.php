@@ -16,7 +16,6 @@ use Knossos\Install\ReleaseProbe;
 use Knossos\Install\ReleaseSource;
 use Knossos\Install\SelfUpdater;
 use Knossos\Install\UpdateCheck;
-use Knossos\Runtime\DataDirectory;
 use Knossos\Runtime\Version;
 
 /**
@@ -71,7 +70,7 @@ final class SelfUpdateCommand implements CliCommand
         if (($check && $rollback) || ($version !== null && ($check || $rollback))) {
             throw new InvalidArgumentException('--check, --rollback and --version cannot be combined.');
         }
-        $installation = $this->installation ?? new Installation(self::dataDirectory(), $context->installationRoot());
+        $installation = $this->installation ?? new Installation($context->installationRoot());
         // The hook's background call is never a failure and never a lookup it was not meant to make:
         // opted out, a checkout, a container install or an install without a record all end here.
         if ($quiet && (getenv('KNOSSOS_NO_UPDATE_CHECK') === '1' || $installation->isSourceCheckout() || $installation->mode() !== 'native')) {
@@ -84,7 +83,7 @@ final class SelfUpdateCommand implements CliCommand
             throw new InstallException('This is a container install: container installs are updated by the launcher, not by self-update.');
         }
         if ($installation->mode() !== 'native') {
-            throw new InstallException(sprintf('%s/install.json is missing or unreadable; run the installer again.', $installation->dataDir));
+            throw new InstallException(sprintf('%s/install.json is missing or unreadable; run the installer again.', $installation->directory()));
         }
         $updater = new SelfUpdater(
             $installation,
@@ -112,7 +111,7 @@ final class SelfUpdateCommand implements CliCommand
     {
         if ($quiet) {
             // The background refresh: at most one look a day, never a message, never a failure.
-            if ((new UpdateCheck($installation->dataDir))->due()) {
+            if ((new UpdateCheck($installation->directory()))->due()) {
                 try {
                     $updater->check(Version::CURRENT);
                 } catch (InstallException) {
@@ -131,17 +130,5 @@ final class SelfUpdateCommand implements CliCommand
         );
 
         return $result['update'] ? self::EXIT_UPDATE_AVAILABLE : CliCommand::EXIT_OK;
-    }
-
-    /** The data directory this installation uses: `KNOSSOS_DATA_DIR`, else `~/.knossos`. */
-    private static function dataDirectory(): string
-    {
-        $directory = DataDirectory::resolve();
-        if ($directory !== null) {
-            return $directory;
-        }
-        $home = getenv('HOME');
-
-        return (is_string($home) && $home !== '' ? rtrim($home, '/') : (string) getcwd()) . '/.knossos';
     }
 }

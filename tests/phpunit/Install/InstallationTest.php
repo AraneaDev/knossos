@@ -18,7 +18,7 @@ final class InstallationTest extends KnossosTestCase
     public function testCodeUnderVersionsIsAnInstallation(): void
     {
         $data = $this->installed('d', '1.0.0');
-        $installation = new Installation($data, $data . '/versions/1.0.0');
+        $installation = new Installation($data . '/versions/1.0.0');
 
         assertSame(false, $installation->isSourceCheckout());
         assertSame('native', $installation->mode());
@@ -31,21 +31,54 @@ final class InstallationTest extends KnossosTestCase
         $data = $this->installed('d', '1.0.0');
         mkdir($this->work . '/checkout/bin', 0o755, true);
 
-        $installation = new Installation($data, $this->work . '/checkout');
+        $installation = new Installation($this->work . '/checkout');
         assertSame(true, $installation->isSourceCheckout());
         assertSame('source checkout at ' . $this->work . '/checkout', $installation->describe());
         // A sibling whose name merely starts with "versions" is not under versions/.
         mkdir($data . '/versions-old/x', 0o755, true);
-        assertSame(true, (new Installation($data, $data . '/versions-old/x'))->isSourceCheckout());
-        assertSame(true, (new Installation($this->work . '/nowhere', $this->work . '/checkout'))->isSourceCheckout());
-        assertSame(true, (new Installation($data, $this->work . '/missing'))->isSourceCheckout());
+        assertSame(true, (new Installation($data . '/versions-old/x'))->isSourceCheckout());
+        assertSame(true, (new Installation($this->work . '/checkout'))->isSourceCheckout());
+        assertSame(true, (new Installation($this->work . '/missing'))->isSourceCheckout());
+    }
+
+    #[Group('install')]
+    public function testTheInstallDirectoryComesFromTheCodeAndNeverFromTheDataDirectory(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        $foreign = $this->work . '/foreign graph';
+        mkdir($foreign . '/versions/9.9.9', 0o755, true);
+        $previous = getenv('KNOSSOS_DATA_DIR');
+        putenv('KNOSSOS_DATA_DIR=' . $foreign);
+        try {
+            // Reached through `current`, as the launcher reaches it.
+            $installation = new Installation($data . '/current');
+            assertSame($data, $installation->installDir);
+            assertSame($data, $installation->directory());
+            assertSame('1.0.0', $installation->record()['version']);
+        } finally {
+            putenv($previous === false ? 'KNOSSOS_DATA_DIR' : 'KNOSSOS_DATA_DIR=' . $previous);
+        }
+    }
+
+    #[Group('install')]
+    public function testAPartialUnpackOrANameThatIsNoVersionIsNotAnInstallation(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        mkdir($data . '/versions/2.0.0.partial.123', 0o755, true);
+        mkdir($data . '/versions/notes', 0o755, true);
+
+        assertSame(null, (new Installation($data . '/versions/2.0.0.partial.123'))->installDir);
+        assertSame(null, (new Installation($data . '/versions/notes'))->installDir);
+        $error = self::captureThrown(static fn() => (new Installation($data . '/versions/notes'))->directory(), \Knossos\Install\InstallException::class);
+        assertSame('This is a source checkout: update it with git pull.', $error->getMessage());
+        assertSame(null, (new Installation($data . '/versions/notes'))->record());
     }
 
     #[Group('install')]
     public function testTheRecordIsReadWhateverItHolds(): void
     {
         mkdir($this->work . '/d/versions/1.0.0', 0o755, true);
-        $installation = new Installation($this->work . '/d', $this->work . '/d/versions/1.0.0');
+        $installation = new Installation($this->work . '/d/versions/1.0.0');
         assertSame(null, $installation->record());
         assertSame(null, $installation->mode());
         assertSame('unrecorded mode unknown version at ' . $this->work . '/d/versions/1.0.0', $installation->describe());

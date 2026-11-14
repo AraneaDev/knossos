@@ -44,11 +44,19 @@ final class SessionBriefUpdateNoticeTest extends KnossosTestCase
         assertSame(false, str_contains($this->brief($data, self::repositoryRoot()), 'self-update'));
     }
 
-    /** The brief for an empty project, with the code taken to live at `$root`. */
+    /**
+     * The brief for an empty project, with the code taken to live at `$root`.
+     *
+     * The graph is kept in a directory of its own, away from the install
+     * directory `$data`: the notice is found through where the code lives,
+     * never through KNOSSOS_DATA_DIR.
+     */
     private function brief(string $data, string $root): string
     {
         $previous = getenv('KNOSSOS_DATA_DIR');
-        putenv('KNOSSOS_DATA_DIR=' . $data);
+        @mkdir($this->work . '/graph', 0o755, true);
+        putenv('KNOSSOS_DATA_DIR=' . $this->work . '/graph');
+        self::assertNotSame($data, $this->work . '/graph');
         @mkdir($this->work . '/project', 0o755, true);
         $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory($root), null);
         $errors = fopen('php://memory', 'w+');

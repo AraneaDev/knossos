@@ -7,7 +7,7 @@ namespace Knossos\Install;
 /**
  * Updates an installed release in place, or rolls it back.
  *
- * One run at a time (a lock file in the data directory). An update fetches
+ * One run at a time (a lock file in the install directory). An update fetches
  * the release, checks it against SHA256SUMS, runs its doctor against a scratch
  * data directory, and only then switches `current`; if the switched release
  * then fails to answer, the previous state is restored. Exactly one previous
@@ -23,7 +23,7 @@ final class SelfUpdater
         private readonly ReleaseProbe $probe,
         private readonly string $platform,
     ) {
-        $this->versions = new VersionSwitch($installation->dataDir);
+        $this->versions = new VersionSwitch($installation->directory());
     }
 
     /**
@@ -34,7 +34,7 @@ final class SelfUpdater
      */
     public function check(string $current): array
     {
-        $cache = new UpdateCheck($this->installation->dataDir);
+        $cache = new UpdateCheck($this->installation->directory());
         try {
             $latest = $this->source->latest();
         } catch (InstallException $error) {
@@ -77,7 +77,7 @@ final class SelfUpdater
             }
             $this->versions->prune([$target, $current]);
             if ($requested === null) {
-                (new UpdateCheck($this->installation->dataDir))->record($target);
+                (new UpdateCheck($this->installation->directory()))->record($target);
             }
 
             return ['status' => 'updated', 'from' => $current, 'to' => $target];
@@ -131,13 +131,13 @@ final class SelfUpdater
     }
 
     /**
-     * A scratch directory inside the data directory, removed by {@see locked()} when the run ends.
+     * A scratch directory inside the install directory, removed by {@see locked()} when the run ends.
      *
-     * Under the data directory rather than /tmp so a download never fills a small tmpfs.
+     * Under the install directory rather than /tmp so a download never fills a small tmpfs.
      */
     private function scratch(string $name): string
     {
-        $directory = $this->installation->dataDir . '/self-update.tmp/' . $name;
+        $directory = $this->installation->directory() . '/self-update.tmp/' . $name;
         if (!is_dir($directory)) {
             @mkdir($directory, 0o700, true);
         }
@@ -155,7 +155,7 @@ final class SelfUpdater
      */
     private function locked(callable $work): mixed
     {
-        $directory = $this->installation->dataDir;
+        $directory = $this->installation->directory();
         if (!is_dir($directory) && !@mkdir($directory, 0o700, true) && !is_dir($directory)) {
             throw new InstallException('Could not create ' . $directory);
         }

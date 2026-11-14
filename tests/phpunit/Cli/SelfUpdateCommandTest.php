@@ -43,7 +43,7 @@ final class SelfUpdateCommandTest extends KnossosTestCase
     public function testASourceCheckoutIsRefusedWithTheGitMessage(): void
     {
         mkdir($this->work . '/checkout');
-        $installation = new Installation($this->work . '/data', $this->work . '/checkout');
+        $installation = new Installation($this->work . '/checkout');
 
         $error = self::captureThrown(fn() => $this->invoke([], $installation, new ForbiddenSource()), InstallException::class);
 
@@ -174,7 +174,7 @@ final class SelfUpdateCommandTest extends KnossosTestCase
     /** An installation whose code lives in the data dir's versions, like a real one. */
     private function native(string $data): Installation
     {
-        return new Installation($data, $data . '/versions/' . (new \Knossos\Install\VersionSwitch($data))->current());
+        return new Installation($data . '/versions/' . (new \Knossos\Install\VersionSwitch($data))->current());
     }
 
     /**

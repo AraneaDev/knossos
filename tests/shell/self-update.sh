@@ -59,16 +59,21 @@ mv "$REL/$NEW_ASSET" "$WORK/$NEW_ASSET"
 
 DATA="$WORK/data dir"
 BIN="$WORK/bin dir"
-if ! KNOSSOS_RELEASE_BASE="$REL" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE -u KNOSSOS_BIN_DIR \
+if ! KNOSSOS_RELEASE_BASE="$REL" env -u KNOSSOS_BIN_DIR \
     sh "$ROOT/install.sh" --no-plugin --no-roots --data-dir="$DATA" --bin-dir="$BIN" --version="$OLD" > "$WORK/install.log" 2>&1 </dev/null; then
     printf 'FAIL the install failed\n'
     cat "$WORK/install.log"
     exit 1
 fi
 
-# kn ARGS: the installed launcher, against the local release directory.
+# kn ARGS: the installed launcher, against the local release directory, with
+# the graph in a directory of its own. The launcher finds the release through
+# the install directory it was written for, so a KNOSSOS_DATA_DIR elsewhere
+# changes where the graph goes and nothing else.
+GRAPH="$WORK/graph dir"
+mkdir -p "$GRAPH"
 kn() {
-    KNOSSOS_RELEASE_BASE="$REL" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$BIN/knossos" "$@" 2>&1 </dev/null
+    KNOSSOS_RELEASE_BASE="$REL" KNOSSOS_DATA_DIR="$GRAPH" KNOSSOS_ROOTS_FILE="$GRAPH/roots.json" "$BIN/knossos" "$@" 2>&1 </dev/null
 }
 
 out=$(kn self-update --check); status=$?
@@ -78,10 +83,16 @@ mv "$WORK/$NEW_ASSET" "$REL/"
 out=$(kn self-update --check); status=$?
 case $out in *"$NEW is available"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 10 ] && [ "$said" = yes ]; then pass '--check with a newer release exits 10 and names it'; else fail "--check, newer: $status, $out"; fi
-if grep -q "\"latest\": \"$NEW\"" "$DATA/update-check.json" 2>/dev/null; then pass '--check writes update-check.json'; else fail 'no update-check.json'; fi
+if grep -q "\"latest\": \"$NEW\"" "$DATA/update-check.json" 2>/dev/null && [ ! -e "$GRAPH/update-check.json" ]; then
+    pass '--check writes update-check.json to the install directory, not the graph directory'
+else
+    fail 'no update-check.json in the install directory, or one in the graph directory'
+fi
 
 out=$(kn session-brief "$WORK"); status=$?
 case $out in *"knossos $NEW is available (you have $OLD): run knossos self-update"*) pass 'the session brief carries the update line' ;; *) fail "brief: $status, $out" ;; esac
+kn doctor --json >/dev/null
+if [ -f "$GRAPH/knossos.sqlite" ] && [ ! -e "$DATA/knossos.sqlite" ]; then pass 'the graph is kept in KNOSSOS_DATA_DIR, apart from the release'; else fail "graph location: $(find "$GRAPH" "$DATA" -maxdepth 1 | tr '\n' ' ')"; fi
 
 out=$(kn self-update); status=$?
 got=$(kn version)
@@ -90,7 +101,7 @@ if [ "$status" -eq 0 ] && [ "$got" = "Knossos $NEW" ] && [ "$(readlink "$DATA/cu
 else
     fail "update: $status, $out, version said $got"
 fi
-if grep -q "\"version\": \"$NEW\"" "$DATA/install.json" && [ -d "$DATA/versions/$OLD" ]; then pass 'install.json follows and the previous version is kept'; else fail 'install.json or the kept version is wrong'; fi
+if grep -q "\"version\": \"$NEW\"" "$DATA/install.json" && [ -d "$DATA/versions/$OLD" ] && [ ! -e "$GRAPH/versions" ] && [ ! -e "$GRAPH/current" ]; then pass 'install.json follows and the previous version is kept'; else fail 'install.json or the kept version is wrong'; fi
 leftovers=$(find "$DATA" -name '*.partial*' -o -name '*.tmp.*' -o -name 'self-update.tmp' | head -n 3)
 if [ -z "$leftovers" ]; then pass 'no partial or temporary files are left'; else fail "left behind: $leftovers"; fi
 

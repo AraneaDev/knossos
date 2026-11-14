@@ -35,7 +35,7 @@ final class SelfUpdaterTest extends KnossosTestCase
         assertSame('1.0.0', $switch->previous());
         assertSame(['1.0.0', '2.0.0'], array_map('basename', glob($data . '/versions/*')));
         assertSame(1, $probe->doctorRuns);
-        assertSame('2.0.0', (new Installation($data, $data))->record()['version']);
+        assertSame('2.0.0', (new Installation($data . '/versions/1.0.0'))->record()['version']);
         assertSame('2.0.0', (new UpdateCheck($data))->read()['latest']);
         assertSame(false, file_exists($data . '/self-update.tmp'));
     }
@@ -134,7 +134,7 @@ final class SelfUpdaterTest extends KnossosTestCase
     #[Group('install')]
     public function testWithoutACurrentLinkThereIsNothingToUpdate(): void
     {
-        mkdir($this->work . '/empty');
+        mkdir($this->work . '/empty/versions/1.0.0', 0o755, true);
 
         $this->refused(fn() => $this->updater($this->work . '/empty')->update(null), 'no installed release');
         $this->refused(fn() => $this->updater($this->work . '/empty')->rollback(), 'no installed release');
@@ -152,7 +152,7 @@ final class SelfUpdaterTest extends KnossosTestCase
         $switch = new VersionSwitch($data);
         assertSame('1.0.0', $switch->current());
         assertSame('2.0.0', $switch->previous());
-        assertSame('1.0.0', (new Installation($data, $data))->record()['version']);
+        assertSame('1.0.0', (new Installation($data . '/versions/1.0.0'))->record()['version']);
 
         assertSame('2.0.0', $updater->rollback()['to']);
     }
@@ -241,7 +241,8 @@ final class SelfUpdaterTest extends KnossosTestCase
     private function updater(string $data, ?ReleaseProbe $probe = null): SelfUpdater
     {
         return new SelfUpdater(
-            new Installation($data, $data . '/versions/1.0.0'),
+            // Through `current` when there is one, the way the launcher starts the code.
+            new Installation(is_link($data . '/current') ? $data . '/current' : $data . '/versions/1.0.0'),
             new GitHubReleaseSource($this->work . '/r', null, self::PLATFORM),
             $probe ?? new FakeProbe(),
             self::PLATFORM,

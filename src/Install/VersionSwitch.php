@@ -8,7 +8,7 @@ use Knossos\Git\GitProcessRunner;
 use Throwable;
 
 /**
- * The versions on disk under a data directory, and which one `current` names.
+ * The versions on disk under an install directory, and which one `current` names.
  *
  * Layout, shared with install.sh: `versions/<v>/` holds an unpacked release,
  * `current` is a relative symlink to one of them, `install.json` records the
@@ -27,12 +27,12 @@ final class VersionSwitch
      */
     public static ?\Closure $betweenCheckAndEnter = null;
 
-    public function __construct(private readonly string $dataDir) {}
+    public function __construct(private readonly string $installDir) {}
 
     /** Where a version is unpacked. */
     public function versionDir(string $version): string
     {
-        return $this->dataDir . '/versions/' . $version;
+        return $this->installDir . '/versions/' . $version;
     }
 
     /** Whether a version is unpacked completely: a runnable `bin/knossos` and a matching `VERSION`. */
@@ -47,7 +47,7 @@ final class VersionSwitch
     /** The version `current` points at, or null when there is no such link or it points elsewhere. */
     public function current(): ?string
     {
-        $target = @readlink($this->dataDir . '/current');
+        $target = @readlink($this->installDir . '/current');
 
         return is_string($target) && preg_match('#^(?:\./)?versions/([^/]+)/?$#', $target, $match) === 1 ? $match[1] : null;
     }
@@ -55,7 +55,7 @@ final class VersionSwitch
     /** The version kept for rollback, when it is still there and complete. */
     public function previous(): ?string
     {
-        $version = trim((string) @file_get_contents($this->dataDir . '/previous-version'));
+        $version = trim((string) @file_get_contents($this->installDir . '/previous-version'));
 
         return $version !== '' && preg_match('/^[0-9A-Za-z.-]+$/', $version) === 1 && $this->isComplete($version) ? $version : null;
     }
@@ -82,8 +82,8 @@ final class VersionSwitch
                 throw new InstallException(sprintf('Unsafe or unexpected entry in the archive: %s', $entry));
             }
         }
-        if (!is_dir($this->dataDir . '/versions') && !@mkdir($this->dataDir . '/versions', 0o700, true) && !is_dir($this->dataDir . '/versions')) {
-            throw new InstallException('Could not create ' . $this->dataDir . '/versions');
+        if (!is_dir($this->installDir . '/versions') && !@mkdir($this->installDir . '/versions', 0o700, true) && !is_dir($this->installDir . '/versions')) {
+            throw new InstallException('Could not create ' . $this->installDir . '/versions');
         }
         $partial = $this->versionDir($version) . '.partial.' . getmypid();
         self::remove($partial);
@@ -281,10 +281,10 @@ final class VersionSwitch
      */
     public function snapshot(): array
     {
-        $link = @readlink($this->dataDir . '/current');
+        $link = @readlink($this->installDir . '/current');
         $files = [];
         foreach (['install.json', 'previous-version'] as $name) {
-            $bytes = is_file($this->dataDir . '/' . $name) ? @file_get_contents($this->dataDir . '/' . $name) : false;
+            $bytes = is_file($this->installDir . '/' . $name) ? @file_get_contents($this->installDir . '/' . $name) : false;
             $files[$name] = $bytes === false ? null : $bytes;
         }
 
@@ -299,7 +299,7 @@ final class VersionSwitch
     public function restore(array $snapshot): void
     {
         if ($snapshot['link'] === null) {
-            @unlink($this->dataDir . '/current');
+            @unlink($this->installDir . '/current');
         } else {
             $this->link($snapshot['link']);
         }
@@ -315,7 +315,7 @@ final class VersionSwitch
      */
     public function prune(array $keep): void
     {
-        foreach (glob($this->dataDir . '/versions/*', GLOB_ONLYDIR) ?: [] as $directory) {
+        foreach (glob($this->installDir . '/versions/*', GLOB_ONLYDIR) ?: [] as $directory) {
             $name = basename($directory);
             if (preg_match('/\.partial\.(\d+)$/', $name, $match) === 1) {
                 // Another run's unpack, unless that run is gone: a crash leaves a whole release behind.
@@ -341,18 +341,18 @@ final class VersionSwitch
     /** Replace `current` with a symlink to `$target` in one rename. */
     private function link(string $target): void
     {
-        $temporary = $this->dataDir . '/current.tmp.' . getmypid();
+        $temporary = $this->installDir . '/current.tmp.' . getmypid();
         @unlink($temporary);
-        if (!@symlink($target, $temporary) || !@rename($temporary, $this->dataDir . '/current')) {
+        if (!@symlink($target, $temporary) || !@rename($temporary, $this->installDir . '/current')) {
             @unlink($temporary);
-            throw new InstallException('Could not switch ' . $this->dataDir . '/current');
+            throw new InstallException('Could not switch ' . $this->installDir . '/current');
         }
     }
 
-    /** Write a file in the data directory atomically, or remove it for null. */
+    /** Write a file in the install directory atomically, or remove it for null. */
     private function write(string $name, ?string $bytes): void
     {
-        $path = $this->dataDir . '/' . $name;
+        $path = $this->installDir . '/' . $name;
         if ($bytes === null) {
             @unlink($path);
 
