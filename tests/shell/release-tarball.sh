@@ -61,6 +61,11 @@ for path in bin/knossos src migrations vendor/autoload.php workers/php/vendor/au
     [ -e "$TREE/$path" ] || present="$present $path"
 done
 if [ -z "$present" ]; then pass 'the runtime files are present'; else fail "missing:$present"; fi
+if [ -x "$TREE/launcher/knossos" ] && [ -x "$TREE/launcher/mcp-serve" ] && cmp -s "$TREE/launcher/mcp-serve" "$ROOT/tools/mcp-serve"; then
+    pass 'the launcher template and the mcp-serve wrapper ship, executable'
+else
+    fail 'launcher/knossos or launcher/mcp-serve is missing, not executable or not the one in tools/'
+fi
 
 # Production dependencies only: PHPUnit and vitest are dev dependencies.
 if [ ! -e "$TREE/vendor/phpunit" ] && [ ! -e "$TREE/workers/typescript/node_modules/vitest" ]; then

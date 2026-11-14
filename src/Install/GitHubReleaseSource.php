@@ -32,18 +32,23 @@ final class GitHubReleaseSource implements ReleaseSource
     /** @var callable(string, ?string): string */
     private $get;
 
+    /** @var callable(string): string */
+    private $resolve;
+
     /**
      * @param string|null $base defaults to `KNOSSOS_RELEASE_BASE`, then {@see DEFAULT_BASE}
      * @param (callable(string, ?string): string)|null $get returns the body of a URL, or writes it to the
      *        given file and returns an empty string; tests pass a fake
      * @param string|null $platform defaults to this host's
+     * @param (callable(string): string)|null $resolve returns the URL a URL finally redirects to; tests pass a fake
      */
-    public function __construct(?string $base = null, ?callable $get = null, private readonly ?string $platform = null)
+    public function __construct(?string $base = null, ?callable $get = null, private readonly ?string $platform = null, ?callable $resolve = null)
     {
         $base ??= (getenv('KNOSSOS_RELEASE_BASE') ?: self::DEFAULT_BASE);
         $this->remote = str_starts_with($base, 'http://') || str_starts_with($base, 'https://');
         $this->base = rtrim(str_starts_with($base, 'file://') ? substr($base, 7) : $base, '/');
         $this->get = $get ?? self::http(...);
+        $this->resolve = $resolve ?? self::finalUrl(...);
     }
 
     /** {@inheritDoc} */
@@ -53,7 +58,14 @@ final class GitHubReleaseSource implements ReleaseSource
             return $this->latestInDirectory();
         }
         if ($this->base !== self::DEFAULT_BASE) {
-            throw new InstallException('The latest release cannot be looked up on a custom release base; name a version with --version.');
+            // A mirror is asked the way install.sh asks it: `<base>/latest` redirects to `<base>/tag/v<version>`.
+            $final = ($this->resolve)($this->base . '/latest');
+            $tag = basename((string) parse_url($final, PHP_URL_PATH));
+            if (!str_starts_with($tag, 'v') || $final === $this->base . '/latest') {
+                throw new InstallException(sprintf('%s/latest did not lead to a release tag; name a version with --version.', $this->base));
+            }
+
+            return ReleaseAsset::assertVersion(substr($tag, 1));
         }
         $decoded = json_decode(($this->get)(self::LATEST_API, null), true);
         $tag = is_array($decoded) && is_string($decoded['tag_name'] ?? null) ? $decoded['tag_name'] : '';
@@ -95,6 +107,39 @@ final class GitHubReleaseSource implements ReleaseSource
         }
 
         return $newest;
+    }
+
+    /**
+     * Where a URL ends up after its redirects, read from the response headers only.
+     *
+     * @throws InstallException
+     */
+    private static function finalUrl(string $url): string
+    {
+        $context = stream_context_create(['http' => [
+            'method' => 'HEAD',
+            'timeout' => 10,
+            'follow_location' => 1,
+            'max_redirects' => 5,
+            'header' => "User-Agent: knossos-self-update\r\n",
+        ]]);
+        $headers = @get_headers($url, true, $context);
+        if ($headers === false) {
+            throw new InstallException(sprintf('Could not reach %s', $url));
+        }
+        $location = $headers['Location'] ?? $headers['location'] ?? null;
+        $last = is_array($location) ? end($location) : $location;
+        if (!is_string($last) || $last === '') {
+            return $url;
+        }
+        if (str_starts_with($last, '/')) {
+            // A path without a host: resolved against the URL that was asked.
+            $parts = parse_url($url);
+
+            return sprintf('%s://%s%s%s', $parts['scheme'] ?? 'https', $parts['host'] ?? '', isset($parts['port']) ? ':' . $parts['port'] : '', $last);
+        }
+
+        return $last;
     }
 
     /**

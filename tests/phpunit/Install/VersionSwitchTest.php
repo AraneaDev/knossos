@@ -431,17 +431,13 @@ PY;
         mkdir($partial . '/a', 0o755, true);
         file_put_contents($partial . '/a/inner', 'x');
         $origin = (string) getcwd();
-        VersionSwitch::$betweenCheckAndEnter = static function (string $entry) use ($outside): void {
+        $switch = new VersionSwitch($this->work, static function (string $entry) use ($outside): void {
             exec('rm -rf ' . escapeshellarg($entry));
             symlink($outside, $entry);
-        };
+        });
         $method = new \ReflectionMethod(VersionSwitch::class, 'removeFromInside');
 
-        try {
-            $this->refused(static fn() => $method->invoke(null, $partial), 'changed while it was being removed');
-        } finally {
-            VersionSwitch::$betweenCheckAndEnter = null;
-        }
+        $this->refused(static fn() => $method->invoke($switch, $partial), 'changed while it was being removed');
 
         assertSame(true, is_file($outside . '/keep'));
         assertSame($origin, getcwd());
@@ -455,16 +451,15 @@ PY;
         file_put_contents($partial . '/a/b/f', 'x');
         $origin = (string) getcwd();
         $seen = [];
-        VersionSwitch::$betweenCheckAndEnter = static function (string $entry) use (&$seen): void {
+        $switch = new VersionSwitch($this->work, static function (string $entry) use (&$seen): void {
             $seen[] = $entry;
-        };
+        });
         $method = new \ReflectionMethod(VersionSwitch::class, 'removeFromInside');
 
-        try {
-            $method->invoke(null, $partial);
-        } finally {
-            VersionSwitch::$betweenCheckAndEnter = null;
-        }
+        $method->invoke($switch, $partial);
+        // Another instance has no seam at all: nothing set on one switch reaches the next.
+        mkdir($partial . '/c', 0o755, true);
+        $method->invoke(new VersionSwitch($this->work), $partial);
 
         assertSame(['a', 'b'], $seen);
         assertSame(false, file_exists($partial));

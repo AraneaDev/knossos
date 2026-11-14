@@ -93,9 +93,27 @@ final class GitHubReleaseSourceTest extends KnossosTestCase
     }
 
     #[Group('install')]
-    public function testACustomRemoteBaseNeedsAVersion(): void
+    public function testACustomRemoteBaseIsAskedForItsLatestTheWayTheInstallerAsksIt(): void
     {
-        $source = new GitHubReleaseSource('https://mirror.example/releases', fn(): string => '');
-        $this->refused(fn() => $source->latest(), 'custom release base');
+        $asked = [];
+        $resolve = static function (string $url) use (&$asked): string {
+            $asked[] = $url;
+
+            return 'https://mirror.example/releases/tag/v0.49.0-rc.1';
+        };
+        $source = new GitHubReleaseSource('https://mirror.example/releases/', static fn(): string => '', null, $resolve);
+
+        assertSame('0.49.0-rc.1', $source->latest());
+        assertSame(['https://mirror.example/releases/latest'], $asked);
+    }
+
+    #[Group('install')]
+    public function testACustomRemoteBaseThatLeadsNowhereNeedsAVersion(): void
+    {
+        foreach (['https://mirror.example/releases/latest', 'https://mirror.example/releases/tag/nightly', 'https://mirror.example/releases/tag/v..'] as $final) {
+            $source = new GitHubReleaseSource('https://mirror.example/releases', static fn(): string => '', null, static fn(): string => $final);
+            $error = self::captureThrown(static fn() => $source->latest(), \Knossos\Install\InstallException::class);
+            assertSame(false, str_contains($error->getMessage(), 'api.github.com'), $final);
+        }
     }
 }

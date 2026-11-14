@@ -35,7 +35,7 @@
 # The shell has to read the closing brace before it runs any of it, so a
 # download cut off anywhere, even between main and its arguments, runs nothing.
 # Keep `main "$@"` inside the group. The group is not indented, to keep the
-# file short; this file is listed in file-length-baseline.json for that reason.
+# file short.
 # shellcheck disable=SC2317 # cleanup runs from a trap, which the `; exit` below hides from the check.
 {
 set -eu
@@ -110,12 +110,25 @@ resolve_latest() {
         tag=${final##*/}
         VERSION=${tag#v}
     else
+        # Ordered by PHP's version_compare, exactly as self-update orders a
+        # directory (GitHubReleaseSource::latestInDirectory): a final release
+        # comes after its pre-releases, and a name that is no version is
+        # skipped.
+        # shellcheck disable=SC2016 # the $-prefixed names in this php -r program are PHP variables.
         newest=$(
             for file in "$BASE"/knossos-*-"$OS"-"$ARCH".tar.gz; do
                 [ -e "$file" ] || continue
                 stem=${file##*/knossos-}
                 printf '%s\n' "${stem%-"$OS"-"$ARCH".tar.gz}"
-            done | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1
+            done | php -r '
+$newest = null;
+foreach (file("php://stdin", FILE_IGNORE_NEW_LINES) ?: [] as $version) {
+    if (preg_match("/^[0-9]+(\\.[0-9]+)*(-[0-9A-Za-z.-]+)?\$/", $version) === 1 && ($newest === null || version_compare($version, $newest, ">"))) {
+        $newest = $version;
+    }
+}
+echo $newest ?? "";
+'
         )
         [ -n "$newest" ] || die "no release asset knossos-<version>-$OS-$ARCH.tar.gz in $BASE"
         VERSION=$newest
@@ -205,7 +218,7 @@ cleanup() {
     rm -rf "$TMP"
     remove_partial
     if [ -n "$BIN_DIR" ]; then rm -f "$BIN_DIR/.knossos.tmp.$$"; fi
-    if [ -n "$DATA_DIR" ]; then rm -f "$DATA_DIR/install.json.tmp.$$" "$DATA_DIR/current.tmp.$$"; fi
+    if [ -n "$DATA_DIR" ]; then rm -f "$DATA_DIR/install.json.tmp.$$" "$DATA_DIR/current.tmp.$$" "$DATA_DIR/previous-version.tmp.$$"; fi
 }
 
 # Point a link at a target in one atomic step: build the new symlink under a
@@ -269,6 +282,57 @@ rollback_switch() {
     else
         rm -f "$BIN_DIR/knossos"
     fi
+}
+
+# Whether a process is running. A process of another user answers kill -0
+# with a permission error, which still means it is there; that is what
+# VersionSwitch::alive concludes too.
+process_alive() {
+    kill -0 "$1" 2>/dev/null && return 0
+    case $(LC_ALL=C kill -0 "$1" 2>&1) in
+        *ermitted* | *ermission*) return 0 ;;
+    esac
+    return 1
+}
+
+# Record the version this run replaced as the one to roll back to, and drop
+# every other version, the way self-update does (VersionSwitch::prune): kept
+# are the new version and the previous one, and partial unpacks of runs that
+# are still alive; a partial whose run is gone is removed. Reinstalling the
+# version that is already current replaces nothing, so the version recorded
+# before stays the previous one.
+record_previous_and_prune() {
+    replaced=''
+    case $PREV_LINK in
+        versions/*/* | ./versions/*/*) ;;
+        versions/* | ./versions/*) replaced=${PREV_LINK#./}; replaced=${replaced#versions/} ;;
+    esac
+    if [ -n "$replaced" ] && [ "$replaced" != "$VERSION" ] && [ -d "$DATA_DIR/versions/$replaced" ]; then
+        if ! { printf '%s\n' "$replaced" > "$DATA_DIR/previous-version.tmp.$$" \
+            && mv -f "$DATA_DIR/previous-version.tmp.$$" "$DATA_DIR/previous-version"; }; then
+            rm -f "$DATA_DIR/previous-version.tmp.$$"
+            warn 'could not record the previous version for knossos self-update --rollback'
+        fi
+        keep=$replaced
+    else
+        keep=$(cat "$DATA_DIR/previous-version" 2>/dev/null || true)
+    fi
+    for dir in "$DATA_DIR"/versions/*; do
+        if [ ! -d "$dir" ] || [ -L "$dir" ]; then continue; fi
+        name=${dir##*/}
+        case $name in
+            *.partial.*)
+                pid=${name##*.partial.}
+                case $pid in '' | *[!0-9]*) continue ;; esac
+                if process_alive "$pid"; then continue; fi
+                ;;
+            *)
+                if [ "$name" = "$VERSION" ] || [ "$name" = "$keep" ]; then continue; fi
+                ;;
+        esac
+        chmod -R u+rwx "$dir" 2>/dev/null || true
+        rm -rf "$dir" || warn "could not remove the old version $dir"
+    done
 }
 
 # A JSON string for a path: quote and backslash escaped. Control characters
@@ -636,6 +700,7 @@ main() {
         # Installed and working: the steps below are best effort and never undo it.
         SWITCHED=0
         log "$installed"
+        record_previous_and_prune
     else
         die "the installed launcher does not run ($installed); the previous state was restored"
     fi
@@ -654,11 +719,13 @@ main() {
         # to <data dir>/plugin and its hooks call the launcher, so a later
         # self-update, which rewrites that same directory, never leaves them
         # on an old release or pointing at a deleted one.
+        # What it printed is kept, and shown only when it fails.
         if KNOSSOS_DATA_DIR="$DATA_DIR" "$LAUNCHER" install-agent-plugin --data-dir="$DATA_DIR" \
-            --plugin-dir="$DATA_DIR/plugin" --bin="$LAUNCHER" --execute >/dev/null 2>&1 </dev/null; then
+            --plugin-dir="$DATA_DIR/plugin" --bin="$LAUNCHER" --execute > "$TMP/plugin.out" 2>&1 </dev/null; then
             log 'plugin installed'
         else
-            warn "the plugin was not installed; run: $LAUNCHER install-agent-plugin --data-dir=\"$DATA_DIR\" --execute"
+            sed 's/^/  /' "$TMP/plugin.out" >&2
+            warn "the plugin was not installed (output above); run: $LAUNCHER install-agent-plugin --data-dir=\"$DATA_DIR\" --execute"
         fi
         if command -v claude >/dev/null 2>&1; then
             say 'Registering the MCP server with Claude Code...'

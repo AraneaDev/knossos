@@ -83,6 +83,28 @@ out=$(KNOSSOS_INSTALL_DIR="$OTHER" "$LAUNCHER" x 2>&1); status=$?
 case $out in *release:2.0.0*) moved=yes ;; *) moved=no ;; esac
 if [ "$status" -eq 0 ] && [ "$moved" = yes ]; then pass 'KNOSSOS_INSTALL_DIR overrides the baked install directory'; else fail "install dir override (status $status, output $out)"; fi
 
+# `serve` goes through the release's mcp-serve wrapper when it has one, with
+# the arguments after `serve`; a release without one runs bin/knossos serve.
+out=$("$LAUNCHER" serve --allow-root=/x 2>&1); status=$?
+case $out in 'args:[serve][--allow-root=/x]'*) plain=yes ;; *) plain=no ;; esac
+mkdir -p "$DATA/versions/1.0.0/launcher"
+cat > "$DATA/versions/1.0.0/launcher/mcp-serve" <<'WRAP'
+#!/bin/sh
+printf 'wrapper:'
+for a in "$@"; do printf '[%s]' "$a"; done
+printf '\n'
+WRAP
+chmod +x "$DATA/versions/1.0.0/launcher/mcp-serve"
+wrapped=$("$LAUNCHER" serve --allow-root=/x 2>&1)
+other=$("$LAUNCHER" version 2>&1)
+case $other in 'args:[version]'*) direct=yes ;; *) direct=no ;; esac
+if [ "$status" -eq 0 ] && [ "$plain" = yes ] && [ "$wrapped" = 'wrapper:[--allow-root=/x]' ] && [ "$direct" = yes ]; then
+    pass 'serve runs the release mcp-serve wrapper when there is one, every other command runs bin/knossos'
+else
+    fail "serve routing: plain $out, wrapped $wrapped, other $other"
+fi
+rm -rf "${DATA:?}/versions/1.0.0/launcher"
+
 # No current: one line, status 1.
 EMPTY="$WORK/empty"
 mkdir -p "$EMPTY"

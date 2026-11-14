@@ -703,6 +703,7 @@ php	tests/phpunit/Install/InstallFixtures.php
 php	tests/phpunit/Install/InstallationTest.php
 php	tests/phpunit/Install/ProcessReleaseProbeTest.php
 php	tests/phpunit/Install/ReleaseAssetTest.php
+php	tests/phpunit/Install/ReleaseTarballSourcesTest.php
 php	tests/phpunit/Install/SelfUpdateRefreshTest.php
 php	tests/phpunit/Install/SelfUpdaterTest.php
 php	tests/phpunit/Install/UpdateNoticeTest.php

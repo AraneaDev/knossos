@@ -271,6 +271,38 @@ jobs:
           mv dist/SHA256SUMS "dist/$PLATFORM.sha256"
           ls -l dist
 
+      # Each tarball is started on its own runner before anything is published,
+      # so a broken macOS build fails here rather than at a user's doctor step.
+      # In a real release it must also hold the version of the tag it is
+      # attached to: the installer downloads knossos-<tag without v>-*.
+      - name: Start the tarball and check its version
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          smoke=$(mktemp -d)
+          set -- dist/knossos-*-"$PLATFORM".tar.gz
+          tar -xzf "$1" -C "$smoke"
+          set -- "$smoke"/knossos-*
+          if [ "$#" -ne 1 ] || [ ! -d "$1" ]; then
+            echo "::error::expected one top directory in the $PLATFORM tarball"
+            exit 1
+          fi
+          tree=$1
+          inside=$(cat "$tree/VERSION")
+          if [ "$DRY_RUN" != true ] && [ "$inside" != "${TAG#v}" ]; then
+            echo "::error::the $PLATFORM tarball holds version $inside, but the release tag is $TAG"
+            exit 1
+          fi
+          mkdir "$smoke/data"
+          said=$(KNOSSOS_DATA_DIR="$smoke/data" KNOSSOS_ROOTS_FILE="$smoke/data/roots.json" "$tree/bin/knossos" version)
+          if [ "$said" != "Knossos $inside" ]; then
+            echo "::error::bin/knossos version said '$said', VERSION says $inside"
+            exit 1
+          fi
+          KNOSSOS_DATA_DIR="$smoke/data" KNOSSOS_ROOTS_FILE="$smoke/data/roots.json" "$tree/bin/knossos" doctor --json
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tarball-${{ matrix.platform }}

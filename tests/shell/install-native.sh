@@ -391,8 +391,50 @@ GARBAGE="$WORK/garbage release"
 mkdir -p "$GARBAGE"
 : > "$GARBAGE/knossos-a..b-$HOST_OS-$HOST_ARCH.tar.gz"
 out=$(BASE_OVERRIDE=$GARBAGE run_install "$WORK/garbage-target"); status=$?
-case $out in *"not a valid version"*) said=yes ;; *) said=no ;; esac
-if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/garbage-target" ]; then pass 'a latest that resolves to garbage is refused'; else fail "garbage latest: status $status, output $out"; fi
+case $out in *"no release asset"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/garbage-target" ]; then pass 'a name that is no version is never taken for the latest'; else fail "garbage latest: status $status, output $out"; fi
+
+# A final release comes after its pre-release, as self-update orders them.
+PRE="$WORK/pre release"
+mkdir -p "$PRE"
+cp "$RELEASE/$ASSET" "$RELEASE/SHA256SUMS" "$PRE/"
+: > "$PRE/knossos-$VERSION-rc.1-$HOST_OS-$HOST_ARCH.tar.gz"
+out=$(BASE_OVERRIDE=$PRE run_install "$WORK/pre-target"); status=$?
+if [ "$status" -eq 0 ] && [ "$(readlink "$WORK/pre-target/data dir/current")" = "versions/$VERSION" ]; then
+    pass 'the latest in a directory is the final release, not its pre-release'
+else
+    fail "pre-release ordering: status $status, output $out"
+fi
+
+# ---- previous-version and pruning, as self-update does them -----------------
+
+# stub_version DIR V: a complete stand-in version under DIR/versions.
+stub_version() {
+    mkdir -p "$1/versions/$2/bin"
+    printf '#!/bin/sh\necho "Knossos %s"\n' "$2" > "$1/versions/$2/bin/knossos"
+    chmod +x "$1/versions/$2/bin/knossos"
+    printf '%s\n' "$2" > "$1/versions/$2/VERSION"
+}
+TP2="$WORK/prune"
+stub_version "$TP2/data dir" 0.0.1
+stub_version "$TP2/data dir" 0.0.0
+mkdir -p "$TP2/data dir/versions/0.0.2.partial.2147483646/bin"
+ln -s versions/0.0.1 "$TP2/data dir/current"
+printf '0.0.0\n' > "$TP2/data dir/previous-version"
+out=$(run_install "$TP2" --version="$VERSION"); status=$?
+kept=$(cd "$TP2/data dir/versions" && printf '%s ' *)
+if [ "$status" -eq 0 ] && [ "$(cat "$TP2/data dir/previous-version")" = 0.0.1 ] && [ "$kept" = "0.0.1 $VERSION " ]; then
+    pass 'an install records the version it replaced as previous-version and prunes the rest, a dead partial included'
+else
+    fail "previous-version and prune: status $status, previous $(cat "$TP2/data dir/previous-version" 2>&1), kept: $kept"
+fi
+out=$(run_install "$TP2" --version="$VERSION"); status=$?
+kept=$(cd "$TP2/data dir/versions" && printf '%s ' *)
+if [ "$status" -eq 0 ] && [ "$(cat "$TP2/data dir/previous-version")" = 0.0.1 ] && [ "$kept" = "0.0.1 $VERSION " ]; then
+    pass 'reinstalling the current version keeps the previous one'
+else
+    fail "reinstall: status $status, previous $(cat "$TP2/data dir/previous-version" 2>&1), kept: $kept"
+fi
 
 # ---- an apostrophe in the data dir -----------------------------------------
 

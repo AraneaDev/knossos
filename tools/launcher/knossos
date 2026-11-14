@@ -6,7 +6,8 @@
 # install.json. self-update rewrites it the same way from the new release. It
 # never searches PATH for itself, and in native mode it starts no process
 # besides the final exec: the mode is read from install.json with shell
-# pattern matching.
+# pattern matching. `serve` is the one exception: it runs the release's
+# mcp-serve wrapper, which starts the server and logs what happens to it.
 #
 # Two different directories, kept apart on purpose:
 #   - the install directory, baked in below, is where the release lives. It is
@@ -56,6 +57,14 @@ case $mode in
         if [ ! -x "$INSTALL_DIR/current/bin/knossos" ]; then
             echo "knossos: no installed release found in $INSTALL_DIR; re-run the installer to repair it." >&2
             exit 1
+        fi
+        # The MCP server goes through the release's mcp-serve wrapper, as a
+        # checkout's registration does through tools/mcp-serve: it logs start,
+        # signals, stderr and the exit status to $KNOSSOS_DATA_DIR/mcp-serve.log,
+        # which is all there is to go on when a host only says "disconnected".
+        if [ "${1-}" = serve ] && [ -x "$INSTALL_DIR/current/launcher/mcp-serve" ]; then
+            shift
+            exec "$INSTALL_DIR/current/launcher/mcp-serve" "$@"
         fi
         exec "$INSTALL_DIR/current/bin/knossos" "$@"
         ;;

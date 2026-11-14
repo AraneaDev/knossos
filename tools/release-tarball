@@ -14,9 +14,10 @@ set -eu
 # The dependency trees are built in a temporary staging directory, never taken
 # from this working tree, so a developer's dev dependencies cannot leak in.
 # The file list mirrors the `sources` stage of the Dockerfile; keep the two in
-# step. The one addition is launcher/knossos, the template install.sh writes
-# to the bin directory, which has to travel with the release because the
-# installer runs without a checkout.
+# step (tests/phpunit/Install/ReleaseTarballSourcesTest holds them to each
+# other). The additions are launcher/knossos, the template install.sh writes
+# to the bin directory, and launcher/mcp-serve, the server's logging wrapper,
+# which have to travel with the release because it runs without a checkout.
 #
 # Needs: php, composer, node, npm, tar, and cargo for the Rust worker.
 
@@ -50,12 +51,15 @@ for tool in php composer node npm tar; do
 done
 command -v cargo >/dev/null 2>&1 || die 'cargo is required to build the Rust worker; install Rust 1.82 or newer and retry'
 
-if [ -z "$VERSION" ]; then
-    # From the source, not from running bin/knossos: a fresh checkout on a
-    # build runner has no dependencies installed, so the program cannot start.
-    VERSION=$(sed -n "s/^.*const CURRENT = '\\([^']*\\)'.*\$/\\1/p" "$ROOT/src/Runtime/Version.php")
-    [ -n "$VERSION" ] || die 'could not read the version from src/Runtime/Version.php'
-fi
+# The version in a Version.php. From the source, not from running bin/knossos:
+# a fresh checkout on a build runner has no dependencies installed, so the
+# program cannot start.
+read_version() {
+    sed -n "s/^.*const CURRENT = '\\([^']*\\)'.*\$/\\1/p" "$1"
+}
+SOURCE_VERSION=$(read_version "$ROOT/src/Runtime/Version.php")
+[ -n "$SOURCE_VERSION" ] || die 'could not read the version from src/Runtime/Version.php'
+[ -n "$VERSION" ] || VERSION=$SOURCE_VERSION
 case $VERSION in
     *[!0-9A-Za-z._+-]* | '') die "the version may only hold letters, digits and . _ + -: $VERSION" ;;
 esac
@@ -127,6 +131,17 @@ copy_tree \
 
 mkdir -p "$TREE/launcher"
 cp "$ROOT/tools/launcher/knossos" "$TREE/launcher/knossos"
+# The MCP server's logging wrapper, which the launcher's `serve` runs. It finds
+# bin/knossos one directory up, which is the release root from launcher/.
+cp "$ROOT/tools/mcp-serve" "$TREE/launcher/mcp-serve"
+
+# A --version other than the source's is written into the staged source too,
+# so `bin/knossos version` and VERSION always agree in a tarball: self-update
+# checks a release by asking it its version.
+if [ "$VERSION" != "$SOURCE_VERSION" ]; then
+    sed "s/^\(.*const CURRENT = '\)[^']*\('.*\)\$/\1$VERSION\2/" "$ROOT/src/Runtime/Version.php" > "$TREE/src/Runtime/Version.php"
+    [ "$(read_version "$TREE/src/Runtime/Version.php")" = "$VERSION" ] || die "could not write version $VERSION into the staged src/Runtime/Version.php"
+fi
 
 # Production dependencies, installed in the staging tree. The autoloader is
 # authoritative: the classmap is written after the sources are in place, so
@@ -158,7 +173,8 @@ chmod 0755 \
     "$TREE/workers/typescript/bin/worker.js" \
     "$TREE/workers/python/bin/worker.py" \
     "$TREE/workers/rust/bin/knossos-rust-worker" \
-    "$TREE/launcher/knossos"
+    "$TREE/launcher/knossos" \
+    "$TREE/launcher/mcp-serve"
 
 printf '%s\n' "$VERSION" > "$TREE/VERSION"
 

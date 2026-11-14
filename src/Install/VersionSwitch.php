@@ -20,14 +20,12 @@ use Throwable;
 final class VersionSwitch
 {
     /**
-     * Test seam, never set in production: called with the entry name between the
-     * `lstat` and the `chdir` of {@see emptyHere()}, to stand in for a concurrent swap.
-     *
-     * @var (\Closure(string): void)|null
+     * @param string $installDir the directory holding `versions/`, `current` and the records
+     * @param (\Closure(string): void)|null $beforeEnter called with an entry's name between the `lstat` and the
+     *        `chdir` of {@see emptyHere()}. Only a test passes one, to stand in for a concurrent swap; it belongs to
+     *        this instance alone, so nothing else in the process can reach it.
      */
-    public static ?\Closure $betweenCheckAndEnter = null;
-
-    public function __construct(private readonly string $installDir) {}
+    public function __construct(private readonly string $installDir, private readonly ?\Closure $beforeEnter = null) {}
 
     /** Where a version is unpacked. */
     public function versionDir(string $version): string
@@ -86,24 +84,24 @@ final class VersionSwitch
             throw new InstallException('Could not create ' . $this->installDir . '/versions');
         }
         $partial = $this->versionDir($version) . '.partial.' . getmypid();
-        self::remove($partial);
+        $this->remove($partial);
         if (!@mkdir($partial, 0o700)) {
             throw new InstallException('Could not create ' . $partial);
         }
         try {
             $runner->run(['tar', '-xzf', $archive, '-C', $partial, '--strip-components=1'], 300_000, 'archive unpack');
         } catch (Throwable $error) {
-            self::remove($partial);
+            $this->remove($partial);
             throw new InstallException(sprintf('Could not unpack the archive: %s', self::reason($error)), 0, $error);
         }
         try {
             self::assertInside((string) realpath($partial));
         } catch (InstallException $error) {
-            self::remove($partial);
+            $this->remove($partial);
             throw $error;
         }
         if (!is_executable($partial . '/bin/knossos') || trim((string) @file_get_contents($partial . '/VERSION')) !== $version) {
-            self::remove($partial);
+            $this->remove($partial);
             throw new InstallException(sprintf('The archive does not hold a complete release of %s', $version));
         }
 
@@ -232,15 +230,15 @@ final class VersionSwitch
     {
         $target = $this->versionDir($version);
         if (file_exists($target) && !$this->isComplete($version)) {
-            self::remove($target);
+            $this->remove($target);
         }
         if (file_exists($target)) {
-            self::remove($partial);
+            $this->remove($partial);
 
             return;
         }
         if (!@rename($partial, $target)) {
-            self::remove($partial);
+            $this->remove($partial);
             throw new InstallException('Could not move the unpacked release to ' . $target);
         }
     }
@@ -248,7 +246,7 @@ final class VersionSwitch
     /** Delete an unpacked directory that will not become a version. */
     public function discard(string $partial): void
     {
-        self::remove($partial);
+        $this->remove($partial);
     }
 
     /**
@@ -328,10 +326,10 @@ final class VersionSwitch
             if (preg_match('/\.partial\.(\d+)$/', $name, $match) === 1) {
                 // Another run's unpack, unless that run is gone: a crash leaves a whole release behind.
                 if (!self::alive((int) $match[1])) {
-                    self::remove($directory);
+                    $this->remove($directory);
                 }
             } elseif (!in_array($name, $keep, true)) {
-                self::remove($directory);
+                $this->remove($directory);
             }
         }
     }
@@ -374,26 +372,27 @@ final class VersionSwitch
     }
 
     /** Delete a file, a link or a directory tree, without following links. */
-    private static function remove(string $path): void
+    private function remove(string $path): void
     {
         self::removeByPath($path);
         if (file_exists($path) || is_link($path)) {
             // Left behind: a tree deeper than PATH_MAX cannot be reached by its full path.
-            self::removeFromInside($path);
+            $this->removeFromInside($path);
         }
     }
 
     /** Delete a tree by full paths, which works as long as none of them is longer than PATH_MAX. */
     private static function removeByPath(string $path): void
     {
-        if (is_link($path) || !is_dir($path)) {
+        $seen = @lstat($path);
+        if ($seen === false || !self::isDirectory($seen)) {
             // Files, links and the odd entry a hostile archive carries, a fifo or a device node.
             @unlink($path);
 
             return;
         }
         // A directory the archive made unreadable still has to go: open it up on the way down.
-        @chmod($path, 0o700);
+        self::openUp($path, $seen);
         foreach (scandir($path) ?: [] as $entry) {
             if ($entry !== '.' && $entry !== '..') {
                 self::removeByPath($path . '/' . $entry);
@@ -409,7 +408,7 @@ final class VersionSwitch
      * so no call sees a path longer than PATH_MAX. Links are removed, never
      * entered, and the working directory is put back whatever happens.
      */
-    private static function removeFromInside(string $path): void
+    private function removeFromInside(string $path): void
     {
         $origin = getcwd();
         if ($origin === false || is_link($path) || !is_dir($path)) {
@@ -418,7 +417,7 @@ final class VersionSwitch
         $absolute = str_starts_with($path, '/') ? $path : $origin . '/' . $path;
         try {
             if (@chdir($absolute)) {
-                self::emptyHere();
+                $this->emptyHere();
             }
         } finally {
             chdir($origin);
@@ -436,32 +435,57 @@ final class VersionSwitch
      *
      * @throws InstallException when an entry was replaced between the check and the descent
      */
-    private static function emptyHere(): void
+    private function emptyHere(): void
     {
         foreach (scandir('.') ?: [] as $entry) {
             if ($entry === '.' || $entry === '..') {
                 continue;
             }
-            if (is_link($entry) || !is_dir($entry)) {
+            $seen = @lstat($entry);
+            if ($seen === false || !self::isDirectory($seen)) {
                 @unlink($entry);
 
                 continue;
             }
-            @chmod($entry, 0o700);
-            $seen = @lstat($entry);
-            if (self::$betweenCheckAndEnter !== null) {
-                (self::$betweenCheckAndEnter)($entry);
+            self::openUp($entry, $seen);
+            if ($this->beforeEnter !== null) {
+                ($this->beforeEnter)($entry);
             }
-            if ($seen !== false && @chdir($entry)) {
+            if (@chdir($entry)) {
                 if (!self::isSameDirectory($seen)) {
                     // Not going back by name: `..` of a swapped-in directory is somewhere else.
                     // The caller's `finally` puts the working directory back.
                     throw new InstallException('A directory changed while it was being removed; nothing more was deleted');
                 }
-                self::emptyHere();
+                $this->emptyHere();
                 chdir('..');
             }
             @rmdir($entry);
+        }
+    }
+
+    /** Whether an `lstat` describes a directory itself, not a link to one. @param array<int|string, int> $seen */
+    private static function isDirectory(array $seen): bool
+    {
+        return ($seen['mode'] & 0o170000) === 0o040000;
+    }
+
+    /**
+     * Give the owner read, write and search on a directory that lacks them, so it can be emptied.
+     *
+     * `chmod` follows links, and PHP has no `lchmod` on Linux. It is called
+     * only on what the `lstat` just before saw as a directory, and only when
+     * that directory needs it, which a release unpacked by tar almost never
+     * does: the window in which a swap for a link could redirect it is then
+     * confined to hostile archives, and the swap is still caught before
+     * anything is entered (see {@see emptyHere()}).
+     *
+     * @param array<int|string, int> $seen
+     */
+    private static function openUp(string $path, array $seen): void
+    {
+        if (($seen['mode'] & 0o700) !== 0o700) {
+            @chmod($path, 0o700);
         }
     }
 

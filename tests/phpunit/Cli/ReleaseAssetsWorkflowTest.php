@@ -77,6 +77,23 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
     }
 
     #[Group('packaging')]
+    public function testEveryTarballIsStartedAndTiedToTheTagBeforeItIsUploaded(): void
+    {
+        $tarballs = $this->job($this->workflow(), 'tarballs');
+        $smoke = strpos($tarballs, 'name: Start the tarball and check its version');
+        $upload = strpos($tarballs, 'uses: actions/upload-artifact@');
+        self::assertNotFalse($smoke);
+        self::assertNotFalse($upload);
+        self::assertLessThan($upload, $smoke);
+        $step = substr($tarballs, $smoke, $upload - $smoke);
+        self::assertStringContainsString('TAG: ${{ needs.release-please.outputs.tag_name }}', $step);
+        self::assertStringContainsString('if [ "$DRY_RUN" != true ] && [ "$inside" != "${TAG#v}" ]; then', $step);
+        self::assertStringContainsString('"$tree/bin/knossos" version)', $step);
+        self::assertStringContainsString('"$tree/bin/knossos" doctor --json', $step);
+        self::assertStringContainsString('KNOSSOS_DATA_DIR="$smoke/data"', $step);
+    }
+
+    #[Group('packaging')]
     public function testEveryActionIsPinnedByCommit(): void
     {
         preg_match_all('#^\s*(?:- )?uses: (\S+)#m', $this->workflow(), $uses);
