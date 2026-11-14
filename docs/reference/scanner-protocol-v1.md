@@ -147,6 +147,37 @@ Each contribution has one stable owner key and lists node facts, unresolved edge
 facts, and diagnostics. Re-emitting an owner replaces that owner's previous
 facts atomically during reconciliation.
 
+#### Function signatures
+
+A `function` or `method` node may carry a `signature` attribute, the signature
+as the source writes it:
+
+```json
+{
+    "params": [
+        { "name": "root", "type": "string" },
+        { "name": "limit", "type": "number", "optional": true },
+        { "name": "rest", "type": "string[]", "variadic": true }
+    ],
+    "returns": "Promise<void>"
+}
+```
+
+- `type` and `returns` are the annotations written, on one line. Nothing is
+  inferred: a parameter without an annotation has no `type`, and a function
+  that declares no return type has no `returns`. A signature therefore reads
+  the same whether or not the project's dependencies are installed.
+- `optional` marks a parameter a caller may leave out, `variadic` one that
+  takes the rest. A receiver the caller does not pass (`this`, `self`) is not
+  listed. A destructured parameter is named by its shape, `{…}` or `[…]`.
+- At most 12 parameters are listed and a type's text is at most 80 characters.
+  A signature that lost a parameter or part of a type says `"truncated": true`.
+- Control characters and line separators in a type are replaced by a space:
+  the text is shown to an agent as one line.
+
+The packaged TypeScript worker sends it. A node whose function cannot be read,
+such as a property assigned the result of a call, has no `signature`.
+
 #### Repeated edges
 
 A worker reports an edge once per site it saw: `helper(); helper();` is two
