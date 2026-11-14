@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.47.0](https://github.com/AraneaDev/knossos/compare/v0.46.0...v0.47.0) (2026-11-14)
+
+
+### Features
+
+* answer a function with the line to call it by ([#494](https://github.com/AraneaDev/knossos/issues/494)) ([fa6af0f](https://github.com/AraneaDev/knossos/commit/fa6af0fdf71f4bcdc071534bdd03b8c1cf26c92a))
+* put the signature of a PHP function on its node ([#492](https://github.com/AraneaDev/knossos/issues/492)) ([5f335e7](https://github.com/AraneaDev/knossos/commit/5f335e75e5c877f83fd2db02522ef6d3f4caff1e))
+* put the signature of a Python function on its node ([#493](https://github.com/AraneaDev/knossos/issues/493)) ([ef427ea](https://github.com/AraneaDev/knossos/commit/ef427ea7147a5be30004e85aa2b24b18a92e2cd3))
+* put the signature of a Rust function on its node ([#495](https://github.com/AraneaDev/knossos/issues/495)) ([e0711d3](https://github.com/AraneaDev/knossos/commit/e0711d3fea38860012570fb01e57a833dd0a1cd2))
+* put the signature of a TypeScript function on its node ([#490](https://github.com/AraneaDev/knossos/issues/490)) ([16acc3c](https://github.com/AraneaDev/knossos/commit/16acc3c630a4778d6ab1781f66919121b95dc887))
+* record a class asked for with Angular's inject() as an injection ([#488](https://github.com/AraneaDev/knossos/issues/488)) ([7ca87da](https://github.com/AraneaDev/knossos/commit/7ca87dad8c0d3c72c9759e79a2ce2c812eee6d13))
+* show how a function is called on its detail card in the pane ([#496](https://github.com/AraneaDev/knossos/issues/496)) ([d2d627c](https://github.com/AraneaDev/knossos/commit/d2d627c12e90b32729a4e98494b069274bd6650c))
+
+
+### Fixes
+
+* name a class from an uninstalled package by its import, not as unknown ([#489](https://github.com/AraneaDev/knossos/issues/489)) ([13a8cda](https://github.com/AraneaDev/knossos/commit/13a8cda08bf31c8976e40b3ec3562eb195d7dda6))
+
 ## [0.46.0](https://github.com/AraneaDev/knossos/compare/v0.45.0...v0.46.0) (2026-11-14)
 
 
