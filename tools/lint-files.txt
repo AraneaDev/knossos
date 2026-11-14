@@ -18,6 +18,7 @@ shell	tests/shell/mutation-gate.sh
 shell	tests/shell/quality-verdict.sh
 shell	tests/shell/release-pr.sh
 shell	tests/shell/release-rollback.sh
+shell	tests/shell/release-tarball.sh
 shell	tests/shell/session-brief-hook.sh
 shell	tools/benchmark
 shell	tools/chaos-loop
@@ -39,6 +40,7 @@ shell	tools/quality
 shell	tools/quality-container
 shell	tools/quality-deps-key
 shell	tools/release-lifecycle
+shell	tools/release-tarball
 shell	tools/runtime-image-key
 shell	tools/supply-chain
 shell	web/fixtures/knossos-run.sh

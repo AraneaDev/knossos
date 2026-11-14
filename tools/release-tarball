@@ -1,0 +1,187 @@
+#!/bin/sh
+set -eu
+
+# Build the release tarball for this platform.
+#
+#   tools/release-tarball --out DIR [--version V]
+#
+# Writes DIR/knossos-<version>-<os>-<arch>.tar.gz and appends (or replaces) its
+# line in DIR/SHA256SUMS. The archive holds one top directory,
+# knossos-<version>/, with everything a host that has PHP, Node and Python
+# needs to run Knossos without a checkout: the sources, production dependencies
+# only, the compiled Rust worker and the files the plugin is materialised from.
+#
+# The dependency trees are built in a temporary staging directory, never taken
+# from this working tree, so a developer's dev dependencies cannot leak in.
+# The file list mirrors the `sources` stage of the Dockerfile; keep the two in
+# step. The one addition is launcher/knossos, the template install.sh writes
+# to the bin directory, which has to travel with the release because the
+# installer runs without a checkout.
+#
+# Needs: php, composer, node, npm, tar, and cargo for the Rust worker.
+
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+
+die() {
+    printf 'release-tarball: %s\n' "$1" >&2
+    exit 1
+}
+
+OUT=''
+VERSION=''
+while [ $# -gt 0 ]; do
+    case $1 in
+        --out=*) OUT=${1#--out=} ;;
+        --out) [ $# -ge 2 ] || die '--out needs a directory'; OUT=$2; shift ;;
+        --version=*) VERSION=${1#--version=} ;;
+        --version) [ $# -ge 2 ] || die '--version needs a value'; VERSION=$2; shift ;;
+        -h | --help)
+            echo 'usage: tools/release-tarball --out DIR [--version V]'
+            exit 0
+            ;;
+        *) die "unknown argument: $1" ;;
+    esac
+    shift
+done
+[ -n "$OUT" ] || die 'usage: tools/release-tarball --out DIR [--version V]'
+
+for tool in php composer node npm tar; do
+    command -v "$tool" >/dev/null 2>&1 || die "$tool is required to build a release"
+done
+command -v cargo >/dev/null 2>&1 || die 'cargo is required to build the Rust worker; install Rust 1.82 or newer and retry'
+
+if [ -z "$VERSION" ]; then
+    VERSION=$(php "$ROOT/bin/knossos" version | sed -n 's/^Knossos //p')
+    [ -n "$VERSION" ] || die 'could not read the version from bin/knossos version'
+fi
+case $VERSION in
+    *[!0-9A-Za-z._+-]* | '') die "the version may only hold letters, digits and . _ + -: $VERSION" ;;
+esac
+
+case $(uname -s) in
+    Linux) OS=linux ;;
+    Darwin) OS=darwin ;;
+    *) die "unsupported operating system: $(uname -s)" ;;
+esac
+case $(uname -m) in
+    x86_64 | amd64) ARCH=x86_64 ;;
+    arm64 | aarch64) ARCH=arm64 ;;
+    *) die "unsupported architecture: $(uname -m)" ;;
+esac
+
+NAME="knossos-$VERSION"
+ASSET="$NAME-$OS-$ARCH.tar.gz"
+
+mkdir -p "$OUT"
+# Resolved now: the build below changes directory.
+OUT=$(CDPATH='' cd -- "$OUT" && pwd)
+
+STAGE=$(mktemp -d "${TMPDIR:-/tmp}/knossos-release.XXXXXX")
+trap 'rm -rf "$STAGE"' EXIT INT TERM HUP
+TREE="$STAGE/$NAME"
+mkdir -p "$TREE"
+
+# Copy sources from the working tree, leaving out tests, dependency trees and
+# editor leftovers that may sit inside a source directory.
+copy_tree() {
+    for path in "$@"; do
+        [ -e "$ROOT/$path" ] || die "missing from the working tree: $path"
+        mkdir -p "$TREE/$(dirname -- "$path")"
+        tar -C "$ROOT" -cf - \
+            --exclude='node_modules' \
+            --exclude='vendor' \
+            --exclude='__pycache__' \
+            --exclude='__tests__' \
+            --exclude='*.spec.ts' \
+            --exclude='*.spec.tsx' \
+            --exclude='*.spec.mjs' \
+            --exclude='*.test.ts' \
+            --exclude='*.test.tsx' \
+            --exclude='.DS_Store' \
+            "$path" | tar -C "$TREE" -xf -
+    done
+}
+
+copy_tree \
+    bin src migrations schemas \
+    .claude-plugin hooks skills types plugins web tui \
+    workers/php/src workers/php/bin \
+    workers/typescript/src workers/typescript/bin \
+    workers/python/bin \
+    tools/ts-resolve.mjs \
+    composer.json composer.lock LICENSE README.md \
+    workers/php/composer.json workers/php/composer.lock \
+    workers/typescript/package.json workers/typescript/package-lock.json
+
+mkdir -p "$TREE/launcher"
+cp "$ROOT/tools/launcher/knossos" "$TREE/launcher/knossos"
+
+# Production dependencies, installed in the staging tree. The autoloader is
+# authoritative: the classmap is written after the sources are in place, so
+# nothing is searched on disk at run time.
+export COMPOSER_ALLOW_SUPERUSER=1
+composer install --working-dir="$TREE" --no-dev --classmap-authoritative \
+    --no-interaction --no-progress --no-scripts >/dev/null 2>&1 \
+    || die 'composer install failed for the core dependencies'
+composer install --working-dir="$TREE/workers/php" --no-dev --classmap-authoritative \
+    --no-interaction --no-progress --no-scripts >/dev/null 2>&1 \
+    || die 'composer install failed for the PHP worker dependencies'
+npm ci --prefix "$TREE/workers/typescript" --omit=dev --ignore-scripts \
+    --no-audit --no-fund >/dev/null 2>&1 \
+    || die 'npm ci failed for the TypeScript worker dependencies'
+
+# The Rust worker. The build reuses the working tree's target directory (or
+# CARGO_TARGET_DIR) so a second build is quick; --locked keeps it on the
+# committed lockfile.
+(cd "$ROOT/workers/rust" && cargo build --release --locked >&2) \
+    || die 'cargo build failed for the Rust worker'
+RUST_BIN="${CARGO_TARGET_DIR:-$ROOT/workers/rust/target}/release/knossos-rust-worker"
+[ -f "$RUST_BIN" ] || die "the Rust worker was not built at $RUST_BIN"
+mkdir -p "$TREE/workers/rust/bin"
+cp "$RUST_BIN" "$TREE/workers/rust/bin/knossos-rust-worker"
+
+chmod 0755 \
+    "$TREE/bin/knossos" \
+    "$TREE/workers/php/bin/worker" \
+    "$TREE/workers/typescript/bin/worker.js" \
+    "$TREE/workers/python/bin/worker.py" \
+    "$TREE/workers/rust/bin/knossos-rust-worker" \
+    "$TREE/launcher/knossos"
+
+printf '%s\n' "$VERSION" > "$TREE/VERSION"
+
+# A stable file order keeps two builds of the same tree comparable. macOS tar
+# has no --sort, so it is used only where the tar supports it.
+if tar --help 2>&1 | grep -q -- '--sort'; then
+    COPYFILE_DISABLE=1 tar -C "$STAGE" --sort=name -czf "$STAGE/$ASSET" "$NAME"
+else
+    COPYFILE_DISABLE=1 tar -C "$STAGE" -czf "$STAGE/$ASSET" "$NAME"
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+    HASH=$(sha256sum "$STAGE/$ASSET" | cut -d ' ' -f 1)
+elif command -v shasum >/dev/null 2>&1; then
+    HASH=$(shasum -a 256 "$STAGE/$ASSET" | cut -d ' ' -f 1)
+else
+    die 'sha256sum or shasum is required'
+fi
+
+mv -f "$STAGE/$ASSET" "$OUT/$ASSET"
+
+# Replace this asset's line, keep every other platform's.
+SUMS="$OUT/SHA256SUMS"
+TMP_SUMS="$STAGE/SHA256SUMS"
+: > "$TMP_SUMS"
+if [ -f "$SUMS" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        case $line in
+            *"  $ASSET") ;;
+            '') ;;
+            *) printf '%s\n' "$line" >> "$TMP_SUMS" ;;
+        esac
+    done < "$SUMS"
+fi
+printf '%s  %s\n' "$HASH" "$ASSET" >> "$TMP_SUMS"
+mv -f "$TMP_SUMS" "$SUMS"
+
+printf '%s\n' "$OUT/$ASSET"

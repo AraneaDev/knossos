@@ -47,7 +47,8 @@
       "sh tests/shell/gate-baseline.sh",
       "sh tests/shell/mutation-gate.sh",
       "sh tests/shell/mutation-diff.sh",
-      "sh tests/shell/launcher-native.sh"
+      "sh tests/shell/launcher-native.sh",
+      "sh tests/shell/release-tarball.sh"
     ],
     "check:quick": [
       "@composer validate --strict",
