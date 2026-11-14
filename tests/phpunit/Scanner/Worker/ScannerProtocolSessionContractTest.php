@@ -36,9 +36,37 @@ final class ScannerProtocolSessionContractTest extends TestCase
         assertSame([1, 2, 3], array_column($channel->sent, 'id'));
         assertSame(['2.0', '2.0', '2.0'], array_column($channel->sent, 'jsonrpc'));
         assertSame(
-            ['protocol_version' => Protocol::VERSION, 'output_schema_version' => Protocol::OUTPUT_SCHEMA_VERSION],
+            ['protocol_version' => Protocol::VERSION, 'output_schema_version' => Protocol::OUTPUT_SCHEMA_VERSION, 'accepts' => ['read_table']],
             $channel->sent[0]['params'],
         );
+    }
+
+    /** Rows sent once, in parts, are what a contribution's row numbers are read against; the next request starts empty. */
+    public function testAContributionsRowNumbersAreReadFromTheRequestsReadTable(): void
+    {
+        $hash = str_repeat('a', 64);
+        $rows = static fn(array $rows): array => ['jsonrpc' => '2.0', 'method' => Protocol::NOTIFICATION_READ_TABLE, 'params' => ['rows' => $rows]];
+        $naming = static fn(array $refs): array => ['jsonrpc' => '2.0', 'method' => 'scan/contribution', 'params' => [...self::contribution(), 'reads_ref' => $refs]];
+        [$session] = self::session([
+            self::manifest(),
+            $rows([['package.json', $hash]]),
+            $naming([0]),
+            $rows([['src/missing.ts', null]]),
+            $naming([1, 0]),
+            ['jsonrpc' => '2.0', 'method' => 'scan/contribution', 'params' => [...self::contribution(), 'reads' => ['tsconfig.json' => $hash]]],
+            self::done(),
+            $naming([0]),
+        ]);
+
+        $contributions = iterator_to_array($session->scan(['files' => ['a.php']]), false);
+
+        assertSame(
+            [['package.json' => $hash], ['src/missing.ts' => null, 'package.json' => $hash], ['tsconfig.json' => $hash]],
+            array_map(static fn($contribution) => $contribution->reads, $contributions),
+        );
+
+        $error = captureThrows(static fn() => iterator_to_array($session->scan(['files' => ['b.php']])), WorkerException::class);
+        assertSame('reads_ref names row 0, which no read_table part has sent.', $error->getMessage());
     }
 
     /** A cancelled scan tells the worker which request to drop, kills it, and says so. */

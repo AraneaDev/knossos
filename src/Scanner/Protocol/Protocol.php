@@ -84,5 +84,20 @@ final class Protocol
      */
     public const NOTIFICATION_HEARTBEAT = 'scan/heartbeat';
 
+    /**
+     * Named in the `accepts` list of `initialize`: the core reads a
+     * contribution's reads from a read table. A worker may then send each
+     * path and hash once, as a row of a `scan/read_table` notification, and
+     * give a contribution `reads_ref`, the rows it read, instead of `reads`.
+     */
+    public const ACCEPTS_READ_TABLE = 'read_table';
+
+    /**
+     * Notification carrying rows of a scan request's read table: each a path
+     * and the SHA-256 read there, or null. Rows count from zero across every
+     * part of the request, in the order sent.
+     */
+    public const NOTIFICATION_READ_TABLE = 'scan/read_table';
+
     private function __construct() {}
 }
