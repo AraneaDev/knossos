@@ -12,6 +12,7 @@ shell	tests/shell/check-commit-style.sh
 shell	tests/shell/gate-baseline.sh
 shell	tests/shell/install-hooks.sh
 shell	tests/shell/knossos-run-hook.sh
+shell	tests/shell/launcher-native.sh
 shell	tests/shell/mutation-diff.sh
 shell	tests/shell/mutation-gate.sh
 shell	tests/shell/quality-verdict.sh
@@ -30,6 +31,7 @@ shell	tools/dependency-image-key
 shell	tools/gate-baseline
 shell	tools/install
 shell	tools/install-hooks
+shell	tools/launcher/knossos
 shell	tools/lib/quality-skips.sh
 shell	tools/mcp-serve
 shell	tools/mutation-diff

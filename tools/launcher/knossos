@@ -1,0 +1,59 @@
+#!/bin/sh
+# The knossos launcher that install.sh writes to the bin directory.
+#
+# install.sh copies this file and replaces the value on the INSTALLED_DATA_DIR
+# line with the data directory it installed into. It never searches PATH for
+# itself, and in native mode it starts no process besides the final exec: the
+# mode is read from install.json with shell pattern matching.
+
+INSTALLED_DATA_DIR='__KNOSSOS_DATA_DIR__'
+
+# A caller's KNOSSOS_DATA_DIR wins, so one launcher can serve a second data dir.
+DATA="${KNOSSOS_DATA_DIR:-$INSTALLED_DATA_DIR}"
+KNOSSOS_DATA_DIR=$DATA
+KNOSSOS_ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$DATA/roots.json}"
+export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
+
+# The mode comes from install.json: one line or pretty-printed, with or
+# without a space after the colon. A missing file means native.
+mode=native
+if [ -r "$DATA/install.json" ]; then
+    content=''
+    while IFS= read -r line || [ -n "$line" ]; do
+        content="$content$line"
+    done < "$DATA/install.json"
+    case $content in
+        *'"mode"'*:*)
+            rest=${content#*'"mode"'*:}
+            while :; do
+                case $rest in
+                    ' '* | '	'*) rest=${rest#?} ;;
+                    *) break ;;
+                esac
+            done
+            case $rest in
+                '"native"'*) mode=native ;;
+                '"container"'*) mode=container ;;
+                *) mode=unknown ;;
+            esac
+            ;;
+    esac
+fi
+
+case $mode in
+    native)
+        if [ ! -x "$DATA/current/bin/knossos" ]; then
+            echo "knossos: no installed release found in $DATA; re-run the installer to repair it." >&2
+            exit 1
+        fi
+        exec "$DATA/current/bin/knossos" "$@"
+        ;;
+    container)
+        echo "knossos: container mode is not available in this launcher version; re-run the installer." >&2
+        exit 1
+        ;;
+    *)
+        echo "knossos: unreadable mode in $DATA/install.json; re-run the installer to repair it." >&2
+        exit 1
+        ;;
+esac
