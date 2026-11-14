@@ -80,6 +80,8 @@ OUT=$(CDPATH='' cd -- "$OUT" && pwd)
 
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/knossos-release.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT INT TERM HUP
+# What a dependency step printed, shown only when that step fails.
+LOG=$STAGE/step.log
 TREE="$STAGE/$NAME"
 mkdir -p "$TREE"
 
@@ -127,14 +129,14 @@ cp "$ROOT/tools/launcher/knossos" "$TREE/launcher/knossos"
 # nothing is searched on disk at run time.
 export COMPOSER_ALLOW_SUPERUSER=1
 composer install --working-dir="$TREE" --no-dev --classmap-authoritative \
-    --no-interaction --no-progress --no-scripts >/dev/null 2>&1 \
-    || die 'composer install failed for the core dependencies'
+    --no-interaction --no-progress --no-scripts >"$LOG" 2>&1 \
+    || { cat "$LOG" >&2; die 'composer install failed for the core dependencies'; }
 composer install --working-dir="$TREE/workers/php" --no-dev --classmap-authoritative \
-    --no-interaction --no-progress --no-scripts >/dev/null 2>&1 \
-    || die 'composer install failed for the PHP worker dependencies'
+    --no-interaction --no-progress --no-scripts >"$LOG" 2>&1 \
+    || { cat "$LOG" >&2; die 'composer install failed for the PHP worker dependencies'; }
 npm ci --prefix "$TREE/workers/typescript" --omit=dev --ignore-scripts \
-    --no-audit --no-fund >/dev/null 2>&1 \
-    || die 'npm ci failed for the TypeScript worker dependencies'
+    --no-audit --no-fund >"$LOG" 2>&1 \
+    || { cat "$LOG" >&2; die 'npm ci failed for the TypeScript worker dependencies'; }
 
 # The Rust worker. The build reuses the working tree's target directory (or
 # CARGO_TARGET_DIR) so a second build is quick; --locked keeps it on the

@@ -60,7 +60,7 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
         $workflow = $this->workflow();
         $tarballs = $this->job($workflow, 'tarballs');
 
-        foreach (['ubuntu-24.04', 'ubuntu-24.04-arm', 'macos-14', 'macos-15-intel'] as $runner) {
+        foreach (['ubuntu-24.04', 'ubuntu-24.04-arm', 'macos-15', 'macos-15-intel'] as $runner) {
             self::assertStringContainsString('runner: ' . $runner . ',', $tarballs);
         }
         foreach (['linux-x86_64', 'linux-arm64', 'darwin-arm64', 'darwin-x86_64'] as $platform) {
