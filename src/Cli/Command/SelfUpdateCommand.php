@@ -72,10 +72,12 @@ final class SelfUpdateCommand implements CliCommand
             throw new InvalidArgumentException('--check, --rollback and --version cannot be combined.');
         }
         $installation = $this->installation ?? new Installation(self::dataDirectory(), $context->installationRoot());
+        // The hook's background call is never a failure and never a lookup it was not meant to make:
+        // opted out, a checkout, a container install or an install without a record all end here.
+        if ($quiet && (getenv('KNOSSOS_NO_UPDATE_CHECK') === '1' || $installation->isSourceCheckout() || $installation->mode() !== 'native')) {
+            return CliCommand::EXIT_OK;
+        }
         if ($installation->isSourceCheckout()) {
-            if ($quiet) {
-                return CliCommand::EXIT_OK;
-            }
             throw new InstallException('This is a source checkout: update it with git pull.');
         }
         if ($installation->mode() === 'container') {

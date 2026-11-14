@@ -66,7 +66,7 @@ final class VersionSwitch
         try {
             $listing = $runner->run(['tar', '-tzf', $archive], 120_000, 'archive listing');
         } catch (Throwable $error) {
-            throw new InstallException(sprintf('The download is not a readable archive: %s', $error->getMessage()), 0, $error);
+            throw new InstallException(sprintf('The download is not a readable archive: %s', self::reason($error)), 0, $error);
         }
         foreach (explode("\n", trim($listing)) as $entry) {
             $inside = $entry === 'knossos-' . $version || str_starts_with($entry, 'knossos-' . $version . '/');
@@ -74,6 +74,7 @@ final class VersionSwitch
                 throw new InstallException(sprintf('Unsafe or unexpected entry in the archive: %s', $entry));
             }
         }
+        $this->assertLinksStayInside($runner, $archive, $version);
         if (!is_dir($this->dataDir . '/versions') && !@mkdir($this->dataDir . '/versions', 0o700, true) && !is_dir($this->dataDir . '/versions')) {
             throw new InstallException('Could not create ' . $this->dataDir . '/versions');
         }
@@ -86,7 +87,7 @@ final class VersionSwitch
             $runner->run(['tar', '-xzf', $archive, '-C', $partial, '--strip-components=1'], 300_000, 'archive unpack');
         } catch (Throwable $error) {
             self::remove($partial);
-            throw new InstallException(sprintf('Could not unpack the archive: %s', $error->getMessage()), 0, $error);
+            throw new InstallException(sprintf('Could not unpack the archive: %s', self::reason($error)), 0, $error);
         }
         if (!is_executable($partial . '/bin/knossos') || trim((string) @file_get_contents($partial . '/VERSION')) !== $version) {
             self::remove($partial);
@@ -94,6 +95,56 @@ final class VersionSwitch
         }
 
         return $partial;
+    }
+
+    /**
+     * Refuse a link member that points outside the archive's top directory.
+     *
+     * A symbolic link is resolved against its own directory, so a release may
+     * link `node_modules/.bin/x` to `../pkg/x`; an absolute target, or one that
+     * climbs above the top directory, is refused. A hard link names a member
+     * by its full path, which must sit under the top directory.
+     *
+     * @throws InstallException
+     */
+    private function assertLinksStayInside(GitProcessRunner $runner, string $archive, string $version): void
+    {
+        try {
+            $verbose = $runner->run(['tar', '-tvzf', $archive], 120_000, 'archive listing');
+        } catch (Throwable $error) {
+            throw new InstallException(sprintf('The download is not a readable archive: %s', self::reason($error)), 0, $error);
+        }
+        foreach (explode("\n", $verbose) as $line) {
+            if (preg_match('/^([lh])\S* +\S+ +\d+ +\S+ +\S+ (.+?) (?:->|link to) (.+)$/', $line, $match) !== 1) {
+                continue;
+            }
+            [, $kind, $name, $target] = $match;
+            $base = $kind === 'l' ? dirname($name) . '/' . $target : $target;
+            if (str_starts_with($target, '/') || !self::staysUnder('knossos-' . $version, $base)) {
+                throw new InstallException(sprintf('Unsafe link in the archive: %s', $line));
+            }
+        }
+    }
+
+    /** Whether a path, with its `.` and `..` segments resolved, still lies under `$top`. */
+    private static function staysUnder(string $top, string $path): bool
+    {
+        $stack = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '..') {
+                array_pop($stack);
+            } elseif ($segment !== '' && $segment !== '.') {
+                $stack[] = $segment;
+            }
+        }
+
+        return ($stack[0] ?? '') === $top && !str_starts_with($path, '..');
+    }
+
+    /** The cause of a failed tar run, without the Git wording of the runner that carried it. */
+    private static function reason(Throwable $error): string
+    {
+        return preg_replace('/^Git [a-z ]+ unavailable: /', 'tar: ', $error->getMessage()) ?? $error->getMessage();
     }
 
     /**
@@ -158,7 +209,7 @@ final class VersionSwitch
         $link = @readlink($this->dataDir . '/current');
         $files = [];
         foreach (['install.json', 'previous-version'] as $name) {
-            $bytes = @file_get_contents($this->dataDir . '/' . $name);
+            $bytes = is_file($this->dataDir . '/' . $name) ? @file_get_contents($this->dataDir . '/' . $name) : false;
             $files[$name] = $bytes === false ? null : $bytes;
         }
 
@@ -183,7 +234,7 @@ final class VersionSwitch
     }
 
     /**
-     * Delete every version except the ones named, partial unpacks of other runs excepted.
+     * Delete every version except the ones named, and the partial unpacks of runs that are gone.
      *
      * @param list<string> $keep
      */
@@ -191,10 +242,25 @@ final class VersionSwitch
     {
         foreach (glob($this->dataDir . '/versions/*', GLOB_ONLYDIR) ?: [] as $directory) {
             $name = basename($directory);
-            if (!in_array($name, $keep, true) && !str_contains($name, '.partial.')) {
+            if (preg_match('/\.partial\.(\d+)$/', $name, $match) === 1) {
+                // Another run's unpack, unless that run is gone: a crash leaves a whole release behind.
+                if (!self::alive((int) $match[1])) {
+                    self::remove($directory);
+                }
+            } elseif (!in_array($name, $keep, true)) {
                 self::remove($directory);
             }
         }
+    }
+
+    /** Whether a process is running; true when that cannot be told. */
+    private static function alive(int $pid): bool
+    {
+        if (function_exists('posix_kill')) {
+            return posix_kill($pid, 0) || posix_get_last_error() === 1;
+        }
+
+        return !is_dir('/proc') || is_dir('/proc/' . $pid);
     }
 
     /** Replace `current` with a symlink to `$target` in one rename. */

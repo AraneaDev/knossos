@@ -99,8 +99,13 @@ final class SessionCommand implements CliCommand
      */
     private static function withUpdateNotice(string $brief, CliCommandContext $context): string
     {
-        $dataDirectory = DataDirectory::resolve() ?? dirname($context->databasePath());
-        $line = UpdateNotice::line(new Installation($dataDirectory, $context->installationRoot()), Version::CURRENT);
+        try {
+            $dataDirectory = DataDirectory::resolve() ?? dirname($context->databasePath());
+            $line = UpdateNotice::line(new Installation($dataDirectory, $context->installationRoot()), Version::CURRENT);
+        } catch (Throwable) {
+            // One line must never cost the whole brief.
+            return $brief;
+        }
 
         return $line === null ? $brief : rtrim($brief) . "\n" . $line;
     }

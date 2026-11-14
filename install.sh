@@ -136,7 +136,7 @@ version_complete() { [ -x "$VERSION_DIR/bin/knossos" ] && [ -f "$VERSION_DIR/VER
 
 # Runs on every exit. After the switch has begun (SWITCHED=1) a failure of any
 # kind, including an interrupt, puts the previous release back; the flag is
-# cleared on the last line of main. Temporary files left beside the real ones
+# cleared once the installed launcher has answered. Temporary files left beside the real ones
 # go either way.
 cleanup() {
     if [ "$SWITCHED" = 1 ]; then rollback_switch || true; fi
@@ -529,6 +529,8 @@ main() {
 
     # The real thing, end to end. If it fails, everything goes back.
     if installed=$("$LAUNCHER" version 2>&1 </dev/null); then
+        # Installed and working: the steps below are best effort and never undo it.
+        SWITCHED=0
         log "$installed"
     else
         die "the installed launcher does not run ($installed); the previous state was restored"
@@ -575,7 +577,6 @@ main() {
             ;;
     esac
 
-    SWITCHED=0
     say
     say "Knossos $VERSION is installed."
 }

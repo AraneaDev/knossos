@@ -65,6 +65,27 @@ final class SelfUpdateCommandTest extends KnossosTestCase
     }
 
     #[Group('cli')]
+    public function testTheQuietCheckIsNeverAFailureOrALookupWhereItHasNoBusiness(): void
+    {
+        $quiet = ['check' => ['true'], 'quiet' => ['true']];
+        $data = $this->installed('d', '1.0.0');
+        file_put_contents($data . '/install.json', '{"mode": "container", "version": "1.0.0"}');
+        assertSame([0, ''], $this->invoke($quiet, $this->native($data), new ForbiddenSource()));
+        unlink($data . '/install.json');
+        assertSame([0, ''], $this->invoke($quiet, $this->native($data), new ForbiddenSource()));
+
+        $data = $this->installed('e', Version::CURRENT);
+        $this->publish($this->work . '/r', '999.0.0');
+        putenv('KNOSSOS_NO_UPDATE_CHECK=1');
+        try {
+            assertSame([0, ''], $this->invoke($quiet, $this->native($data), new ForbiddenSource()));
+        } finally {
+            putenv('KNOSSOS_NO_UPDATE_CHECK');
+        }
+        assertSame(null, (new UpdateCheck($data))->read());
+    }
+
+    #[Group('cli')]
     public function testAMissingRecordSendsYouBackToTheInstaller(): void
     {
         $data = $this->installed('d', '1.0.0');

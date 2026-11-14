@@ -64,7 +64,13 @@ final class SelfUpdater
             }
             $this->install($target);
             $snapshot = $this->versions->snapshot();
-            $this->versions->switchTo($target, $current);
+            try {
+                $this->versions->switchTo($target, $current);
+            } catch (InstallException $error) {
+                // The link may have moved before a later write failed: put everything back.
+                $this->versions->restore($snapshot);
+                throw $error;
+            }
             if ($this->probe->version($this->versions->versionDir($target), $this->scratch('post')) !== $target) {
                 $this->versions->restore($snapshot);
                 throw new InstallException(sprintf('Release %s did not start after the switch; %s is current again', $target, $current));

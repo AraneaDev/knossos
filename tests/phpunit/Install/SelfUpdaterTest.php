@@ -210,6 +210,21 @@ final class SelfUpdaterTest extends KnossosTestCase
     }
 
     #[Group('install')]
+    public function testAWriteFailingAfterTheLinkMovedPutsEverythingBack(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        $this->publish($this->work . '/r', '2.0.0');
+        // A directory where install.json belongs: the rename over it fails after the link has moved.
+        unlink($data . '/install.json');
+        mkdir($data . '/install.json');
+
+        $this->refused(fn() => $this->updater($data)->update(null), 'Could not write');
+
+        assertSame('1.0.0', (new VersionSwitch($data))->current());
+        assertSame(false, is_file($data . '/previous-version'));
+    }
+
+    #[Group('install')]
     public function testAFailedCheckStillRecordsTheAttempt(): void
     {
         $data = $this->installed('d', '1.0.0');

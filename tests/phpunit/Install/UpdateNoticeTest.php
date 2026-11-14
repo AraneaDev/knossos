@@ -34,4 +34,28 @@ final class UpdateNoticeTest extends KnossosTestCase
         file_put_contents($data . '/install.json', '{"mode": "container"}');
         assertSame(null, UpdateNotice::line($installed, '1.0.0'));
     }
+
+    #[Group('install')]
+    public function testTheOptOutSilencesTheNoticeToo(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        (new UpdateCheck($data))->record('1.1.0');
+        $installed = new Installation($data, $data . '/versions/1.0.0');
+        putenv('KNOSSOS_NO_UPDATE_CHECK=1');
+        try {
+            assertSame(null, UpdateNotice::line($installed, '1.0.0'));
+        } finally {
+            putenv('KNOSSOS_NO_UPDATE_CHECK');
+        }
+        assertSame(true, UpdateNotice::line($installed, '1.0.0') !== null);
+    }
+
+    #[Group('install')]
+    public function testAFailedLookupLeavesNoNotice(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        (new UpdateCheck($data))->record(null);
+
+        assertSame(null, UpdateNotice::line(new Installation($data, $data . '/versions/1.0.0'), '1.0.0'));
+    }
 }

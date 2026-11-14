@@ -8,12 +8,12 @@ namespace Knossos\Install;
 final class UpdateNotice
 {
     /**
-     * The line, or null: in a source checkout, without a cached answer, or when the cached
+     * The line, or null: with KNOSSOS_NO_UPDATE_CHECK=1, in a source checkout, without a cached answer, or when the cached
      * release is not newer than `$current`. Reads one small file and never uses the network.
      */
     public static function line(Installation $installation, string $current): ?string
     {
-        if ($installation->isSourceCheckout() || $installation->mode() !== 'native') {
+        if (getenv('KNOSSOS_NO_UPDATE_CHECK') === '1' || $installation->isSourceCheckout() || $installation->mode() !== 'native') {
             return null;
         }
         $latest = (new UpdateCheck($installation->dataDir))->newerThan($current);

@@ -20,6 +20,9 @@ final class GitHubReleaseSource implements ReleaseSource
     /** The API answer that names the newest release. */
     public const LATEST_API = 'https://api.github.com/repos/AraneaDev/knossos/releases/latest';
 
+    /** Upper bound on one transfer in seconds: the stream timeout is per read, so a trickling server needs this too. */
+    private const MAX_SECONDS = 600;
+
     /** Upper bound on one download, so a hostile or broken server cannot fill the disk. */
     private const MAX_BYTES = 536_870_912;
 
@@ -114,25 +117,30 @@ final class GitHubReleaseSource implements ReleaseSource
             throw new InstallException(sprintf('Could not download %s', $url));
         }
         try {
-            if ($to === null) {
-                $body = stream_get_contents($in, 1_048_576);
-
-                return $body === false ? throw new InstallException(sprintf('Could not read %s', $url)) : $body;
-            }
-            $out = @fopen($to, 'wb');
+            $deadline = time() + self::MAX_SECONDS;
+            $out = $to === null ? fopen('php://memory', 'w+b') : @fopen($to, 'wb');
             if ($out === false) {
-                throw new InstallException(sprintf('Could not write %s', $to));
+                throw new InstallException(sprintf('Could not write %s', $to ?? 'memory'));
             }
             try {
-                $copied = stream_copy_to_stream($in, $out, self::MAX_BYTES + 1);
+                $total = 0;
+                while (!feof($in)) {
+                    $chunk = fread($in, 65_536);
+                    $limit = $to === null ? 1_048_576 : self::MAX_BYTES;
+                    if ($chunk === false || time() > $deadline || ($total += strlen($chunk)) > $limit) {
+                        throw new InstallException(sprintf('Could not download %s completely', $url));
+                    }
+                    fwrite($out, $chunk);
+                }
+                if ($to !== null) {
+                    return '';
+                }
+                rewind($out);
+
+                return (string) stream_get_contents($out);
             } finally {
                 fclose($out);
             }
-            if ($copied === false || $copied > self::MAX_BYTES) {
-                throw new InstallException(sprintf('Could not download %s completely', $url));
-            }
-
-            return '';
         } finally {
             fclose($in);
         }

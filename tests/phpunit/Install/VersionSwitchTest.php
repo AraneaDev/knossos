@@ -97,13 +97,16 @@ final class VersionSwitchTest extends KnossosTestCase
     }
 
     #[Group('install')]
-    public function testPruneKeepsOnlyTheNamedVersionsAndOtherRunsPartials(): void
+    public function testPruneKeepsTheNamedVersionsAndLiveUnpacksAndDropsCrashedOnes(): void
     {
         $data = $this->installed('d', '3.0.0', '2.0.0', '1.0.0');
-        mkdir($data . '/versions/4.0.0.partial.99');
+        $mine = '4.0.0.partial.' . getmypid();
+        mkdir($data . '/versions/' . $mine);
+        // A crashed run's unpack: no process has this id.
+        mkdir($data . '/versions/5.0.0.partial.2147483646/bin', 0o755, true);
         (new VersionSwitch($data))->prune(['3.0.0', '2.0.0']);
 
-        assertSame(['2.0.0', '3.0.0', '4.0.0.partial.99'], array_map('basename', glob($data . '/versions/*')));
+        assertSame(['2.0.0', '3.0.0', $mine], array_map('basename', glob($data . '/versions/*')));
     }
 
     #[Group('install')]
@@ -211,5 +214,49 @@ final class VersionSwitchTest extends KnossosTestCase
         $this->refused(fn() => (new VersionSwitch($data))->unpack($this->work . '/thin.tar.gz', '2.0.0'), 'does not hold a complete release');
 
         assertSame([], glob($data . '/versions/*.partial.*'));
+    }
+
+    #[Group('install')]
+    public function testALinkMemberLeavingTheArchiveIsRefused(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        foreach (['/etc', '../outside', 'a/../../../b', '../../../x'] as $target) {
+            $stage = $this->work . '/links-' . bin2hex(random_bytes(3));
+            mkdir($stage . '/knossos-2.0.0', 0o755, true);
+            symlink($target, $stage . '/knossos-2.0.0/evil');
+            exec(sprintf('tar -czf %s -C %s knossos-2.0.0', escapeshellarg($stage . '.tar.gz'), escapeshellarg($stage)));
+
+            $this->refused(fn() => (new VersionSwitch($data))->unpack($stage . '.tar.gz', '2.0.0'), 'Unsafe link');
+        }
+        assertSame([], glob($data . '/versions/*.partial.*'));
+    }
+
+    #[Group('install')]
+    public function testALinkInsideTheArchiveIsFine(): void
+    {
+        $release = $this->work . '/release';
+        $stage = $this->work . '/inner';
+        $this->writeRelease($stage . '/knossos-2.0.0', '2.0.0');
+        symlink('bin/knossos', $stage . '/knossos-2.0.0/alias');
+        mkdir($stage . '/knossos-2.0.0/node_modules/.bin', 0o755, true);
+        symlink('../../bin/knossos', $stage . '/knossos-2.0.0/node_modules/.bin/tool');
+        exec(sprintf('tar -czf %s -C %s knossos-2.0.0', escapeshellarg($this->work . '/inner.tar.gz'), escapeshellarg($stage)));
+        $data = $this->installed('d', '1.0.0');
+
+        $partial = (new VersionSwitch($data))->unpack($this->work . '/inner.tar.gz', '2.0.0');
+
+        assertSame(true, is_link($partial . '/alias'));
+    }
+
+    #[Group('install')]
+    public function testATarFailureDoesNotTalkAboutGit(): void
+    {
+        file_put_contents($this->work . '/bad.tar.gz', 'not an archive');
+        $data = $this->installed('d', '1.0.0');
+
+        $error = self::captureThrown(fn() => (new VersionSwitch($data))->unpack($this->work . '/bad.tar.gz', '2.0.0'), \Knossos\Install\InstallException::class);
+
+        assertSame(false, str_contains($error->getMessage(), 'Git'));
+        assertSame(true, str_contains($error->getMessage(), 'tar:'));
     }
 }
