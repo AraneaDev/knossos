@@ -21,10 +21,13 @@ final class GitHubReleaseSource implements ReleaseSource
     public const LATEST_API = 'https://api.github.com/repos/AraneaDev/knossos/releases/latest';
 
     /** Upper bound on one transfer in seconds: the stream timeout is per read, so a trickling server needs this too. */
-    private const MAX_SECONDS = 600;
+    public const MAX_SECONDS = 600;
 
     /** Upper bound on one download, so a hostile or broken server cannot fill the disk. */
-    private const MAX_BYTES = 536_870_912;
+    public const MAX_BYTES = 536_870_912;
+
+    /** Upper bound on an answer read into memory (the API's), far above what one ever is. */
+    public const MAX_MEMORY_BYTES = 1_048_576;
 
     private readonly string $base;
     private readonly bool $remote;
@@ -118,7 +121,7 @@ final class GitHubReleaseSource implements ReleaseSource
      */
     private static function finalUrl(string $url): string
     {
-        $headers = @get_headers($url, true, stream_context_create(self::httpOptions('HEAD', '')));
+        $headers = @get_headers($url, true, stream_context_create(self::requestOptions('redirect')));
         if ($headers === false) {
             throw new InstallException(sprintf('Could not reach %s', $url));
         }
@@ -131,7 +134,7 @@ final class GitHubReleaseSource implements ReleaseSource
      *
      * @param array<int|string, mixed> $headers as `get_headers($url, true)` returns them, every hop's included
      */
-    private static function locationOf(array $headers, string $url): string
+    public static function locationOf(array $headers, string $url): string
     {
         $location = $headers['Location'] ?? $headers['location'] ?? null;
         $last = is_array($location) ? end($location) : $location;
@@ -157,32 +160,49 @@ final class GitHubReleaseSource implements ReleaseSource
      */
     private static function http(string $url, ?string $to): string
     {
-        $in = @fopen($url, 'rb', false, stream_context_create(self::httpOptions('GET', "Accept: application/vnd.github+json, application/octet-stream\r\n")));
+        $in = @fopen($url, 'rb', false, stream_context_create(self::requestOptions('download')));
         if ($in === false) {
             throw new InstallException(sprintf('Could not download %s', $url));
         }
         try {
-            return self::copy($in, $to, $url, $to === null ? 1_048_576 : self::MAX_BYTES, time() + self::MAX_SECONDS);
+            return self::copy($in, $to, $url, self::limitFor($to), time() + self::MAX_SECONDS);
         } finally {
             fclose($in);
         }
     }
 
     /**
-     * The options of every request: a short timeout, a few redirects and a User-Agent that names no user or project.
+     * The stream options of a request: everything the lookup sends besides the URL.
      *
-     * @return array{http: array<string, mixed>}
+     * `download` is every GET: the API's `latest` answer and the assets. `redirect`
+     * is the HEAD that finds where a mirror's `/latest` leads. Both send a fixed
+     * User-Agent and nothing derived from the user, the host or a project: no
+     * cookie, no authorization, no referer.
+     *
+     * @param 'download'|'redirect' $purpose
+     * @return array{http: array{method: string, timeout: int, follow_location: int, max_redirects: int, ignore_errors: bool, header: string}}
      */
-    private static function httpOptions(string $method, string $headers): array
+    public static function requestOptions(string $purpose): array
     {
+        $headers = "User-Agent: knossos-self-update\r\n";
+        if ($purpose === 'download') {
+            $headers .= "Accept: application/vnd.github+json, application/octet-stream\r\n";
+        }
+
         return ['http' => [
-            'method' => $method,
+            'method' => $purpose === 'download' ? 'GET' : 'HEAD',
             'timeout' => 10,
             'follow_location' => 1,
             'max_redirects' => 5,
             'ignore_errors' => false,
-            'header' => "User-Agent: knossos-self-update\r\n" . $headers,
+            'header' => $headers,
         ]];
+    }
+
+    /** The most bytes one transfer may bring: an answer read into memory, or a file written to `$to`. */
+    public static function limitFor(?string $to): int
+    {
+        return $to === null ? self::MAX_MEMORY_BYTES : self::MAX_BYTES;
     }
 
     /**
@@ -193,7 +213,7 @@ final class GitHubReleaseSource implements ReleaseSource
      * @param int $deadline the time by which the whole transfer must be done: a stream timeout is per read
      * @throws InstallException
      */
-    private static function copy($in, ?string $to, string $url, int $limit, int $deadline): string
+    public static function copy($in, ?string $to, string $url, int $limit, int $deadline): string
     {
         $out = $to === null ? fopen('php://memory', 'w+b') : @fopen($to, 'wb');
         if ($out === false) {

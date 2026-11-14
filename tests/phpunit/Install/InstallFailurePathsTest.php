@@ -170,46 +170,117 @@ PY;
     }
 
     #[Group('install')]
-    public function testRemovingFromInsideLeavesAnythingThatIsNoDirectoryAlone(): void
+    public function testRemovingFromInsideEmptiesADirectoryButNeverAFileOrWhatALinkLeadsTo(): void
     {
         file_put_contents($this->work . '/plain', 'x');
+        mkdir($this->work . '/outside');
+        file_put_contents($this->work . '/outside/keep', 'x');
+        $tree = $this->work . '/tree';
+        mkdir($tree . '/a/b', 0o755, true);
+        file_put_contents($tree . '/a/b/leaf', 'x');
+        file_put_contents($tree . '/top', 'x');
+        chmod($tree . '/a/b', 0o500);
+        symlink($this->work . '/outside', $tree . '/a/out');
+        symlink($this->work . '/outside', $this->work . '/link-to-outside');
+        $origin = (string) getcwd();
         $method = new \ReflectionMethod(VersionSwitch::class, 'removeFromInside');
+        $switch = new VersionSwitch($this->work);
 
-        $method->invoke(new VersionSwitch($this->work), $this->work . '/plain');
-
+        // A file and a link are not entered: both stay, and so does what the link leads to.
+        $method->invoke($switch, $this->work . '/plain');
+        $method->invoke($switch, $this->work . '/link-to-outside');
         assertSame(true, is_file($this->work . '/plain'));
+        assertSame(true, is_link($this->work . '/link-to-outside'));
+
+        // A directory goes, every level of it, the read-only one included, and the link inside is removed, not followed.
+        $method->invoke($switch, $tree);
+        assertSame(false, file_exists($tree));
+        assertSame(true, is_file($this->work . '/outside/keep'));
+        assertSame($origin, getcwd());
     }
 
     #[Group('install')]
-    public function testTheRedirectAndDownloadPartsWorkWithoutANetwork(): void
+    public function testEveryRequestSendsAFixedUserAgentAndTheAcceptHeaderAndNothingElse(): void
     {
-        $locationOf = new \ReflectionMethod(GitHubReleaseSource::class, 'locationOf');
-        $url = 'https://example.test:8443/r/latest';
-        assertSame($url, $locationOf->invoke(null, [], $url));
-        assertSame($url, $locationOf->invoke(null, ['Location' => ''], $url));
-        assertSame('https://b.test/tag/v2', $locationOf->invoke(null, ['Location' => ['https://a.test/x', 'https://b.test/tag/v2']], $url));
-        assertSame('https://example.test:8443/r/tag/v1', $locationOf->invoke(null, ['location' => '/r/tag/v1'], $url));
-        assertSame('https://h.test/tag/v1', $locationOf->invoke(null, ['Location' => '/tag/v1'], 'https://h.test/latest'));
+        // The API's `latest` answer and every asset are fetched with these.
+        assertSame(['http' => [
+            'method' => 'GET',
+            'timeout' => 10,
+            'follow_location' => 1,
+            'max_redirects' => 5,
+            'ignore_errors' => false,
+            'header' => "User-Agent: knossos-self-update\r\nAccept: application/vnd.github+json, application/octet-stream\r\n",
+        ]], GitHubReleaseSource::requestOptions('download'));
+        // A mirror's `/latest` is followed with these: no body, only the User-Agent.
+        assertSame(['http' => [
+            'method' => 'HEAD',
+            'timeout' => 10,
+            'follow_location' => 1,
+            'max_redirects' => 5,
+            'ignore_errors' => false,
+            'header' => "User-Agent: knossos-self-update\r\n",
+        ]], GitHubReleaseSource::requestOptions('redirect'));
 
+        // Nothing depends on who runs it: the same options under another user's environment.
+        $expected = [GitHubReleaseSource::requestOptions('download'), GitHubReleaseSource::requestOptions('redirect')];
+        $before = [getenv('HOME'), getenv('USER')];
+        putenv('HOME=/home/someone-else');
+        putenv('USER=someone-else');
+        try {
+            assertSame($expected, [GitHubReleaseSource::requestOptions('download'), GitHubReleaseSource::requestOptions('redirect')]);
+        } finally {
+            putenv($before[0] === false ? 'HOME' : 'HOME=' . $before[0]);
+            putenv($before[1] === false ? 'USER' : 'USER=' . $before[1]);
+        }
+    }
+
+    #[Group('install')]
+    public function testEveryTransferIsBoundedInSizeAndTime(): void
+    {
+        assertSame(1_048_576, GitHubReleaseSource::limitFor(null));
+        assertSame(536_870_912, GitHubReleaseSource::limitFor($this->work . '/asset'));
+        assertSame(600, GitHubReleaseSource::MAX_SECONDS);
+
+        file_put_contents($this->work . '/body', 'payload');
+        $stream = fopen($this->work . '/body', 'rb');
+        self::assertNotFalse($stream);
+        assertSame('payload', GitHubReleaseSource::copy($stream, null, 'u', 7, time() + 60));
+        rewind($stream);
+        $this->refused(static fn() => GitHubReleaseSource::copy($stream, null, 'u', 6, time() + 60), 'Could not download u completely');
+        rewind($stream);
+        $this->refused(static fn() => GitHubReleaseSource::copy($stream, null, 'u', 100, time() - 1), 'Could not download u completely');
+        rewind($stream);
+        assertSame('', GitHubReleaseSource::copy($stream, $this->work . '/copy', 'u', 100, time() + 60));
+        assertSame('payload', file_get_contents($this->work . '/copy'));
+        rewind($stream);
+        $this->refused(fn() => GitHubReleaseSource::copy($stream, $this->work . '/no/such/dir/copy', 'u', 100, time() + 60), 'Could not write');
+        fclose($stream);
+    }
+
+    #[Group('install')]
+    public function testARedirectIsFollowedToItsLastLocation(): void
+    {
+        $url = 'https://example.test:8443/r/latest';
+        assertSame($url, GitHubReleaseSource::locationOf([], $url));
+        assertSame($url, GitHubReleaseSource::locationOf(['Location' => ''], $url));
+        assertSame('https://b.test/tag/v2', GitHubReleaseSource::locationOf(['Location' => ['https://a.test/x', 'https://b.test/tag/v2']], $url));
+        assertSame('https://example.test:8443/r/tag/v1', GitHubReleaseSource::locationOf(['location' => '/r/tag/v1'], $url));
+        assertSame('https://h.test/tag/v1', GitHubReleaseSource::locationOf(['Location' => '/tag/v1'], 'https://h.test/latest'));
+    }
+
+    /** The two calls that touch a stream, run on what needs no network: a local file, and something unreachable. */
+    #[Group('install')]
+    public function testTheStreamCallsWorkOnALocalFileAndRefuseWhatTheyCannotReach(): void
+    {
         $finalUrl = new \ReflectionMethod(GitHubReleaseSource::class, 'finalUrl');
         $this->refused(fn() => $finalUrl->invoke(null, $this->work . '/nothing-here'), 'Could not reach');
 
-        // The download reads any stream: a local file stands in for the server.
         $http = new \ReflectionMethod(GitHubReleaseSource::class, 'http');
         file_put_contents($this->work . '/body', 'payload');
         assertSame('payload', $http->invoke(null, $this->work . '/body', null));
         assertSame('', $http->invoke(null, $this->work . '/body', $this->work . '/copy'));
         assertSame('payload', file_get_contents($this->work . '/copy'));
         $this->refused(fn() => $http->invoke(null, $this->work . '/missing', null), 'Could not download');
-        $this->refused(fn() => $http->invoke(null, $this->work . '/body', $this->work . '/no/such/dir/copy'), 'Could not write');
-
-        $copy = new \ReflectionMethod(GitHubReleaseSource::class, 'copy');
-        $stream = fopen($this->work . '/body', 'rb');
-        self::assertNotFalse($stream);
-        $this->refused(fn() => $copy->invoke(null, $stream, null, 'u', 3, time() + 60), 'Could not download u completely');
-        rewind($stream);
-        $this->refused(fn() => $copy->invoke(null, $stream, null, 'u', 100, time() - 1), 'Could not download u completely');
-        fclose($stream);
     }
 
     private function updater(string $data, FakeProbe $probe): SelfUpdater
