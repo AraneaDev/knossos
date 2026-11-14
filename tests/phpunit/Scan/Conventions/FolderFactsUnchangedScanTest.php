@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Scan\Conventions;
 use Knossos\Git\DirtyPathResolver;
 use Knossos\Git\GitHeadResolver;
 use Knossos\Scan\Conventions\FolderCompanionsBuilder;
+use Knossos\Scan\Conventions\FolderFactsBuilder;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Store\FolderFactsStore;
 use Knossos\Tests\Phpunit\Git\RecordingGitRunner;
@@ -68,17 +69,23 @@ final class FolderFactsUnchangedScanTest extends KnossosTestCase
     /** Facts an older version derived, without the version key, are rebuilt by a scan that changed nothing. */
     public function testAnUnchangedTreeRebuildsFactsOfAnOlderVersion(): void
     {
-        self::assertTrue($this->rebuiltAfter("UPDATE folder_facts SET facts_json = json_remove(facts_json, '$.v')"));
+        $this->assertRebuiltAfter("UPDATE folder_facts SET facts_json = json_remove(facts_json, '$.v')");
     }
 
     /** One row of another version is enough to rebuild them all. */
     public function testAnUnchangedTreeRebuildsAMixOfVersions(): void
     {
-        self::assertTrue($this->rebuiltAfter("UPDATE folder_facts SET facts_json = json_set(facts_json, '$.v', 1) WHERE directory = (SELECT MIN(directory) FROM folder_facts)"));
+        $this->assertRebuiltAfter("UPDATE folder_facts SET facts_json = json_set(facts_json, '$.v', 1) WHERE directory = (SELECT MIN(directory) FROM folder_facts)");
     }
 
-    /** Whether a no-change scan rebuilt the facts after `$tamper` (which also marks every row so a rebuild shows). */
-    private function rebuiltAfter(string $tamper): bool
+    /**
+     * Assert that a no-change scan rebuilt the facts after `$tamper` (which also marks every row so a rebuild shows).
+     *
+     * The rebuilt population must be there with its two files and the current
+     * version: a rebuild that failed clears the rows and still records its stage,
+     * so the stage alone, or the absence of the marked rows, proves nothing.
+     */
+    private function assertRebuiltAfter(string $tamper): void
     {
         $root = $this->fixtureRoot();
         try {
@@ -90,9 +97,11 @@ final class FolderFactsUnchangedScanTest extends KnossosTestCase
 
             $second = $service->scan($root);
 
-            self::assertSame((int) $pdo->query('SELECT COUNT(*) FROM folder_facts')->fetchColumn(), (int) $pdo->query("SELECT COUNT(*) FROM folder_facts WHERE json_extract(facts_json, '$.v') = 2")->fetchColumn());
-
-            return array_key_exists('folder_facts', $second->data['metrics']['stages_ms']) && (int) $pdo->query('SELECT MAX(files) FROM folder_facts')->fetchColumn() !== 99;
+            $population = (new FolderFactsStore($pdo))->of($second->projectId, 'src', 'php', 'source');
+            self::assertSame(2, $population['files'] ?? null);
+            self::assertSame(FolderFactsBuilder::FACTS_VERSION, $population['facts']['v'] ?? null);
+            self::assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM folder_facts WHERE files = 99 OR json_extract(facts_json, '$.v') IS NOT 2")->fetchColumn(), 'no row is left as it was');
+            self::assertArrayHasKey('folder_facts', $second->data['metrics']['stages_ms']);
         } finally {
             $this->removeTempTree($root);
         }
