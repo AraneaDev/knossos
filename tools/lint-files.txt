@@ -21,6 +21,7 @@ shell	tests/shell/quality-verdict.sh
 shell	tests/shell/release-pr.sh
 shell	tests/shell/release-rollback.sh
 shell	tests/shell/release-tarball.sh
+shell	tests/shell/self-update.sh
 shell	tests/shell/session-brief-hook.sh
 shell	tools/benchmark
 shell	tools/chaos-loop
@@ -208,6 +209,7 @@ php	src/Install/ReleaseProbe.php
 php	src/Install/ReleaseSource.php
 php	src/Install/SelfUpdater.php
 php	src/Install/UpdateCheck.php
+php	src/Install/UpdateNotice.php
 php	src/Install/VersionSwitch.php
 php	src/Maintenance/DatabaseMaintenanceService.php
 php	src/Maintenance/ProjectMoveService.php
@@ -609,6 +611,7 @@ php	tests/phpunit/Cli/RootsCommandReportTest.php
 php	tests/phpunit/Cli/RootsCommandTest.php
 php	tests/phpunit/Cli/ScanCommandTest.php
 php	tests/phpunit/Cli/SelfUpdateCommandTest.php
+php	tests/phpunit/Cli/SessionBriefUpdateNoticeTest.php
 php	tests/phpunit/Cli/SessionCommandTest.php
 php	tests/phpunit/Cli/TestHomeIsolationTest.php
 php	tests/phpunit/Cli/TuiCommandTest.php
@@ -697,6 +700,7 @@ php	tests/phpunit/Install/InstallationTest.php
 php	tests/phpunit/Install/ProcessReleaseProbeTest.php
 php	tests/phpunit/Install/ReleaseAssetTest.php
 php	tests/phpunit/Install/SelfUpdaterTest.php
+php	tests/phpunit/Install/UpdateNoticeTest.php
 php	tests/phpunit/Install/VersionSwitchTest.php
 php	tests/phpunit/InterfacesStubsTest.php
 php	tests/phpunit/KnossosTestCase.php
@@ -971,6 +975,7 @@ php	tests/phpunit/Roots/StartClaimTest.php
 php	tests/phpunit/Runtime/DataDirectoryTest.php
 php	tests/phpunit/Runtime/DefaultDatabasePathTest.php
 php	tests/phpunit/Runtime/DoctorInstallation.php
+php	tests/phpunit/Runtime/DoctorInstallationTest.php
 php	tests/phpunit/Runtime/DoctorServiceTest.php
 php	tests/phpunit/Runtime/ErrorCodeParityTest.php
 php	tests/phpunit/Runtime/MemoryLimitTest.php

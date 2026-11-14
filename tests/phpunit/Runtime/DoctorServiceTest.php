@@ -134,12 +134,12 @@ final class DoctorServiceTest extends KnossosTestCase
             'node.version', 'git.version', 'python.version',
             'sqlite.integrity', 'sqlite.foreign_keys', 'sqlite.migrations',
             'worker.php', 'worker.typescript', 'worker.python', 'worker.rust',
-            'scan.failures', 'filesystem.opener',
+            'scan.failures', 'filesystem.opener', 'installation',
         ];
         foreach ($expected as $name) {
             $this->assertContains($name, $names, "missing check: {$name}");
         }
-        assertSame(18, count($names));
+        assertSame(19, count($names));
     }
 
     /** The doctor says which file opener this host uses, so a slow helper-per-file scan is visible. */

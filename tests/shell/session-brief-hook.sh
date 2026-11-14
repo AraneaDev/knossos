@@ -273,5 +273,88 @@ else
 fi
 rm -rf "$planted"
 
+# ---- the update-check refresh -----------------------------------------------
+# A stub knossos prints a brief for session-brief and records the arguments of
+# every other call, so the refresh is observable without a network.
+upd="$(mktemp -d)"
+upd_proj="$(mktemp -d)"
+cat > "$upd/knossos" <<'STUB'
+#!/bin/sh
+if [ "$1" = session-brief ]; then echo brief; exit 0; fi
+echo "$*" >> "$KNOSSOS_TEST_RECORD"
+case ${KNOSSOS_TEST_MODE:-} in
+    slow) sleep 5 ;;
+    fail) echo noise >&2; exit 7 ;;
+esac
+exit 0
+STUB
+chmod +x "$upd/knossos"
+
+# wait_for FILE: the refresh is detached, so give it a moment to land.
+wait_for() {
+    n=0
+    while [ ! -s "$1" ] && [ "$n" -lt 50 ]; do
+        sleep 0.1
+        n=$((n + 1))
+    done
+}
+
+rm -f "$upd/record"
+output="$(env KNOSSOS_BIN="$upd/knossos" KNOSSOS_TEST_RECORD="$upd/record" CLAUDE_PROJECT_DIR="$upd_proj" sh "$HOOK" 2>/dev/null)"
+wait_for "$upd/record"
+if [ "$output" = brief ] && [ "$(cat "$upd/record" 2>/dev/null)" = 'self-update --check --quiet' ]; then
+    printf 'ok   the brief is printed and the update check is started with --check --quiet\n'
+else
+    printf 'FAIL update check: output=%s record=%s\n' "$output" "$(cat "$upd/record" 2>/dev/null)"
+    failures=$((failures + 1))
+fi
+
+rm -f "$upd/record"
+output="$(env KNOSSOS_NO_UPDATE_CHECK=1 KNOSSOS_BIN="$upd/knossos" KNOSSOS_TEST_RECORD="$upd/record" CLAUDE_PROJECT_DIR="$upd_proj" sh "$HOOK" 2>/dev/null)"
+sleep 1
+if [ "$output" = brief ] && [ ! -e "$upd/record" ]; then
+    printf 'ok   KNOSSOS_NO_UPDATE_CHECK=1 starts no update check\n'
+else
+    printf 'FAIL opt-out: output=%s record=%s\n' "$output" "$(cat "$upd/record" 2>/dev/null)"
+    failures=$((failures + 1))
+fi
+
+# A slow check does not hold the hook, and a failing one is silent.
+start=$(date +%s)
+output="$(env KNOSSOS_TEST_MODE=slow KNOSSOS_BIN="$upd/knossos" KNOSSOS_TEST_RECORD="$upd/record" CLAUDE_PROJECT_DIR="$upd_proj" sh "$HOOK" 2>/dev/null)"
+elapsed=$(($(date +%s) - start))
+if [ "$output" = brief ] && [ "$elapsed" -lt 4 ]; then
+    printf 'ok   a slow update check does not hold the session start\n'
+else
+    printf 'FAIL slow update check: output=%s elapsed=%s\n' "$output" "$elapsed"
+    failures=$((failures + 1))
+fi
+output="$(env KNOSSOS_TEST_MODE=fail KNOSSOS_BIN="$upd/knossos" KNOSSOS_TEST_RECORD="$upd/record" CLAUDE_PROJECT_DIR="$upd_proj" sh "$HOOK" 2>&1)"
+status=$?
+if [ "$status" -eq 0 ] && [ "$output" = brief ]; then
+    printf 'ok   a failing update check is silent\n'
+else
+    printf 'FAIL failing update check: status=%s output=%s\n' "$status" "$output"
+    failures=$((failures + 1))
+fi
+
+# No brief, no update check.
+cat > "$upd/failing" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$KNOSSOS_TEST_RECORD"
+exit 3
+STUB
+chmod +x "$upd/failing"
+rm -f "$upd/record"
+env KNOSSOS_BIN="$upd/failing" KNOSSOS_TEST_RECORD="$upd/record" CLAUDE_PROJECT_DIR="$upd_proj" sh "$HOOK" >/dev/null 2>&1
+sleep 1
+if [ "$(cat "$upd/record" 2>/dev/null)" = "session-brief $(CDPATH='' cd -P -- "$upd_proj" && pwd -P)" ]; then
+    printf 'ok   a failed brief starts no update check\n'
+else
+    printf 'FAIL failed brief: record=%s\n' "$(cat "$upd/record" 2>/dev/null)"
+    failures=$((failures + 1))
+fi
+rm -rf "$upd" "$upd_proj"
+
 [ "$failures" -eq 0 ] || exit 1
 printf 'all hook failure modes exit 0, silent but for a timeout\n'

@@ -7,9 +7,13 @@ namespace Knossos\Cli\Command;
 use Knossos\Cli\CliCommand;
 use Knossos\Cli\CliCommandContext;
 use Knossos\Cli\ProjectDatabaseLocator;
+use Knossos\Install\Installation;
+use Knossos\Install\UpdateNotice;
 use Knossos\Query\QueryServices;
 use Knossos\Query\SessionBriefRenderer;
 use Knossos\Query\SessionBriefService;
+use Knossos\Runtime\DataDirectory;
+use Knossos\Runtime\Version;
 use Knossos\Store\SqliteConnection;
 use Throwable;
 
@@ -79,6 +83,7 @@ final class SessionCommand implements CliCommand
             $brief = is_file($databasePath)
                 ? QueryServices::wire(SqliteConnection::open($databasePath))->sessionBrief($databasePath)->brief($path)
                 : (new SessionBriefRenderer())->render(SessionBriefService::unscanned($path, $databasePath));
+            $brief = self::withUpdateNotice($brief, $context);
             $context->output(['brief' => $brief], $context->options->flag($options, 'json'), $brief);
         } catch (Throwable $error) {
             // No brief and exit 0, whatever happens: the session still starts.
@@ -87,5 +92,16 @@ final class SessionCommand implements CliCommand
             fwrite($this->errors, 'knossos session-brief: ' . $error->getMessage() . "\n");
         }
         return CliCommand::EXIT_OK;
+    }
+
+    /**
+     * The brief with one more line when a newer release is cached. Reads a small file, never the network.
+     */
+    private static function withUpdateNotice(string $brief, CliCommandContext $context): string
+    {
+        $dataDirectory = DataDirectory::resolve() ?? dirname($context->databasePath());
+        $line = UpdateNotice::line(new Installation($dataDirectory, $context->installationRoot()), Version::CURRENT);
+
+        return $line === null ? $brief : rtrim($brief) . "\n" . $line;
     }
 }
