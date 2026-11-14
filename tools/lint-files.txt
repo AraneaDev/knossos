@@ -1067,6 +1067,7 @@ php	tests/phpunit/Scanner/RustReadAttributionTest.php
 php	tests/phpunit/Scanner/RustWorkerTest.php
 php	tests/phpunit/Scanner/ScannerClientTest.php
 php	tests/phpunit/Scanner/ScannerSdkTest.php
+php	tests/phpunit/Scanner/TypescriptAngularInjectTest.php
 php	tests/phpunit/Scanner/TypescriptClassicScriptTest.php
 php	tests/phpunit/Scanner/TypescriptCrossFileCallArgumentTest.php
 php	tests/phpunit/Scanner/TypescriptDeepImportChainTest.php
@@ -1514,6 +1515,7 @@ js	web/server.spec.ts
 js	web/server.ts
 js	workers/typescript/bin/worker.js
 js	workers/typescript/src/__tests__/ambient-declarations.test.js
+js	workers/typescript/src/__tests__/angular-inject.test.js
 js	workers/typescript/src/__tests__/build-output-sources.test.js
 js	workers/typescript/src/__tests__/bundler-module-roots.test.js
 js	workers/typescript/src/__tests__/call-argument-sites.test.js
@@ -1575,6 +1577,7 @@ js	workers/typescript/src/exclusions.js
 js	workers/typescript/src/fact-accumulator.js
 js	workers/typescript/src/fallback-groups.js
 js	workers/typescript/src/file-facts.js
+js	workers/typescript/src/injection-sites.js
 js	workers/typescript/src/input-hashes-parts.js
 js	workers/typescript/src/input-reads.js
 js	workers/typescript/src/language-fact-collector.js
