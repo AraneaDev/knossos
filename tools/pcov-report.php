@@ -32,6 +32,7 @@ const SOURCE_COMPONENTS = [
     'Enrichment' => 'bundle-git-watch',
     'Filesystem' => 'bundle-git-watch',
     'Git' => 'bundle-git-watch',
+    'Install' => 'maintenance-runtime',
     'Maintenance' => 'maintenance-runtime',
     'Mcp' => 'transport',
     'Notes' => 'maintenance-runtime',

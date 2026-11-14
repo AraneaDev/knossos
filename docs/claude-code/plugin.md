@@ -37,15 +37,23 @@ knossos install-agent-plugin --data-dir="$HOME/.knossos" --execute
 `--execute` writes the plugin directory, `.plugin/` beside the checkout, and
 runs both commands. Options:
 
-| option           | what it does                                                              |
-| ---------------- | ------------------------------------------------------------------------- |
-| `--execute`      | write `.plugin/` and run the two `claude` commands; without it, a preview |
-| `--scope=SCOPE`  | `user` (the default), `project` or `local`                                |
-| `--data-dir=DIR` | the data directory your server uses, written into the hooks (see below)   |
-| `--json`         | print the result as JSON                                                  |
+| option             | what it does                                                              |
+| ------------------ | ------------------------------------------------------------------------- |
+| `--execute`        | write `.plugin/` and run the two `claude` commands; without it, a preview |
+| `--scope=SCOPE`    | `user` (the default), `project` or `local`                                |
+| `--data-dir=DIR`   | the data directory your server uses, written into the hooks (see below)   |
+| `--json`           | print the result as JSON                                                  |
+| `--plugin-dir=DIR` | where to write the plugin instead of `.plugin/`                           |
+| `--bin=PATH`       | the `knossos` the hooks call instead of the checkout's `bin/knossos`      |
+| `--no-register`    | write the plugin and run no `claude` command                              |
 
 Start a new session afterwards. The brief appears at its start, and `/knossos`
 opens the pane once the project is scanned.
+
+A release installed with `install.sh` picks its own defaults: the plugin goes
+to `plugin/` in the install directory and the hooks call the launcher, so a
+`knossos self-update` never leaves them on an old version. Neither option may
+point inside that install's `versions/`.
 
 For a containerised server, use `--out` instead; see
 [the container guide](../operate/container.md#agent-orientation-plugin-for-a-containerised-install).

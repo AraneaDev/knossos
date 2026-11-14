@@ -63,6 +63,18 @@ else
     OUTPUT="$("$BIN" session-brief "$PROJECT_DIR" 2>/dev/null)" || exit 0
 fi
 
-[ -n "$OUTPUT" ] || exit 0
-printf '%s\n' "$OUTPUT"
+[ -n "$OUTPUT" ] && printf '%s\n' "$OUTPUT"
+
+# Refresh the cached answer to "is there a newer release", after the brief is
+# out and never in front of it. Detached and bounded, so the session start does
+# not wait for it, and silent on every failure. `self-update --check --quiet`
+# prints nothing, only looks when the last look is a day old, and does nothing
+# in a source checkout. KNOSSOS_NO_UPDATE_CHECK=1 turns it off.
+if [ "${KNOSSOS_NO_UPDATE_CHECK:-}" != 1 ]; then
+    if [ -n "${TIMEOUT_BIN:-}" ]; then
+        ("$TIMEOUT_BIN" 20 "$BIN" self-update --check --quiet </dev/null >/dev/null 2>&1 &)
+    else
+        ("$BIN" self-update --check --quiet </dev/null >/dev/null 2>&1 &)
+    fi
+fi
 exit 0

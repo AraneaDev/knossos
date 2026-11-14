@@ -7,6 +7,7 @@ namespace Knossos\Runtime;
 use Knossos\Discovery\SourceClassifier;
 use Knossos\Filesystem\RegularFileOpener;
 use Knossos\Git\GitProcessRunner;
+use Knossos\Install\Installation;
 use Knossos\Scan\LanguageDescriptor;
 use Knossos\Scan\ScanFailureClass;
 use Knossos\Scan\ScanFailureLog;
@@ -74,6 +75,7 @@ final readonly class DoctorService
         foreach (['json', 'mbstring', 'pdo', 'pdo_sqlite'] as $extension) {
             $this->check($checks, 'php.extension.' . $extension, static fn(): string => extension_loaded($extension) ? 'loaded' : throw new \RuntimeException('missing'));
         }
+        $this->check($checks, 'installation', fn(): string => (new Installation($this->installationRoot))->describe());
         $this->check($checks, 'node.version', fn(): string => self::requirement('node')->verify($this->command(['node', '--version'], hardenGitConfig: false)));
         $this->check($checks, 'git.version', fn(): string => $this->command(['git', '--version']));
         $this->check($checks, 'python.version', fn(): string => self::requirement('python')->verify($this->command(['python3', '--version'], hardenGitConfig: false)));

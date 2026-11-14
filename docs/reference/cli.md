@@ -138,7 +138,8 @@ Usage:
   knossos notes-import [path] [--file=PATH] [--execute] [--expect=SHA256] [--db=FILE] [--json]
   knossos session-head [path] [--json]
   knossos session-diff [path] --rev=SHA --file=PATH [--json]
-  knossos install-agent-plugin [--scope=user] [--data-dir=DIR] [--execute] [--json]
+  knossos install-agent-plugin [--scope=user] [--data-dir=DIR] [--plugin-dir=DIR] [--bin=PATH]
+                               [--no-register] [--execute] [--json]
   knossos install-agent-plugin --out=DIR --data=HOSTPATH [--image=NAME] [--json]
                 (--db=PATH is accepted by both and has no effect)
   knossos list-boundaries <path|project-id> [--source=explicit|inferred] [--limit=N]
@@ -165,6 +166,12 @@ Usage:
                  scan-failures.jsonl beside the database, where doctor reads it; C is
                  killed, lock, worker, other, timed-out or brief-timeout)
   knossos autostart <path> [--set=on|off] [--db=FILE] [--json]
+  knossos self-update [--check [--quiet]] [--rollback] [--version=V] [--json]
+                (an installed release only: fetches the newest release, checks it
+                 against its SHA256SUMS, switches to it and keeps the previous one
+                 for --rollback; --check says whether a newer one exists and exits
+                 10 when it does; --quiet prints nothing and only refreshes the cached
+                 answer, at most once a day; a source checkout is updated with git pull)
   knossos enricher list [--db=FILE] [--json]
   knossos enricher add <name> [--timeout=N] [--env=NAME=VALUE]... [--kinds=a,b]
                        [--replace] [--db=FILE] [--json] -- <command> [args...]

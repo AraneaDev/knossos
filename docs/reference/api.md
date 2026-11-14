@@ -27,6 +27,17 @@ This file is generated from enforced PHP interface docblocks and the isolated PH
 
 - `changes(string $projectRoot, ?string $baseRef, int $maxFiles, int $timeoutMs): array`: Return bounded changed paths and explicit renames without modifying Git
 
+### `Knossos\Install\ReleaseProbe`
+
+- `doctor(string $releaseDir, string $scratchDir): ?string`: Run `knossos doctor` of a release against a scratch data directory
+- `version(string $releaseDir, string $scratchDir): ?string`: The version a release reports, or null when it does not run
+- `plugin(string $releaseDir, string $pluginDir, string $launcher, string $dataDir, string $scratchDir): ?string`: Have a release materialise its own plugin, running no `claude` command
+
+### `Knossos\Install\ReleaseSource`
+
+- `latest(): string`: The newest released version, without a leading `v`
+- `fetch(string $version, string $asset, string $to): void`: Copy one asset of a release to a local file
+
 ### `Knossos\Query\SemanticRanker`
 
 - `id(): string`: Return the stable provider identifier included in ranking provenance

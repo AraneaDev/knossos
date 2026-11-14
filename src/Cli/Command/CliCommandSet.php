@@ -43,6 +43,7 @@ final readonly class CliCommandSet
             new ClaimCommand(),
             new RecordScanFailureCommand(),
             new AutostartCommand(),
+            new SelfUpdateCommand(),
             new EnricherCommand(),
             new PluginCommand($version),
             new MaintenanceCommand(),

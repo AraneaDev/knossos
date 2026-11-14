@@ -1,0 +1,79 @@
+#!/bin/sh
+# The knossos launcher that install.sh writes to the bin directory.
+#
+# install.sh copies this file and replaces the value on the INSTALL_DIR line
+# with the directory it installed into: the one holding versions/, current and
+# install.json. self-update rewrites it the same way from the new release. It
+# never searches PATH for itself, and in native mode it starts no process
+# besides the final exec: the mode is read from install.json with shell
+# pattern matching. `serve` is the one exception: it runs the release's
+# mcp-serve wrapper, which starts the server and logs what happens to it.
+#
+# Two different directories, kept apart on purpose:
+#   - the install directory, baked in below, is where the release lives. It is
+#     the only thing used to find install.json and current.
+#   - KNOSSOS_DATA_DIR is where the graph lives. A caller's value is passed on
+#     untouched; without one it defaults to the install directory. It never
+#     decides which release runs.
+#
+# KNOSSOS_INSTALL_DIR replaces the baked-in install directory. It exists for
+# the installer's own pre-switch check and for tests, not for everyday use.
+
+INSTALL_DIR='__KNOSSOS_INSTALL_DIR__'
+
+INSTALL_DIR="${KNOSSOS_INSTALL_DIR:-$INSTALL_DIR}"
+KNOSSOS_DATA_DIR="${KNOSSOS_DATA_DIR:-$INSTALL_DIR}"
+KNOSSOS_ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$KNOSSOS_DATA_DIR/roots.json}"
+export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
+
+# The mode comes from install.json: one line or pretty-printed, with or
+# without a space after the colon. A missing file means native.
+mode=native
+if [ -r "$INSTALL_DIR/install.json" ]; then
+    content=''
+    while IFS= read -r line || [ -n "$line" ]; do
+        content="$content$line"
+    done < "$INSTALL_DIR/install.json"
+    case $content in
+        *'"mode"'*:*)
+            rest=${content#*'"mode"'*:}
+            while :; do
+                case $rest in
+                    ' '* | '	'*) rest=${rest#?} ;;
+                    *) break ;;
+                esac
+            done
+            case $rest in
+                '"native"'*) mode=native ;;
+                '"container"'*) mode=container ;;
+                *) mode=unknown ;;
+            esac
+            ;;
+    esac
+fi
+
+case $mode in
+    native)
+        if [ ! -x "$INSTALL_DIR/current/bin/knossos" ]; then
+            echo "knossos: no installed release found in $INSTALL_DIR; re-run the installer to repair it." >&2
+            exit 1
+        fi
+        # The MCP server goes through the release's mcp-serve wrapper, as a
+        # checkout's registration does through tools/mcp-serve: it logs start,
+        # signals, stderr and the exit status to $KNOSSOS_DATA_DIR/mcp-serve.log,
+        # which is all there is to go on when a host only says "disconnected".
+        if [ "${1-}" = serve ] && [ -x "$INSTALL_DIR/current/launcher/mcp-serve" ]; then
+            shift
+            exec "$INSTALL_DIR/current/launcher/mcp-serve" "$@"
+        fi
+        exec "$INSTALL_DIR/current/bin/knossos" "$@"
+        ;;
+    container)
+        echo "knossos: container mode is not available in this launcher version; re-run the installer." >&2
+        exit 1
+        ;;
+    *)
+        echo "knossos: unreadable mode in $INSTALL_DIR/install.json; re-run the installer to repair it." >&2
+        exit 1
+        ;;
+esac

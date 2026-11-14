@@ -37,19 +37,6 @@ final class PluginCommand implements CliCommand
      */
     public function __construct(private readonly string $version = '0.0.0') {}
 
-    /**
-     * Where an install materialises the plugin, relative to the installation root.
-     *
-     * The install registers this directory as the marketplace, never the
-     * installation root itself. Claude Code snapshots a local marketplace into
-     * its plugin cache, so handing it the root copied the entire working tree,
-     * `vendor/`, `node_modules/`, build caches, the graph database and any
-     * `.mcp.json` along with it. A directory holding only the plugin's own
-     * files copies only those, and carries nothing that could register a
-     * second, unintended MCP server.
-     */
-    private const PLUGIN_DIRECTORY = '/.plugin';
-
     /** The directories this skill was installed under by earlier releases, which an install removes from the target. */
     private const STALE_SKILLS = ['/skills/knossos', '/skills/ask-the-graph'];
 
@@ -139,7 +126,10 @@ final class PluginCommand implements CliCommand
     {
         // `db` is accepted and has no effect: the installer opens no graph,
         // and refusing it now would break a command line that passed it.
-        return ['db', 'json', 'scope', 'execute', 'out', 'data', 'image', 'data-dir'];
+        // execute, no-register, plugin-dir, bin and data-dir are what an older
+        // release's self-update passes to this one: never rename or remove them
+        // (ProcessReleaseProbe::pluginArguments, PluginRefreshContractTest).
+        return ['db', 'json', 'scope', 'execute', 'out', 'data', 'image', 'data-dir', 'plugin-dir', 'bin', 'no-register'];
     }
 
     /** {@inheritDoc} */
@@ -156,8 +146,11 @@ final class PluginCommand implements CliCommand
             throw new InvalidArgumentException('scope must be one of: ' . implode(', ', self::SCOPES) . '.');
         }
         $dataDir = $this->dataDirectory($context->options->single($options, 'data-dir'));
-        $pluginDirectory = $root . self::PLUGIN_DIRECTORY;
-        $commands = [
+        // A checkout's own `.plugin` and `bin/knossos`; an installed release's `<install dir>/plugin` and launcher.
+        $target = PluginTarget::resolve($root, $context->options->single($options, 'plugin-dir'), $context->options->single($options, 'bin'));
+        $pluginDirectory = $target->directory;
+        // --no-register writes the files and runs no claude command: self-update refreshes a plugin that way.
+        $commands = $context->options->flag($options, 'no-register') ? [] : [
             sprintf('claude plugin marketplace add %s --scope %s', escapeshellarg($pluginDirectory), $scope),
             sprintf('claude plugin install knossos@knossos --scope %s --yes', $scope),
         ];
@@ -202,7 +195,7 @@ final class PluginCommand implements CliCommand
             $this->read($root . '/' . self::LIBRARY_SCRIPT),
             [
                 '__KNOSSOS_DATA_DIR__' => $this->singleQuoted($dataDir, 'data-dir'),
-                '__KNOSSOS_BIN__' => $this->singleQuoted($root . '/bin/knossos', 'installation root'),
+                '__KNOSSOS_BIN__' => $this->singleQuoted($target->bin, 'bin'),
             ],
         );
         $copies = $this->copies($root);

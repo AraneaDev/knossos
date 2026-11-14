@@ -1,0 +1,81 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Knossos\Install;
+
+/**
+ * The cached answer to "is there a newer release", in `<install dir>/update-check.json`.
+ *
+ * Written only by `knossos self-update --check`. The session brief reads it
+ * and nothing else, so the brief never waits for the network.
+ */
+final readonly class UpdateCheck
+{
+    /** How long an answer stays fresh. */
+    public const MAX_AGE_SECONDS = 86400;
+
+    public function __construct(private string $installDir) {}
+
+    /**
+     * The cached answer, or null when there is none or it is not readable.
+     *
+     * @return array{checked_at: string, latest: string|null}|null
+     */
+    public function read(): ?array
+    {
+        $bytes = @file_get_contents($this->path());
+        $decoded = $bytes === false ? null : json_decode($bytes, true);
+        $latest = is_array($decoded) ? ($decoded['latest'] ?? null) : null;
+        if (!is_array($decoded) || !is_string($decoded['checked_at'] ?? null) || ($latest !== null && !is_string($latest))) {
+            return null;
+        }
+
+        return ['checked_at' => $decoded['checked_at'], 'latest' => $latest];
+    }
+
+    /** Whether a new look is due: no usable record, or an attempt more than 24 hours ago. */
+    public function due(?int $now = null): bool
+    {
+        $cached = $this->read();
+        $at = $cached === null ? false : strtotime($cached['checked_at']);
+
+        $now ??= time();
+
+        // A stamp from the future (a clock that went back) is not a fresh answer.
+        return $at === false || $at > $now || $now - $at >= self::MAX_AGE_SECONDS;
+    }
+
+    /**
+     * Remember that a look was taken at `$now`, and what it found.
+     *
+     * A null `$latest` records a failed look: the time moves, so the next look
+     * is a day away, and the last known answer is kept.
+     */
+    public function record(?string $latest, ?int $now = null): void
+    {
+        $latest ??= $this->read()['latest'] ?? null;
+        if (!is_dir($this->installDir) && !@mkdir($this->installDir, 0o700, true) && !is_dir($this->installDir)) {
+            return;
+        }
+        $bytes = json_encode(['checked_at' => gmdate('Y-m-d\TH:i:s\Z', $now ?? time()), 'latest' => $latest], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+        $temporary = $this->path() . '.tmp.' . getmypid();
+        if (@file_put_contents($temporary, $bytes) === false || !@rename($temporary, $this->path())) {
+            @unlink($temporary);
+        }
+    }
+
+    /** The cached latest version when it is newer than `$current`, else null. */
+    public function newerThan(string $current): ?string
+    {
+        $latest = $this->read()['latest'] ?? null;
+
+        return $latest !== null && version_compare($latest, $current, '>') ? $latest : null;
+    }
+
+    /** The cache file. */
+    private function path(): string
+    {
+        return rtrim($this->installDir, '/') . '/update-check.json';
+    }
+}
