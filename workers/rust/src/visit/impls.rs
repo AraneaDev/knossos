@@ -412,6 +412,11 @@ impl Walk<'_> {
             }
             None => self.declare(owner, owner_kind, &name, "method", span),
         };
+        self.facts.node_attribute(
+            &method_canonical,
+            "signature",
+            super::signatures::signature_of(signature),
+        );
         let outer = self.enter_type_params(&signature.generics);
         annotate(self, &method_canonical);
         if let Some(block) = block {

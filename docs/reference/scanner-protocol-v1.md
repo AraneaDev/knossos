@@ -175,12 +175,13 @@ as the source writes it:
 - Control characters and line separators in a type are replaced by a space:
   the text is shown to an agent as one line.
 
-The packaged TypeScript, PHP and Python workers send it. TypeScript types are
-the text as written; PHP types are the native declarations with class names
-resolved (`?App\Model\User`), and a docblock is not read; Python types are the
+Every packaged worker sends it. TypeScript and Rust types are the text as
+written; PHP types are the native declarations with class names resolved
+(`?App\Model\User`), and a docblock is not read; Python types are the
 annotations as written, and `*args` and `**kwargs` keep their stars in `name`.
-A node whose function cannot be read, such as a property assigned the result
-of a call, has no `signature`.
+A Rust parameter bound by a pattern rather than a name is listed as `_`. A node
+whose function cannot be read, such as a property assigned the result of a
+call, has no `signature`.
 
 #### Repeated edges
 

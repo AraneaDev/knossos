@@ -31,6 +31,7 @@ mod paths;
 mod placement;
 mod receivers;
 mod routes;
+mod signatures;
 mod state;
 mod types;
 mod uses;
@@ -349,6 +350,8 @@ impl Walk<'_> {
             self.facts.enter_test_scope();
         }
         let canonical = self.declare(container, container_kind, &name, "function", span);
+        self.facts
+            .node_attribute(&canonical, "signature", signatures::signature_of(&node.sig));
         // A crate-root `fn main` is what the runtime invokes — nothing
         // calls or imports it, so without the executable mark the
         // whole entry point reads as dead code.
