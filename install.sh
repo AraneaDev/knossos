@@ -1,6 +1,4 @@
 #!/bin/sh
-set -eu
-
 # Install Knossos from a release, without a checkout.
 #
 #   install.sh [--mode=native|container] [--version=V] [--data-dir=DIR]
@@ -32,8 +30,13 @@ set -eu
 # the same origin as the tarball, so it does not protect against a compromised
 # release origin.
 #
-# The whole script is wrapped in main, called on the last line, so a download
-# cut off halfway runs nothing.
+# Everything below sits in one brace group that ends with `main "$@"; exit`.
+# The shell has to read the closing brace before it runs any of it, so a
+# download cut off anywhere, even between main and its arguments, runs nothing.
+# The group is not indented, to keep the file short.
+# shellcheck disable=SC2317 # cleanup runs from a trap, which the `; exit` below hides from the check.
+{
+set -eu
 
 say() { printf '%s\n' "${1-}"; }
 log() { printf '  %s\n' "$1"; }
@@ -131,9 +134,16 @@ sha256_of() {
 # A complete version is reused: it was checked and doctored when it went in.
 version_complete() { [ -x "$VERSION_DIR/bin/knossos" ] && [ -f "$VERSION_DIR/VERSION" ]; }
 
+# Runs on every exit. After the switch has begun (SWITCHED=1) a failure of any
+# kind, including an interrupt, puts the previous release back; the flag is
+# cleared on the last line of main. Temporary files left beside the real ones
+# go either way.
 cleanup() {
+    if [ "$SWITCHED" = 1 ]; then rollback_switch || true; fi
     rm -rf "$TMP"
     if [ -n "$PARTIAL" ]; then rm -rf "$PARTIAL"; fi
+    if [ -n "$BIN_DIR" ]; then rm -f "$BIN_DIR/.knossos.tmp.$$"; fi
+    if [ -n "$DATA_DIR" ]; then rm -f "$DATA_DIR/install.json.tmp.$$" "$DATA_DIR/current.tmp.$$"; fi
 }
 
 # Point a link at a target in one atomic step: build the new symlink under a
@@ -261,6 +271,7 @@ main() {
     PARTIAL=''
     TMP=''
     PREV_LINK=''
+    SWITCHED=0
 
     while [ $# -gt 0 ]; do
         case $1 in
@@ -505,6 +516,7 @@ main() {
     if [ -f "$LAUNCHER" ]; then cp "$LAUNCHER" "$TMP/launcher.prev"; fi
 
     mkdir -p "$DATA_DIR"
+    SWITCHED=1
     atomic_link "versions/$VERSION" "$DATA_DIR/current"
     log "current -> versions/$VERSION"
 
@@ -519,7 +531,6 @@ main() {
     if installed=$("$LAUNCHER" version 2>&1 </dev/null); then
         log "$installed"
     else
-        rollback_switch
         die "the installed launcher does not run ($installed); the previous state was restored"
     fi
 
@@ -564,8 +575,10 @@ main() {
             ;;
     esac
 
+    SWITCHED=0
     say
     say "Knossos $VERSION is installed."
 }
 
-main "$@"
+main "$@"; exit
+}

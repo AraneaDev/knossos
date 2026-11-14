@@ -358,6 +358,63 @@ mkdir -p "$T19"
 out=$(cd / && KNOSSOS_ALLOW_ROOT="$T19/chosen" run_install "$T19" --version="$VERSION"); status=$?
 if [ "$status" -eq 0 ] && grep -qF "$T19/chosen" "$T19/data dir/roots.json"; then pass 'KNOSSOS_ALLOW_ROOT overrides the skip'; else fail "allow root: status $status, output $out"; fi
 
+# ---- an interrupt after the switch (N1) -------------------------------------
+
+# The stub's version call, made by the installed launcher after the switch,
+# marks that the switch happened and then lingers; the installer is sent TERM
+# in the middle of it. Everything must go back, with no temporary file left.
+SLOW_BODY="#!/bin/sh
+case \"\$1\" in
+    doctor) exit 0 ;;
+    version) if [ -f \"\$KNOSSOS_DATA_DIR/install.json\" ] && [ -n \"\${STUB_MARK:-}\" ]; then : > \"\$STUB_MARK\"; sleep 2; fi; echo 'Knossos $VERSION' ;;
+esac"
+make_release "$WORK/slow release" "$SLOW_BODY"
+T20="$WORK/interrupt"
+mkdir -p "$T20/data dir/versions/0.0.1/bin" "$T20/bin dir"
+ln -s versions/0.0.1 "$T20/data dir/current"
+printf '{"mode": "native", "version": "0.0.1"}\n' > "$T20/data dir/install.json"
+cp "$T20/data dir/install.json" "$WORK/install.json.before20"
+printf '#!/bin/sh\necho OLD LAUNCHER\n' > "$T20/bin dir/knossos"
+cp "$T20/bin dir/knossos" "$WORK/launcher.before20"
+KNOSSOS_RELEASE_BASE="$WORK/slow release" STUB_MARK="$T20/mark" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE -u KNOSSOS_BIN_DIR \
+    sh "$INSTALL" --no-plugin --data-dir="$T20/data dir" --bin-dir="$T20/bin dir" --version="$VERSION" > "$WORK/interrupt.out" 2>&1 </dev/null &
+installer=$!
+waited=0
+while [ ! -e "$T20/mark" ] && [ "$waited" -lt 100 ]; do sleep 0.1; waited=$((waited + 1)); done
+kill -TERM "$installer" 2>/dev/null
+wait "$installer" 2>/dev/null
+status=$?
+left=$(find "$T20/bin dir" "$T20/data dir" -name '*.tmp.*' | head -n 3)
+if [ -e "$T20/mark" ] && [ "$status" -ne 0 ] && [ "$(readlink "$T20/data dir/current")" = 'versions/0.0.1' ] \
+    && cmp -s "$T20/data dir/install.json" "$WORK/install.json.before20" \
+    && cmp -s "$T20/bin dir/knossos" "$WORK/launcher.before20" && [ -z "$left" ]; then
+    pass 'an interrupt after the switch restores the previous state and leaves no temporary file'
+else
+    fail "interrupt: status $status, mark $([ -e "$T20/mark" ] && echo yes || echo no), current $(readlink "$T20/data dir/current"), left: $left"
+fi
+
+# ---- a cut that keeps main but loses its arguments (N2) ---------------------
+
+# `main` without "$@" would run with no arguments: the defaults, under the
+# caller's HOME. The brace group has no closing brace in a cut copy, so the
+# shell must refuse to run any of it.
+T21="$WORK/cut-main"
+mkdir -p "$T21/home"
+total=$(wc -l < "$INSTALL" | tr -d ' ')
+{ head -n $((total - 2)) "$INSTALL"; printf 'main'; } \
+    | HOME="$T21/home" KNOSSOS_RELEASE_BASE=$RELEASE sh -s -- --no-plugin --data-dir="$T21/data" --version="$VERSION" >/dev/null 2>&1
+{ head -n $((total - 2)) "$INSTALL"; printf 'main "$@"; exit'; } \
+    | HOME="$T21/home" KNOSSOS_RELEASE_BASE=$RELEASE sh -s -- --no-plugin --data-dir="$T21/data" --version="$VERSION" >/dev/null 2>&1
+if [ -z "$(ls -A "$T21/home")" ] && [ ! -e "$T21/data" ]; then
+    pass 'a script cut between main and its arguments, or just before the closing brace, runs nothing'
+else
+    fail "cut at main created: $(find "$T21" -mindepth 1 | head -n 3 | tr '\n' ' ')"
+fi
+case $(tail -n 2 "$INSTALL" | tr '\n' ' ') in
+    'main "$@"; exit } ') pass 'the script ends with main "$@"; exit and the closing brace' ;;
+    *) fail "unexpected end of install.sh: $(tail -n 2 "$INSTALL")" ;;
+esac
+
 if [ "$failures" -ne 0 ]; then
     printf '%s failure(s)\n' "$failures"
     exit 1
