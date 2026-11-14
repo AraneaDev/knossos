@@ -10,8 +10,10 @@ namespace Knossos\Install;
  * One run at a time (a lock file in the install directory). An update fetches
  * the release, checks it against SHA256SUMS, runs its doctor against a scratch
  * data directory, and only then switches `current`; if the switched release
- * then fails to answer, the previous state is restored. Exactly one previous
- * version is kept.
+ * then fails to answer, the previous state is restored. After the switch the
+ * launcher and the plugin are rewritten from the release switched to, so
+ * neither keeps running a version that is no longer current. Exactly one
+ * previous version is kept.
  */
 final class SelfUpdater
 {
@@ -63,18 +65,7 @@ final class SelfUpdater
                 return ['status' => 'current', 'from' => $current, 'to' => $current];
             }
             $this->install($target);
-            $snapshot = $this->versions->snapshot();
-            try {
-                $this->versions->switchTo($target, $current);
-            } catch (InstallException $error) {
-                // The link may have moved before a later write failed: put everything back.
-                $this->versions->restore($snapshot);
-                throw $error;
-            }
-            if ($this->probe->version($this->versions->versionDir($target), $this->scratch('post')) !== $target) {
-                $this->versions->restore($snapshot);
-                throw new InstallException(sprintf('Release %s did not start after the switch; %s is current again', $target, $current));
-            }
+            $this->switchAndRefresh($target, $current, verify: true);
             $this->versions->prune([$target, $current]);
             if ($requested === null) {
                 (new UpdateCheck($this->installation->directory()))->record($target);
@@ -95,10 +86,56 @@ final class SelfUpdater
         return $this->locked(function (): array {
             $current = $this->versions->current() ?? throw new InstallException('There is no installed release: current is missing; run the installer again');
             $previous = $this->versions->previous() ?? throw new InstallException('There is no previous version to roll back to');
-            $this->versions->switchTo($previous, $current);
+            $this->switchAndRefresh($previous, $current, verify: false);
 
             return ['status' => 'rolled back', 'from' => $current, 'to' => $previous];
         });
+    }
+
+    /**
+     * Switch `current` to `$version`, then bring the launcher and the plugin up to it; undo all of it on any failure.
+     *
+     * In this order, each step only once the one before it worked:
+     * 1. `current`, `install.json` (with the bin directory carried over) and `previous-version`;
+     * 2. with `$verify`, the release must answer `version` with its own version;
+     * 3. the launcher is rewritten from the release's `launcher/knossos`, in one rename;
+     * 4. when the installation has a plugin directory, the release writes its own plugin
+     *    there, naming the launcher, and runs no `claude` command. The directory is the
+     *    one Claude Code has registered, so the registration stays valid.
+     * A failure at any step puts back the link, both files and the launcher as they were;
+     * the plugin step is all or nothing by itself, and it comes last.
+     *
+     * @throws InstallException
+     */
+    private function switchAndRefresh(string $version, string $from, bool $verify): void
+    {
+        $binDir = $this->installation->binDir();
+        $launcher = $this->installation->launcher();
+        $snapshot = $this->versions->snapshot();
+        $launcherBefore = Launcher::read($launcher);
+        $launcherTouched = false;
+        try {
+            $this->versions->switchTo($version, $from, $binDir);
+            if ($verify && $this->probe->version($this->versions->versionDir($version), $this->scratch('post')) !== $version) {
+                throw new InstallException(sprintf('Release %s did not start after the switch', $version));
+            }
+            $launcherTouched = true;
+            Launcher::write($this->versions->versionDir($version) . '/launcher/knossos', $this->installation->directory(), $launcher);
+            $pluginDir = $this->installation->pluginDir();
+            if (is_dir($pluginDir)) {
+                $failure = $this->probe->plugin($this->versions->versionDir($version), $pluginDir, $launcher, $this->installation->directory(), $this->scratch('plugin'));
+                if ($failure !== null) {
+                    throw new InstallException(sprintf("Release %s could not write its plugin:\n%s", $version, $failure));
+                }
+            }
+        } catch (InstallException $error) {
+            // The link may have moved before a later step failed: put everything back.
+            $this->versions->restore($snapshot);
+            if ($launcherTouched) {
+                Launcher::restore($launcher, $launcherBefore);
+            }
+            throw new InstallException(sprintf('%s; %s is current again', rtrim($error->getMessage(), '.'), $from), 0, $error);
+        }
     }
 
     /**

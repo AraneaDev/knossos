@@ -59,12 +59,35 @@ mv "$REL/$NEW_ASSET" "$WORK/$NEW_ASSET"
 
 DATA="$WORK/data dir"
 BIN="$WORK/bin dir"
+# The install includes the plugin step, against a stub claude first on PATH
+# that records each call: never the real one.
+CLAUDE_STUB="$WORK/stub bin"
+mkdir -p "$CLAUDE_STUB"
+cat > "$CLAUDE_STUB/claude" <<'CLAUDE'
+#!/bin/sh
+{ printf 'call'; for a in "$@"; do printf ' [%s]' "$a"; done; printf '\n'; } >> "$CLAUDE_LOG"
+CLAUDE
+chmod +x "$CLAUDE_STUB/claude"
+CLAUDE_LOG="$WORK/claude.log"
+export CLAUDE_LOG
+PATH="$CLAUDE_STUB:$PATH"
 if ! KNOSSOS_RELEASE_BASE="$REL" env -u KNOSSOS_BIN_DIR \
-    sh "$ROOT/install.sh" --no-plugin --no-roots --data-dir="$DATA" --bin-dir="$BIN" --version="$OLD" > "$WORK/install.log" 2>&1 </dev/null; then
+    sh "$ROOT/install.sh" --no-roots --data-dir="$DATA" --bin-dir="$BIN" --version="$OLD" > "$WORK/install.log" 2>&1 </dev/null; then
     printf 'FAIL the install failed\n'
     cat "$WORK/install.log"
     exit 1
 fi
+PLUGIN="$DATA/plugin"
+LIB="$PLUGIN/hooks/scripts/lib.sh"
+calls_before=$(wc -l < "$CLAUDE_LOG" 2>/dev/null | tr -d ' ')
+if [ "${calls_before:-0}" -gt 0 ] && grep -qxF "call [plugin] [marketplace] [add] [$PLUGIN] [--scope] [user]" "$CLAUDE_LOG" \
+    && grep -qxF "KNOSSOS_INSTALLED_BIN='$BIN/knossos'" "$LIB"; then
+    pass 'the install registers the marketplace at <data dir>/plugin and its lib.sh names the launcher'
+else
+    fail "plugin install: $(cat "$CLAUDE_LOG" 2>&1), lib.sh: $(grep -n KNOSSOS_INSTALLED_BIN "$LIB" 2>&1)"
+fi
+manifest_version() { sed -n 's/^ *"version": "\(.*\)",*$/\1/p' "$PLUGIN/.claude-plugin/plugin.json"; }
+launcher_before=$(cat "$BIN/knossos")
 
 # kn ARGS: the installed launcher, against the local release directory, with
 # the graph in a directory of its own. The launcher finds the release through
@@ -105,6 +128,33 @@ if grep -q "\"version\": \"$NEW\"" "$DATA/install.json" && [ -d "$DATA/versions/
 leftovers=$(find "$DATA" -name '*.partial*' -o -name '*.tmp.*' -o -name 'self-update.tmp' | head -n 3)
 if [ -z "$leftovers" ]; then pass 'no partial or temporary files are left'; else fail "left behind: $leftovers"; fi
 
+# The plugin: same directory, the new release's files, still the launcher.
+if [ "$(manifest_version)" = "$NEW" ] && grep -qxF "KNOSSOS_INSTALLED_BIN='$BIN/knossos'" "$LIB" && ! grep -q '/versions/' "$LIB"; then
+    pass "self-update rewrites <data dir>/plugin from the new release, and lib.sh still names the launcher"
+else
+    fail "plugin after update: manifest $(manifest_version), lib.sh $(grep -n KNOSSOS_INSTALLED "$LIB" 2>&1)"
+fi
+if [ "$(wc -l < "$CLAUDE_LOG" | tr -d ' ')" = "$calls_before" ]; then pass 'self-update runs no claude command'; else fail "self-update called claude: $(tail -n 3 "$CLAUDE_LOG")"; fi
+# The launcher is the template of the new release with the install directory baked in.
+physical_data=$(cd "$DATA" && pwd -P)
+launcher_now=$(cat "$BIN/knossos")
+if grep -qxF "INSTALL_DIR='$physical_data'" "$BIN/knossos" && [ "$launcher_now" = "$launcher_before" ] && [ -x "$BIN/knossos" ] \
+    && [ -z "$(find "$BIN" -name '.knossos.tmp.*')" ]; then
+    pass 'self-update rewrites the launcher from the new template, same bytes for the same template'
+else
+    fail "launcher after update: $(grep -n INSTALL_DIR= "$BIN/knossos")"
+fi
+# Pruning the old version breaks nothing: the hooks and the launcher outlive it.
+mv "$DATA/versions/$OLD" "$WORK/kept-$OLD"
+# shellcheck disable=SC2016 # the single-quoted program expands in the child shell.
+found=$(env -u KNOSSOS_BIN sh -c '. "$1"; b=$(find_knossos) && printf "%s\n" "$b" && "$b" version' _ "$LIB" 2>&1)
+if [ "$found" = "$(printf '%s\nKnossos %s' "$BIN/knossos" "$NEW")" ]; then
+    pass 'with the old version gone, the hooks find the launcher and it runs the new release'
+else
+    fail "after pruning $OLD: $found"
+fi
+mv "$WORK/kept-$OLD" "$DATA/versions/$OLD"
+
 out=$(kn session-brief "$WORK")
 case $out in *"self-update"*) fail "the update line is still there after updating: $out" ;; *) pass 'the update line is gone once current' ;; esac
 
@@ -115,6 +165,7 @@ if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a second self-update say
 out=$(kn self-update --rollback); status=$?
 got=$(kn version)
 if [ "$status" -eq 0 ] && [ "$got" = "Knossos $OLD" ]; then pass '--rollback switches back to the kept version'; else fail "rollback: $status, $out, version said $got"; fi
+if [ "$(manifest_version)" = "$OLD" ] && grep -qxF "KNOSSOS_INSTALLED_BIN='$BIN/knossos'" "$LIB"; then pass '--rollback rewrites the plugin from the version it returns to'; else fail "plugin after rollback: manifest $(manifest_version)"; fi
 
 # A corrupted download changes nothing. The kept copy is removed first: a
 # complete version on disk is reused without a download.

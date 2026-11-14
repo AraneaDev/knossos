@@ -103,6 +103,43 @@ else
 fi
 case $(cat "$TF/doctor.json") in *"native $VERSION at "*) pass 'doctor names the installed release with a foreign KNOSSOS_DATA_DIR' ;; *) fail "doctor installation line: $(head -c 400 "$TF/doctor.json")" ;; esac
 
+# ---- the plugin and the MCP registration -------------------------------------
+
+# A full install, plugin step included, with a stub claude first on PATH that
+# records each call. The plugin must go to <data dir>/plugin, outside every
+# version, and both it and the MCP server must name the launcher. A foreign
+# KNOSSOS_DATA_DIR is exported throughout and must change none of it.
+CLAUDE_STUB="$WORK/stub bin"
+mkdir -p "$CLAUDE_STUB"
+cat > "$CLAUDE_STUB/claude" <<'CLAUDE'
+#!/bin/sh
+{ printf 'call'; for a in "$@"; do printf ' [%s]' "$a"; done; printf '\n'; } >> "$CLAUDE_LOG"
+CLAUDE
+chmod +x "$CLAUDE_STUB/claude"
+TP="$WORK/plugin install"
+mkdir -p "$TP/foreign"
+out=$(PATH="$CLAUDE_STUB:$PATH" CLAUDE_LOG="$TP/claude.log" KNOSSOS_DATA_DIR="$TP/foreign" KNOSSOS_ROOTS_FILE="$TP/foreign/roots.json" \
+    KNOSSOS_RELEASE_BASE=$RELEASE env -u KNOSSOS_BIN_DIR \
+    sh "$INSTALL" --no-roots --data-dir="$TP/data dir" --bin-dir="$TP/bin dir" --version="$VERSION" 2>&1 </dev/null); status=$?
+if [ "$status" -eq 0 ] && [ -s "$TP/claude.log" ]; then pass 'a full install with the plugin step exits 0 and calls the stub claude'; else fail "plugin install: status $status, output $out"; fi
+expect_call() {
+    if grep -qxF "$1" "$TP/claude.log" 2>/dev/null; then pass "$2"; else fail "$2: no call $1 in: $(cat "$TP/claude.log" 2>&1)"; fi
+}
+expect_call "call [plugin] [marketplace] [add] [$TP/data dir/plugin] [--scope] [user]" 'the marketplace is registered at <data dir>/plugin'
+expect_call 'call [plugin] [install] [knossos@knossos] [--scope] [user] [--yes]' 'the plugin is installed from that marketplace'
+expect_call "call [mcp] [add] [knossos] [-s] [user] [-e] [KNOSSOS_DATA_DIR=$TP/data dir] [-e] [KNOSSOS_ROOTS_FILE=$TP/data dir/roots.json] [--] [$TP/bin dir/knossos] [serve]" 'the MCP server is registered with the launcher and this install directory'
+LIB="$TP/data dir/plugin/hooks/scripts/lib.sh"
+if grep -qxF "KNOSSOS_INSTALLED_BIN='$TP/bin dir/knossos'" "$LIB" 2>/dev/null && grep -qxF "KNOSSOS_INSTALLED_DATA_DIR='$TP/data dir'" "$LIB" && ! grep -q '/versions/' "$LIB"; then
+    pass "the plugin's lib.sh names the launcher and the install directory, nothing under versions/"
+else
+    fail "lib.sh: $(grep -n 'KNOSSOS_INSTALLED' "$LIB" 2>&1)"
+fi
+if [ -z "$(find "$TP/data dir/versions" -name .plugin 2>/dev/null)" ] && [ -z "$(find "$TP/foreign" -mindepth 1)" ]; then
+    pass 'no plugin under versions/ and nothing in the foreign data dir'
+else
+    fail "stray plugin or foreign files: $(find "$TP/data dir/versions" -maxdepth 2 -name .plugin) $(find "$TP/foreign" -mindepth 1)"
+fi
+
 # Latest from a local directory, and a file:// base.
 T1B="$WORK/latest"
 mkdir -p "$T1B"

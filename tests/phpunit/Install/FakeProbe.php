@@ -11,7 +11,10 @@ final class FakeProbe implements ReleaseProbe
 {
     public int $doctorRuns = 0;
 
-    public function __construct(public ?string $doctorFailure = null, public bool $versionWorks = true) {}
+    /** @var list<array{string, string, string, string}> release, plugin dir, launcher and data dir of each plugin call */
+    public array $plugins = [];
+
+    public function __construct(public ?string $doctorFailure = null, public bool $versionWorks = true, public ?string $pluginFailure = null) {}
 
     /** {@inheritDoc} */
     public function doctor(string $releaseDir, string $scratchDir): ?string
@@ -25,5 +28,18 @@ final class FakeProbe implements ReleaseProbe
     public function version(string $releaseDir, string $scratchDir): ?string
     {
         return $this->versionWorks ? trim((string) file_get_contents($releaseDir . '/VERSION')) : null;
+    }
+
+    /** {@inheritDoc} Writes a marker naming the release, so a test can see which release the plugin came from. */
+    public function plugin(string $releaseDir, string $pluginDir, string $launcher, string $dataDir, string $scratchDir): ?string
+    {
+        $this->plugins[] = [basename($releaseDir), $pluginDir, $launcher, $dataDir];
+        if ($this->pluginFailure !== null) {
+            return $this->pluginFailure;
+        }
+        @mkdir($pluginDir, 0o755, true);
+        file_put_contents($pluginDir . '/from', trim((string) file_get_contents($releaseDir . '/VERSION')) . "\n");
+
+        return null;
     }
 }

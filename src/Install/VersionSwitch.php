@@ -254,22 +254,30 @@ final class VersionSwitch
     /**
      * Point `current` at a version, and record it in `install.json`.
      *
-     * `$previous` is the version to keep for rollback, or null for none. The
-     * link is built under a temporary name and renamed over the old one, so a
-     * reader sees the old version or the new one, never neither.
+     * `$previous` is the version to keep for rollback, or null for none.
+     * `$binDir` is where the launcher lives, recorded so that later commands
+     * can find it. The link is built under a temporary name and renamed over
+     * the old one, so a reader sees the old version or the new one, never
+     * neither. The record has the same fields, in the same order and layout,
+     * as the one install.sh writes.
      *
      * @throws InstallException
      */
-    public function switchTo(string $version, ?string $previous): void
+    public function switchTo(string $version, ?string $previous, string $binDir): void
     {
         if (!$this->isComplete($version)) {
             throw new InstallException(sprintf('Version %s is not completely installed; nothing was switched', $version));
         }
+        $quotedBinDir = json_encode($binDir, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($quotedBinDir === false) {
+            throw new InstallException(sprintf('The bin directory %s cannot be recorded in install.json', mb_scrub($binDir, 'UTF-8')));
+        }
         $this->link('versions/' . $version);
         $this->write('previous-version', $previous === null ? null : $previous . "\n");
         $this->write('install.json', sprintf(
-            "{\n  \"mode\": \"native\",\n  \"version\": \"%s\",\n  \"image\": null,\n  \"installed_at\": \"%s\"\n}\n",
+            "{\n  \"mode\": \"native\",\n  \"version\": \"%s\",\n  \"image\": null,\n  \"bin_dir\": %s,\n  \"installed_at\": \"%s\"\n}\n",
             $version,
+            $quotedBinDir,
             gmdate('Y-m-d\TH:i:s\Z'),
         ));
     }

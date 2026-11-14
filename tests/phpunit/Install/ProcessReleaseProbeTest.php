@@ -37,12 +37,27 @@ final class ProcessReleaseProbeTest extends KnossosTestCase
     public function testDoctorRunsAgainstTheScratchDataDirectory(): void
     {
         $dir = $this->release('[ "$1" = doctor ] && [ "$KNOSSOS_DATA_DIR" = "' . $this->work . '/scratch" ] && [ -z "${KNOSSOS_ROOTS_FILE:-}" ] && exit 0; echo "wrong: $1 $KNOSSOS_DATA_DIR"; exit 1');
+        $previous = getenv('KNOSSOS_ROOTS_FILE');
         putenv('KNOSSOS_ROOTS_FILE=/should/not/leak');
         try {
             assertSame(null, (new ProcessReleaseProbe())->doctor($dir, $this->work . '/scratch'));
         } finally {
-            putenv('KNOSSOS_ROOTS_FILE');
+            putenv($previous === false ? 'KNOSSOS_ROOTS_FILE' : 'KNOSSOS_ROOTS_FILE=' . $previous);
         }
+    }
+
+    #[Group('install')]
+    public function testThePluginIsWrittenByTheReleaseItselfAndRegistersNothing(): void
+    {
+        $dir = $this->release('printf "%s\\n" "$@" > "$KNOSSOS_DATA_DIR/args"; [ "$1" = install-agent-plugin ] || exit 1');
+
+        assertSame(null, (new ProcessReleaseProbe())->plugin($dir, '/i/plugin', '/b/knossos', '/i', $this->work . '/scratch'));
+        assertSame(
+            "install-agent-plugin\n--execute\n--no-register\n--plugin-dir=/i/plugin\n--bin=/b/knossos\n--data-dir=/i\n",
+            file_get_contents($this->work . '/scratch/args'),
+        );
+        assertSame('nope', (new ProcessReleaseProbe())->plugin($this->release('echo nope; exit 2'), '/i/plugin', '/b/knossos', '/i', $this->work . '/scratch'));
+        assertSame('install-agent-plugin did not finish', (new ProcessReleaseProbe())->plugin($this->release('exit 2'), '/i/plugin', '/b/knossos', '/i', $this->work . '/scratch'));
     }
 
     #[Group('install')]

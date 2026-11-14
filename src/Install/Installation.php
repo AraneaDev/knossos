@@ -17,6 +17,9 @@ namespace Knossos\Install;
  */
 final readonly class Installation
 {
+    /** The directory under the install directory that holds the materialised plugin. */
+    public const PLUGIN_DIRECTORY = 'plugin';
+
     /** Where the release lives (the directory holding `versions/`), or null for a source checkout. */
     public ?string $installDir;
 
@@ -64,6 +67,40 @@ final readonly class Installation
         $mode = $this->record()['mode'] ?? null;
 
         return $mode === 'native' || $mode === 'container' ? $mode : null;
+    }
+
+    /**
+     * The directory the launcher was written to, as `install.json` records it.
+     *
+     * A record without `bin_dir` was written before the field existed, when the
+     * launcher could only be in the default place, so that is the answer then.
+     *
+     * @throws InstallException when there is no record of it and HOME is not set either
+     */
+    public function binDir(): string
+    {
+        $recorded = $this->record()['bin_dir'] ?? null;
+        if (is_string($recorded) && str_starts_with($recorded, '/')) {
+            return rtrim($recorded, '/') === '' ? '/' : rtrim($recorded, '/');
+        }
+        $home = getenv('HOME');
+        if (!is_string($home) || $home === '') {
+            throw new InstallException('install.json names no bin directory and HOME is not set; run the installer again');
+        }
+
+        return rtrim($home, '/') . '/.local/bin';
+    }
+
+    /** The launcher's path: `<bin dir>/knossos`. @throws InstallException see {@see binDir()} */
+    public function launcher(): string
+    {
+        return rtrim($this->binDir(), '/') . '/knossos';
+    }
+
+    /** Where the plugin of this installation is materialised. @throws InstallException in a source checkout */
+    public function pluginDir(): string
+    {
+        return $this->directory() . '/' . self::PLUGIN_DIRECTORY;
     }
 
     /** One line for `knossos doctor`: the mode, the version and where it lives. */

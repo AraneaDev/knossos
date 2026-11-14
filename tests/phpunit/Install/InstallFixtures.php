@@ -11,29 +11,42 @@ trait InstallFixtures
 {
     private string $work = '';
 
+    /** HOME as it was before the test, or false when it was unset. */
+    private string|false $homeBefore = false;
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->work = (string) realpath(sys_get_temp_dir()) . '/knossos-install-test-' . bin2hex(random_bytes(4));
-        mkdir($this->work, 0o755, true);
+        mkdir($this->work . '/home', 0o755, true);
+        // A record without bin_dir falls back to ~/.local/bin: that must never be the real one.
+        $this->homeBefore = getenv('HOME');
+        putenv('HOME=' . $this->work . '/home');
     }
 
     protected function tearDown(): void
     {
+        putenv($this->homeBefore === false ? 'HOME' : 'HOME=' . $this->homeBefore);
         exec('rm -rf ' . escapeshellarg($this->work));
         parent::tearDown();
     }
 
-    /** An unpacked release: a `bin/knossos` that answers `version`, and its VERSION file. */
+    /** An unpacked release: a `bin/knossos` that answers `version`, its VERSION file and a launcher template naming it. */
     private function writeRelease(string $directory, string $version): void
     {
         mkdir($directory . '/bin', 0o755, true);
         file_put_contents($directory . '/bin/knossos', "#!/bin/sh\necho 'Knossos {$version}'\n");
         chmod($directory . '/bin/knossos', 0o755);
         file_put_contents($directory . '/VERSION', $version . "\n");
+        mkdir($directory . '/launcher', 0o755, true);
+        file_put_contents($directory . '/launcher/knossos', "#!/bin/sh\n# launcher of {$version}\nINSTALL_DIR='__KNOSSOS_INSTALL_DIR__'\nexec \"\$INSTALL_DIR/current/bin/knossos\" \"\$@\"\n");
     }
 
-    /** A data directory holding the given versions, `current` on the first and install.json to match. */
+    /**
+     * An install directory holding the given versions, `current` on the first and install.json to match.
+     *
+     * The record names `<work>/<name>-bin` as the bin directory, which is where self-update writes the launcher.
+     */
     private function installed(string $name, string ...$versions): string
     {
         $data = $this->work . '/' . $name;
@@ -41,7 +54,11 @@ trait InstallFixtures
             $this->writeRelease($data . '/versions/' . $version, $version);
         }
         symlink('versions/' . $versions[0], $data . '/current');
-        file_put_contents($data . '/install.json', sprintf("{\n  \"mode\": \"native\",\n  \"version\": \"%s\",\n  \"image\": null,\n  \"installed_at\": \"2026-01-01T00:00:00Z\"\n}\n", $versions[0]));
+        file_put_contents($data . '/install.json', sprintf(
+            "{\n  \"mode\": \"native\",\n  \"version\": \"%s\",\n  \"image\": null,\n  \"bin_dir\": \"%s\",\n  \"installed_at\": \"2026-01-01T00:00:00Z\"\n}\n",
+            $versions[0],
+            $this->work . '/' . $name . '-bin',
+        ));
 
         return $data;
     }

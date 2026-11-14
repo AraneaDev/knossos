@@ -47,7 +47,7 @@ final class VersionSwitchTest extends KnossosTestCase
         $data = $this->installed('d', '1.0.0', '2.0.0');
         $switch = new VersionSwitch($data);
 
-        $switch->switchTo('2.0.0', '1.0.0');
+        $switch->switchTo('2.0.0', '1.0.0', $this->work . '/bin');
 
         assertSame('versions/2.0.0', readlink($data . '/current'));
         assertSame('1.0.0', $switch->previous());
@@ -55,9 +55,16 @@ final class VersionSwitchTest extends KnossosTestCase
         assertSame('native', $record['mode']);
         assertSame('2.0.0', $record['version']);
         assertSame(null, $record['image']);
+        assertSame($this->work . '/bin', $record['bin_dir']);
+        assertSame(['mode', 'version', 'image', 'bin_dir', 'installed_at'], array_keys($record));
         assertSame([], glob($data . '/*.tmp.*'));
+        // A path with a quote, a backslash and non-ASCII is still one valid JSON string, slashes unescaped.
+        $switch->switchTo('2.0.0', '1.0.0', '/b "q" \\ é');
+        $raw = (string) file_get_contents($data . '/install.json');
+        assertSame('/b "q" \\ é', json_decode($raw, true)['bin_dir']);
+        assertSame(true, str_contains($raw, '"bin_dir": "/b \\"q\\" \\\\ é",'));
 
-        $switch->switchTo('1.0.0', null);
+        $switch->switchTo('1.0.0', null, $this->work . '/bin');
         assertSame(false, is_file($data . '/previous-version'));
     }
 
@@ -67,7 +74,7 @@ final class VersionSwitchTest extends KnossosTestCase
         $data = $this->installed('d', '1.0.0');
         mkdir($data . '/versions/2.0.0');
 
-        $this->refused(fn() => (new VersionSwitch($data))->switchTo('2.0.0', '1.0.0'), 'not completely installed');
+        $this->refused(fn() => (new VersionSwitch($data))->switchTo('2.0.0', '1.0.0', $this->work . '/bin'), 'not completely installed');
 
         assertSame('1.0.0', (new VersionSwitch($data))->current());
     }
@@ -80,7 +87,7 @@ final class VersionSwitchTest extends KnossosTestCase
         $before = $switch->snapshot();
         $installJson = (string) file_get_contents($data . '/install.json');
 
-        $switch->switchTo('2.0.0', '1.0.0');
+        $switch->switchTo('2.0.0', '1.0.0', $this->work . '/bin');
         $switch->restore($before);
 
         assertSame('1.0.0', $switch->current());

@@ -171,7 +171,8 @@ Usage:
   knossos notes-import [path] [--file=PATH] [--execute] [--expect=SHA256] [--db=FILE] [--json]
   knossos session-head [path] [--json]
   knossos session-diff [path] --rev=SHA --file=PATH [--json]
-  knossos install-agent-plugin [--scope=user] [--data-dir=DIR] [--execute] [--json]
+  knossos install-agent-plugin [--scope=user] [--data-dir=DIR] [--plugin-dir=DIR] [--bin=PATH]
+                               [--no-register] [--execute] [--json]
   knossos install-agent-plugin --out=DIR --data=HOSTPATH [--image=NAME] [--json]
                 (--db=PATH is accepted by both and has no effect)
   knossos list-boundaries <path|project-id> [--source=explicit|inferred] [--limit=N]

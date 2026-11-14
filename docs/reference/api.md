@@ -31,6 +31,7 @@ This file is generated from enforced PHP interface docblocks and the isolated PH
 
 - `doctor(string $releaseDir, string $scratchDir): ?string`: Run `knossos doctor` of a release against a scratch data directory
 - `version(string $releaseDir, string $scratchDir): ?string`: The version a release reports, or null when it does not run
+- `plugin(string $releaseDir, string $pluginDir, string $launcher, string $dataDir, string $scratchDir): ?string`: Have a release materialise its own plugin, running no `claude` command
 
 ### `Knossos\Install\ReleaseSource`
 

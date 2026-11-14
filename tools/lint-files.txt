@@ -104,6 +104,7 @@ php	src/Cli/Command/MaintenanceCommand.php
 php	src/Cli/Command/MetaCommand.php
 php	src/Cli/Command/NodeHandOver.php
 php	src/Cli/Command/PluginCommand.php
+php	src/Cli/Command/PluginTarget.php
 php	src/Cli/Command/PreviewsAFolder.php
 php	src/Cli/Command/ProjectListCommand.php
 php	src/Cli/Command/QueryCommand.php
@@ -203,6 +204,7 @@ php	src/Git/ProcessGitWorkingTreeProvider.php
 php	src/Install/GitHubReleaseSource.php
 php	src/Install/InstallException.php
 php	src/Install/Installation.php
+php	src/Install/Launcher.php
 php	src/Install/ProcessReleaseProbe.php
 php	src/Install/ReleaseAsset.php
 php	src/Install/ReleaseProbe.php
@@ -598,6 +600,7 @@ php	tests/phpunit/Cli/PackagingTest.php
 php	tests/phpunit/Cli/PhpFunctionMetricsTest.php
 php	tests/phpunit/Cli/PhpunitShardTest.php
 php	tests/phpunit/Cli/PluginCommandTest.php
+php	tests/phpunit/Cli/PluginTargetTest.php
 php	tests/phpunit/Cli/ProjectDatabaseLocatorTest.php
 php	tests/phpunit/Cli/ProjectListCommandTest.php
 php	tests/phpunit/Cli/ProjectReferenceTest.php
@@ -700,6 +703,7 @@ php	tests/phpunit/Install/InstallFixtures.php
 php	tests/phpunit/Install/InstallationTest.php
 php	tests/phpunit/Install/ProcessReleaseProbeTest.php
 php	tests/phpunit/Install/ReleaseAssetTest.php
+php	tests/phpunit/Install/SelfUpdateRefreshTest.php
 php	tests/phpunit/Install/SelfUpdaterTest.php
 php	tests/phpunit/Install/UpdateNoticeTest.php
 php	tests/phpunit/Install/VersionSwitchTest.php

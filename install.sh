@@ -271,6 +271,12 @@ rollback_switch() {
     fi
 }
 
+# A JSON string for a path: quote and backslash escaped. Control characters
+# never get here, main refuses them in both directories.
+json_string() {
+    printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+}
+
 # Merge a project root into the roots file, never overwriting what is there.
 merge_root() {
     mkdir -p "$(dirname -- "$ROOTS_FILE")"
@@ -387,6 +393,11 @@ main() {
     [ -z "$VERSION" ] || validate_version "$VERSION"
     DATA_DIR=$(absolute "$DATA_DIR")
     BIN_DIR=$(absolute "$BIN_DIR")
+    # Both end up in install.json, the launcher and the hooks, which are line
+    # based: a newline or another control character would break all three.
+    case $DATA_DIR$BIN_DIR in
+        *[[:cntrl:]]*) die 'the data and bin directories must not contain a newline or another control character' ;;
+    esac
 
     # ---- detect ------------------------------------------------------------
 
@@ -500,7 +511,7 @@ main() {
             log 'grants:     no project root'
         fi
         if [ "$PLUGIN" = 1 ]; then
-            log 'plugin:     install the plugin and register the MCP server with Claude Code'
+            log "plugin:     write $DATA_DIR/plugin, install it and register the MCP server with Claude Code"
         else
             log 'plugin:     skipped (--no-plugin)'
         fi
@@ -612,8 +623,9 @@ main() {
     log "current -> versions/$VERSION"
 
     installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    printf '{\n  "mode": "native",\n  "version": "%s",\n  "image": null,\n  "installed_at": "%s"\n}\n' \
-        "$VERSION" "$installed_at" > "$DATA_DIR/install.json.tmp.$$"
+    # The same fields, order and layout as VersionSwitch::switchTo writes.
+    printf '{\n  "mode": "native",\n  "version": "%s",\n  "image": null,\n  "bin_dir": %s,\n  "installed_at": "%s"\n}\n' \
+        "$VERSION" "$(json_string "$BIN_DIR")" "$installed_at" > "$DATA_DIR/install.json.tmp.$$"
     mv -f "$DATA_DIR/install.json.tmp.$$" "$DATA_DIR/install.json"
     mv -f "$NEW_LAUNCHER" "$LAUNCHER"
     log "launcher written to $LAUNCHER"
@@ -638,7 +650,12 @@ main() {
 
     if [ "$PLUGIN" = 1 ]; then
         say 'Installing the Claude Code plugin...'
-        if KNOSSOS_DATA_DIR="$DATA_DIR" "$LAUNCHER" install-agent-plugin --data-dir="$DATA_DIR" --execute >/dev/null 2>&1 </dev/null; then
+        # The plugin belongs to the installation, not to one version: it goes
+        # to <data dir>/plugin and its hooks call the launcher, so a later
+        # self-update, which rewrites that same directory, never leaves them
+        # on an old release or pointing at a deleted one.
+        if KNOSSOS_DATA_DIR="$DATA_DIR" "$LAUNCHER" install-agent-plugin --data-dir="$DATA_DIR" \
+            --plugin-dir="$DATA_DIR/plugin" --bin="$LAUNCHER" --execute >/dev/null 2>&1 </dev/null; then
             log 'plugin installed'
         else
             warn "the plugin was not installed; run: $LAUNCHER install-agent-plugin --data-dir=\"$DATA_DIR\" --execute"
