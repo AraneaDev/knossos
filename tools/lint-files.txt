@@ -1088,6 +1088,7 @@ php	tests/phpunit/Scanner/TypescriptReadTableTest.php
 php	tests/phpunit/Scanner/TypescriptRequireTest.php
 php	tests/phpunit/Scanner/TypescriptRunOnLoadScriptTest.php
 php	tests/phpunit/Scanner/TypescriptScannerTest.php
+php	tests/phpunit/Scanner/TypescriptSignaturesTest.php
 php	tests/phpunit/Scanner/TypescriptStringDispatchTest.php
 php	tests/phpunit/Scanner/TypescriptSupertypeMemberTest.php
 php	tests/phpunit/Scanner/TypescriptTableLookupTest.php
@@ -1551,6 +1552,7 @@ js	workers/typescript/src/__tests__/read-attribution.test.js
 js	workers/typescript/src/__tests__/read-table.test.js
 js	workers/typescript/src/__tests__/scanner.test.js
 js	workers/typescript/src/__tests__/shebang-and-rejection.test.js
+js	workers/typescript/src/__tests__/signatures.test.js
 js	workers/typescript/src/__tests__/supertype-members.test.js
 js	workers/typescript/src/__tests__/support/absent-alias-configs.mjs
 js	workers/typescript/src/__tests__/support/record-typescript-load.mjs
@@ -1595,6 +1597,7 @@ js	workers/typescript/src/scan-thread-exit.js
 js	workers/typescript/src/scan-thread-limits.js
 js	workers/typescript/src/scan-thread.js
 js	workers/typescript/src/scanner.js
+js	workers/typescript/src/signatures.js
 js	workers/typescript/src/source-caches.js
 js	workers/typescript/src/source-reading.js
 js	workers/typescript/src/syntax-predicates.js
