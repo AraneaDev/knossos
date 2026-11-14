@@ -759,6 +759,7 @@ php	tests/phpunit/Query/CreationBrief/CreationBriefQueryServiceTest.php
 php	tests/phpunit/Query/CreationBrief/CreationBriefReadingTest.php
 php	tests/phpunit/Query/CreationBrief/CreationBriefRendererTest.php
 php	tests/phpunit/Query/CreationBrief/CreationBriefSubtreeTest.php
+php	tests/phpunit/Query/CreationBrief/NeighbourCandidatesTest.php
 php	tests/phpunit/Query/CreationBrief/NeighboursTest.php
 php	tests/phpunit/Query/CreationBrief/PathRoleTest.php
 php	tests/phpunit/Query/CreationBrief/SubtreeFactsTest.php

@@ -24,6 +24,9 @@ final readonly class NeighbourCandidates
     /** Node kinds that are members of a type, which are not dependencies on a type. */
     private const MEMBER_KINDS = "'method', 'external_method', 'property', 'variable'";
 
+    /** Most files of a subtree weighed, so a brief whose basis is the whole project stays a bounded read. */
+    public const MAX_SUBTREE_CANDIDATES = 200;
+
     public function __construct(private PDO $pdo) {}
 
     /**
@@ -79,7 +82,48 @@ final readonly class NeighbourCandidates
             }
         }
 
-        return $files;
+        return $subtree ? self::nearest($files, PathParts::directory($exclude)) : $files;
+    }
+
+    /**
+     * The MAX_SUBTREE_CANDIDATES files nearest a directory, cut on the paths alone before any edge is read.
+     *
+     * Nearest is the longest directory path shared with `$directory`, then the
+     * path, so the same tree always keeps the same files. The cut comes before
+     * the files are split by role, so a subtree that mixes roles may keep fewer.
+     *
+     * @param array<string, string> $files relative path by file id
+     * @return array<string, string>
+     */
+    private static function nearest(array $files, string $directory): array
+    {
+        if (count($files) <= self::MAX_SUBTREE_CANDIDATES) {
+            return $files;
+        }
+        $shared = [];
+        foreach ($files as $id => $path) {
+            $shared[$id] = self::sharedLength(PathParts::directory($path), $directory);
+        }
+        $ids = array_map('strval', array_keys($files));
+        usort($ids, static fn(string $a, string $b): int => $shared[$b] <=> $shared[$a] ?: strcmp($files[$a], $files[$b]));
+
+        return array_intersect_key($files, array_flip(array_slice($ids, 0, self::MAX_SUBTREE_CANDIDATES)));
+    }
+
+    /** The length of the leading directory path two directories share, whole segments only. */
+    private static function sharedLength(string $a, string $b): int
+    {
+        $left = $a === '' ? [] : explode('/', $a);
+        $right = $b === '' ? [] : explode('/', $b);
+        $common = [];
+        foreach ($left as $i => $segment) {
+            if (($right[$i] ?? null) !== $segment) {
+                break;
+            }
+            $common[] = $segment;
+        }
+
+        return strlen(implode('/', $common));
     }
 
     /**
