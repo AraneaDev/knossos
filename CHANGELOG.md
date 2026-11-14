@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.46.0](https://github.com/AraneaDev/knossos/compare/v0.45.0...v0.46.0) (2026-11-14)
+
+
+### Features
+
+* brief an agent on a new file from stored folder facts ([#481](https://github.com/AraneaDev/knossos/issues/481)) ([596ce9e](https://github.com/AraneaDev/knossos/commit/596ce9e5cbd0b005351ab6a13cdf580ffe9f67d1))
+* tune the creation brief against a replay of real commits ([#484](https://github.com/AraneaDev/knossos/issues/484)) ([8480d96](https://github.com/AraneaDev/knossos/commit/8480d96b87766f6a53409bfb3e0307df836e7f71))
+
+
+### Fixes
+
+* send a request without parameters as an object, so workers answer shutdown ([#486](https://github.com/AraneaDev/knossos/issues/486)) ([9bd0855](https://github.com/AraneaDev/knossos/commit/9bd08558d17bf1babad291fcbccd19a9fd7abab4))
+
+
+### Performance
+
+* state each read once in the TypeScript worker's reply ([#487](https://github.com/AraneaDev/knossos/issues/487)) ([e4962e0](https://github.com/AraneaDev/knossos/commit/e4962e083bff439ebbe366776f8bb09242c9b60f))
+* stop the TypeScript worker re-walking the compiler's shared lookup lists for every file ([#485](https://github.com/AraneaDev/knossos/issues/485)) ([d03462a](https://github.com/AraneaDev/knossos/commit/d03462a11dbc0c66c0f4b72d8c603dc1c6dfbdaf))
+
 ## [0.45.0](https://github.com/AraneaDev/knossos/compare/v0.44.7...v0.45.0) (2026-11-13)
 
 
