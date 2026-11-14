@@ -32,6 +32,7 @@ import {
 } from "./declaration-kinds.js";
 import { DynamicImportCollector } from "./dynamic-import-collector.js";
 import { FactAccumulator } from "./fact-accumulator.js";
+import { injectionSites } from "./injection-sites.js";
 import {
     hasMainGuard,
     importMetaUrlModule,
@@ -257,15 +258,13 @@ export class TypeScriptLanguageFactCollector {
                 }
             }
         }
-        const constructor = node.members?.find((member) =>
-            ts.isConstructorDeclaration(member),
-        );
-        for (const parameter of constructor?.parameters ?? []) {
-            if (parameter.type) {
-                const target = this.typeNodeReference(parameter.type);
-                if (target !== null)
-                    this.addEdge("injects", id, target, parameter);
-            }
+        for (const site of injectionSites(node, this.checker)) {
+            const target = site.type
+                ? this.typeNodeReference(site.type)
+                : this.symbolReference(
+                      this.checker.getSymbolAtLocation(site.token),
+                  );
+            if (target !== null) this.addEdge("injects", id, target, site.at);
         }
     }
 
