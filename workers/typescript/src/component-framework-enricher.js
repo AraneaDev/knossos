@@ -4,11 +4,13 @@
  * Names a component's template uses that resolve to nothing, the `Props`
  * type Astro reads by name, the hooks, watchers, methods and computed
  * properties Vue reaches by name, and the functions k6 calls in a load-test
- * script. Applied once the fact collector has walked the whole file.
+ * script, applied once the fact collector has walked the whole file, and the
+ * classes a class is injected with, applied as it is walked.
  */
 
 import ts from "typescript";
 import { isNamePosition } from "./declaration-kinds.js";
+import { injectionSites } from "./injection-sites.js";
 import { componentSources } from "./source-caches.js";
 import {
     isK6Script,
@@ -43,6 +45,28 @@ export class ComponentFrameworkEnricher {
         if (component?.dialect === "vue")
             this.vueOptions(component.templateRanges);
         if (isK6Script(sourceFile)) this.k6Script();
+    }
+
+    /**
+     * An `injects` edge per class a class or interface is given: the type of
+     * a constructor parameter, and the class an Angular `inject()` call asks
+     * for. Applied as the class is walked, since the edge belongs to it.
+     */
+    injections(node, id) {
+        const context = this.context;
+        for (const site of injectionSites(node, context.checker)) {
+            // An `inject()` argument is read as a value: of a class and an
+            // interface sharing a name, it is the class.
+            const target = site.type
+                ? context.typeNodeReference(site.type)
+                : context.symbolReference(
+                      context.checker.getSymbolAtLocation(site.token),
+                      "class",
+                      true,
+                  );
+            if (target !== null)
+                context.addEdge("injects", id, target, site.at);
+        }
     }
 
     /**

@@ -257,16 +257,7 @@ export class TypeScriptLanguageFactCollector {
                 }
             }
         }
-        const constructor = node.members?.find((member) =>
-            ts.isConstructorDeclaration(member),
-        );
-        for (const parameter of constructor?.parameters ?? []) {
-            if (parameter.type) {
-                const target = this.typeNodeReference(parameter.type);
-                if (target !== null)
-                    this.addEdge("injects", id, target, parameter);
-            }
-        }
+        this.frameworks.injections(node, id);
     }
 
     /** The contract an object literal implements, from its context or its binding's annotation. */
