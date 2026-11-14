@@ -8,9 +8,11 @@ shell	hooks/scripts/lib.sh
 shell	hooks/scripts/run-args.sh
 shell	hooks/scripts/session-brief-container.sh
 shell	hooks/scripts/session-brief.sh
+shell	install.sh
 shell	tests/shell/check-commit-style.sh
 shell	tests/shell/gate-baseline.sh
 shell	tests/shell/install-hooks.sh
+shell	tests/shell/install-native.sh
 shell	tests/shell/knossos-run-hook.sh
 shell	tests/shell/launcher-native.sh
 shell	tests/shell/mutation-diff.sh
