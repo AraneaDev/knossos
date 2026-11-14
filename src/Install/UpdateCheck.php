@@ -40,7 +40,10 @@ final readonly class UpdateCheck
         $cached = $this->read();
         $at = $cached === null ? false : strtotime($cached['checked_at']);
 
-        return $at === false || ($now ?? time()) - $at >= self::MAX_AGE_SECONDS;
+        $now ??= time();
+
+        // A stamp from the future (a clock that went back) is not a fresh answer.
+        return $at === false || $at > $now || $now - $at >= self::MAX_AGE_SECONDS;
     }
 
     /**

@@ -216,35 +216,78 @@ final class VersionSwitchTest extends KnossosTestCase
         assertSame([], glob($data . '/versions/*.partial.*'));
     }
 
-    #[Group('install')]
-    public function testALinkMemberLeavingTheArchiveIsRefused(): void
+    /**
+     * Pack a release whose tree `$build` adds to, and unpack it into a data dir.
+     *
+     * @param callable(string): void $build receives the release directory
+     */
+    private function unpackReleaseWith(callable $build, string $data): string
     {
-        $data = $this->installed('d', '1.0.0');
-        foreach (['/etc', '../outside', 'a/../../../b', '../../../x'] as $target) {
-            $stage = $this->work . '/links-' . bin2hex(random_bytes(3));
-            mkdir($stage . '/knossos-2.0.0', 0o755, true);
-            symlink($target, $stage . '/knossos-2.0.0/evil');
-            exec(sprintf('tar -czf %s -C %s knossos-2.0.0', escapeshellarg($stage . '.tar.gz'), escapeshellarg($stage)));
+        $stage = $this->work . '/pack-' . bin2hex(random_bytes(3));
+        $this->writeRelease($stage . '/knossos-2.0.0', '2.0.0');
+        $build($stage . '/knossos-2.0.0');
+        exec(sprintf('tar -czf %s -C %s knossos-2.0.0', escapeshellarg($stage . '.tar.gz'), escapeshellarg($stage)));
 
-            $this->refused(fn() => (new VersionSwitch($data))->unpack($stage . '.tar.gz', '2.0.0'), 'Unsafe link');
-        }
-        assertSame([], glob($data . '/versions/*.partial.*'));
+        return (new VersionSwitch($data))->unpack($stage . '.tar.gz', '2.0.0');
+    }
+
+    /** @return iterable<string, array{callable(string): void, string}> */
+    public static function unsafeReleases(): iterable
+    {
+        yield 'a link to an absolute path' => [static function (string $r): void {
+            symlink('/etc', $r . '/evil');
+        }, 'evil -> /etc'];
+        yield 'a link that climbs out of the release' => [static function (string $r): void {
+            symlink('../../outside', $r . '/evil');
+        }, 'evil -> ../../outside'];
+        yield 'a deep link that climbs past the root' => [static function (string $r): void {
+            mkdir($r . '/a/b', 0o755, true);
+            symlink('../../../x', $r . '/a/b/evil');
+        }, 'a/b/evil'];
+        yield 'a link that re-enters by the release name after it is renamed' => [static function (string $r): void {
+            symlink('../knossos-2.0.0/x', $r . '/evil');
+        }, 'evil -> ../knossos-2.0.0/x'];
+        yield 'a member whose name contains an arrow' => [static function (string $r): void {
+            symlink('/etc', $r . '/x -> y');
+        }, 'x -> y -> /etc'];
+        yield 'a link to the parent of the release' => [static function (string $r): void {
+            symlink('..', $r . '/up');
+        }, 'up -> ..'];
+        yield 'a fifo' => [static function (string $r): void {
+            exec('mkfifo ' . escapeshellarg($r . '/pipe'));
+        }, 'pipe'];
     }
 
     #[Group('install')]
-    public function testALinkInsideTheArchiveIsFine(): void
+    #[\PHPUnit\Framework\Attributes\DataProvider('unsafeReleases')]
+    public function testAnUnsafeMemberIsRefusedAndNothingIsLeftBehind(callable $build, string $named): void
     {
-        $release = $this->work . '/release';
-        $stage = $this->work . '/inner';
-        $this->writeRelease($stage . '/knossos-2.0.0', '2.0.0');
-        symlink('bin/knossos', $stage . '/knossos-2.0.0/alias');
-        mkdir($stage . '/knossos-2.0.0/node_modules/.bin', 0o755, true);
-        symlink('../../bin/knossos', $stage . '/knossos-2.0.0/node_modules/.bin/tool');
-        exec(sprintf('tar -czf %s -C %s knossos-2.0.0', escapeshellarg($this->work . '/inner.tar.gz'), escapeshellarg($stage)));
         $data = $this->installed('d', '1.0.0');
 
-        $partial = (new VersionSwitch($data))->unpack($this->work . '/inner.tar.gz', '2.0.0');
+        $error = self::captureThrown(fn() => $this->unpackReleaseWith($build, $data), \Knossos\Install\InstallException::class);
 
+        self::assertStringContainsString($named, $error->getMessage());
+        assertSame([], glob($data . '/versions/*.partial.*'));
+        assertSame('1.0.0', (new VersionSwitch($data))->current());
+    }
+
+    #[Group('install')]
+    public function testLinksThatStayInsideTheReleaseAreAccepted(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+
+        $partial = $this->unpackReleaseWith(static function (string $r): void {
+            symlink('bin/knossos', $r . '/alias');
+            mkdir($r . '/node_modules/.bin', 0o755, true);
+            mkdir($r . '/node_modules/pkg', 0o755, true);
+            file_put_contents($r . '/node_modules/pkg/tool', 'x');
+            // The way real releases link their binaries: up and into a sibling directory.
+            symlink('../pkg/tool', $r . '/node_modules/.bin/tool');
+            symlink('../../bin/knossos', $r . '/node_modules/.bin/root');
+            symlink('node_modules/../bin', $r . '/via-dots');
+        }, $data);
+
+        assertSame(true, is_link($partial . '/node_modules/.bin/tool'));
         assertSame(true, is_link($partial . '/alias'));
     }
 
@@ -257,6 +300,7 @@ final class VersionSwitchTest extends KnossosTestCase
         $error = self::captureThrown(fn() => (new VersionSwitch($data))->unpack($this->work . '/bad.tar.gz', '2.0.0'), \Knossos\Install\InstallException::class);
 
         assertSame(false, str_contains($error->getMessage(), 'Git'));
-        assertSame(true, str_contains($error->getMessage(), 'tar:'));
+        assertSame(false, str_contains($error->getMessage(), 'tar: tar:'));
+        assertSame(true, str_contains($error->getMessage(), 'not a readable archive: tar: '));
     }
 }

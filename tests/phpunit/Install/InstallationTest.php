@@ -130,4 +130,14 @@ final class InstallationTest extends KnossosTestCase
         assertSame(false, $check->due());
         assertSame(null, $check->read()['latest']);
     }
+
+    #[Group('install')]
+    public function testAStampFromTheFutureIsDue(): void
+    {
+        $check = new UpdateCheck($this->work . '/c');
+        $check->record('1.0.0', 2_000_000);
+
+        assertSame(true, $check->due(1_000_000));
+        assertSame(false, $check->due(2_000_000));
+    }
 }

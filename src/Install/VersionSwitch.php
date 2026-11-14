@@ -74,7 +74,6 @@ final class VersionSwitch
                 throw new InstallException(sprintf('Unsafe or unexpected entry in the archive: %s', $entry));
             }
         }
-        $this->assertLinksStayInside($runner, $archive, $version);
         if (!is_dir($this->dataDir . '/versions') && !@mkdir($this->dataDir . '/versions', 0o700, true) && !is_dir($this->dataDir . '/versions')) {
             throw new InstallException('Could not create ' . $this->dataDir . '/versions');
         }
@@ -89,6 +88,12 @@ final class VersionSwitch
             self::remove($partial);
             throw new InstallException(sprintf('Could not unpack the archive: %s', self::reason($error)), 0, $error);
         }
+        try {
+            self::assertInside($partial);
+        } catch (InstallException $error) {
+            self::remove($partial);
+            throw $error;
+        }
         if (!is_executable($partial . '/bin/knossos') || trim((string) @file_get_contents($partial . '/VERSION')) !== $version) {
             self::remove($partial);
             throw new InstallException(sprintf('The archive does not hold a complete release of %s', $version));
@@ -98,53 +103,62 @@ final class VersionSwitch
     }
 
     /**
-     * Refuse a link member that points outside the archive's top directory.
+     * Walk an unpacked release without following links and refuse what could reach outside it.
      *
-     * A symbolic link is resolved against its own directory, so a release may
-     * link `node_modules/.bin/x` to `../pkg/x`; an absolute target, or one that
-     * climbs above the top directory, is refused. A hard link names a member
-     * by its full path, which must sit under the top directory.
+     * Only regular files, directories and symbolic links are allowed. A symbolic
+     * link must have a relative target that, resolved lexically against the
+     * link's own directory, stays inside the release: `..` may climb to a
+     * sibling directory inside it, never past its root.
      *
-     * @throws InstallException
+     * @throws InstallException naming the offending member
      */
-    private function assertLinksStayInside(GitProcessRunner $runner, string $archive, string $version): void
+    private static function assertInside(string $root, string $directory = ''): void
     {
-        try {
-            $verbose = $runner->run(['tar', '-tvzf', $archive], 120_000, 'archive listing');
-        } catch (Throwable $error) {
-            throw new InstallException(sprintf('The download is not a readable archive: %s', self::reason($error)), 0, $error);
-        }
-        foreach (explode("\n", $verbose) as $line) {
-            if (preg_match('/^([lh])\S* +\S+ +\d+ +\S+ +\S+ (.+?) (?:->|link to) (.+)$/', $line, $match) !== 1) {
+        $here = $root . ($directory === '' ? '' : '/' . $directory);
+        foreach (scandir($here) ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..') {
                 continue;
             }
-            [, $kind, $name, $target] = $match;
-            $base = $kind === 'l' ? dirname($name) . '/' . $target : $target;
-            if (str_starts_with($target, '/') || !self::staysUnder('knossos-' . $version, $base)) {
-                throw new InstallException(sprintf('Unsafe link in the archive: %s', $line));
+            $member = ($directory === '' ? '' : $directory . '/') . $entry;
+            $path = $root . '/' . $member;
+            if (is_link($path)) {
+                $target = (string) readlink($path);
+                if (!self::resolvesInside($directory, $target)) {
+                    throw new InstallException(sprintf('Unsafe link in the archive: %s -> %s', $member, $target));
+                }
+            } elseif (is_dir($path)) {
+                self::assertInside($root, $member);
+            } elseif (!is_file($path)) {
+                throw new InstallException(sprintf('Unsupported entry in the archive (not a file, directory or link): %s', $member));
             }
         }
     }
 
-    /** Whether a path, with its `.` and `..` segments resolved, still lies under `$top`. */
-    private static function staysUnder(string $top, string $path): bool
+    /** Whether a link target, relative to a directory inside the release, stays inside the release. */
+    private static function resolvesInside(string $directory, string $target): bool
     {
-        $stack = [];
-        foreach (explode('/', $path) as $segment) {
+        if ($target === '' || str_starts_with($target, '/')) {
+            return false;
+        }
+        $stack = $directory === '' ? [] : explode('/', $directory);
+        foreach (explode('/', $target) as $segment) {
             if ($segment === '..') {
+                if ($stack === []) {
+                    return false;
+                }
                 array_pop($stack);
             } elseif ($segment !== '' && $segment !== '.') {
                 $stack[] = $segment;
             }
         }
 
-        return ($stack[0] ?? '') === $top && !str_starts_with($path, '..');
+        return true;
     }
 
     /** The cause of a failed tar run, without the Git wording of the runner that carried it. */
     private static function reason(Throwable $error): string
     {
-        return preg_replace('/^Git [a-z ]+ unavailable: /', 'tar: ', $error->getMessage()) ?? $error->getMessage();
+        return preg_replace('/^Git [a-z ]+ unavailable: (?:tar: )?/', 'tar: ', $error->getMessage()) ?? $error->getMessage();
     }
 
     /**
@@ -293,12 +307,13 @@ final class VersionSwitch
     /** Delete a file, a link or a directory tree, without following links. */
     private static function remove(string $path): void
     {
-        if (is_link($path) || is_file($path)) {
+        if (is_link($path) || !is_dir($path)) {
+            // Files, links and the odd entry a hostile archive carries, a fifo or a device node.
             @unlink($path);
 
             return;
         }
-        foreach (is_dir($path) ? (scandir($path) ?: []) : [] as $entry) {
+        foreach (scandir($path) ?: [] as $entry) {
             if ($entry !== '.' && $entry !== '..') {
                 self::remove($path . '/' . $entry);
             }
