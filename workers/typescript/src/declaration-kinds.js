@@ -20,6 +20,7 @@ import {
     isFunctionProperty,
     unwrapExpression,
 } from "./typescript-fact-utils.js";
+import { signatureOf } from "./signatures.js";
 
 export function declarationDescriptor(node, sourceFile) {
     const name = declarationName(node, sourceFile);
@@ -46,8 +47,16 @@ export function declarationDescriptor(node, sourceFile) {
                 ? { binding: bindingKeyword(node) }
                 : {}),
             ...visibilityOf(modifiers),
+            ...signatureAttribute(kind, node, sourceFile),
         },
     };
+}
+
+/** `{ signature }` for a function or method whose function can be read, nothing otherwise. */
+function signatureAttribute(kind, node, sourceFile) {
+    if (kind !== "function" && kind !== "method") return {};
+    const signature = signatureOf(node, sourceFile);
+    return signature === undefined ? {} : { signature };
 }
 
 /** `{ visibility }` for a private or protected member, nothing for a public one. */
