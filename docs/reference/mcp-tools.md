@@ -117,7 +117,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `find_component`
 
-Locate a component by name when you are unsure of its exact canonical path, or by the file that declares it. Returns ranked candidates. Use before inspect_component when the name is ambiguous.
+Locate a component by name when you are unsure of its exact canonical path, or by the file that declares it. Returns ranked candidates; a function or method comes with `signature`, the line to call it by (parameters, types, return). Use before inspect_component when the name is ambiguous.
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
@@ -132,7 +132,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `inspect_component`
 
-Get the full dossier for one component (its roles, boundary, containment, relationships, and evidence) in a single call. Faster than opening and cross-referencing several files by hand.
+Get the full dossier for one component (its roles, boundary, containment, relationships, evidence, and for a function or method its `signature` line) in a single call. Faster than opening and cross-referencing several files by hand.
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |

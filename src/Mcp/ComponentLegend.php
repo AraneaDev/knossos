@@ -21,7 +21,7 @@ final class ComponentLegend
 {
     use LegendCompression;
 
-    private const IDENTITY_KEYS = ['id', 'kind', 'canonical_name', 'display_name', 'confidence', 'origin', 'roles', 'boundaries', 'attributes', 'scanner_local_id', 'scanner'];
+    private const IDENTITY_KEYS = ['id', 'kind', 'canonical_name', 'display_name', 'confidence', 'origin', 'roles', 'boundaries', 'attributes', 'signature', 'scanner_local_id', 'scanner'];
 
     /**
      * Same compression as compress(), but also returns the id -> legend-key
@@ -163,6 +163,10 @@ final class ComponentLegend
         // node must not silently drop them.
         if (($node['attributes'] ?? []) !== []) {
             $descriptor['attributes'] = $node['attributes'];
+        }
+        // How to call it, which is why a function is looked up at all.
+        if (is_string($node['signature'] ?? null)) {
+            $descriptor['signature'] = $node['signature'];
         }
 
         return $descriptor;

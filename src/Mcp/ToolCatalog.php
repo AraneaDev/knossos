@@ -238,7 +238,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'find_component',
                 'title' => 'Find component',
-                'description' => 'Locate a component by name when you are unsure of its exact canonical path, or by the file that declares it. Returns ranked candidates. Use before inspect_component when the name is ambiguous.',
+                'description' => 'Locate a component by name when you are unsure of its exact canonical path, or by the file that declares it. Returns ranked candidates; a function or method comes with `signature`, the line to call it by (parameters, types, return). Use before inspect_component when the name is ambiguous.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -255,7 +255,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'inspect_component',
                 'title' => 'Inspect component',
-                'description' => 'Get the full dossier for one component (its roles, boundary, containment, relationships, and evidence) in a single call. Faster than opening and cross-referencing several files by hand.',
+                'description' => 'Get the full dossier for one component (its roles, boundary, containment, relationships, evidence, and for a function or method its `signature` line) in a single call. Faster than opening and cross-referencing several files by hand.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [

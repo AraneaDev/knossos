@@ -59,12 +59,14 @@ final class ComponentLegendTest extends KnossosTestCase
             'id' => 'symbol_m', 'kind' => 'method', 'canonical_name' => 'A\\B::m',
             'display_name' => 'm', 'origin' => 'ast',
             'attributes' => ['visibility' => 'public', 'static' => false, 'abstract' => false],
+            'signature' => 'm(id: int): ?User',
         ];
         [$out, $legend] = ComponentLegend::compress(['items' => [$node]]);
 
         assertSame('A\\B::m', $out['items'][0]);
         assertSame(['visibility' => 'public', 'static' => false, 'abstract' => false], $legend['A\\B::m']['attributes']);
         assertSame('ast', $legend['A\\B::m']['origin']);
+        assertSame('m(id: int): ?User', $legend['A\\B::m']['signature']);
     }
 
     #[Group('mcp')]
