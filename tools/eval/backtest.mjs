@@ -17,6 +17,7 @@
  * No model is involved, so the same history gives the same numbers.
  */
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -39,7 +40,19 @@ const KIND_KEYS = {
     "one trait per file": "one_trait",
     "one enum per file": "one_enum",
     "functions only": "functions_only",
+    "types only": "types_only",
 };
+
+/** The `name_case` value each name-case convention text counts. */
+const NAME_CASE_VALUES = {
+    "kebab-case file names": "kebab",
+    "snake_case file names": "snake",
+    "PascalCase file names": "pascal",
+    "camelCase file names": "camel",
+};
+
+/** Most stored companions the brief weighs for one file, as the query does. */
+const COMPANIONS_CHECKED = 5;
 
 /** The part of a file name after its last dot, lower case; empty without one. */
 export const extensionOf = (file) => {
@@ -84,6 +97,7 @@ export function countFor(convention, facts) {
     if (id === "kind") return facts.kinds?.[KIND_KEYS[text]] ?? 0;
     if (id.startsWith("modifier:")) return facts.modifiers?.[id.slice("modifier:".length)] ?? 0;
     if (id === "suffix") return `named *${facts.suffix?.value}` === text ? facts.suffix.files : 0;
+    if (id === "name_case") return facts.name_case !== undefined && NAME_CASE_VALUES[text] === facts.name_case.value ? facts.name_case.files : 0;
     for (const key of ["injects", "uses"]) {
         if (id.startsWith(`${key}:`)) {
             return (facts[key] ?? []).find((entry) => entry.type === id.slice(key.length + 1))?.files ?? 0;
@@ -92,22 +106,50 @@ export function countFor(convention, facts) {
     return 0;
 }
 
+/** Each naming style as the folder facts read it, from a file name up to its first dot. */
+const NAME_STYLES = {
+    kebab: /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/,
+    snake: /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/,
+    pascal: /^[A-Z][A-Za-z0-9]*$/,
+    camel: /^[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*$/,
+};
+
+/**
+ * Whether a file's own name follows a name-case convention, by the rule the
+ * product stores it with: the base name up to its first dot is in the style,
+ * or is a single lower-case word and the style is kebab, snake or camel case.
+ */
+export function nameCaseFits(file, text) {
+    const style = NAME_CASE_VALUES[text];
+    const base = file.slice(file.lastIndexOf("/") + 1);
+    const dot = base.indexOf(".");
+    const name = dot <= 0 ? base : base.slice(0, dot);
+    if (style === undefined) return false;
+    return NAME_STYLES[style].test(name) || (style !== "pascal" && /^[a-z][a-z0-9]*$/.test(name));
+}
+
 /**
  * How the files one commit added to one folder population did against the
- * conventions the brief showed for it: per convention, how many of the
- * `added` new files hold the fact, read off the folder's counts before and
- * after. `lines` is a description, not a rule, and is left out.
+ * conventions the brief showed for it: per convention, how many of the new
+ * files at `paths` hold the fact. Most are read off the folder's counts before
+ * and after; the name case is read from each new file's own name, since a new
+ * folder stores no name case until three files share one and its count would
+ * never move. `lines` is a description, not a rule, and is left out.
  */
-export function conventionScore(conventions, before, after, added) {
+export function conventionScore(conventions, before, after, paths) {
+    const added = paths.length;
     return conventions
         .filter((c) => c.id !== "lines")
         .map((c) => ({
             id: c.id,
             text: c.text,
             shown: added,
-            followed: Math.max(0, Math.min(added, countFor(c, after) - countFor(c, before))),
+            followed: c.id === "name_case" ? paths.filter((file) => nameCaseFits(file, c.text)).length : Math.max(0, Math.min(added, countFor(c, after) - countFor(c, before))),
         }));
 }
+
+/** How many learned lines a brief carries: each convention but `lines`, one for the expected test, one per companion. */
+export const saidBy = (brief) => brief.conventions.filter((c) => c.id !== "lines").length + (brief.test ? 1 : 0) + brief.goes_with.length;
 
 /** A file name without its directory and its last extension. */
 export const stemOf = (file) => {
@@ -164,11 +206,29 @@ export const applyPattern = (pattern, file) => {
 /** Whether a path is a test by its name alone: the backtest's stand-in for the graph's role when it reads a tree. */
 export const looksLikeTest = (file) => /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec)\.[a-z]+$|Test\.[a-z]+$|(^|\/)test_[^/]*$|_test\.[a-z]+$/.test(file);
 
-/** One file's "goes with" against the commit: which predicted paths the commit really touched. */
+/**
+ * The stored companions the brief weighs for a file before it applies its bar:
+ * its own folder's, the basis folder's when its own has none, without those
+ * `exists` says are gone from the tree (the brief never names a deleted file),
+ * ordered as the query orders them (most commits, then path) and cut to the
+ * five it checks, without the file itself and its expected test. The brief names fewer, so the what-if table
+ * reads these to show what a lower bar would have named.
+ */
+export function companionsFor(stored, brief, exists = () => true) {
+    const own = stored[brief.directory] ?? [];
+    const list = own.length > 0 || brief.basis === null ? own : (stored[brief.basis.directory] ?? []);
+    const ordered = list.filter((c) => exists(c.path)).sort((a, b) => b.commits - a.commits || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    return ordered.slice(0, COMPANIONS_CHECKED).filter((c) => c.path !== brief.path && c.path !== brief.test?.path);
+}
+
+/** A stored `companions_json` as sqlite3 prints it, by directory; empty for no output. */
+export const parseStoredCompanions = (stdout) => (stdout.trim() === "" ? {} : JSON.parse(stdout));
+
+/** One file's "goes with" and expected test against the commit: which predicted paths the commit really touched. */
 export function goesWithScore(brief, commit) {
     const touched = new Set([...commit.added, ...commit.changed]);
-    const companions = brief.goes_with.filter((g) => g.kind === "companion").map((g) => g.path);
-    const test = brief.goes_with.find((g) => g.kind === "test")?.path ?? null;
+    const companions = brief.goes_with.map((g) => g.path);
+    const test = brief.test?.path ?? null;
     const others = commit.changed.filter((p) => p !== brief.path);
     return {
         companions: companions.length,
@@ -195,6 +255,8 @@ export function summarise(rows) {
         files: rows.length,
         briefed: rows.filter((r) => r.basis).length,
         borrowed: rows.filter((r) => r.borrowed).length,
+        subtree: rows.filter((r) => r.subtree).length,
+        saysSomething: rows.filter((r) => (r.said ?? 0) > 0).length,
         empty: rows.filter((r) => !r.basis && r.companions === 0 && r.test === 0).length,
         test: { predicted: sum("test"), hit: sum("testHit"), precision: share(sum("testHit"), sum("test")) },
         companions: {
@@ -229,6 +291,12 @@ async function rowOf(database, project, { directory, extension, role }) {
     return stdout.trim() === "" ? null : JSON.parse(stdout);
 }
 
+/** The project's stored companions by directory, empty when none are stored. */
+async function storedCompanions(database, project) {
+    const { stdout } = await run("sqlite3", [`file:${database}?mode=ro`, `SELECT companions_json FROM folder_companions WHERE project_id = '${project.replaceAll("'", "''")}'`]);
+    return parseStoredCompanions(stdout);
+}
+
 /** One folder population's stored facts, or null when it has no row. */
 async function factsOf(database, project, population) {
     return (await rowOf(database, project, population))?.facts ?? null;
@@ -250,6 +318,7 @@ export async function replay(source, limit, work, log = () => {}) {
         log(`${index + 1}/${commits.length} ${commit.hash.slice(0, 8)} adds ${commit.added.length}`);
         await git(clone, ["checkout", "--quiet", "--detach", `${commit.hash}^`]);
         const project = (await knossos(env, ["scan", clone])).project_id;
+        const stored = await storedCompanions(database, project);
         const briefs = [];
         const touched = new Set([...commit.added, ...commit.changed]);
         for (const file of commit.added.filter((f) => SCANNED.has(extensionOf(f)))) {
@@ -265,7 +334,7 @@ export async function replay(source, limit, work, log = () => {}) {
                 brief,
                 before: own?.facts ?? null,
                 raw: {
-                    companions: brief.goes_with.filter((g) => g.kind === "companion").map((g) => ({ commits: g.commits, of: g.of, hit: touched.has(g.path) })),
+                    companions: companionsFor(stored, brief, (file) => existsSync(path.join(clone, file))).map((c) => ({ commits: c.commits, of: c.of, hit: touched.has(c.path) })),
                     testPattern: usable ? { files: pattern.files, of: learnt.files, hit: touched.has(applyPattern(pattern.pattern, file)) } : null,
                     names: nameFacts(siblings, file),
                 },
@@ -282,7 +351,12 @@ export async function replay(source, limit, work, log = () => {}) {
         for (const group of groups.values()) {
             const [{ brief, before }] = group;
             const after = await factsOf(database, project, brief);
-            const scored = conventionScore(brief.conventions, before, after, group.length);
+            const scored = conventionScore(
+                brief.conventions,
+                before,
+                after,
+                group.map((entry) => entry.brief.path),
+            );
             for (const [at, entry] of group.entries()) {
                 rows.push({
                     commit: commit.hash.slice(0, 8),
@@ -290,6 +364,8 @@ export async function replay(source, limit, work, log = () => {}) {
                     role: entry.brief.role,
                     basis: entry.brief.basis !== null,
                     borrowed: entry.brief.basis?.borrowed === true,
+                    subtree: entry.brief.basis?.subtree === true,
+                    said: saidBy(entry.brief),
                     conventions: at === 0 ? scored : [],
                     shares: at === 0 ? entry.brief.conventions.filter((c) => c.id !== "lines").map((c, i) => ({ id: c.id, files: c.files, of: c.of, shown: scored[i].shown, followed: scored[i].followed })) : [],
                     raw: entry.raw,
@@ -347,7 +423,7 @@ export function renderWhatIf(name, tables) {
 export function render(name, summary) {
     const pct = (value) => (value === null ? "n/a" : `${value}%`);
     const lines = [
-        `${name}: ${summary.files} added files replayed, ${summary.briefed} with a folder to learn from (${summary.borrowed} borrowed), ${summary.empty} with nothing to say`,
+        `${name}: ${summary.files} added files replayed, ${summary.briefed} with a folder to learn from (${summary.borrowed} borrowed, ${summary.subtree} across a subtree), ${summary.saysSomething} say something learned, ${summary.empty} with nothing to say`,
         `  expected test: predicted ${summary.test.predicted}, the commit touched it ${summary.test.hit} (${pct(summary.test.precision)})`,
         `  goes with: predicted ${summary.companions.predicted}, the commit touched ${summary.companions.hit} (${pct(summary.companions.precision)}); of ${summary.companions.otherFilesChanged} other files the commits changed, ${pct(summary.companions.recall)} were named`,
     ];

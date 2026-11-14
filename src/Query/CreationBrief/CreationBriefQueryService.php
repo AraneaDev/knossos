@@ -13,6 +13,7 @@ use Knossos\Query\ProjectFile;
 use Knossos\Query\ProjectRelativePath;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\Conventions\PathParts;
+use Knossos\Scan\Conventions\SupportThreshold;
 use Knossos\Scan\Conventions\TestPathPattern;
 use Knossos\Store\FolderFactsStore;
 
@@ -27,7 +28,8 @@ use Knossos\Store\FolderFactsStore;
  *
  * The conventions come from the folder the path would sit in when that folder
  * holds at least {@see Conventions::MIN_FILES} files of the path's extension and
- * role, otherwise from the nearest ancestor that does, and the brief says so.
+ * role. Otherwise they come from the nearest folder, its own or an ancestor,
+ * whose whole subtree holds that many ({@see SubtreeFacts}), and the brief says so.
  */
 final readonly class CreationBriefQueryService extends AbstractArchitectureQueryService
 {
@@ -62,14 +64,15 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
         }
 
         $placement = $readable ? (new Placement($this->pdo))->of($projectId, $relative, $configuration->policies) : ['boundary' => null, 'may_not_use' => []];
-        $basis = $this->basis($facts, $projectId, $directory, $extension, $role);
-        $population = $basis === null ? null : $facts->of($projectId, $basis['directory'], $extension, $role);
+        [$basis, $population] = $this->basis($facts, $projectId, $directory, $extension, $role);
         $neighbours = $basis === null ? [] : Neighbours::rank(
             PathParts::stem($relative),
-            (new NeighbourCandidates($this->pdo))->of($projectId, $basis['directory'], $extension, $role, $relative),
+            (new NeighbourCandidates($this->pdo))->of($projectId, $basis['directory'], $extension, $role, $relative, $basis['subtree']),
         );
-        $conventions = $population === null ? [] : Conventions::shown($population['files'], $population['facts']);
-        $goesWith = $this->goesWith($facts, $projectId, $root, $relative, $basis, $directory, $role, $population);
+        $conventions = $population === null ? [] : Conventions::shown($population['files'], $population['facts'], $role);
+        $expected = self::expectedTest($relative, $basis, $role, $population);
+        $test = $expected === null ? null : ['path' => $expected['path'], 'files' => $expected['files'], 'of' => $expected['of']];
+        $goesWith = $this->goesWith($facts, $projectId, $root, $relative, $basis, $directory, $test['path'] ?? null);
         $gates = [];
         foreach ($configuration->gates as $gate) {
             if ($gate->appliesTo($relative)) {
@@ -87,10 +90,11 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
             'basis' => $basis,
             'neighbours' => $neighbours,
             'conventions' => $conventions,
+            'test' => $test,
             'goes_with' => $goesWith,
             'gates' => $gates,
             'notes' => $this->notes($projectId, $neighbours, $placement['boundary']),
-            'signature' => $this->signature($placement, $conventions, $gates, $goesWith),
+            'signature' => $this->signature($placement, $conventions, $gates, $expected['pattern'] ?? null, $goesWith),
         ];
 
         return new ResultEnvelope(
@@ -104,19 +108,27 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
     }
 
     /**
-     * The folder the conventions come from: the path's own or the nearest ancestor with enough files.
+     * The folder the conventions come from, and its population.
      *
-     * @return array{directory: string, files: int, borrowed: bool}|null
+     * The path's own folder when it holds MIN_FILES files directly; otherwise the
+     * first of the folder and its ancestors whose subtree holds that many, its
+     * rows merged; none when not even the project does.
+     *
+     * @return array{0: array{directory: string, files: int, borrowed: bool, subtree: bool}|null, 1: array{files: int, facts: array<string, mixed>}|null}
      */
-    private function basis(FolderFactsStore $facts, string $projectId, string $directory, string $extension, string $role): ?array
+    private function basis(FolderFactsStore $facts, string $projectId, string $directory, string $extension, string $role): array
     {
+        $own = $facts->of($projectId, $directory, $extension, $role);
+        if ($own !== null && $own['files'] >= Conventions::MIN_FILES) {
+            return [['directory' => $directory, 'files' => $own['files'], 'borrowed' => false, 'subtree' => false], $own];
+        }
         for ($candidate = $directory;; $candidate = PathParts::directory($candidate)) {
-            $population = $facts->of($projectId, $candidate, $extension, $role);
-            if ($population !== null && $population['files'] >= Conventions::MIN_FILES) {
-                return ['directory' => $candidate, 'files' => $population['files'], 'borrowed' => $candidate !== $directory];
+            $population = SubtreeFacts::merge($facts->under($projectId, $candidate, $extension, $role));
+            if ($population['files'] >= Conventions::MIN_FILES) {
+                return [['directory' => $candidate, 'files' => $population['files'], 'borrowed' => true, 'subtree' => true], $population];
             }
             if ($candidate === '') {
-                return null;
+                return [null, null];
             }
         }
     }
@@ -151,37 +163,55 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
     }
 
     /**
-     * The expected test first, then the files that usually change with a new file in the folder.
+     * Where the new file's test goes, when three in five of the population have theirs by one pattern.
      *
-     * A test path is named only when the folder's own pattern says where it goes:
-     * a pattern borrowed from an ancestor that names a literal test folder would
-     * put the test beside the ancestor's tests, which is a guess, so only a
-     * `<dir>` pattern survives the borrowing. A companion whose file is gone is
-     * left out, so the brief never names a path that no longer exists.
+     * Only a source file has one, and only when the pattern says where it goes for
+     * this file: a pattern borrowed from beyond the path's own folder that names a
+     * literal test folder would put the test beside another folder's tests, which
+     * is a guess, so only a `<dir>` pattern survives the borrowing.
      *
-     * @param array{directory: string, files: int, borrowed: bool}|null $basis
+     * @param array{directory: string, files: int, borrowed: bool, subtree: bool}|null $basis
      * @param array{files: int, facts: array<string, mixed>}|null $population
-     * @return list<array{path: string, commits?: int, of?: int, kind: 'test'|'companion'}>
+     * @return array{path: string, files: int, of: int, pattern: string}|null
      */
-    private function goesWith(FolderFactsStore $facts, string $projectId, string $root, string $relative, ?array $basis, string $directory, string $role, ?array $population): array
+    private static function expectedTest(string $relative, ?array $basis, string $role, ?array $population): ?array
     {
-        $goesWith = [];
         $testPath = $population['facts']['test_path'] ?? null;
-        if ($role === 'source' && is_array($testPath) && is_string($testPath['pattern'] ?? null) && is_int($testPath['files'] ?? null) && $testPath['files'] * Conventions::SHARE_DENOMINATOR >= $population['files'] * Conventions::SHARE_NUMERATOR
-            && (($basis['borrowed'] ?? false) === false || str_contains($testPath['pattern'], '<dir>'))) {
-            $test = TestPathPattern::apply($testPath['pattern'], $relative);
-            if ($test !== $relative) {
-                $goesWith[] = ['path' => $test, 'kind' => 'test'];
-            }
+        if ($role !== 'source' || $basis === null || $population === null || $population['files'] < Conventions::MIN_FILES || !is_array($testPath) || !is_string($testPath['pattern'] ?? null) || !is_int($testPath['files'] ?? null)) {
+            return null;
         }
+        if ($testPath['files'] * SupportThreshold::TEST_SHARE_DENOMINATOR < $population['files'] * SupportThreshold::TEST_SHARE_NUMERATOR || ($basis['borrowed'] && !str_contains($testPath['pattern'], '<dir>'))) {
+            return null;
+        }
+        $test = TestPathPattern::apply($testPath['pattern'], $relative);
+
+        return $test === $relative ? null : ['path' => $test, 'files' => $testPath['files'], 'of' => $population['files'], 'pattern' => $testPath['pattern']];
+    }
+
+    /**
+     * The files that nearly always change when a file is added to the folder, most commits first.
+     *
+     * A companion is named from four in five of the additions, though more are
+     * stored, so the bar can move without a rescan. The folder's own companions
+     * come first, the basis folder's when it has none. A companion whose file is
+     * gone is left out, so the brief never names a path that no longer exists,
+     * and so is the expected test, which has its own line.
+     *
+     * @param array{directory: string, files: int, borrowed: bool, subtree: bool}|null $basis
+     * @return list<array{path: string, commits: int, of: int}>
+     */
+    private function goesWith(FolderFactsStore $facts, string $projectId, string $root, string $relative, ?array $basis, string $directory, ?string $test): array
+    {
         $companions = $facts->companionsOf($projectId, $directory);
         if ($companions === [] && $basis !== null && $basis['directory'] !== $directory) {
             $companions = $facts->companionsOf($projectId, $basis['directory']);
         }
+        $companions = array_filter($companions, static fn(array $c): bool => $c['commits'] * SupportThreshold::COMPANION_SHARE_DENOMINATOR >= $c['of'] * SupportThreshold::COMPANION_SHARE_NUMERATOR);
         usort($companions, static fn(array $a, array $b): int => [$b['commits'], $a['path']] <=> [$a['commits'], $b['path']]);
+        $goesWith = [];
         foreach (array_slice($companions, 0, self::MAX_COMPANIONS_CHECKED) as $companion) {
-            if ($companion['path'] !== $relative && $companion['path'] !== ($goesWith[0]['path'] ?? null) && ProjectFile::exists($root, $companion['path'])) {
-                $goesWith[] = ['path' => $companion['path'], 'commits' => $companion['commits'], 'of' => $companion['of'], 'kind' => 'companion'];
+            if ($companion['path'] !== $relative && $companion['path'] !== $test && ProjectFile::exists($root, $companion['path'])) {
+                $goesWith[] = ['path' => $companion['path'], 'commits' => $companion['commits'], 'of' => $companion['of']];
             }
         }
 
@@ -209,22 +239,24 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
     /**
      * A hash of what the brief says that counts and neighbours do not change.
      *
-     * Gates count by name and command, conventions by id and text, so a moved
-     * suffix or a changed command is a change. The `lines` convention is left
-     * out: its text is numbers that move with every file added.
+     * Gates count by name and command, conventions by id and text, the expected
+     * test by its pattern, so a moved suffix or a changed command is a change.
+     * The `lines` convention is left out: its text is numbers that move with
+     * every file added.
      *
      * @param array{boundary: ?string, may_not_use: list<string>} $placement
      * @param list<array{id: string, text: string}> $conventions
      * @param list<array{name: string, command: string}> $gates
-     * @param list<array{path: string, kind: string}> $goesWith
+     * @param list<array{path: string}> $goesWith
      */
-    private function signature(array $placement, array $conventions, array $gates, array $goesWith): string
+    private function signature(array $placement, array $conventions, array $gates, ?string $testPattern, array $goesWith): string
     {
         return hash('sha256', json_encode([
             $placement,
             array_map(static fn(array $convention): array => [$convention['id'], $convention['text']], array_values(array_filter($conventions, static fn(array $convention): bool => $convention['id'] !== 'lines'))),
             array_map(static fn(array $gate): array => [$gate['name'], $gate['command']], $gates),
-            array_column(array_filter($goesWith, static fn(array $entry): bool => $entry['kind'] === 'companion'), 'path'),
+            $testPattern,
+            array_column($goesWith, 'path'),
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
     }
 }

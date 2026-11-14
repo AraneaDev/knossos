@@ -18,7 +18,7 @@ final class ConventionsTest extends KnossosTestCase
     /** Six of eleven is a majority, not a convention. */
     public function testAPatternInSixOfElevenIsNotShown(): void
     {
-        $shown = Conventions::shown(11, ['modifiers' => ['final' => 6]]);
+        $shown = Conventions::shown(11, ['modifiers' => ['final' => 6]], 'source');
 
         self::assertSame([], self::ids($shown, 'modifier:final'));
     }
@@ -26,7 +26,7 @@ final class ConventionsTest extends KnossosTestCase
     /** Nine of ten passes and carries its own evidence. */
     public function testAPatternInNineOfTenIsShown(): void
     {
-        $shown = Conventions::shown(10, ['modifiers' => ['final' => 9]]);
+        $shown = Conventions::shown(10, ['modifiers' => ['final' => 9]], 'source');
 
         self::assertContains(['id' => 'modifier:final', 'text' => 'final', 'files' => 9, 'of' => 10], $shown);
     }
@@ -38,13 +38,13 @@ final class ConventionsTest extends KnossosTestCase
             'kinds' => ['one_class' => 4],
             'modifiers' => ['final' => 4],
             'lines' => ['median' => 10, 'max' => 20],
-        ]));
+        ], 'source'));
     }
 
     /** The share is compared as integers, so exactly four in five is in. */
     public function testExactlyEightyPercentIsShown(): void
     {
-        $shown = Conventions::shown(10, ['modifiers' => ['final' => 8, 'readonly' => 7]]);
+        $shown = Conventions::shown(10, ['modifiers' => ['final' => 8, 'readonly' => 7]], 'source');
 
         self::assertSame(['modifier:final'], array_column(self::without($shown, 'lines'), 'id'));
     }
@@ -68,7 +68,7 @@ final class ConventionsTest extends KnossosTestCase
             'suffix' => ['value' => 'Service', 'files' => 9],
             'modifiers' => ['readonly' => 9, 'final' => 10],
             'kinds' => ['one_class' => 10],
-        ]);
+        ], 'source');
 
         self::assertSame([
             'kind',
@@ -90,7 +90,7 @@ final class ConventionsTest extends KnossosTestCase
     /** The short name is the part after the last backslash or double colon. */
     public function testATypeIsShownByItsShortName(): void
     {
-        $shown = Conventions::shown(5, ['injects' => [['type' => 'Foo::Bar', 'files' => 5]]]);
+        $shown = Conventions::shown(5, ['injects' => [['type' => 'Foo::Bar', 'files' => 5]]], 'source');
 
         self::assertSame('inject Bar', $shown[0]['text']);
     }
@@ -98,7 +98,7 @@ final class ConventionsTest extends KnossosTestCase
     /** Line counts describe any folder with enough files, and cover all of them. */
     public function testLinesAreAlwaysShownForAPopulatedFolder(): void
     {
-        $shown = Conventions::shown(5, ['lines' => ['median' => 40, 'max' => 90]]);
+        $shown = Conventions::shown(5, ['lines' => ['median' => 40, 'max' => 90]], 'source');
 
         self::assertSame([['id' => 'lines', 'text' => 'median 40 lines, largest 90', 'files' => 5, 'of' => 5]], $shown);
     }
@@ -106,7 +106,7 @@ final class ConventionsTest extends KnossosTestCase
     /** A mixed folder is a finding about the folder, never a convention to follow. */
     public function testMixedKindIsNeverShown(): void
     {
-        self::assertSame([], Conventions::shown(10, ['kinds' => ['mixed' => 10]]));
+        self::assertSame([], Conventions::shown(10, ['kinds' => ['mixed' => 10]], 'source'));
     }
 
     /** Every kind has its own wording. */
@@ -114,10 +114,55 @@ final class ConventionsTest extends KnossosTestCase
     {
         $texts = [];
         foreach (['one_class', 'one_interface', 'one_trait', 'one_enum', 'functions_only'] as $kind) {
-            $texts[] = Conventions::shown(5, ['kinds' => [$kind => 5]])[0]['text'];
+            $texts[] = Conventions::shown(5, ['kinds' => [$kind => 5]], 'source')[0]['text'];
         }
 
         self::assertSame(['one class per file', 'one interface per file', 'one trait per file', 'one enum per file', 'functions only'], $texts);
+    }
+
+    /** How a source folder's file names are written comes after the suffix and before what files inject. */
+    public function testTheNameCaseOfASourceFolderIsShownAfterTheSuffix(): void
+    {
+        $facts = ['suffix' => ['value' => 'Actions', 'files' => 5], 'name_case' => ['value' => 'kebab', 'files' => 5], 'injects' => [['type' => 'PDO', 'files' => 5]]];
+
+        $shown = Conventions::shown(5, $facts, 'source');
+
+        self::assertSame(['suffix', 'name_case', 'injects:PDO'], array_column($shown, 'id'));
+        self::assertSame(['id' => 'name_case', 'text' => 'kebab-case file names', 'files' => 5, 'of' => 5], $shown[1]);
+    }
+
+    /** Each style has its wording, and a style below four in five is not shown. */
+    public function testEachNameCaseHasItsWording(): void
+    {
+        $texts = [];
+        foreach (['kebab', 'snake', 'pascal', 'camel'] as $style) {
+            $texts[] = Conventions::shown(5, ['name_case' => ['value' => $style, 'files' => 4]], 'source')[0]['text'];
+        }
+
+        self::assertSame(['kebab-case file names', 'snake_case file names', 'PascalCase file names', 'camelCase file names'], $texts);
+        self::assertSame([], Conventions::shown(10, ['name_case' => ['value' => 'kebab', 'files' => 7]], 'source'));
+    }
+
+    /** A test folder's names are fixed by its test runner, so they are never stated as a convention. */
+    public function testTheNameCaseOfATestFolderIsNotShown(): void
+    {
+        self::assertSame([], Conventions::shown(5, ['name_case' => ['value' => 'kebab', 'files' => 5]], 'test'));
+    }
+
+    /** A used or injected type needs nine in ten files: eight is not enough, though it is for a modifier. */
+    public function testAUsedTypeNeedsNineInTen(): void
+    {
+        $eight = Conventions::shown(10, ['uses' => [['type' => 'A', 'files' => 8]], 'injects' => [['type' => 'B', 'files' => 8]], 'modifiers' => ['final' => 8]], 'source');
+        $nine = Conventions::shown(10, ['uses' => [['type' => 'A', 'files' => 9]], 'injects' => [['type' => 'B', 'files' => 9]]], 'source');
+
+        self::assertSame(['modifier:final'], array_column(self::without($eight, 'lines'), 'id'));
+        self::assertSame(['injects:B', 'uses:A'], array_column($nine, 'id'));
+    }
+
+    /** A folder of interface and type-alias files says so. */
+    public function testTypesOnlyHasItsWording(): void
+    {
+        self::assertSame([['id' => 'kind', 'text' => 'types only', 'files' => 5, 'of' => 5]], Conventions::shown(5, ['kinds' => ['types_only' => 5]], 'source'));
     }
 
     /**

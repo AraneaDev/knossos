@@ -185,20 +185,27 @@ and git is never run.
 in, and the boundaries that one or any declared boundary containing it may not
 use), `neighbours` (at most three existing files to copy
 from), `conventions` (each with the number of files that follow it, shown only
-when the folder has at least five files of that kind and four in five follow it),
-`goes_with` (the test the folder's own pattern expects, then the files that
-usually change when a file is added there), `gates` (the checks in
+when the folder has at least five files of that kind and four in five follow it,
+nine in ten for a type the files use or inject), `test` (the path the folder's
+own pattern expects for the new file's test, with how many of the folder's files
+have theirs there, when three in five do), `goes_with` (the files that changed
+in four in five of the commits that added a file there), `gates` (the checks in
 `knossos.json` that apply to the path, with their commands), `notes` (how many
 notes sit on the neighbours and the boundary) and a `signature` that ignores
 counts and neighbours. A folder with fewer than five files of the path's
-extension and role borrows from the nearest ancestor that has them, and `basis`
-says so. Without a `knossos.json` that can be read, placement and gates are
-empty and a warning carries the loader's message. The CLI prints the brief as
-text, at most 14 lines and 1,200 characters, or the envelope with `--json`. The
-text is cut from the bottom, with two lines kept through the cut: on a stale
-graph, `graph is behind (scanned 2h ago): ...` with the files changed since,
-and, when the gate commands do not fit, the gate names with a pointer to the
-`gates` list in `knossos.json`. A path that names a directory, the project root
+extension and role learns from the nearest folder, its own or an ancestor,
+whose whole subtree holds five: `basis` has `subtree: true` and the brief reads
+`here (across <folder> and below)`, or `here (across the project)` for the
+root. Across a subtree only the suffix and the file-name case are stated: what
+a folder's own files share in declaration kinds, modifiers, used and injected
+types and line counts does not carry over to a new folder. Without a
+`knossos.json` that can be read, placement and gates are empty and a warning
+carries the loader's message. The CLI prints the brief as text, at most 14
+lines and 1,200 characters, or the envelope with `--json`. The text is cut
+from the bottom, with two lines kept through the cut: on a stale graph,
+`graph is behind (scanned 2h ago): ...` with the files changed since, and,
+when the gate commands do not fit, the gate names with a pointer to the `gates`
+list in `knossos.json`. A path that names a directory, the project root
 included, is refused, and a companion whose file has been deleted is not named.
 
 ### Before creating a file

@@ -16,14 +16,31 @@ use PDO;
  * can state a convention without reading any source. Each table is read once
  * and grouped in PHP: a folder never costs a query of its own.
  *
- * A file's top-level declarations are the class, interface, trait, enum and
- * function nodes it holds that no node other than a module contains. The
- * scanners store no parent link, so containment is the `contains` edge.
+ * A file's top-level declarations are the class, interface, trait, enum,
+ * function, type alias, property, variable and constant nodes it holds that no
+ * node other than a module contains. The scanners store no parent link, so
+ * containment is the `contains` edge.
  */
 final readonly class FolderFactsBuilder
 {
-    /** Declaration kinds that count, and whether each is a type (a function is not). */
-    private const DECLARATIONS = ['class' => true, 'interface' => true, 'trait' => true, 'enum' => true, 'function' => false];
+    /**
+     * The version of what `rows()` derives, stored in every row's facts as `v`.
+     *
+     * Raise it whenever what `rows()` derives changes meaning (a shape rule, a new
+     * fact, a count read differently): a scan that finds nothing changed rebuilds
+     * the facts of a project whose rows carry any other version, so an upgrade
+     * does not keep showing what the older code derived.
+     */
+    public const FACTS_VERSION = 2;
+
+    /** Declaration kinds that are code; a file holding one is shaped by these alone. */
+    private const CODE = ['class', 'trait', 'enum', 'function'];
+
+    /** Declaration kinds that only describe types or values beside code. */
+    private const DESCRIPTIVE = ['interface', 'type_alias', 'property', 'variable', 'constant'];
+
+    /** Declaration kinds whose names give a folder its suffix. */
+    private const NAMED_TYPES = ['class', 'interface', 'trait', 'enum'];
 
     /** Edge kinds that tie a test file to the source it exercises. */
     private const TEST_EDGES = ['calls', 'references', 'imports'];
@@ -58,9 +75,13 @@ final readonly class FolderFactsBuilder
             $role = isset($tests[(string) $id]) ? 'test' : 'source';
             $key = $directory . "\0" . $extension . "\0" . $role;
             $files[(string) $id] = ['directory' => $directory, 'extension' => $extension, 'role' => $role, 'path' => (string) $path, 'lines' => (int) $lines, 'key' => $key];
-            $populations[$key] ??= ['directory' => $directory, 'extension' => $extension, 'role' => $role, 'files' => 0, 'kinds' => [], 'modifiers' => [], 'suffixes' => [], 'injects' => [], 'uses' => [], 'lines' => [], 'pairs' => []];
+            $populations[$key] ??= ['directory' => $directory, 'extension' => $extension, 'role' => $role, 'files' => 0, 'kinds' => [], 'modifiers' => [], 'suffixes' => [], 'injects' => [], 'uses' => [], 'lines' => [], 'pairs' => [], 'names' => []];
             ++$populations[$key]['files'];
             $populations[$key]['lines'][] = (int) $lines;
+            $style = NameCase::style(PathParts::stem((string) $path));
+            if ($style !== null) {
+                $populations[$key]['names'][$style] = ($populations[$key]['names'][$style] ?? 0) + 1;
+            }
         }
 
         $this->addDeclarations($projectId, $files, $populations);
@@ -106,9 +127,10 @@ final readonly class FolderFactsBuilder
      */
     private function addDeclarations(string $projectId, array $files, array &$populations): void
     {
+        $kinds = "'" . implode("', '", [...self::CODE, ...self::DESCRIPTIVE]) . "'";
         $statement = $this->pdo->prepare(
             "SELECT n.file_id, n.kind, n.display_name, n.attributes_json FROM nodes n
-             WHERE n.project_id = ? AND n.file_id IS NOT NULL AND n.kind IN ('class', 'interface', 'trait', 'enum', 'function')
+             WHERE n.project_id = ? AND n.file_id IS NOT NULL AND n.kind IN ($kinds)
                AND NOT EXISTS (
                    SELECT 1 FROM edges e JOIN nodes s ON s.id = e.source_id
                    WHERE e.target_id = n.id AND e.kind = 'contains' AND s.kind <> 'module'
@@ -126,19 +148,15 @@ final readonly class FolderFactsBuilder
 
         foreach ($byFile as $fileId => $declarations) {
             $key = $files[$fileId]['key'];
-            $types = array_values(array_filter($declarations, static fn(array $d): bool => self::DECLARATIONS[$d['kind']]));
-            if ($types === []) {
-                $shape = 'functions_only';
-            } elseif (count($declarations) === 1) {
-                $shape = 'one_' . $types[0]['kind'];
-                foreach (self::trueFlags($types[0]['attributes']) as $flag) {
+            $shape = self::shape($declarations);
+            if ($shape !== null) {
+                $populations[$key]['kinds'][$shape['kind']] = ($populations[$key]['kinds'][$shape['kind']] ?? 0) + 1;
+                foreach (self::trueFlags($shape['attributes'] ?? '') as $flag) {
                     $populations[$key]['modifiers'][$flag] = ($populations[$key]['modifiers'][$flag] ?? 0) + 1;
                 }
-            } else {
-                $shape = 'mixed';
             }
-            $populations[$key]['kinds'][$shape] = ($populations[$key]['kinds'][$shape] ?? 0) + 1;
 
+            $types = array_filter($declarations, static fn(array $d): bool => in_array($d['kind'], self::NAMED_TYPES, true));
             $candidates = [];
             foreach ($types as $type) {
                 foreach (self::suffixes($type['name']) as $suffix) {
@@ -149,6 +167,40 @@ final readonly class FolderFactsBuilder
                 $populations[$key]['suffixes'][$suffix] = ($populations[$key]['suffixes'][$suffix] ?? 0) + 1;
             }
         }
+    }
+
+    /**
+     * The shape of a file from its top-level declarations, with the attributes of its one declaration when it has one.
+     *
+     * Interfaces, type aliases, properties, variables and constants beside code
+     * only describe it, so a file that holds any class, trait, enum or function
+     * is shaped by those alone: all functions is `functions_only`, one class,
+     * trait or enum is `one_<kind>`, anything else `mixed`. A file of interfaces
+     * and type aliases only is `one_interface` for a single interface and
+     * `types_only` otherwise. A file of values alone has no shape.
+     *
+     * @param list<array{kind: string, name: string, attributes: string}> $declarations
+     * @return array{kind: string, attributes?: string}|null
+     */
+    private static function shape(array $declarations): ?array
+    {
+        $code = array_values(array_filter($declarations, static fn(array $d): bool => in_array($d['kind'], self::CODE, true)));
+        if ($code !== []) {
+            if (count($code) === 1 && $code[0]['kind'] !== 'function') {
+                return ['kind' => 'one_' . $code[0]['kind'], 'attributes' => $code[0]['attributes']];
+            }
+
+            return ['kind' => array_unique(array_column($code, 'kind')) === ['function'] ? 'functions_only' : 'mixed'];
+        }
+        $kinds = array_count_values(array_column($declarations, 'kind'));
+        if ($kinds === ['interface' => 1]) {
+            return ['kind' => 'one_interface', 'attributes' => $declarations[0]['attributes']];
+        }
+        if (array_diff(array_keys($kinds), ['interface', 'type_alias']) === []) {
+            return ['kind' => 'types_only'];
+        }
+
+        return isset($kinds['interface']) || isset($kinds['type_alias']) ? ['kind' => 'mixed'] : null;
     }
 
     /**
@@ -227,14 +279,14 @@ final readonly class FolderFactsBuilder
     }
 
     /**
-     * The `facts` of one population, leaving out every key that has no data.
+     * The `facts` of one population: the version, and every key that has data.
      *
      * @param array<string, mixed> $population
      * @return array<string, mixed>
      */
     private static function facts(array $population): array
     {
-        $facts = [];
+        $facts = ['v' => self::FACTS_VERSION];
         if ($population['kinds'] !== []) {
             $facts['kinds'] = $population['kinds'];
         }
@@ -244,6 +296,17 @@ final readonly class FolderFactsBuilder
         $suffix = self::commonSuffix($population['suffixes']);
         if ($suffix !== null) {
             $facts['suffix'] = $suffix;
+        }
+        // A file without an extension (`Makefile`, `Dockerfile`) is named by its tool's convention, not the folder's.
+        // The counts per style are kept beside the folder's own name case, so a subtree of small folders can add them up.
+        if ($population['extension'] !== '') {
+            $nameCase = NameCase::of($population['names']);
+            if ($nameCase !== null) {
+                $facts['name_case'] = $nameCase;
+            }
+            if ($population['names'] !== []) {
+                $facts['name_styles'] = $population['names'];
+            }
         }
         foreach (['injects', 'uses'] as $key) {
             $top = self::top($population[$key]);

@@ -101,6 +101,98 @@ final class FolderFactsBuilderTest extends KnossosTestCase
         self::assertSame(['functions_only' => 1], $this->facts('web', 'ts')['kinds']);
     }
 
+    /** Interfaces, type aliases and variables beside functions describe the code: the file is still functions only. */
+    public function testFunctionsBesideTypesAreFunctionsOnly(): void
+    {
+        $this->module('web/a.ts', [['function', 'a1'], ['function', 'a2'], ['interface', 'AProps'], ['type_alias', 'AKind'], ['variable', 'aDefault']]);
+
+        self::assertSame(['functions_only' => 1], $this->facts('web', 'ts')['kinds']);
+    }
+
+    /** One class with an interface beside it is a one-class file. */
+    public function testOneClassBesideAnInterfaceIsOneClass(): void
+    {
+        $this->module('web/b.ts', [['class', 'B'], ['interface', 'BOptions']]);
+
+        self::assertSame(['one_class' => 1], $this->facts('web', 'ts')['kinds']);
+    }
+
+    /** A file of interfaces and type aliases alone holds types only. */
+    public function testInterfacesAndAliasesAloneAreTypesOnly(): void
+    {
+        $this->module('web/c.ts', [['interface', 'C1'], ['interface', 'C2'], ['type_alias', 'C3']]);
+
+        self::assertSame(['types_only' => 1], $this->facts('web', 'ts')['kinds']);
+    }
+
+    /** One interface and nothing else is still a one-interface file. */
+    public function testOneInterfaceAloneIsOneInterface(): void
+    {
+        $this->module('web/d.ts', [['interface', 'D']]);
+
+        self::assertSame(['one_interface' => 1], $this->facts('web', 'ts')['kinds']);
+    }
+
+    /** A class and a function are two kinds of code, so the file stays mixed. */
+    public function testAClassAndAFunctionStayMixed(): void
+    {
+        $this->module('web/e.ts', [['class', 'E'], ['function', 'e'], ['interface', 'EProps']]);
+
+        self::assertSame(['mixed' => 1], $this->facts('web', 'ts')['kinds']);
+    }
+
+    /** Kebab-case names win, and a single lower-case word counts with them as it fits that style too. */
+    public function testKebabCaseNamesCountTheSingleWordsWithThem(): void
+    {
+        foreach (['annotate-actions', 'diff-actions', 'port-type', 'state', 'watcher'] as $name) {
+            $this->file('hooks/' . $name . '.ts', 10, [], 'typescript');
+        }
+
+        self::assertSame(['value' => 'kebab', 'files' => 5], $this->facts('hooks', 'ts')['name_case']);
+    }
+
+    /** Two names in a style are not enough, however many single words agree with them; the counts per style are kept for a subtree. */
+    public function testFewerThanThreeFilesStrictlyInTheStyleStoreNothing(): void
+    {
+        foreach (['annotate-actions', 'diff-actions', 'state', 'watcher', 'flash', 'Odd Name'] as $name) {
+            $this->file('hooks/' . $name . '.ts', 10, [], 'typescript');
+        }
+
+        self::assertArrayNotHasKey('name_case', $this->facts('hooks', 'ts'));
+        self::assertSame(['kebab' => 2, 'word' => 3], $this->facts('hooks', 'ts')['name_styles']);
+    }
+
+    /** A folder of PHP classes is PascalCase, and a single lower-case word does not count for it. */
+    public function testPascalCaseNamesAreCountedAlone(): void
+    {
+        foreach (['ChurnService', 'DiffService', 'Helper', 'bootstrap'] as $name) {
+            $this->file('src/' . $name . '.php', 10);
+        }
+
+        self::assertSame(['value' => 'pascal', 'files' => 3], $this->facts('src')['name_case']);
+    }
+
+    /** The name is read up to its first dot, so `foo.service.ts` is the single word `foo`. */
+    public function testTheNameIsReadUpToItsFirstDot(): void
+    {
+        foreach (['barBaz.service.ts', 'quxQuux.module.ts', 'fooBar.ts', 'foo.service.ts', 'snake_case.ts'] as $name) {
+            $this->file('app/' . $name, 10, [], 'typescript');
+        }
+
+        self::assertSame(['value' => 'camel', 'files' => 4], $this->facts('app', 'ts')['name_case']);
+    }
+
+    /** Files without an extension (`Makefile`, `Dockerfile`) are named by convention of their tool, not of the folder. */
+    public function testFilesWithoutAnExtensionGetNoNameCase(): void
+    {
+        foreach (['Makefile', 'Dockerfile', 'Rakefile', 'Procfile'] as $name) {
+            $this->file('build/' . $name, 3);
+        }
+
+        self::assertArrayNotHasKey('name_case', $this->facts('build', ''));
+        self::assertArrayNotHasKey('name_styles', $this->facts('build', ''));
+    }
+
     /** The suffix is the last word most files share, and a name is never its own suffix. */
     public function testTheSharedSuffixIsTheMostCommonLastWord(): void
     {
@@ -191,6 +283,16 @@ final class FolderFactsBuilderTest extends KnossosTestCase
 
         self::assertSame(['pattern' => 'tests/Q/<name>Test.php', 'files' => 2], $this->facts('src/Q')['test_path']);
         self::assertArrayNotHasKey('test_path', $this->facts('tests/Q', 'php', 'test'));
+    }
+
+    /** Every row carries the version of what the builder derives, so a later version can tell old facts from its own. */
+    public function testEveryRowCarriesTheFactsVersion(): void
+    {
+        $this->file('src/A.php', 10, [['kind' => 'class', 'name' => 'A']]);
+        $this->file('docs/a.md', 3);
+
+        self::assertSame([FolderFactsBuilder::FACTS_VERSION, FolderFactsBuilder::FACTS_VERSION], array_map(static fn(array $row): mixed => $row['facts']['v'] ?? null, $this->rows()));
+        self::assertSame(2, FolderFactsBuilder::FACTS_VERSION);
     }
 
     /** Building the rows twice from one graph gives the same rows. */
@@ -296,6 +398,16 @@ final class FolderFactsBuilderTest extends KnossosTestCase
                     ->execute(['class:' . $node['name'], $this->ids['project'], $id, $node['role'], 'rule', 'certain', 'r', $fileId, $this->ids['scan']]);
             }
         }
+    }
+
+    /**
+     * Insert a TypeScript file whose module holds each `[kind, name]` declaration directly, as the worker records one.
+     *
+     * @param list<array{string, string}> $declarations
+     */
+    private function module(string $path, array $declarations): void
+    {
+        $this->file($path, 10, [['kind' => 'module', 'name' => $path], ...array_map(static fn(array $d): array => ['kind' => $d[0], 'name' => $d[1], 'contained_by' => $path], $declarations)], 'typescript');
     }
 
     /** Insert an edge between two nodes named as inserted by `file()`. */

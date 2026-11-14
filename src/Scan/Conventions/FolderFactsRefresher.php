@@ -52,14 +52,15 @@ final readonly class FolderFactsRefresher
     /**
      * After a scan that found nothing changed: the graph the facts describe is the
      * one already stored, so they are built only when the project has none (a
-     * database from before folder facts existed). The companions follow the commit,
+     * database from before folder facts existed) or has rows an older version
+     * derived ({@see FolderFactsBuilder::FACTS_VERSION}). The companions follow the commit,
      * which can move without any file changing, so they are always brought up to
      * `$gitHead`; that costs one SELECT when it has not moved.
      */
     public function refreshUnchanged(string $projectId, string $root, ?string $gitHead, StageClock $clock = new StageClock()): void
     {
         try {
-            $missing = !$this->store->has($projectId);
+            $missing = !$this->store->current($projectId, FolderFactsBuilder::FACTS_VERSION);
         } catch (Throwable $failure) {
             error_log('knossos folder facts: ' . $failure->getMessage());
             $missing = false;

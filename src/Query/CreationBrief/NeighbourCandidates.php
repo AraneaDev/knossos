@@ -12,8 +12,9 @@ use PDO;
  * Reads the files of one folder population from the graph, as {@see Neighbours::rank()} wants them.
  *
  * A population is the direct children of a directory with one extension and
- * one role, the same grouping the folder facts count. Each file brings the
- * distinct targets it depends on outside its own folder.
+ * one role, the same grouping the folder facts count, or, for a subtree, every
+ * file of that extension and role at or below the directory. Each file brings
+ * the distinct targets it depends on outside its own folder.
  */
 final readonly class NeighbourCandidates
 {
@@ -23,16 +24,20 @@ final readonly class NeighbourCandidates
     /** Node kinds that are members of a type, which are not dependencies on a type. */
     private const MEMBER_KINDS = "'method', 'external_method', 'property', 'variable'";
 
+    /** Most files of a subtree weighed, so a brief whose basis is the whole project stays a bounded read. */
+    public const MAX_SUBTREE_CANDIDATES = 200;
+
     public function __construct(private PDO $pdo) {}
 
     /**
      * The files of the population except `$exclude`, in path order.
      *
+     * @param bool $subtree whether files in the directories below count too
      * @return list<array{path: string, uses: list<string>}>
      */
-    public function of(string $projectId, string $directory, string $extension, string $role, string $exclude): array
+    public function of(string $projectId, string $directory, string $extension, string $role, string $exclude, bool $subtree = false): array
     {
-        $files = $this->files($projectId, $directory, $extension, $exclude);
+        $files = $this->files($projectId, $directory, $extension, $exclude, $subtree);
         if ($files === []) {
             return [];
         }
@@ -47,9 +52,13 @@ final readonly class NeighbourCandidates
         ) as $fileId) {
             $tests[(string) $fileId] = true;
         }
-        $population = array_values(array_filter($ids, static fn(string $id): bool => isset($tests[$id]) === ($role === 'test')));
+        $population = array_filter($files, static fn(int|string $id): bool => isset($tests[$id]) === ($role === 'test'), ARRAY_FILTER_USE_KEY);
+        if ($subtree) {
+            $population = self::nearest($population, PathParts::directory($exclude));
+        }
+        $population = array_map('strval', array_keys($population));
 
-        $uses = $this->uses($population, $directory);
+        $uses = $this->uses($population, $files);
         $candidates = [];
         foreach ($population as $id) {
             $candidates[] = ['path' => $files[$id], 'uses' => $uses[$id] ?? []];
@@ -60,11 +69,11 @@ final readonly class NeighbourCandidates
     }
 
     /**
-     * The direct children of the directory with the extension, by file id.
+     * The files with the extension directly in the directory, or anywhere below it for a subtree, by file id.
      *
      * @return array<string, string> relative path by file id
      */
-    private function files(string $projectId, string $directory, string $extension, string $exclude): array
+    private function files(string $projectId, string $directory, string $extension, string $exclude, bool $subtree): array
     {
         $statement = $this->pdo->prepare('SELECT id, relative_path FROM files WHERE project_id = ? AND relative_path >= ? AND relative_path < ?');
         // Every path under `dir/` sorts between `dir/` and `dir0`, the character after the slash.
@@ -72,7 +81,7 @@ final readonly class NeighbourCandidates
         $files = [];
         foreach ($statement->fetchAll(PDO::FETCH_NUM) as [$id, $path]) {
             $path = (string) $path;
-            if ($path !== $exclude && PathParts::directory($path) === $directory && PathParts::extension($path) === $extension) {
+            if ($path !== $exclude && ($subtree || PathParts::directory($path) === $directory) && PathParts::extension($path) === $extension) {
                 $files[(string) $id] = $path;
             }
         }
@@ -81,12 +90,55 @@ final readonly class NeighbourCandidates
     }
 
     /**
+     * The MAX_SUBTREE_CANDIDATES files nearest a directory, cut on the paths alone before any edge is read.
+     *
+     * Nearest is the longest directory path shared with `$directory`, then the
+     * path, so the same tree always keeps the same files. The files are already
+     * of the wanted role, so tests beside the new file cannot crowd out its
+     * sources (or the other way round).
+     *
+     * @param array<string, string> $files relative path by file id
+     * @return array<string, string>
+     */
+    private static function nearest(array $files, string $directory): array
+    {
+        if (count($files) <= self::MAX_SUBTREE_CANDIDATES) {
+            return $files;
+        }
+        $shared = [];
+        foreach ($files as $id => $path) {
+            $shared[$id] = self::sharedLength(PathParts::directory($path), $directory);
+        }
+        $ids = array_map('strval', array_keys($files));
+        usort($ids, static fn(string $a, string $b): int => $shared[$b] <=> $shared[$a] ?: strcmp($files[$a], $files[$b]));
+
+        return array_intersect_key($files, array_flip(array_slice($ids, 0, self::MAX_SUBTREE_CANDIDATES)));
+    }
+
+    /** The length of the leading directory path two directories share, whole segments only. */
+    private static function sharedLength(string $a, string $b): int
+    {
+        $left = $a === '' ? [] : explode('/', $a);
+        $right = $b === '' ? [] : explode('/', $b);
+        $common = [];
+        foreach ($left as $i => $segment) {
+            if (($right[$i] ?? null) !== $segment) {
+                break;
+            }
+            $common[] = $segment;
+        }
+
+        return strlen(implode('/', $common));
+    }
+
+    /**
      * What each file depends on outside its own folder, sorted.
      *
      * @param list<string> $fileIds
+     * @param array<string, string> $paths relative path by file id
      * @return array<string, list<string>>
      */
-    private function uses(array $fileIds, string $directory): array
+    private function uses(array $fileIds, array $paths): array
     {
         $uses = [];
         foreach (ChunkedInQuery::rows(
@@ -97,7 +149,7 @@ final readonly class NeighbourCandidates
             $fileIds,
             mode: PDO::FETCH_NUM,
         ) as [$fileId, $target, $targetPath]) {
-            if ($targetPath === null || PathParts::directory((string) $targetPath) !== $directory) {
+            if ($targetPath === null || PathParts::directory((string) $targetPath) !== PathParts::directory($paths[(string) $fileId])) {
                 $uses[(string) $fileId][(string) $target] = (string) $target;
             }
         }
