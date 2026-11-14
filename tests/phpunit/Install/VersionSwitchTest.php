@@ -412,7 +412,10 @@ PY;
         exec(sprintf('python3 -I -c %s %s %s', escapeshellarg($script), escapeshellarg($stage . '/knossos-2.0.0'), escapeshellarg($stage . '.tar.gz')));
         $origin = getcwd();
 
-        $this->refused(fn() => (new VersionSwitch($data))->unpack($stage . '.tar.gz', '2.0.0'), 'Path too long in the archive');
+        // Who refuses depends on the host: a tar or filesystem that cannot hold the path fails the unpack itself
+        // ("File name too long"), one that can leaves it to the walk. Either way it is refused, and nothing stays.
+        $error = self::captureThrown(fn() => (new VersionSwitch($data))->unpack($stage . '.tar.gz', '2.0.0'), \Knossos\Install\InstallException::class);
+        self::assertMatchesRegularExpression('/^(Path too long in the archive: |Could not unpack the archive: tar: )/', $error->getMessage());
 
         assertSame([], glob($data . '/versions/*.partial*'));
         assertSame($origin, getcwd());
