@@ -25,7 +25,7 @@ final class TypescriptAngularInjectTest extends KnossosTestCase
         try {
             $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
                 'root' => self::repositoryRoot() . '/tests/Fixtures/ts-angular-inject',
-                'files' => ['src/own.ts', 'src/panel.ts', 'src/services.ts'],
+                'files' => ['src/own.ts', 'src/panel.ts', 'src/remote.ts', 'src/services.ts'],
                 'config_files' => ['tsconfig.json'],
             ]), false);
         } finally {
@@ -48,6 +48,7 @@ final class TypescriptAngularInjectTest extends KnossosTestCase
             'Panel -> class:src/services.ts#Shared (line 18)',
             'Panel -> class:src/services.ts#Store (line 11)',
             'Panel -> class:src/services.ts#Unused (line 12)',
+            'Remote -> external_class:HttpClient (line 5)',
         ], $injects);
     }
 }
