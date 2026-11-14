@@ -650,6 +650,8 @@ waiting for cooperation.
 ### `shutdown`
 
 Requests orderly worker termination. No new requests are accepted afterward.
+It has no parameters: `params` is the empty object `{}`, never a list, as in
+every request.
 
 ## Trust boundary
 

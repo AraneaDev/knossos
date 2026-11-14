@@ -98,7 +98,7 @@ final class NdjsonRpcChannel implements RpcChannelInterface
     {
         $this->sendBufferedBytes = 0;
         try {
-            $line = json_encode($message, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) . "\n";
+            $line = RequestFrame::encode($message);
         } catch (JsonException $error) {
             throw new WorkerException(WorkerErrorCode::RequestInvalid->value, $error->getMessage(), $error);
         }
