@@ -108,6 +108,18 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
         self::assertSame('New file in Query: ' . count($data['conventions']) . ' conventions, 1 gates.', $this->scanned()->creationBrief($this->projectId, 'src/Query/FooService.php')->summary);
     }
 
+    /** Sources and tests here are both PascalCase, and only the sources are told so. */
+    public function testTheNameCaseIsStatedForSourcesAndNotForTests(): void
+    {
+        $service = $this->scanned();
+
+        $source = $service->creationBrief($this->projectId, 'src/Query/FooService.php')->data;
+        $test = $service->creationBrief($this->projectId, 'tests/phpunit/Query/FooServiceTest.php')->data;
+
+        self::assertContains(['id' => 'name_case', 'text' => 'PascalCase file names', 'files' => 6, 'of' => 6], $source['conventions']);
+        self::assertNotContains('name_case', self::ids($test));
+    }
+
     public function testANewFolderBorrowsFromTheNearestPopulatedAncestor(): void
     {
         $data = $this->scanned()->creationBrief($this->projectId, 'src/Query/Deep/New/X.php')->data;

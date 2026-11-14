@@ -41,6 +41,18 @@ final readonly class FolderFactsBuilder
     /** How many injected and used types a row keeps. */
     private const TOP = 5;
 
+    /** Fewest files strictly in one naming style before the folder's name case is stored. */
+    private const NAME_CASE_MIN_FILES = 3;
+
+    /** Each naming style of a file name up to its first dot; a single lower-case word is `word`, which fits every lower-case style. */
+    private const NAME_STYLES = [
+        'kebab' => '/^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/',
+        'snake' => '/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/',
+        'pascal' => '/^[A-Z][A-Za-z0-9]*$/',
+        'camel' => '/^[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*$/',
+        'word' => '/^[a-z][a-z0-9]*$/',
+    ];
+
     public function __construct(private PDO $pdo) {}
 
     /**
@@ -65,9 +77,13 @@ final readonly class FolderFactsBuilder
             $role = isset($tests[(string) $id]) ? 'test' : 'source';
             $key = $directory . "\0" . $extension . "\0" . $role;
             $files[(string) $id] = ['directory' => $directory, 'extension' => $extension, 'role' => $role, 'path' => (string) $path, 'lines' => (int) $lines, 'key' => $key];
-            $populations[$key] ??= ['directory' => $directory, 'extension' => $extension, 'role' => $role, 'files' => 0, 'kinds' => [], 'modifiers' => [], 'suffixes' => [], 'injects' => [], 'uses' => [], 'lines' => [], 'pairs' => []];
+            $populations[$key] ??= ['directory' => $directory, 'extension' => $extension, 'role' => $role, 'files' => 0, 'kinds' => [], 'modifiers' => [], 'suffixes' => [], 'injects' => [], 'uses' => [], 'lines' => [], 'pairs' => [], 'names' => []];
             ++$populations[$key]['files'];
             $populations[$key]['lines'][] = (int) $lines;
+            $style = self::nameStyle(PathParts::stem((string) $path));
+            if ($style !== null) {
+                $populations[$key]['names'][$style] = ($populations[$key]['names'][$style] ?? 0) + 1;
+            }
         }
 
         $this->addDeclarations($projectId, $files, $populations);
@@ -283,6 +299,10 @@ final readonly class FolderFactsBuilder
         if ($suffix !== null) {
             $facts['suffix'] = $suffix;
         }
+        $nameCase = self::nameCase($population['names']);
+        if ($nameCase !== null) {
+            $facts['name_case'] = $nameCase;
+        }
         foreach (['injects', 'uses'] as $key) {
             $top = self::top($population[$key]);
             if ($top !== []) {
@@ -338,6 +358,40 @@ final readonly class FolderFactsBuilder
         }
 
         return strcmp($best['value'], $suffix) > 0;
+    }
+
+    /** The naming style of a file name, `word` for a single lower-case word, or null for a name in no style. */
+    private static function nameStyle(string $name): ?string
+    {
+        foreach (self::NAME_STYLES as $style => $pattern) {
+            if (preg_match($pattern, $name) === 1) {
+                return $style;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The style most files are named in, the name breaking ties, or null below NAME_CASE_MIN_FILES files strictly in it.
+     *
+     * A single lower-case word fits kebab, snake and camel case alike, so it is
+     * counted with the winner when that is one of them, never with PascalCase.
+     *
+     * @param array<string, int> $counts files per style, `word` included
+     * @return array{value: string, files: int}|null
+     */
+    private static function nameCase(array $counts): ?array
+    {
+        $words = $counts['word'] ?? 0;
+        unset($counts['word']);
+        $styles = array_map('strval', array_keys($counts));
+        usort($styles, static fn(string $a, string $b): int => $counts[$b] <=> $counts[$a] ?: strcmp($a, $b));
+        if ($styles === [] || $counts[$styles[0]] < self::NAME_CASE_MIN_FILES) {
+            return null;
+        }
+
+        return ['value' => $styles[0], 'files' => $counts[$styles[0]] + ($styles[0] === 'pascal' ? 0 : $words)];
     }
 
     /**

@@ -141,6 +141,46 @@ final class FolderFactsBuilderTest extends KnossosTestCase
         self::assertSame(['mixed' => 1], $this->facts('web', 'ts')['kinds']);
     }
 
+    /** Kebab-case names win, and a single lower-case word counts with them as it fits that style too. */
+    public function testKebabCaseNamesCountTheSingleWordsWithThem(): void
+    {
+        foreach (['annotate-actions', 'diff-actions', 'port-type', 'state', 'watcher'] as $name) {
+            $this->file('hooks/' . $name . '.ts', 10, [], 'typescript');
+        }
+
+        self::assertSame(['value' => 'kebab', 'files' => 5], $this->facts('hooks', 'ts')['name_case']);
+    }
+
+    /** Two names in a style are not enough, however many single words agree with them. */
+    public function testFewerThanThreeFilesStrictlyInTheStyleStoreNothing(): void
+    {
+        foreach (['annotate-actions', 'diff-actions', 'state', 'watcher', 'flash'] as $name) {
+            $this->file('hooks/' . $name . '.ts', 10, [], 'typescript');
+        }
+
+        self::assertArrayNotHasKey('name_case', $this->facts('hooks', 'ts'));
+    }
+
+    /** A folder of PHP classes is PascalCase, and a single lower-case word does not count for it. */
+    public function testPascalCaseNamesAreCountedAlone(): void
+    {
+        foreach (['ChurnService', 'DiffService', 'Helper', 'bootstrap'] as $name) {
+            $this->file('src/' . $name . '.php', 10);
+        }
+
+        self::assertSame(['value' => 'pascal', 'files' => 3], $this->facts('src')['name_case']);
+    }
+
+    /** The name is read up to its first dot, so `foo.service.ts` is the single word `foo`. */
+    public function testTheNameIsReadUpToItsFirstDot(): void
+    {
+        foreach (['barBaz.service.ts', 'quxQuux.module.ts', 'fooBar.ts', 'foo.service.ts', 'snake_case.ts'] as $name) {
+            $this->file('app/' . $name, 10, [], 'typescript');
+        }
+
+        self::assertSame(['value' => 'camel', 'files' => 4], $this->facts('app', 'ts')['name_case']);
+    }
+
     /** The suffix is the last word most files share, and a name is never its own suffix. */
     public function testTheSharedSuffixIsTheMostCommonLastWord(): void
     {

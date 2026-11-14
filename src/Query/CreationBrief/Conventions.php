@@ -34,20 +34,30 @@ final class Conventions
         'types_only' => 'types only',
     ];
 
+    /** How each naming style is stated. */
+    private const NAME_CASE_TEXT = [
+        'kebab' => 'kebab-case file names',
+        'snake' => 'snake_case file names',
+        'pascal' => 'PascalCase file names',
+        'camel' => 'camelCase file names',
+    ];
+
     /** How many injected types, and how many used types, a brief names. */
     private const TYPES_SHOWN = 2;
 
     /**
      * The conventions a population of `$files` files supports, in a fixed order.
      *
-     * Order is kind, modifiers (alphabetical), suffix, injects, uses, lines, so
-     * the same graph always renders the same brief. Fewer than MIN_FILES files
-     * yield nothing.
+     * Order is kind, modifiers (alphabetical), suffix, name case, injects,
+     * uses, lines, so the same graph always renders the same brief. Fewer than
+     * MIN_FILES files yield nothing. The name case is stated for a source folder
+     * only: a test folder's names are fixed by its test runner.
      *
-     * @param array<string, mixed> $facts kinds, modifiers, suffix, injects, uses and lines, each optional
+     * @param array<string, mixed> $facts kinds, modifiers, suffix, name_case, injects, uses and lines, each optional
+     * @param string $role the population's role, `source` or `test`
      * @return list<array{id: string, text: string, files: int, of: int}>
      */
-    public static function shown(int $files, array $facts): array
+    public static function shown(int $files, array $facts, string $role = 'source'): array
     {
         if ($files < self::MIN_FILES) {
             return [];
@@ -72,6 +82,11 @@ final class Conventions
         $suffix = $facts['suffix'] ?? null;
         if (is_array($suffix) && is_string($suffix['value'] ?? null) && is_int($suffix['files'] ?? null) && self::passes($suffix['files'], $files)) {
             $shown[] = ['id' => 'suffix', 'text' => 'named *' . $suffix['value'], 'files' => $suffix['files'], 'of' => $files];
+        }
+
+        $nameCase = $facts['name_case'] ?? null;
+        if ($role === 'source' && is_array($nameCase) && is_string($nameCase['value'] ?? null) && isset(self::NAME_CASE_TEXT[$nameCase['value']]) && is_int($nameCase['files'] ?? null) && self::passes($nameCase['files'], $files)) {
+            $shown[] = ['id' => 'name_case', 'text' => self::NAME_CASE_TEXT[$nameCase['value']], 'files' => $nameCase['files'], 'of' => $files];
         }
 
         foreach (['injects' => 'inject', 'uses' => 'use'] as $key => $verb) {

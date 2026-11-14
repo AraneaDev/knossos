@@ -68,7 +68,7 @@ final readonly class CreationBriefQueryService extends AbstractArchitectureQuery
             PathParts::stem($relative),
             (new NeighbourCandidates($this->pdo))->of($projectId, $basis['directory'], $extension, $role, $relative),
         );
-        $conventions = $population === null ? [] : Conventions::shown($population['files'], $population['facts']);
+        $conventions = $population === null ? [] : Conventions::shown($population['files'], $population['facts'], $role);
         $goesWith = $this->goesWith($facts, $projectId, $root, $relative, $basis, $directory, $role, $population);
         $gates = [];
         foreach ($configuration->gates as $gate) {

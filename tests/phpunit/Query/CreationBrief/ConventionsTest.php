@@ -120,6 +120,35 @@ final class ConventionsTest extends KnossosTestCase
         self::assertSame(['one class per file', 'one interface per file', 'one trait per file', 'one enum per file', 'functions only'], $texts);
     }
 
+    /** How a source folder's file names are written comes after the suffix and before what files inject. */
+    public function testTheNameCaseOfASourceFolderIsShownAfterTheSuffix(): void
+    {
+        $facts = ['suffix' => ['value' => 'Actions', 'files' => 5], 'name_case' => ['value' => 'kebab', 'files' => 5], 'injects' => [['type' => 'PDO', 'files' => 5]]];
+
+        $shown = Conventions::shown(5, $facts, 'source');
+
+        self::assertSame(['suffix', 'name_case', 'injects:PDO'], array_column($shown, 'id'));
+        self::assertSame(['id' => 'name_case', 'text' => 'kebab-case file names', 'files' => 5, 'of' => 5], $shown[1]);
+    }
+
+    /** Each style has its wording, and a style below four in five is not shown. */
+    public function testEachNameCaseHasItsWording(): void
+    {
+        $texts = [];
+        foreach (['kebab', 'snake', 'pascal', 'camel'] as $style) {
+            $texts[] = Conventions::shown(5, ['name_case' => ['value' => $style, 'files' => 4]], 'source')[0]['text'];
+        }
+
+        self::assertSame(['kebab-case file names', 'snake_case file names', 'PascalCase file names', 'camelCase file names'], $texts);
+        self::assertSame([], Conventions::shown(10, ['name_case' => ['value' => 'kebab', 'files' => 7]], 'source'));
+    }
+
+    /** A test folder's names are fixed by its test runner, so they are never stated as a convention. */
+    public function testTheNameCaseOfATestFolderIsNotShown(): void
+    {
+        self::assertSame([], Conventions::shown(5, ['name_case' => ['value' => 'kebab', 'files' => 5]], 'test'));
+    }
+
     /** A folder of interface and type-alias files says so. */
     public function testTypesOnlyHasItsWording(): void
     {
