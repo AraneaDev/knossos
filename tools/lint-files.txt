@@ -605,6 +605,7 @@ php	tests/phpunit/Cli/QualityDepsKeyTest.php
 php	tests/phpunit/Cli/QualityImageLinksTest.php
 php	tests/phpunit/Cli/QueryCommandContractTest.php
 php	tests/phpunit/Cli/RecordScanFailureCommandTest.php
+php	tests/phpunit/Cli/ReleaseAssetsWorkflowTest.php
 php	tests/phpunit/Cli/ReleaseWorkflowTest.php
 php	tests/phpunit/Cli/RepositoryCheckTest.php
 php	tests/phpunit/Cli/RootsCommandReportTest.php
