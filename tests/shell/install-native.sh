@@ -10,7 +10,7 @@ set -u
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 ROOT="$HERE/../.."
-INSTALL="$ROOT/install.sh"
+INSTALL="${KNOSSOS_TEST_INSTALL:-$ROOT/install.sh}"
 failures=0
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -32,13 +32,15 @@ ASSET=$(find "$RELEASE" -name 'knossos-*.tar.gz' | head -n 1)
 ASSET=${ASSET##*/}
 VERSION=${ASSET#knossos-}
 VERSION=${VERSION%%-*}
+case $(uname -s) in Linux) HOST_OS=linux ;; Darwin) HOST_OS=darwin ;; *) HOST_OS=unknown ;; esac
+case $(uname -m) in x86_64 | amd64) HOST_ARCH=x86_64 ;; arm64 | aarch64) HOST_ARCH=arm64 ;; *) HOST_ARCH=unknown ;; esac
 
 # install_into DIR [args]: run the installer against RELEASE with a data dir
 # and bin dir under DIR, both with a space in the name.
 run_install() {
     dir=$1; shift
     KNOSSOS_RELEASE_BASE="${BASE_OVERRIDE:-$RELEASE}" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE -u KNOSSOS_BIN_DIR \
-        sh "$INSTALL" --no-plugin --data-dir="$dir/data dir" --bin-dir="$dir/bin dir" "$@" 2>&1
+        sh "$INSTALL" --no-plugin --data-dir="$dir/data dir" --bin-dir="$dir/bin dir" "$@" 2>&1 </dev/null
 }
 
 # ---- a fresh install -------------------------------------------------------
@@ -79,7 +81,7 @@ fi
 # Latest from a local directory, and a file:// base.
 T1B="$WORK/latest"
 mkdir -p "$T1B"
-BASE_OVERRIDE="file://$RELEASE" run_install "$T1B" >/dev/null 2>&1; status=$?
+(BASE_OVERRIDE="file://$RELEASE" run_install "$T1B" >/dev/null 2>&1); status=$?
 got=$("$T1B/bin dir/knossos" version 2>&1)
 if [ "$status" -eq 0 ] && [ "$got" = "Knossos $VERSION" ]; then
     pass 'resolves the latest version from a file:// release dir'
@@ -98,7 +100,7 @@ printf 'corrupt' >> "$BAD/$ASSET"
 T2="$WORK/corrupt"
 mkdir -p "$T2/data dir/versions/0.0.1/bin"
 ln -s versions/0.0.1 "$T2/data dir/current"
-BASE_OVERRIDE=$BAD out=$(run_install "$T2" --version="$VERSION"); status=$?
+out=$(BASE_OVERRIDE=$BAD run_install "$T2" --version="$VERSION"); status=$?
 case $out in *"checksum mismatch"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'a corrupted tarball is refused with the reason'; else fail "corrupt: status $status, output $out"; fi
 if [ ! -e "$T2/data dir/versions/$VERSION" ] && [ "$(readlink "$T2/data dir/current")" = 'versions/0.0.1' ]; then
@@ -115,7 +117,7 @@ mkdir -p "$GONE"
 cp "$RELEASE/SHA256SUMS" "$GONE/"
 T3="$WORK/missing"
 mkdir -p "$T3"
-BASE_OVERRIDE=$GONE out=$(run_install "$T3" --version="$VERSION"); status=$?
+out=$(BASE_OVERRIDE=$GONE run_install "$T3" --version="$VERSION"); status=$?
 case $out in *"$ASSET"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$T3/data dir/versions" ]; then
     pass 'a missing asset names the asset and changes nothing'
@@ -128,7 +130,7 @@ NOLINE="$WORK/noline"
 mkdir -p "$NOLINE"
 cp "$RELEASE/$ASSET" "$NOLINE/"
 printf '%s  knossos-%s-other-arch.tar.gz\n' 0000 "$VERSION" > "$NOLINE/SHA256SUMS"
-BASE_OVERRIDE=$NOLINE out=$(run_install "$WORK/noline-target" --version="$VERSION"); status=$?
+out=$(BASE_OVERRIDE=$NOLINE run_install "$WORK/noline-target" --version="$VERSION"); status=$?
 case $out in *"no entry for $ASSET"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'a SHA256SUMS without this platform is refused'; else fail "no checksum line: status $status, output $out"; fi
 
@@ -179,6 +181,182 @@ if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/container" ]; then
 else
     fail "container mode: status $status, output $out"
 fi
+
+# ---- a script cut off mid-download -----------------------------------------
+
+# Under `curl | sh` a dropped connection delivers a prefix of the script. Cut
+# at several line counts, it must create nothing and never produce `current`.
+total=$(wc -l < "$INSTALL" | tr -d ' ')
+cut_ok=yes
+for n in $((total / 4)) $((total / 2)) $((total * 3 / 4)) $((total - 1)); do
+    T6="$WORK/cut-$n"
+    mkdir -p "$T6"
+    head -n "$n" "$INSTALL" | KNOSSOS_RELEASE_BASE=$RELEASE sh -s -- --no-plugin --data-dir="$T6/data" --bin-dir="$T6/bin" --version="$VERSION" >/dev/null 2>&1
+    if [ -e "$T6/data" ] || [ -e "$T6/bin" ]; then cut_ok=no; printf 'cut at %s lines created: %s\n' "$n" "$(find "$T6" -mindepth 1 | head -n 3 | tr '\n' ' ')"; fi
+done
+if [ "$cut_ok" = yes ]; then pass 'a script cut off at 25%, 50%, 75% and all but its last line creates nothing'; else fail 'a truncated script did something'; fi
+
+# ---- helpers for tampered releases -----------------------------------------
+
+# make_release DIR STUB: a release directory whose bin/knossos is the given
+# stub script, repacked from the real tarball with a matching SHA256SUMS.
+make_release() {
+    rdir=$1
+    mkdir -p "$rdir" "$rdir.x"
+    tar -xzf "$RELEASE/$ASSET" -C "$rdir.x"
+    printf '%s\n' "$2" > "$rdir.x/knossos-$VERSION/bin/knossos"
+    chmod +x "$rdir.x/knossos-$VERSION/bin/knossos"
+    tar -czf "$rdir/$ASSET" -C "$rdir.x" "knossos-$VERSION"
+    if command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum "$rdir/$ASSET" | cut -d ' ' -f 1); else sum=$(shasum -a 256 "$rdir/$ASSET" | cut -d ' ' -f 1); fi
+    printf '%s  %s\n' "$sum" "$ASSET" > "$rdir/SHA256SUMS"
+}
+
+# The stub's doctor writes into whatever data dir it is given and exits with
+# DOCTOR_EXIT; its version fails once install.json exists when asked to.
+STUB_BODY="#!/bin/sh
+case \"\$1\" in
+    doctor) printf touched > \"\$KNOSSOS_DATA_DIR/knossos.sqlite\"; exit \"\${DOCTOR_EXIT:-0}\" ;;
+    version) if [ -n \"\${STUB_FAIL_AFTER_SWITCH:-}\" ] && [ -f \"\$KNOSSOS_DATA_DIR/install.json\" ]; then exit 1; fi; echo 'Knossos $VERSION' ;;
+esac"
+make_release "$WORK/stub release" "$STUB_BODY"
+
+# ---- the live database is never touched by doctor --------------------------
+
+T7="$WORK/livedb"
+mkdir -p "$T7/data dir"
+printf 'KNOWN-DATABASE-BYTES' > "$T7/data dir/knossos.sqlite"
+cp "$T7/data dir/knossos.sqlite" "$WORK/sqlite.before"
+out=$(BASE_OVERRIDE="$WORK/stub release" run_install "$T7" --version="$VERSION"); status=$?
+if [ "$status" -eq 0 ] && cmp -s "$T7/data dir/knossos.sqlite" "$WORK/sqlite.before"; then
+    pass 'a successful install leaves an existing knossos.sqlite byte for byte alone'
+else
+    fail "live database after a successful install: status $status, output $out"
+fi
+
+T8="$WORK/livedb-fail"
+mkdir -p "$T8/data dir"
+cp "$WORK/sqlite.before" "$T8/data dir/knossos.sqlite"
+out=$(BASE_OVERRIDE="$WORK/stub release" DOCTOR_EXIT=1 run_install "$T8" --version="$VERSION"); status=$?
+if [ "$status" -ne 0 ] && cmp -s "$T8/data dir/knossos.sqlite" "$WORK/sqlite.before" && [ ! -e "$T8/data dir/current" ]; then
+    pass 'an install that fails doctor leaves the database alone and switches nothing'
+else
+    fail "live database after a failed doctor: status $status, output $out"
+fi
+
+T9="$WORK/livedb-fresh"
+mkdir -p "$T9"
+(BASE_OVERRIDE="$WORK/stub release" run_install "$T9" --version="$VERSION" >/dev/null 2>&1)
+run_install "$T1B" --version="$VERSION" >/dev/null 2>&1
+if [ ! -e "$T9/data dir/knossos.sqlite" ] && [ ! -e "$T1B/data dir/knossos.sqlite" ]; then
+    pass 'a fresh install leaves no knossos.sqlite in the data dir'
+else
+    fail 'a fresh install created knossos.sqlite'
+fi
+
+# ---- rollback after the switch ---------------------------------------------
+
+T10="$WORK/rollback"
+mkdir -p "$T10/data dir/versions/0.0.1/bin" "$T10/bin dir"
+ln -s versions/0.0.1 "$T10/data dir/current"
+printf '{"mode": "native", "version": "0.0.1"}\n' > "$T10/data dir/install.json"
+cp "$T10/data dir/install.json" "$WORK/install.json.before"
+printf '#!/bin/sh\necho OLD LAUNCHER\n' > "$T10/bin dir/knossos"
+cp "$T10/bin dir/knossos" "$WORK/launcher.before"
+out=$(BASE_OVERRIDE="$WORK/stub release" STUB_FAIL_AFTER_SWITCH=1 run_install "$T10" --version="$VERSION"); status=$?
+if [ "$status" -ne 0 ] && [ "$(readlink "$T10/data dir/current")" = 'versions/0.0.1' ] \
+    && cmp -s "$T10/data dir/install.json" "$WORK/install.json.before" \
+    && cmp -s "$T10/bin dir/knossos" "$WORK/launcher.before"; then
+    pass 'a failure after the switch restores current, install.json and the launcher'
+else
+    fail "rollback: status $status, current $(readlink "$T10/data dir/current"), output $out"
+fi
+
+# No previous install: the rollback removes what the install created.
+T11="$WORK/rollback-fresh"
+mkdir -p "$T11"
+out=$(BASE_OVERRIDE="$WORK/stub release" STUB_FAIL_AFTER_SWITCH=1 run_install "$T11" --version="$VERSION"); status=$?
+if [ "$status" -ne 0 ] && [ ! -e "$T11/data dir/current" ] && [ ! -e "$T11/data dir/install.json" ] && [ ! -e "$T11/bin dir/knossos" ]; then
+    pass 'a failure after the switch on a fresh host leaves no current, install.json or launcher'
+else
+    fail "fresh rollback: status $status, output $out"
+fi
+
+# A release without a launcher template is refused before anything switches.
+NOTPL="$WORK/notemplate"
+mkdir -p "$NOTPL" "$NOTPL.x"
+tar -xzf "$RELEASE/$ASSET" -C "$NOTPL.x"
+rm -rf "$NOTPL.x/knossos-$VERSION/launcher"
+tar -czf "$NOTPL/$ASSET" -C "$NOTPL.x" "knossos-$VERSION"
+if command -v sha256sum >/dev/null 2>&1; then sum=$(sha256sum "$NOTPL/$ASSET" | cut -d ' ' -f 1); else sum=$(shasum -a 256 "$NOTPL/$ASSET" | cut -d ' ' -f 1); fi
+printf '%s  %s\n' "$sum" "$ASSET" > "$NOTPL/SHA256SUMS"
+T12="$WORK/notemplate-target"
+mkdir -p "$T12/data dir/versions/0.0.1"
+ln -s versions/0.0.1 "$T12/data dir/current"
+out=$(BASE_OVERRIDE=$NOTPL run_install "$T12" --version="$VERSION"); status=$?
+case $out in *"no launcher template"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ "$(readlink "$T12/data dir/current")" = 'versions/0.0.1' ]; then
+    pass 'a release without a launcher template is refused before the switch'
+else
+    fail "no template: status $status, output $out"
+fi
+
+# ---- versions are validated ------------------------------------------------
+
+T13="$WORK/badversion"
+out=$(run_install "$T13" --version='../x'); status=$?
+case $out in *"not a valid version"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$T13" ]; then pass "--version='../x' is refused"; else fail "bad version: status $status, output $out"; fi
+
+GARBAGE="$WORK/garbage release"
+mkdir -p "$GARBAGE"
+: > "$GARBAGE/knossos-a..b-$HOST_OS-$HOST_ARCH.tar.gz"
+out=$(BASE_OVERRIDE=$GARBAGE run_install "$WORK/garbage-target"); status=$?
+case $out in *"not a valid version"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/garbage-target" ]; then pass 'a latest that resolves to garbage is refused'; else fail "garbage latest: status $status, output $out"; fi
+
+# ---- an apostrophe in the data dir -----------------------------------------
+
+T14="$WORK/it's here"
+mkdir -p "$T14"
+out=$(run_install "$T14" --version="$VERSION"); status=$?
+got=$(env -u KNOSSOS_DATA_DIR "$T14/bin dir/knossos" version 2>&1)
+if [ "$status" -eq 0 ] && [ "$got" = "Knossos $VERSION" ]; then pass 'a data dir with an apostrophe works'; else fail "apostrophe: status $status, version said $got, output $out"; fi
+
+# ---- the roots file --------------------------------------------------------
+
+# The directory the installer runs from is granted, and what was there stays.
+T15="$WORK/roots"
+mkdir -p "$T15/data dir" "$T15/project"
+printf '{"roots": ["/existing/project"]}\n' > "$T15/data dir/roots.json"
+out=$(cd "$T15/project" && run_install "$T15" --version="$VERSION"); status=$?
+if [ "$status" -eq 0 ] && grep -q '/existing/project' "$T15/data dir/roots.json" && grep -qF "$T15/project" "$T15/data dir/roots.json"; then
+    pass 'the working directory is merged into the roots file, not written over it'
+else
+    fail "roots merge: status $status, file: $(cat "$T15/data dir/roots.json"), output $out"
+fi
+
+T16="$WORK/noroots"
+mkdir -p "$T16/project"
+out=$(cd "$T16/project" && run_install "$T16" --version="$VERSION" --no-roots); status=$?
+if [ "$status" -eq 0 ] && [ ! -e "$T16/data dir/roots.json" ]; then pass '--no-roots writes no roots file'; else fail "--no-roots: status $status, output $out"; fi
+
+# Piped from the home directory or /: nothing is granted, and it says so.
+T17="$WORK/home skip"
+mkdir -p "$T17/home"
+out=$(cd "$T17/home" && HOME="$T17/home" KNOSSOS_RELEASE_BASE=$RELEASE env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE sh "$INSTALL" --no-plugin --data-dir="$T17/data" --bin-dir="$T17/bin" --version="$VERSION" 2>&1 </dev/null); status=$?
+case $out in *"no project root granted"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ ! -e "$T17/data/roots.json" ]; then pass 'run from the home directory without a terminal, no root is granted and it says so'; else fail "home skip: status $status, output $out"; fi
+
+T18="$WORK/slash skip"
+mkdir -p "$T18"
+out=$(cd / && run_install "$T18" --version="$VERSION"); status=$?
+if [ "$status" -eq 0 ] && [ ! -e "$T18/data dir/roots.json" ]; then pass 'run from / without a terminal, no root is granted'; else fail "slash skip: status $status, output $out"; fi
+
+# KNOSSOS_ALLOW_ROOT still overrides.
+T19="$WORK/allow"
+mkdir -p "$T19"
+out=$(cd / && KNOSSOS_ALLOW_ROOT="$T19/chosen" run_install "$T19" --version="$VERSION"); status=$?
+if [ "$status" -eq 0 ] && grep -qF "$T19/chosen" "$T19/data dir/roots.json"; then pass 'KNOSSOS_ALLOW_ROOT overrides the skip'; else fail "allow root: status $status, output $out"; fi
 
 if [ "$failures" -ne 0 ]; then
     printf '%s failure(s)\n' "$failures"
