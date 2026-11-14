@@ -28,6 +28,9 @@ const HEARTBEAT_MS =
 let thread = null;
 let pending = null;
 let closing = false;
+// Whether the core said at `initialize` that it reads a contribution's reads
+// from a read table (see src/read-table.js). A host that did not gets maps.
+let readTable = false;
 let threadError;
 
 function scanThread() {
@@ -85,6 +88,9 @@ async function handle(request) {
     let result;
     switch (method) {
         case "initialize":
+            readTable =
+                Array.isArray(params.accepts) &&
+                params.accepts.includes("read_table");
             result = {
                 id: "knossos.typescript",
                 version: "0.6.0",
@@ -153,7 +159,7 @@ function scan(params) {
         // Held only while a scan is in flight: stdin closing mid-scan must not
         // let the process exit before the answer is written.
         worker.ref();
-        worker.postMessage({ type: "scan", params });
+        worker.postMessage({ type: "scan", params, readTable });
     });
 }
 

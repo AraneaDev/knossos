@@ -47,6 +47,7 @@ final class ScannerProtocolSession
         $result = $this->request(Protocol::METHOD_INITIALIZE, [
             'protocol_version' => Protocol::VERSION,
             'output_schema_version' => Protocol::OUTPUT_SCHEMA_VERSION,
+            'accepts' => [Protocol::ACCEPTS_READ_TABLE],
         ]);
 
         try {
@@ -120,6 +121,8 @@ final class ScannerProtocolSession
         // the same parts may carry.
         $inputHashes = null;
         $readsParts = array_fill_keys(self::READS_FIELDS, null);
+        // The rows this request's contributions name their reads by.
+        $readTable = new ReadTable();
         try {
             while (true) {
                 if ($cancelled !== null && $cancelled()) {
@@ -133,7 +136,11 @@ final class ScannerProtocolSession
                         $this->absorbInputHashes($message, $manifest, $inputHashes, $readsParts);
                         continue;
                     }
-                    $contribution = $this->decodeContribution($message);
+                    if (($message['method'] ?? null) === Protocol::NOTIFICATION_READ_TABLE) {
+                        $readTable->absorb($message['params'] ?? null);
+                        continue;
+                    }
+                    $contribution = $this->decodeContribution($message, $readTable);
                     if ($contribution !== null) {
                         yield $contribution;
                     }
@@ -410,7 +417,7 @@ final class ScannerProtocolSession
      *
      * @param array<string, mixed> $message
      */
-    private function decodeContribution(array $message): ?ScanContribution
+    private function decodeContribution(array $message, ReadTable $readTable): ?ScanContribution
     {
         if (($message['method'] ?? null) !== Protocol::NOTIFICATION_CONTRIBUTION) {
             return null;
@@ -419,7 +426,7 @@ final class ScannerProtocolSession
         if (!is_array($params) || array_is_list($params)) {
             throw new WorkerException(WorkerErrorCode::ContributionInvalid->value, ContributionParams::NOT_AN_OBJECT);
         }
-        return ContributionDecoder::decode($params, degradeMalformedFacts: true);
+        return ContributionDecoder::decode($readTable->expand($params), degradeMalformedFacts: true);
     }
 
     /**

@@ -458,6 +458,7 @@ php	src/Scanner/Worker/InputHashesMap.php
 php	src/Scanner/Worker/NdjsonRpcChannel.php
 php	src/Scanner/Worker/ProcessScannerClient.php
 php	src/Scanner/Worker/ProcessSupervisorInterface.php
+php	src/Scanner/Worker/ReadTable.php
 php	src/Scanner/Worker/ReadsMap.php
 php	src/Scanner/Worker/RpcChannelInterface.php
 php	src/Scanner/Worker/ScannerProtocolSession.php
@@ -1081,6 +1082,7 @@ php	tests/phpunit/Scanner/TypescriptNestContractTest.php
 php	tests/phpunit/Scanner/TypescriptPackageNameTest.php
 php	tests/phpunit/Scanner/TypescriptProgramEnvironmentTest.php
 php	tests/phpunit/Scanner/TypescriptReadAttributionTest.php
+php	tests/phpunit/Scanner/TypescriptReadTableTest.php
 php	tests/phpunit/Scanner/TypescriptRequireTest.php
 php	tests/phpunit/Scanner/TypescriptRunOnLoadScriptTest.php
 php	tests/phpunit/Scanner/TypescriptScannerTest.php
@@ -1097,6 +1099,7 @@ php	tests/phpunit/Scanner/Worker/FakeWorkerProcess.php
 php	tests/phpunit/Scanner/Worker/InputHashesMapTest.php
 php	tests/phpunit/Scanner/Worker/NdjsonRpcChannelTest.php
 php	tests/phpunit/Scanner/Worker/PipeOnlyWorkerProcess.php
+php	tests/phpunit/Scanner/Worker/ReadTableTest.php
 php	tests/phpunit/Scanner/Worker/ScannerProtocolSessionContractTest.php
 php	tests/phpunit/Scanner/Worker/ScannerProtocolSessionInputHashesTest.php
 php	tests/phpunit/Scanner/Worker/ScannerProtocolSessionTest.php
@@ -1538,6 +1541,7 @@ js	workers/typescript/src/__tests__/program-wide-diagnostics.test.js
 js	workers/typescript/src/__tests__/project-compiler-defaults.test.js
 js	workers/typescript/src/__tests__/react-hooks.test.js
 js	workers/typescript/src/__tests__/read-attribution.test.js
+js	workers/typescript/src/__tests__/read-table.test.js
 js	workers/typescript/src/__tests__/scanner.test.js
 js	workers/typescript/src/__tests__/shebang-and-rejection.test.js
 js	workers/typescript/src/__tests__/supertype-members.test.js
@@ -1575,6 +1579,7 @@ js	workers/typescript/src/program-cache.js
 js	workers/typescript/src/program-diagnostics.js
 js	workers/typescript/src/program-host.js
 js	workers/typescript/src/project-paths.js
+js	workers/typescript/src/read-table.js
 js	workers/typescript/src/request-validation.js
 js	workers/typescript/src/scan-thread-exit.js
 js	workers/typescript/src/scan-thread-limits.js

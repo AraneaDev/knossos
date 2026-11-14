@@ -2,6 +2,7 @@ import { parentPort } from "node:worker_threads";
 import v8 from "node:v8";
 
 import { inputHashesParts } from "./input-hashes-parts.js";
+import { ReadTable } from "./read-table.js";
 import { TEST_CRASH_VARIABLE } from "./scan-thread-limits.js";
 import { TypeScriptScanner } from "./scanner.js";
 
@@ -58,11 +59,14 @@ parentPort.on("message", (message) => {
         );
     }
     try {
+        // One table per request, for a core that said it accepts one.
+        const table = message.readTable === true ? new ReadTable() : null;
         const result = scanner.scan(message.params, (contribution) => {
             post({
                 jsonrpc: "2.0",
                 method: "scan/contribution",
-                params: contribution,
+                params:
+                    table === null ? contribution : tabled(table, contribution),
             });
         });
         parentPort.postMessage({
@@ -107,6 +111,20 @@ function withInputHashesParts(result) {
         last[field] = readsParts.at(-1);
     }
     return last;
+}
+
+/**
+ * A contribution naming its reads by row of the request's read table, after
+ * the rows it is the first to name have gone out ahead of it.
+ */
+function tabled(table, contribution) {
+    if (contribution.reads === undefined) return contribution;
+    const { reads, ...rest } = contribution;
+    const { refs, parts } = table.refer(reads);
+    for (const rows of parts) {
+        post({ jsonrpc: "2.0", method: "scan/read_table", params: { rows } });
+    }
+    return { ...rest, reads_ref: refs };
 }
 
 function post(frame) {

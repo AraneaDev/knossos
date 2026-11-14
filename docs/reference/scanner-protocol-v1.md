@@ -27,8 +27,11 @@ The worker protocol has four methods: `initialize`, `scan`, `cancel`, and
 
 ### `initialize`
 
-Request parameters contain the core protocol/output versions. The result is a
-scanner manifest:
+Request parameters contain the core protocol/output versions, and `accepts`: a
+list naming the optional forms of a reply this core reads. A worker ignores a
+name it does not know and never uses a form the list leaves out, so it keeps
+working under a host that sends no list. The one name so far is `read_table`
+(see the read table, below). The result is a scanner manifest:
 
 ```json
 {
@@ -293,6 +296,34 @@ it is a file the request named, whose own bytes its contribution's
 changes, so an attributing worker that leaves one out is refused as
 `WORKER_CONTRIBUTION_INVALID`. Put a read no single file caused, such as a
 dependency's declaration another one imports, on the result.
+
+##### The read table
+
+The files of one program read much the same manifests and declarations, so
+their `reads` maps repeat the same paths and 64-character hashes file after
+file. On a large project that repetition is a quarter of the reply. When the
+`accepts` list of `initialize` names `read_table`, a worker may state each
+path and hash once instead:
+
+```json
+{"jsonrpc": "2.0", "method": "scan/read_table", "params": {"rows": [["package.json", "9f86…"], ["src/missing.ts", null]]}}
+{"jsonrpc": "2.0", "method": "scan/contribution", "params": {"owner_key": "…", "reads_ref": [0, 1], "nodes": [], "edges": [], "diagnostics": []}}
+```
+
+Each row of a `scan/read_table` notification is a path and the SHA-256 read
+there, or `null`. Rows are numbered from zero across every such notification
+of the request, in the order sent, and the table ends with the request. A
+contribution then carries `reads_ref`, the numbers of the rows it read, in
+place of `reads`; the core rebuilds the map before it checks anything, so
+every rule above applies to it unchanged. A row must be sent before the first
+contribution that names it. A path read again with another value gets a new
+row, and a contribution names the one it saw.
+
+Refused as `WORKER_CONTRIBUTION_INVALID`: rows that are not a list of such
+pairs, a contribution with both `reads` and `reads_ref`, a row number no
+notification has sent, and a `reads_ref` naming one path through two rows with
+different values. The result's `reads` and `unattributed_reads` stay maps. The
+packaged TypeScript worker uses the table; the others send maps.
 
 A worker whose programs load project files beyond the ones a request names
 reads for those files too: an importer's import chain, a config's whole
