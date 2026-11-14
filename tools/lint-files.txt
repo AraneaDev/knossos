@@ -330,6 +330,7 @@ php	src/Query/SessionChangesService.php
 php	src/Query/SessionDiffService.php
 php	src/Query/SessionGates.php
 php	src/Query/SessionGatesRenderer.php
+php	src/Query/SignatureLine.php
 php	src/Query/SnapshotDiffQuery.php
 php	src/Query/SnapshotGraphReader.php
 php	src/Query/SnapshotMetrics.php
@@ -752,6 +753,7 @@ php	tests/phpunit/Query/ChangeImpactRankingTest.php
 php	tests/phpunit/Query/ChangedFilesPlanTest.php
 php	tests/phpunit/Query/ComponentBoundsTest.php
 php	tests/phpunit/Query/ComponentDetailServiceTest.php
+php	tests/phpunit/Query/ComponentSignatureTest.php
 php	tests/phpunit/Query/ComponentSpanTest.php
 php	tests/phpunit/Query/ComponentUsageTest.php
 php	tests/phpunit/Query/ConstructorReachTest.php
@@ -876,6 +878,7 @@ php	tests/phpunit/Query/SessionChangesServiceTest.php
 php	tests/phpunit/Query/SessionDiffServiceTest.php
 php	tests/phpunit/Query/SessionGatesManifestTest.php
 php	tests/phpunit/Query/SessionGatesTest.php
+php	tests/phpunit/Query/SignatureLineTest.php
 php	tests/phpunit/Query/SnapshotDiffArchiveTest.php
 php	tests/phpunit/Query/SnapshotDiffTest.php
 php	tests/phpunit/Query/SnapshotGraphReaderBlobStreamTest.php

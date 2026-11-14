@@ -64,7 +64,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
                 'id' => $row['id'], 'kind' => $row['kind'], 'canonical_name' => $row['canonical_name'],
                 'display_name' => $row['display_name'], 'origin' => $row['origin'],
                 'confidence' => $row['confidence'], 'roles' => $rolesByNode[$row['id']] ?? [],
-                'attributes' => self::decode($row['attributes_json']),
+                ...SignatureLine::fields(self::decode($row['attributes_json']), (string) $row['display_name']),
             ] + (isset($apart[$row['id']]) ? ['declared_in' => $apart[$row['id']]] : []);
             // A file component has no file row; its path is its name.
             $path = $row['relative_path'] ?? ($row['kind'] === 'file' ? $row['canonical_name'] : null);
@@ -250,7 +250,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             ['query' => $component, 'ambiguous' => false, 'component' => [
                 'id' => $nodeId, 'kind' => $node['kind'], 'canonical_name' => $node['canonical_name'],
                 'display_name' => $node['display_name'], 'confidence' => $node['confidence'], 'origin' => $node['origin'],
-                'attributes' => self::decode($node['attributes_json']), 'roles' => $this->roles([$nodeId])[$nodeId] ?? [],
+                ...SignatureLine::fields(self::decode($node['attributes_json']), (string) $node['display_name']), 'roles' => $this->roles([$nodeId])[$nodeId] ?? [],
                 'boundaries' => $this->boundaryNames([$nodeId])[$nodeId] ?? [],
                 'annotations' => $this->annotationsFor($projectId, (string) $node['canonical_name']),
                 'parent' => $node['parent_component_id'] === null ? null : ['id' => $node['parent_component_id'], 'kind' => $node['parent_kind'], 'canonical_name' => $node['parent_canonical_name']],
@@ -456,7 +456,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
                 'id' => $row['id'], 'kind' => $row['kind'], 'canonical_name' => $row['canonical_name'],
                 'display_name' => $row['display_name'], 'origin' => $row['origin'], 'confidence' => $row['confidence'],
                 'roles' => $rolesByNode[$row['id']] ?? [], 'boundaries' => $boundariesByNode[$row['id']] ?? [],
-                'attributes' => self::decode($row['attributes_json']),
+                ...SignatureLine::fields(self::decode($row['attributes_json']), (string) $row['display_name']),
             ] + (isset($apart[$row['id']]) ? ['declared_in' => $apart[$row['id']]] : []);
             if ($row['relative_path'] !== null) {
                 $evidence[] = [
