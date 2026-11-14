@@ -83,24 +83,31 @@ final readonly class FolderFactsStore
         return $changed;
     }
 
-    /** Delete every folder fact of the project, so {@see self::has()} is false until they are built again. */
+    /** Delete every folder fact of the project, so {@see self::current()} is false until they are built again. */
     public function clear(string $projectId): void
     {
         $this->pdo->prepare('DELETE FROM folder_facts WHERE project_id = ?')->execute([$projectId]);
     }
 
     /**
-     * Whether any folder facts are stored for the project.
+     * Whether the project has folder facts and every row of them is of `$version`.
      *
-     * A project scanned before folder facts existed has none, and a scan that
+     * A project scanned before folder facts existed has none, and one scanned by
+     * an older version has rows whose `v` differs or is missing; a scan that
      * finds nothing changed uses this to know it must build them anyway.
      */
-    public function has(string $projectId): bool
+    public function current(string $projectId, int $version): bool
     {
-        $statement = $this->pdo->prepare('SELECT 1 FROM folder_facts WHERE project_id = ? LIMIT 1');
-        $statement->execute([$projectId]);
+        $statement = $this->pdo->prepare(
+            "SELECT EXISTS (SELECT 1 FROM folder_facts WHERE project_id = ?)
+                AND NOT EXISTS (SELECT 1 FROM folder_facts WHERE project_id = ? AND json_extract(facts_json, '$.v') IS NOT ?)",
+        );
+        $statement->bindValue(1, $projectId);
+        $statement->bindValue(2, $projectId);
+        $statement->bindValue(3, $version, PDO::PARAM_INT);
+        $statement->execute();
 
-        return $statement->fetchColumn() !== false;
+        return (int) $statement->fetchColumn() === 1;
     }
 
     /**

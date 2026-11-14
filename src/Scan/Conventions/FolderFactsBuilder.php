@@ -23,6 +23,16 @@ use PDO;
  */
 final readonly class FolderFactsBuilder
 {
+    /**
+     * The version of what `rows()` derives, stored in every row's facts as `v`.
+     *
+     * Raise it whenever what `rows()` derives changes meaning (a shape rule, a new
+     * fact, a count read differently): a scan that finds nothing changed rebuilds
+     * the facts of a project whose rows carry any other version, so an upgrade
+     * does not keep showing what the older code derived.
+     */
+    public const FACTS_VERSION = 2;
+
     /** Declaration kinds that are code; a file holding one is shaped by these alone. */
     private const CODE = ['class', 'trait', 'enum', 'function'];
 
@@ -281,14 +291,14 @@ final readonly class FolderFactsBuilder
     }
 
     /**
-     * The `facts` of one population, leaving out every key that has no data.
+     * The `facts` of one population: the version, and every key that has data.
      *
      * @param array<string, mixed> $population
      * @return array<string, mixed>
      */
     private static function facts(array $population): array
     {
-        $facts = [];
+        $facts = ['v' => self::FACTS_VERSION];
         if ($population['kinds'] !== []) {
             $facts['kinds'] = $population['kinds'];
         }

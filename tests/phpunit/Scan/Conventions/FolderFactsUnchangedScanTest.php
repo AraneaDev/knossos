@@ -65,6 +65,39 @@ final class FolderFactsUnchangedScanTest extends KnossosTestCase
         }
     }
 
+    /** Facts an older version derived, without the version key, are rebuilt by a scan that changed nothing. */
+    public function testAnUnchangedTreeRebuildsFactsOfAnOlderVersion(): void
+    {
+        self::assertTrue($this->rebuiltAfter("UPDATE folder_facts SET facts_json = json_remove(facts_json, '$.v')"));
+    }
+
+    /** One row of another version is enough to rebuild them all. */
+    public function testAnUnchangedTreeRebuildsAMixOfVersions(): void
+    {
+        self::assertTrue($this->rebuiltAfter("UPDATE folder_facts SET facts_json = json_set(facts_json, '$.v', 1) WHERE directory = (SELECT MIN(directory) FROM folder_facts)"));
+    }
+
+    /** Whether a no-change scan rebuilt the facts after `$tamper` (which also marks every row so a rebuild shows). */
+    private function rebuiltAfter(string $tamper): bool
+    {
+        $root = $this->fixtureRoot();
+        try {
+            $pdo = $this->freshTestDatabase();
+            $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
+            $service->scan($root);
+            $pdo->exec('UPDATE folder_facts SET files = 99');
+            $pdo->exec($tamper);
+
+            $second = $service->scan($root);
+
+            self::assertSame((int) $pdo->query('SELECT COUNT(*) FROM folder_facts')->fetchColumn(), (int) $pdo->query("SELECT COUNT(*) FROM folder_facts WHERE json_extract(facts_json, '$.v') = 2")->fetchColumn());
+
+            return array_key_exists('folder_facts', $second->data['metrics']['stages_ms']) && (int) $pdo->query('SELECT MAX(files) FROM folder_facts')->fetchColumn() !== 99;
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     /** Edit, scan, commit, scan: the commit changed no file, and the companions still follow it. */
     public function testACommitWithoutFileChangesMovesTheCompanionsHead(): void
     {

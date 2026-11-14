@@ -25,7 +25,7 @@ final class FolderFactsRetryTest extends KnossosTestCase
             $pdo = $this->freshTestDatabase();
             $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
             $store = new FolderFactsStore($pdo);
-            self::assertTrue($store->has($projectId), 'the scan wrote facts that are now the old ones');
+            self::assertTrue($store->current($projectId, FolderFactsBuilder::FACTS_VERSION), 'the scan wrote facts that are now the old ones');
 
             $failing = new FolderFactsRefresher($pdo, null, static function (): array {
                 throw new RuntimeException('rebuild failed');
@@ -33,7 +33,7 @@ final class FolderFactsRetryTest extends KnossosTestCase
             $logged = $this->errorLogOf(static fn() => $failing->refresh($projectId, $root, null));
 
             self::assertStringContainsString('knossos folder facts: rebuild failed', $logged);
-            self::assertFalse($store->has($projectId), 'old facts are not kept as if they were current');
+            self::assertFalse($store->current($projectId, FolderFactsBuilder::FACTS_VERSION), 'old facts are not kept as if they were current');
 
             $working = new FolderFactsRefresher($pdo, null, static fn(string $id): array => (new FolderFactsBuilder($pdo))->rows($id));
             $working->refreshUnchanged($projectId, $root, null);
@@ -49,13 +49,13 @@ final class FolderFactsRetryTest extends KnossosTestCase
         [$pdo, , $ids] = $this->storeFixture();
         $pdo->exec('PRAGMA foreign_keys = OFF');
         $store = new FolderFactsStore($pdo);
-        $row = [['directory' => 'src', 'extension' => 'php', 'role' => 'source', 'files' => 5, 'facts' => []]];
+        $row = [['directory' => 'src', 'extension' => 'php', 'role' => 'source', 'files' => 5, 'facts' => ['v' => FolderFactsBuilder::FACTS_VERSION]]];
         $store->replace($ids['project'], $row);
         $store->replace('other-project', $row);
 
         $store->clear($ids['project']);
 
-        self::assertFalse($store->has($ids['project']));
-        self::assertTrue($store->has('other-project'));
+        self::assertFalse($store->current($ids['project'], FolderFactsBuilder::FACTS_VERSION));
+        self::assertTrue($store->current('other-project', FolderFactsBuilder::FACTS_VERSION));
     }
 }

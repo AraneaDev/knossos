@@ -273,6 +273,16 @@ final class FolderFactsBuilderTest extends KnossosTestCase
         self::assertArrayNotHasKey('test_path', $this->facts('tests/Q', 'php', 'test'));
     }
 
+    /** Every row carries the version of what the builder derives, so a later version can tell old facts from its own. */
+    public function testEveryRowCarriesTheFactsVersion(): void
+    {
+        $this->file('src/A.php', 10, [['kind' => 'class', 'name' => 'A']]);
+        $this->file('docs/a.md', 3);
+
+        self::assertSame([FolderFactsBuilder::FACTS_VERSION, FolderFactsBuilder::FACTS_VERSION], array_map(static fn(array $row): mixed => $row['facts']['v'] ?? null, $this->rows()));
+        self::assertSame(2, FolderFactsBuilder::FACTS_VERSION);
+    }
+
     /** Building the rows twice from one graph gives the same rows. */
     public function testTheSameGraphGivesTheSameRows(): void
     {
