@@ -258,6 +258,20 @@ final class VersionSwitchTest extends KnossosTestCase
             symlink('../../..', $r . '/d1/d2/d3/S');
             symlink('S/../../../../etc', $r . '/d1/d2/d3/B');
         }, 'd1/d2/d3/B -> S/../../../../etc'];
+        yield 'a dangling link whose remainder climbs out once the missing directory exists' => [static function (string $r): void {
+            symlink('nothere/../../etc', $r . '/g');
+        }, 'g -> nothere/../../etc'];
+        yield 'a dangling link followed by a climb' => [static function (string $r): void {
+            symlink('missing', $r . '/D');
+            symlink('D/../../etc', $r . '/g');
+        }, 'g -> D/../../etc'];
+        yield 'a link that points at itself' => [static function (string $r): void {
+            symlink('self', $r . '/self');
+        }, 'self -> self'];
+        yield 'two links that point at each other' => [static function (string $r): void {
+            symlink('q', $r . '/p');
+            symlink('p', $r . '/q');
+        }, 'p -> q'];
         yield 'a member name that is not valid UTF-8' => [static function (string $r): void {
             symlink('/etc', $r . "/bad\xff\xfe");
         }, '/etc'];
@@ -322,6 +336,10 @@ PY;
             symlink('node_modules/../bin', $r . '/via-dots');
             // Dangling, but its longest existing prefix is inside the release.
             symlink('../does-not-exist', $r . '/node_modules/pkg/missing');
+            // Dangling, and the rest of the target also stays inside.
+            symlink('nothere/../sibling', $r . '/h');
+            symlink('missing', $r . '/D');
+            symlink('D/../sibling', $r . '/k');
         }, $data);
 
         assertSame(true, is_link($partial . '/node_modules/.bin/tool'));
@@ -339,5 +357,57 @@ PY;
         assertSame(false, str_contains($error->getMessage(), 'Git'));
         assertSame(false, str_contains($error->getMessage(), 'tar: tar:'));
         assertSame(true, str_contains($error->getMessage(), 'not a readable archive: tar: '));
+    }
+
+    #[Group('install')]
+    public function testATreeDeeperThanPathMaxIsRemovedAndTheWorkingDirectoryIsKept(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        $partial = $data . '/versions/2.0.0.partial.2147483646';
+        mkdir($partial);
+        $origin = (string) getcwd();
+        chdir($partial);
+        try {
+            for ($level = 0; $level < 20; ++$level) {
+                mkdir(str_repeat('a', 240));
+                chdir(str_repeat('a', 240));
+            }
+            file_put_contents('leaf', 'x');
+            symlink('/etc', 'out');
+        } finally {
+            chdir($origin);
+        }
+
+        (new VersionSwitch($data))->prune(['1.0.0']);
+
+        assertSame(false, file_exists($partial));
+        assertSame($origin, getcwd());
+        assertSame(true, is_dir('/etc'));
+        assertSame(['1.0.0'], array_map('basename', glob($data . '/versions/*')));
+    }
+
+    #[Group('install')]
+    public function testARefusedOverLongReleaseLeavesNoPartialBehind(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        $stage = $this->work . '/long';
+        $this->writeRelease($stage . '/knossos-2.0.0', '2.0.0');
+        $script = <<<'PY'
+import sys, tarfile
+src, out = sys.argv[1], sys.argv[2]
+with tarfile.open(out, "w:gz", format=tarfile.PAX_FORMAT) as t:
+    t.add(src, arcname="knossos-2.0.0")
+    path = "knossos-2.0.0"
+    for i in range(17):
+        path += "/" + "b" * 250
+        d = tarfile.TarInfo(path); d.type = tarfile.DIRTYPE; d.mode = 0o755; t.addfile(d)
+PY;
+        exec(sprintf('python3 -I -c %s %s %s', escapeshellarg($script), escapeshellarg($stage . '/knossos-2.0.0'), escapeshellarg($stage . '.tar.gz')));
+        $origin = getcwd();
+
+        $this->refused(fn() => (new VersionSwitch($data))->unpack($stage . '.tar.gz', '2.0.0'), 'Path too long in the archive');
+
+        assertSame([], glob($data . '/versions/*.partial*'));
+        assertSame($origin, getcwd());
     }
 }

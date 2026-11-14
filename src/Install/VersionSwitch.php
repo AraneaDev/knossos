@@ -146,12 +146,15 @@ final class VersionSwitch
     }
 
     /**
-     * Whether a link in `$directory` resolves, step by step on disk, inside `$root`.
+     * Whether a link in `$directory` resolves, step by step, inside `$root`.
      *
-     * Each component is resolved with realpath, so a `..` after another link
-     * is taken from where that link really leads. A component that does not
-     * exist, or a dangling link, ends the walk at the longest existing prefix,
-     * which has been checked like every other step.
+     * Each component that exists is resolved with realpath, so a `..` after
+     * another link is taken from where that link really leads. From the first
+     * component that does not exist, the rest is followed lexically from the
+     * last real directory, and a `..` that would climb above the release is a
+     * refusal: the missing directory may appear later. A dangling link is
+     * expanded in place, and a loop of links, which never stops expanding, is
+     * a refusal outright.
      */
     private static function resolvesInside(string $root, string $directory, string $target): bool
     {
@@ -160,19 +163,40 @@ final class VersionSwitch
         if ($target === '' || str_starts_with($target, '/') || $current === false || !$inside($current)) {
             return false;
         }
-        foreach (explode('/', $target) as $segment) {
+        $queue = explode('/', $target);
+        $missing = 0;
+        $hops = 0;
+        while ($queue !== []) {
+            $segment = array_shift($queue);
             if ($segment === '' || $segment === '.') {
                 continue;
             }
-            $next = $segment === '..' ? dirname($current) : $current . '/' . $segment;
-            $resolved = @lstat($next) === false ? false : realpath($next);
-            if ($resolved === false) {
-                return true;
+            if ($segment === '..') {
+                if ($missing > 0) {
+                    --$missing;
+                } elseif (!$inside($current = dirname($current))) {
+                    return false;
+                }
+            } elseif ($missing > 0) {
+                ++$missing;
+            } else {
+                $next = $current . '/' . $segment;
+                if (@lstat($next) === false) {
+                    $missing = 1;
+                } elseif (($resolved = realpath($next)) !== false) {
+                    if (!$inside($resolved)) {
+                        return false;
+                    }
+                    $current = $resolved;
+                } else {
+                    // A link that leads nowhere, or round in a circle: read it, and let the hop count end a loop.
+                    $link = is_link($next) ? readlink($next) : false;
+                    if ($link === false || $link === '' || str_starts_with($link, '/') || ++$hops > 40) {
+                        return false;
+                    }
+                    array_unshift($queue, ...explode('/', $link));
+                }
             }
-            if (!$inside($resolved)) {
-                return false;
-            }
-            $current = $resolved;
         }
 
         return true;
@@ -336,6 +360,16 @@ final class VersionSwitch
     /** Delete a file, a link or a directory tree, without following links. */
     private static function remove(string $path): void
     {
+        self::removeByPath($path);
+        if (file_exists($path) || is_link($path)) {
+            // Left behind: a tree deeper than PATH_MAX cannot be reached by its full path.
+            self::removeFromInside($path);
+        }
+    }
+
+    /** Delete a tree by full paths, which works as long as none of them is longer than PATH_MAX. */
+    private static function removeByPath(string $path): void
+    {
         if (is_link($path) || !is_dir($path)) {
             // Files, links and the odd entry a hostile archive carries, a fifo or a device node.
             @unlink($path);
@@ -346,9 +380,54 @@ final class VersionSwitch
         @chmod($path, 0o700);
         foreach (scandir($path) ?: [] as $entry) {
             if ($entry !== '.' && $entry !== '..') {
-                self::remove($path . '/' . $entry);
+                self::removeByPath($path . '/' . $entry);
             }
         }
         @rmdir($path);
+    }
+
+    /**
+     * Delete a directory tree of any depth by changing into it, level by level.
+     *
+     * Names relative to the current directory never grow past one component,
+     * so no call sees a path longer than PATH_MAX. Links are removed, never
+     * entered, and the working directory is put back whatever happens.
+     */
+    private static function removeFromInside(string $path): void
+    {
+        $origin = getcwd();
+        if ($origin === false || is_link($path) || !is_dir($path)) {
+            return;
+        }
+        $absolute = str_starts_with($path, '/') ? $path : $origin . '/' . $path;
+        try {
+            if (@chdir($absolute)) {
+                self::emptyHere();
+            }
+        } finally {
+            chdir($origin);
+        }
+        @rmdir($absolute);
+    }
+
+    /** Delete everything in the current directory, descending by relative names. */
+    private static function emptyHere(): void
+    {
+        foreach (scandir('.') ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            if (is_link($entry) || !is_dir($entry)) {
+                @unlink($entry);
+
+                continue;
+            }
+            @chmod($entry, 0o700);
+            if (@chdir($entry)) {
+                self::emptyHere();
+                chdir('..');
+            }
+            @rmdir($entry);
+        }
     }
 }
