@@ -210,12 +210,14 @@ jobs:
       contents: read
     strategy:
       fail-fast: true
+      # Each runner label must be an image GitHub currently offers: a retired
+      # label never gets a runner, and then every release ends in a rollback.
       matrix:
         include:
           - { runner: ubuntu-24.04, platform: linux-x86_64 }
           - { runner: ubuntu-24.04-arm, platform: linux-arm64 }
           - { runner: macos-14, platform: darwin-arm64 }
-          - { runner: macos-13, platform: darwin-x86_64 }
+          - { runner: macos-15-intel, platform: darwin-x86_64 }
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -289,7 +291,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      # always(): the rollback at the end needs tools/ci/release-rollback on
+      # disk, also in a failed or cancelled run, where the implicit success()
+      # of a step would skip this checkout.
       - name: Checkout
+        if: ${{ always() }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.dry_run && github.sha || needs.release-please.outputs.sha }}

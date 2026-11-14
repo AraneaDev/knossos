@@ -40,12 +40,27 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
     }
 
     #[Group('packaging')]
+    public function testTheRollbackAndEverythingItNeedsRunUnderAlways(): void
+    {
+        $assets = $this->job($this->workflow(), 'assets');
+        $checkout = substr($assets, (int) strpos($assets, 'name: Checkout'), 200);
+
+        // Without always() a cancelled run skips the checkout, the script is missing and the Release PR is not relabelled.
+        self::assertStringContainsString('if: ${{ always() }}', $checkout);
+        self::assertStringContainsString('actions/checkout@', $checkout);
+        self::assertSame(1, preg_match('/name: Remove the draft release.*?\n        if: \$\{\{ always\(\) && !inputs\.dry_run \}\}/s', $assets));
+        self::assertStringContainsString('tools/ci/release-rollback', $assets);
+        self::assertStringNotContainsString('macos-13', $this->workflow(), 'A retired runner label never gets a runner.');
+        self::assertStringContainsString('must be an image GitHub currently offers', str_replace("\n      # ", ' ', $this->workflow()));
+    }
+
+    #[Group('packaging')]
     public function testTheMatrixBuildsFourPlatformsAndADryRunTouchesNoRelease(): void
     {
         $workflow = $this->workflow();
         $tarballs = $this->job($workflow, 'tarballs');
 
-        foreach (['ubuntu-24.04', 'ubuntu-24.04-arm', 'macos-14', 'macos-13'] as $runner) {
+        foreach (['ubuntu-24.04', 'ubuntu-24.04-arm', 'macos-14', 'macos-15-intel'] as $runner) {
             self::assertStringContainsString('runner: ' . $runner . ',', $tarballs);
         }
         foreach (['linux-x86_64', 'linux-arm64', 'darwin-arm64', 'darwin-x86_64'] as $platform) {
