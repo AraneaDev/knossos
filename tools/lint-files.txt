@@ -1511,6 +1511,7 @@ js	web/server.spec.ts
 js	web/server.ts
 js	workers/typescript/bin/worker.js
 js	workers/typescript/src/__tests__/ambient-declarations.test.js
+js	workers/typescript/src/__tests__/build-output-sources.test.js
 js	workers/typescript/src/__tests__/bundler-module-roots.test.js
 js	workers/typescript/src/__tests__/call-argument-sites.test.js
 js	workers/typescript/src/__tests__/component-source.test.js
@@ -1531,6 +1532,7 @@ js	workers/typescript/src/__tests__/input-hashes-parts.test.js
 js	workers/typescript/src/__tests__/input-hashes-requested-files.test.js
 js	workers/typescript/src/__tests__/input-hashes-unread-program.test.js
 js	workers/typescript/src/__tests__/launches.test.js
+js	workers/typescript/src/__tests__/location-keys.test.js
 js	workers/typescript/src/__tests__/member-visibility.test.js
 js	workers/typescript/src/__tests__/nestjs-handlers.test.js
 js	workers/typescript/src/__tests__/nestjs-routes.test.js
@@ -1555,6 +1557,7 @@ js	workers/typescript/src/__tests__/typescript-fact-utils.test.js
 js	workers/typescript/src/__tests__/untyped-member-calls.test.js
 js	workers/typescript/src/__tests__/worker-startup.test.js
 js	workers/typescript/src/__tests__/wrapped-function-properties.test.js
+js	workers/typescript/src/build-output-sources.js
 js	workers/typescript/src/bundler-aliases.js
 js	workers/typescript/src/byte-caps.js
 js	workers/typescript/src/call-argument-sites.js
@@ -1572,6 +1575,7 @@ js	workers/typescript/src/input-hashes-parts.js
 js	workers/typescript/src/input-reads.js
 js	workers/typescript/src/language-fact-collector.js
 js	workers/typescript/src/launch-facts.js
+js	workers/typescript/src/location-keys.js
 js	workers/typescript/src/module-entry.js
 js	workers/typescript/src/nestjs-fact-enricher.js
 js	workers/typescript/src/node-builtins.js

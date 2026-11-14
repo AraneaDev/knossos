@@ -14,6 +14,7 @@ import path from "node:path";
 import ts from "typescript";
 import { readBounded } from "./byte-caps.js";
 import { rethrowStackOverflow } from "./errors.js";
+import { LocationKeys, inputHashKey } from "./location-keys.js";
 import {
     belowNodeModules,
     contains,
@@ -157,6 +158,8 @@ export class ReadAttribution {
         sourceFiles = new Set(),
     ) {
         this.root = root;
+        // Each location's key, worked out once for the request.
+        this.locations = new LocationKeys(root);
         this.exclusions = exclusions;
         this.reads = reads;
         this.maxFileBytes = maxFileBytes;
@@ -414,8 +417,7 @@ export class ReadAttribution {
     }
 
     #keyOf(location) {
-        const absolute = realSourcePath(normalize(path.resolve(location)));
-        return { absolute, key: inputHashKey(this.root, absolute) };
+        return this.locations.of(location);
     }
 
     #addRecorded(keys, location) {
@@ -493,28 +495,6 @@ function declaresGlobally(sourceFile) {
         rethrowStackOverflow(error);
         return true;
     }
-}
-
-/**
- * The key a read of `absolute` goes under in `input_hashes`, or null for a read
- * the core cannot track: the root itself, anything outside it, or the default
- * library, which is the worker's own and never the project's, even under a
- * root that happens to contain the worker.
- *
- * A path below node_modules is keyed like any other. Discovery never hashes
- * one, so the core re-reads it when the scan commits: declarations resolved
- * through a dependency decide the facts of every file importing it.
- */
-function inputHashKey(root, absolute) {
-    const relative = relativeInside(root, absolute);
-    if (
-        relative === null ||
-        relative === "" ||
-        contains(defaultLibDirectory(), absolute)
-    ) {
-        return null;
-    }
-    return relative;
 }
 
 /**
