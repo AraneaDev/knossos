@@ -120,6 +120,12 @@ final class ConventionsTest extends KnossosTestCase
         self::assertSame(['one class per file', 'one interface per file', 'one trait per file', 'one enum per file', 'functions only'], $texts);
     }
 
+    /** A folder of interface and type-alias files says so. */
+    public function testTypesOnlyHasItsWording(): void
+    {
+        self::assertSame([['id' => 'kind', 'text' => 'types only', 'files' => 5, 'of' => 5]], Conventions::shown(5, ['kinds' => ['types_only' => 5]]));
+    }
+
     /**
      * @param list<array{id: string, text: string, files: int, of: int}> $shown
      * @return list<array{id: string, text: string, files: int, of: int}>

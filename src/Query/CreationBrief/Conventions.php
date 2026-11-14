@@ -31,6 +31,7 @@ final class Conventions
         'one_trait' => 'one trait per file',
         'one_enum' => 'one enum per file',
         'functions_only' => 'functions only',
+        'types_only' => 'types only',
     ];
 
     /** How many injected types, and how many used types, a brief names. */
