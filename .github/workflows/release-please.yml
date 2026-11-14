@@ -209,7 +209,9 @@ jobs:
     permissions:
       contents: read
     strategy:
-      fail-fast: true
+      # A release stops at the first platform that fails. A dry run lets every
+      # platform finish, since it exists to show what each one does.
+      fail-fast: ${{ !inputs.dry_run }}
       # Each runner label must be an image GitHub currently offers: a retired
       # label never gets a runner, and then every release ends in a rollback.
       matrix:

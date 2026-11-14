@@ -51,8 +51,10 @@ done
 command -v cargo >/dev/null 2>&1 || die 'cargo is required to build the Rust worker; install Rust 1.82 or newer and retry'
 
 if [ -z "$VERSION" ]; then
-    VERSION=$(php "$ROOT/bin/knossos" version | sed -n 's/^Knossos //p')
-    [ -n "$VERSION" ] || die 'could not read the version from bin/knossos version'
+    # From the source, not from running bin/knossos: a fresh checkout on a
+    # build runner has no dependencies installed, so the program cannot start.
+    VERSION=$(sed -n "s/^.*const CURRENT = '\\([^']*\\)'.*\$/\\1/p" "$ROOT/src/Runtime/Version.php")
+    [ -n "$VERSION" ] || die 'could not read the version from src/Runtime/Version.php'
 fi
 case $VERSION in
     *[!0-9A-Za-z._+-]* | '') die "the version may only hold letters, digits and . _ + -: $VERSION" ;;
