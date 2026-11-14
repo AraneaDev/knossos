@@ -112,21 +112,27 @@ final class GitHubReleaseSource implements ReleaseSource
     /**
      * Where a URL ends up after its redirects, read from the response headers only.
      *
+     * The one call that needs the network; what it does with the answer is {@see locationOf()}.
+     *
      * @throws InstallException
      */
     private static function finalUrl(string $url): string
     {
-        $context = stream_context_create(['http' => [
-            'method' => 'HEAD',
-            'timeout' => 10,
-            'follow_location' => 1,
-            'max_redirects' => 5,
-            'header' => "User-Agent: knossos-self-update\r\n",
-        ]]);
-        $headers = @get_headers($url, true, $context);
+        $headers = @get_headers($url, true, stream_context_create(self::httpOptions('HEAD', '')));
         if ($headers === false) {
             throw new InstallException(sprintf('Could not reach %s', $url));
         }
+
+        return self::locationOf($headers, $url);
+    }
+
+    /**
+     * The URL a response with these headers leads to: the last `Location`, resolved against `$url` when it has no host.
+     *
+     * @param array<int|string, mixed> $headers as `get_headers($url, true)` returns them, every hop's included
+     */
+    private static function locationOf(array $headers, string $url): string
+    {
         $location = $headers['Location'] ?? $headers['location'] ?? null;
         $last = is_array($location) ? end($location) : $location;
         if (!is_string($last) || $last === '') {
@@ -145,49 +151,71 @@ final class GitHubReleaseSource implements ReleaseSource
     /**
      * One HTTPS GET: the body, or written to `$to` when a file is given.
      *
+     * The stream is opened here; reading it, with its limits, is {@see copy()}.
+     *
      * @throws InstallException
      */
     private static function http(string $url, ?string $to): string
     {
-        $context = stream_context_create(['http' => [
-            'method' => 'GET',
-            'timeout' => 10,
-            'follow_location' => 1,
-            'max_redirects' => 5,
-            'ignore_errors' => false,
-            'header' => "User-Agent: knossos-self-update\r\nAccept: application/vnd.github+json, application/octet-stream\r\n",
-        ]]);
-        $in = @fopen($url, 'rb', false, $context);
+        $in = @fopen($url, 'rb', false, stream_context_create(self::httpOptions('GET', "Accept: application/vnd.github+json, application/octet-stream\r\n")));
         if ($in === false) {
             throw new InstallException(sprintf('Could not download %s', $url));
         }
         try {
-            $deadline = time() + self::MAX_SECONDS;
-            $out = $to === null ? fopen('php://memory', 'w+b') : @fopen($to, 'wb');
-            if ($out === false) {
-                throw new InstallException(sprintf('Could not write %s', $to ?? 'memory'));
-            }
-            try {
-                $total = 0;
-                while (!feof($in)) {
-                    $chunk = fread($in, 65_536);
-                    $limit = $to === null ? 1_048_576 : self::MAX_BYTES;
-                    if ($chunk === false || time() > $deadline || ($total += strlen($chunk)) > $limit) {
-                        throw new InstallException(sprintf('Could not download %s completely', $url));
-                    }
-                    fwrite($out, $chunk);
-                }
-                if ($to !== null) {
-                    return '';
-                }
-                rewind($out);
-
-                return (string) stream_get_contents($out);
-            } finally {
-                fclose($out);
-            }
+            return self::copy($in, $to, $url, $to === null ? 1_048_576 : self::MAX_BYTES, time() + self::MAX_SECONDS);
         } finally {
             fclose($in);
+        }
+    }
+
+    /**
+     * The options of every request: a short timeout, a few redirects and a User-Agent that names no user or project.
+     *
+     * @return array{http: array<string, mixed>}
+     */
+    private static function httpOptions(string $method, string $headers): array
+    {
+        return ['http' => [
+            'method' => $method,
+            'timeout' => 10,
+            'follow_location' => 1,
+            'max_redirects' => 5,
+            'ignore_errors' => false,
+            'header' => "User-Agent: knossos-self-update\r\n" . $headers,
+        ]];
+    }
+
+    /**
+     * Read `$in` to its end: into `$to` when a file is given (returning an empty string), else into the returned string.
+     *
+     * @param resource $in
+     * @param int $limit the most bytes accepted, so a hostile or broken server cannot fill the disk or the memory
+     * @param int $deadline the time by which the whole transfer must be done: a stream timeout is per read
+     * @throws InstallException
+     */
+    private static function copy($in, ?string $to, string $url, int $limit, int $deadline): string
+    {
+        $out = $to === null ? fopen('php://memory', 'w+b') : @fopen($to, 'wb');
+        if ($out === false) {
+            throw new InstallException(sprintf('Could not write %s', $to ?? 'memory'));
+        }
+        try {
+            $total = 0;
+            while (!feof($in)) {
+                $chunk = fread($in, 65_536);
+                if ($chunk === false || time() > $deadline || ($total += strlen($chunk)) > $limit) {
+                    throw new InstallException(sprintf('Could not download %s completely', $url));
+                }
+                fwrite($out, $chunk);
+            }
+            if ($to !== null) {
+                return '';
+            }
+            rewind($out);
+
+            return (string) stream_get_contents($out);
+        } finally {
+            fclose($out);
         }
     }
 }
