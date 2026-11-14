@@ -22,6 +22,7 @@ from .launches import LaunchRecorder
 from .module_index import ProjectModuleIndex
 from .outbound import OutboundCallRecorder
 from .receiver_types import ReceiverTypeInference
+from .signatures import signature_of
 
 
 def assigned_self_attributes(node: ast.ClassDef) -> frozenset[str]:
@@ -501,11 +502,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
         fastapi_routes = self.fastapi.route_decorators(node)
         flask_routes = self.flask.route_decorators(node)
         roles = self.roles.function_roles(decorators, bool(fastapi_routes), bool(flask_routes))
-        attributes: dict[str, Any] = {
-            "async": async_function,
-            "decorators": decorators,
-            "python_framework_roles": roles,
-        }
+        attributes: dict[str, Any]
+        attributes = {"async": async_function, "decorators": decorators, "python_framework_roles": roles}
+        attributes["signature"] = signature_of(node, kind == "method" and "staticmethod" not in decorators)
         if self.registered_by_object(decorators) or (
             self.loaded_by_path and not self.containers and not node.name.startswith("_")
         ):
