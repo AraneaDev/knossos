@@ -337,8 +337,8 @@ export async function claim(dataDir: string, root: string, token: string, silent
     }
     const other = held(file)
     // One that does not read yet may be another start's, created but not yet written: it is waited on, not taken, for a while.
-    if (other === null) unreadSince ??= Date.now()
-    const patient = unreadSince === null || Date.now() - unreadSince < WRITING_MS + GUARD_WAIT_MS * 10
+    if (other === null) unreadSince ??= performance.now()
+    const patient = unreadSince === null || performance.now() - unreadSince < WRITING_MS + GUARD_WAIT_MS * 10
     if (other === null && patient && writing(file)) {
       await new Promise(done => setTimeout(done, GUARD_WAIT_MS))
       attempt--

@@ -119,10 +119,11 @@ export class Hub implements PortHub {
       page.dirty = true
       return
     }
-    const wait = page.last + FRAME_MS - Date.now()
+    const wait = page.last + FRAME_MS - performance.now()
     if (wait <= 0) return void this.draw(id, page)
-    // Asked again when it fires: a timer may fire a little early by the wall clock (Node counts it from the event
-    // loop's own clock, read when the loop turned), and then waits out the rest rather than draw too soon.
+    // Asked again when it fires: a timer may fire a little early by this clock (Node counts it from the event loop's
+    // own, read when the loop turned), and then waits out the rest rather than draw too soon. The clock is the
+    // monotonic one: a wall clock set back (WSL sets it after the host slept) would hold the page's frames that long.
     page.timer = setTimeout(() => {
       page.timer = null
       this.schedule(id)
@@ -132,7 +133,7 @@ export class Hub implements PortHub {
   private async draw(id: string, page: Page): Promise<void> {
     page.drawing = true
     page.dirty = false
-    page.last = Date.now()
+    page.last = performance.now()
     try {
       // A layout that throws leaves the page on its last frame; the server's terminal is told why.
       const drawn = await (this.queue = this.queue
@@ -146,7 +147,7 @@ export class Hub implements PortHub {
         page.send(drawn.frame)
         // Counted from the frame's arrival, not the start of its layout: a slower layout before a quicker one would
         // bring two frames closer than FRAME_MS otherwise.
-        page.last = Date.now()
+        page.last = performance.now()
       }
     } finally {
       page.drawing = false

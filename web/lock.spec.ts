@@ -132,9 +132,9 @@ describe('claim', () => {
     const guard = `${file}.removing`
     writeFileSync(guard, '1')
     const remover = spawnFixture('sh', ['-c', `sleep 0.2; rm -f '${guard}'`])
-    const started = Date.now()
+    const started = performance.now()
     got.record(1234)
-    expect(Date.now() - started).toBeGreaterThanOrEqual(150)
+    expect(performance.now() - started).toBeGreaterThanOrEqual(150)
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.pid, port: 1234 })
     expect(readdirSync(join(data, 'web'))).toEqual([basename(file)])
     await new Promise(done => remover.on('close', done))
@@ -294,10 +294,10 @@ describe('claim', () => {
       mkdirSync(join(data, 'web'), { recursive: true })
       writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
       const told: Silent[] = []
-      const started = Date.now()
+      const started = performance.now()
       const got = await claim(data, root, TOKEN, holder => told.push(holder))
       expect(got.kind).toBe('mine')
-      expect(Date.now() - started).toBeGreaterThanOrEqual(PATIENCE_MS.reduce((a: number, b: number) => a + b, 0) - 100)
+      expect(performance.now() - started).toBeGreaterThanOrEqual(PATIENCE_MS.reduce((a: number, b: number) => a + b, 0) - 100)
       expect(told).toEqual([{ pid: process.ppid, stopped: false }])
     } finally {
       server.close()
@@ -359,10 +359,10 @@ describe('claim', () => {
     try {
       mkdirSync(join(data, 'web'), { recursive: true })
       writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
-      const started = Date.now()
+      const started = performance.now()
       expect((await claim(data, root, TOKEN)).kind).toBe('mine')
       // Read up to its limit and let go at once, not read on until the probe's time is up.
-      expect(Date.now() - started).toBeLessThan(PATIENCE_MS[0] + PATIENCE_MS[1])
+      expect(performance.now() - started).toBeLessThan(PATIENCE_MS[0] + PATIENCE_MS[1])
       expect(sent).toBeLessThan(4 * 1024 * 1024)
     } finally {
       server.close()

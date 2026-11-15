@@ -84,8 +84,8 @@ const owning = (): boolean => {
     return false
   }
 }
-/** When the pane last told of the log: a burst of lines gives one toast. */
-let toldAt = 0
+/** When the pane last told of the log, by the monotonic clock: a burst of lines gives one toast. */
+let toldAt = -Infinity
 /** A line was logged before the client could show it. */
 let owed = false
 const tell = () => {
@@ -93,7 +93,7 @@ const tell = () => {
     owed = true
     return
   }
-  const now = Date.now()
+  const now = performance.now()
   if (now - toldAt < TOAST_MS) return
   toldAt = now
   client.toast(`Server message logged, see ${logFile}`)
@@ -227,7 +227,7 @@ const silent = (holder: Parameters<typeof silentText>[0]) => {
 
 /** The project's server: started here, or the one that runs, waited for until it says where it listens. */
 async function host(): Promise<Hosted> {
-  const deadline = Date.now() + STARTING_MS
+  const deadline = performance.now() + STARTING_MS
   for (;;) {
     const found = await hostProject({ root, dataDir, pluginRoot, editor, port: null, log, silent })
     // Held from this moment, so that whatever ends the process releases it; a server that has not said where it listens replaces nothing.
@@ -245,7 +245,7 @@ async function host(): Promise<Hosted> {
       })
       return found
     }
-    if (Date.now() > deadline) throw new Error('the running server did not say where it listens')
+    if (performance.now() > deadline) throw new Error('the running server did not say where it listens')
     await sleep(100)
   }
 }

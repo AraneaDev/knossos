@@ -20,7 +20,7 @@ async function loaded() {
   const page = (id: string, columns: number, rows = 40) => {
     frames.set(id, [])
     hub.connect(id, { columns, rows }, event => {
-      if (event.type === 'frame') frames.get(id)!.push({ at: Date.now(), frame: event as Frame })
+      if (event.type === 'frame') frames.get(id)!.push({ at: performance.now(), frame: event as Frame })
     })
     return frames.get(id)!
   }
@@ -71,6 +71,25 @@ describe('Hub', () => {
     await vi.waitFor(() => expect(got).toHaveLength(3))
     expect(got[2]!.at - got[1]!.at).toBeGreaterThanOrEqual(FRAME_MS)
     expect(frameText(got[2]!.frame)).toContain('quick')
+  })
+
+  it('goes on drawing when the wall clock is set back, as WSL sets it after the host slept', async () => {
+    const { hub, io, page } = await loaded()
+    const got = page('a', 100)
+    await vi.waitFor(() => expect(got).toHaveLength(1))
+    // Ten seconds back from here on: a frame spacing counted on this clock would hold the next frame that long.
+    const wall = Date.now
+    const back = wall() - 10_000
+    const since = wall()
+    const stepped = vi.spyOn(Date, 'now').mockImplementation(() => back + (wall() - since))
+    try {
+      await io.state.feedback.update(() => ({ text: 'after the step', tone: 'ok', until: wall() + 60_000 }))
+      hub.changed()
+      await vi.waitFor(() => expect(got).toHaveLength(2), { timeout: 1_000 })
+      expect(frameText(got[1]!.frame)).toContain('after the step')
+    } finally {
+      stepped.mockRestore()
+    }
   })
 
   it('lays each page out at its own size, one state', async () => {
