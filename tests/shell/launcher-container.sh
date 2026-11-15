@@ -195,7 +195,8 @@ mkdir -p "$QUOTED/x"
 printf '{"roots":["%s"]}' "$WORK/q\\\"uo\\\\te" > "$INSTALL/roots.json"
 : > "$FAKE_DOCKER_STATE/calls"
 (cd "$QUOTED/x" && kn version </dev/null >/dev/null 2>&1)
-if grep -qF "[--mount] [type=bind,source=$QUOTED,target=$QUOTED,readonly]" "$FAKE_DOCKER_STATE/calls"; then pass 'escaped quotes and backslashes in the roots file are read'; else fail "escaped roots: $(calls)"; fi
+QUOTED_CSV=$(printf '%s' "$QUOTED" | sed 's/"/""/g')
+if grep -qF "[--mount] [type=bind,\"source=$QUOTED_CSV\",\"target=$QUOTED_CSV\",readonly]" "$FAKE_DOCKER_STATE/calls"; then pass 'escaped quotes and backslashes in the roots file are read'; else fail "escaped roots: $(calls)"; fi
 printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/roots.json"
 
 # ---- data dir, roots file and install dir apart ---------------------------------
@@ -1248,6 +1249,20 @@ if [ "$status" -eq 3 ] && cmp -s "$WORK/list.before" "$TRUSTED"; then pass 'a fa
 out=$(cd "$WORK/moved to" && kn move-project project_abc "$WORK/moved to" --execute </dev/null 2>&1); status=$?
 case $out in *'names the old root by its path'*) pass 'move-project --execute from a project id is refused, the list cannot follow it' ;; *) fail "move-project id: $status, $out" ;; esac
 cp "$WORK/trusted.kept" "$TRUSTED"
+
+# ---- a path with a double quote is mounted as one CSV field --------------------------------
+
+SAID="$WORK/say \"hi\" there"
+mkdir -p "$SAID"
+reset_docker
+(cd "$SAID" && kn version </dev/null >/dev/null 2>&1); status=$?
+(cd "$SAID" && kn version </dev/null >/dev/null 2>&1); status2=$?
+SAID_CSV=$(printf '%s' "$SAID" | sed 's/"/""/g')
+if [ "$status" -eq 0 ] && [ "$status2" -eq 0 ] && grep -qF "[--mount] [type=bind,\"source=$SAID_CSV\",\"target=$SAID_CSV\",readonly]" "$FAKE_DOCKER_STATE/calls" && [ "$(count_calls run)" -eq 1 ]; then
+    pass 'a project whose path holds a double quote is mounted through a quoted CSV field, and its container is reused'
+else
+    fail "quoted path: $status $status2, $(calls)"
+fi
 
 # ---- a root with a colon is never passed as an extra allowed root ------------------------
 

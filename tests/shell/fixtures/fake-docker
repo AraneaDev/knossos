@@ -109,11 +109,23 @@ case $command in
                 --entrypoint) entrypoint=$2; shift ;;
                 --mount)
                     spec=$2
-                    source=${spec#*source=}
-                    source=${source%%,target=*}
-                    target=${spec#*target=}
                     rw=true
-                    case $target in *,readonly) target=${target%,readonly}; rw=false ;; esac
+                    case $spec in
+                        *'"source='*)
+                            # A CSV-quoted field, as a path holding a double quote is given.
+                            source=${spec#*\"source=}
+                            source=$(printf '%s' "${source%%\",\"target=*}" | sed 's/""/"/g')
+                            target=${spec#*\"target=}
+                            case $target in *'",readonly') target=${target%\",readonly}; rw=false ;; *) target=${target%\"} ;; esac
+                            target=$(printf '%s' "$target" | sed 's/""/"/g')
+                            ;;
+                        *)
+                            source=${spec#*source=}
+                            source=${source%%,target=*}
+                            target=${spec#*target=}
+                            case $target in *,readonly) target=${target%,readonly}; rw=false ;; esac
+                            ;;
+                    esac
                     mounts="$mounts$source|$target|$rw
 "
                     shift

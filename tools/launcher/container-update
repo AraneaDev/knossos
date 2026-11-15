@@ -319,7 +319,7 @@ write_plugin() {
     if [ -L "$INSTALL/plugin" ] || [ ! -d "$INSTALL/plugin" ]; then die "$INSTALL/plugin is not a plain directory; re-run the installer."; fi
     "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
-        --mount "type=bind,source=$INSTALL/plugin,target=$INSTALL/plugin" \
+        --mount "$(bind_spec "$INSTALL/plugin")" \
         --entrypoint "$IN_IMAGE/bin/knossos" "$1" \
         install-agent-plugin --execute --no-register "--plugin-dir=$INSTALL/plugin" "--bin=$LAUNCHER" "--data-dir=$2" </dev/null \
         && name_host_roots
@@ -344,6 +344,19 @@ name_host_roots() {
     rm -f "$lib.tmp"
     echo "could not name $INSTALL/roots.json in $lib" >&2
     return 1
+}
+
+# bind_spec DIR: the --mount value that binds DIR at its own path, read by the
+# runtime as one CSV record: a path with a double quote goes in a quoted field
+# with the quote doubled (as in the launcher).
+bind_spec() {
+    case $1 in
+        *'"'*)
+            quoted=$(printf '%s' "$1" | sed 's/"/""/g')
+            printf 'type=bind,"source=%s","target=%s"' "$quoted" "$quoted"
+            ;;
+        *) printf 'type=bind,source=%s,target=%s' "$1" "$1" ;;
+    esac
 }
 
 # The graph directory the plugin's hooks were given, so a refresh keeps one

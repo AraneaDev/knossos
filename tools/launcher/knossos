@@ -260,6 +260,21 @@ IN_IMAGE=/opt/knossos
 NEWLINE='
 '
 
+# bind_spec DIR [readonly]: the --mount value that binds DIR at its own path.
+# The runtime reads that value as one CSV record, so a path holding a double
+# quote goes in a quoted field with the quote doubled; a comma, a bar or a
+# newline is refused before it gets here (add_mount).
+bind_spec() {
+    case $1 in
+        *'"'*)
+            quoted=$(printf '%s' "$1" | sed 's/"/""/g')
+            printf 'type=bind,"source=%s","target=%s"' "$quoted" "$quoted"
+            ;;
+        *) printf 'type=bind,source=%s,target=%s' "$1" "$1" ;;
+    esac
+    [ "${2-}" != readonly ] || printf ',readonly'
+}
+
 # A path's physical form, or nothing when it is not a directory that can be entered.
 physical() { (CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P); }
 
@@ -907,7 +922,7 @@ enricher_run() {
     if [ -L "$ENRICHERS_DIR" ] || [ "$(physical "$ENRICHERS_DIR")" != "$ENRICHERS_DIR" ]; then untrusted "$ENRICHERS_DIR is not a plain directory"; fi
     set -- --entrypoint "$IN_IMAGE/bin/knossos" "$IMAGE" "$@"
     set -- -e HOME=/tmp -e KNOSSOS_DATA_DIR=/tmp/knossos-settings -e KNOSSOS_ROOTS_FILE=/tmp/knossos-settings/roots.json \
-        -e "KNOSSOS_ENRICHERS_FILE=$ENRICHERS_FILE" --mount "type=bind,source=$ENRICHERS_DIR,target=$ENRICHERS_DIR" "$@"
+        -e "KNOSSOS_ENRICHERS_FILE=$ENRICHERS_FILE" --mount "$(bind_spec "$ENRICHERS_DIR")" "$@"
     if [ "$RUNTIME" = podman ]; then set -- --userns=keep-id "$@"; fi
     "$RUNTIME" run --rm --pull=never --network none --user "$USER_SPEC" "$@" </dev/null
     status=$?
@@ -1527,9 +1542,9 @@ start_container() {
     while IFS='|' read -r mounted rw; do
         [ -n "$mounted" ] || continue
         if [ "$rw" = true ]; then
-            set -- "$@" --mount "type=bind,source=$mounted,target=$mounted"
+            set -- "$@" --mount "$(bind_spec "$mounted")"
         else
-            set -- "$@" --mount "type=bind,source=$mounted,target=$mounted,readonly"
+            set -- "$@" --mount "$(bind_spec "$mounted" readonly)"
         fi
     done <<MOUNTED
 $MOUNTS
