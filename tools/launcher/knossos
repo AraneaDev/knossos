@@ -54,6 +54,12 @@
 #     the graph directory and moved to the path named by the host, which never
 #     follows a link there; a file it is told to read from outside every mount
 #     is copied in. See FILE_ROLES below.
+#   - The enricher list, <install dir>/settings/enrichers.json, names commands
+#     a scan starts, so it lies where every container only reads it: a project
+#     that could register one would run code in every other project's
+#     container. `knossos enricher add` and `remove` are carried out by a short
+#     run of the image that is given that one directory read-write and nothing
+#     else (see enricher_run below).
 #   - The installer bakes the inode number of the install directory into this
 #     file, and every call compares it before it reads anything there, so a
 #     directory put in its place by anyone is refused.
@@ -270,7 +276,7 @@ fi
 [ ! -L "$INSTALL_DIR" ] || untrusted "the install directory is a symlink"
 INSTALL_REAL=$(physical "$INSTALL_DIR")
 if [ -z "$INSTALL_REAL" ] || [ "$INSTALL_REAL" != "$INSTALL_DIR" ]; then untrusted "the install directory is not at its own physical path"; fi
-for entry in plugin containers container-update update-check.json self-update.lock.d roots.json roots.json.lock.d; do
+for entry in plugin containers container-update update-check.json self-update.lock.d roots.json roots.json.lock.d settings; do
     [ ! -L "$INSTALL_DIR/$entry" ] || untrusted "$INSTALL_DIR/$entry is a symlink"
 done
 if [ ! -d "$INSTALL_DIR/containers" ] || [ ! -d "$INSTALL_DIR/plugin" ]; then untrusted "$INSTALL_DIR has no containers/ or plugin/ directory"; fi
@@ -327,6 +333,12 @@ hash12() {
 }
 
 INSTALL_HASH=$(hash12 "$INSTALL_DIR")
+USER_SPEC="$(id -u):$(id -g)"
+# The enricher list and the directory holding it, in the install directory.
+# pane-autostart.json, the other setting, stays in the graph directory
+# (KNOSSOS_SETTINGS_DIR below): it only says whether the pane opens.
+ENRICHERS_DIR="$INSTALL_REAL/settings"
+ENRICHERS_FILE="$ENRICHERS_DIR/enrichers.json"
 
 # The roots the roots file lists, one per line. Both shapes the server reads
 # ({"roots": [...]} and a bare [...]): every string that is not a key. A string
@@ -447,6 +459,17 @@ image_gone() {
 root_of() { project_root "$1" | head -n 1; }
 
 HERE=$(pwd -P 2>/dev/null) || die 'the working directory cannot be read'
+
+# absolute PATH: PATH made absolute against the working directory on the host.
+absolute() { case $1 in /*) printf '%s' "$1" ;; *) printf '%s/%s' "${HERE%/}" "$1" ;; esac; }
+
+# located PATH: the physical form of a file's directory with its name, or the
+# absolute path as given when that directory does not exist.
+located() {
+    file=$(absolute "$1")
+    dir=$(physical "$(dirname -- "$file")")
+    if [ -n "$dir" ]; then printf '%s/%s' "${dir%/}" "${file##*/}"; else printf '%s' "$file"; fi
+}
 
 # Answered on the host, before any project root is worked out: neither mounts
 # anything, so both work from anywhere, / included (a timer runs from there).
@@ -763,6 +786,28 @@ not_a_folder() {
     exit 2
 }
 
+# enricher_run ARGS: `knossos enricher add|remove ...` in a short run of the
+# image, which writes the enricher list. The one exception, beside the plugin
+# step of an install, to "containers only read the install directory": this
+# run is given <install dir>/settings read-write and nothing else from the
+# host (no project, no graph, no network), and only the image's own knossos
+# runs in it, so the edit is checked and written by the code a scan reads the
+# file with.
+enricher_run() {
+    if [ ! -d "$ENRICHERS_DIR" ]; then
+        (umask 077 && mkdir -- "$ENRICHERS_DIR") 2>/dev/null || die "could not create $ENRICHERS_DIR"
+    fi
+    if [ -L "$ENRICHERS_DIR" ] || [ "$(physical "$ENRICHERS_DIR")" != "$ENRICHERS_DIR" ]; then untrusted "$ENRICHERS_DIR is not a plain directory"; fi
+    set -- --entrypoint "$IN_IMAGE/bin/knossos" "$IMAGE" "$@"
+    set -- -e HOME=/tmp -e KNOSSOS_DATA_DIR=/tmp/knossos-settings -e KNOSSOS_ROOTS_FILE=/tmp/knossos-settings/roots.json \
+        -e "KNOSSOS_ENRICHERS_FILE=$ENRICHERS_FILE" --mount "type=bind,source=$ENRICHERS_DIR,target=$ENRICHERS_DIR" "$@"
+    if [ "$RUNTIME" = podman ]; then set -- --userns=keep-id "$@"; fi
+    "$RUNTIME" run --rm --pull=never --network none --user "$USER_SPEC" "$@" </dev/null
+    status=$?
+    [ "$status" -ne 125 ] || image_gone
+    exit "$status"
+}
+
 EFFECT='A server configured with that roots file re-reads it per request, so %s with no restart.'
 case ${1-} in
     allow-root)
@@ -835,6 +880,36 @@ case ${1-} in
         [ -z "$problem" ] || claim_answer error "$root" "$problem"
         problem=$(add_root "$root") || claim_answer error "$root" "$problem"
         claim_answer added "$root"
+        ;;
+    enricher)
+        # The action is the first argument that is not an option; add and
+        # remove are run here, list (and anything else) in the project's
+        # container like any command, where the file is read-only.
+        action=''
+        ended=no
+        for argument in "$@"; do
+            [ "$argument" != enricher ] || [ -n "$action" ] || continue
+            if [ "$ended" = no ]; then
+                case $argument in
+                    --) ended=yes; continue ;;
+                    -*) continue ;;
+                esac
+                [ -n "$action" ] || action=$argument
+                continue
+            fi
+            [ -n "$action" ] || action=$argument
+            # A word of the command that names a file in the graph directory:
+            # any project's container could replace it before the next scan.
+            case $argument in
+                /*)
+                    word=$(located "$argument")
+                    if inside "$word" "$DATA_REAL" && ! inside "$word" "$INSTALL_REAL"; then
+                        die "the enricher command names $argument, in the graph directory $DATA_REAL, which every container can write; put it in $ENRICHERS_DIR, which containers only read, and add the enricher again."
+                    fi
+                    ;;
+            esac
+        done
+        case $action in add | remove) enricher_run "$@" ;; esac
         ;;
 esac
 
@@ -1045,17 +1120,6 @@ file_role() {
     done <<ROLES
 $FILE_ROLES
 ROLES
-}
-
-# absolute PATH: PATH made absolute against the working directory on the host.
-absolute() { case $1 in /*) printf '%s' "$1" ;; *) printf '%s/%s' "${HERE%/}" "$1" ;; esac; }
-
-# located PATH: the physical form of a file's directory with its name, or the
-# absolute path as given when that directory does not exist.
-located() {
-    file=$(absolute "$1")
-    dir=$(physical "$(dirname -- "$file")")
-    if [ -n "$dir" ]; then printf '%s/%s' "${dir%/}" "${file##*/}"; else printf '%s' "$file"; fi
 }
 
 # mounted PATH: whether a physical path lies in a directory the container sees.
@@ -1281,7 +1345,8 @@ start_container() {
     if [ "$RUNTIME" = podman ]; then set -- "$@" --userns=keep-id; fi
     set -- "$@" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
         -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_REAL" \
-        -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL" -e "KNOSSOS_SETTINGS_DIR=$DATA_REAL"
+        -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL" -e "KNOSSOS_SETTINGS_DIR=$DATA_REAL" \
+        -e "KNOSSOS_ENRICHERS_FILE=$ENRICHERS_FILE"
     while IFS='|' read -r mounted rw; do
         [ -n "$mounted" ] || continue
         if [ "$rw" = true ]; then
@@ -1328,7 +1393,6 @@ MOUNTED
 # line is `state|image|network|user`, then one `source|destination|rw` line per
 # mount.
 INSPECT='{{.State.Status}}|{{.Config.Image}}|{{.HostConfig.NetworkMode}}|{{.Config.User}}{{range .Mounts}}{{"\n"}}{{.Source}}|{{.Destination}}|{{.RW}}{{end}}'
-USER_SPEC="$(id -u):$(id -g)"
 
 # check_mounts INSPECT-OUTPUT [new]: refuse a container that does not run the
 # image, the network and the user this launcher starts it with, or whose mounts
@@ -1407,7 +1471,7 @@ fi
 # would in native mode.
 for variable in $(env | sed -n 's/^\(KNOSSOS_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u); do
     case $variable in
-        KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_SETTINGS_DIR | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN | KNOSSOS_TEST_TERMINALS) ;;
+        KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_SETTINGS_DIR | KNOSSOS_ENRICHERS_FILE | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN | KNOSSOS_TEST_TERMINALS) ;;
         KNOSSOS_ALLOWED_ROOTS)
             if [ "$extra_root" = no ]; then set -- -e "$variable" "$@"; fi
             ;;
@@ -1426,7 +1490,8 @@ if [ "$terminal" = yes ]; then
 fi
 set -- exec -i -w "$WORKDIR" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
     -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_REAL" \
-    -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL" -e "KNOSSOS_SETTINGS_DIR=$DATA_REAL" "$@"
+    -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL" -e "KNOSSOS_SETTINGS_DIR=$DATA_REAL" \
+        -e "KNOSSOS_ENRICHERS_FILE=$ENRICHERS_FILE" "$@"
 
 # shellcheck disable=SC2317,SC2329 # called from the traps below
 forward() {

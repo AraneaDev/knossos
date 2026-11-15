@@ -94,7 +94,7 @@ $IMAGE")"
 
 reset_docker
 out=$(cd "$PROJECT/src/deep" && kn version --json </dev/null 2>&1); status=$?
-expected_run="call [run] [-d] [--rm] [--init] [--no-healthcheck] [--pull=never] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$DATA] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$DATA,target=$DATA] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
+expected_run="call [run] [-d] [--rm] [--init] [--no-healthcheck] [--pull=never] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$DATA] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$DATA,target=$DATA] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
 if [ "$status" -eq 0 ] && grep -qxF "$expected_run" "$FAKE_DOCKER_STATE/calls"; then
     pass 'the first call runs the container with same-path mounts, the install dir as one read-only mount, the user, HOME=/tmp, no network and idle-stop'
 else
@@ -102,7 +102,7 @@ else
 fi
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls")
 case $exec_line in
-    "call [exec] [-i] [-w] [$PROJECT/src/deep] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$DATA] "*"[$NAME] [/opt/knossos/tools/launcher/idle-stop] [--run] ["*"] [/opt/knossos/bin/knossos] [version] [--json]")
+    "call [exec] [-i] [-w] [$PROJECT/src/deep] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$DATA] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] "*"[$NAME] [/opt/knossos/tools/launcher/idle-stop] [--run] ["*"] [/opt/knossos/bin/knossos] [version] [--json]")
         pass 'the call is an exec -i in the working directory, without -t when there is no terminal'
         ;;
     *) fail "exec line: $exec_line" ;;
@@ -208,7 +208,7 @@ cp "$INSTALL/roots.json" "$ROOTS"
 (cd "$PROJECT" && KNOSSOS_DATA_DIR="$GRAPH" KNOSSOS_ROOTS_FILE="$ROOTS" "$LAUNCHER" version </dev/null >/dev/null 2>&1)
 run_line=$(grep '^call \[run\]' "$FAKE_DOCKER_STATE/calls")
 case $run_line in
-    *"[-e] [KNOSSOS_DATA_DIR=$GRAPH] [-e] [KNOSSOS_ROOTS_FILE=$ROOTS] [-e] [KNOSSOS_SETTINGS_DIR=$GRAPH] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$GRAPH,target=$GRAPH] [--mount] [type=bind,source=$WORK/roots dir,target=$WORK/roots dir,readonly] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] "*)
+    *"[-e] [KNOSSOS_DATA_DIR=$GRAPH] [-e] [KNOSSOS_ROOTS_FILE=$ROOTS] [-e] [KNOSSOS_SETTINGS_DIR=$GRAPH] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$GRAPH,target=$GRAPH] [--mount] [type=bind,source=$WORK/roots dir,target=$WORK/roots dir,readonly] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] "*)
         pass "a caller's data dir and roots file are mounted beside the project and the install directory, each at its own path"
         ;;
     *) fail "separate dirs: $run_line" ;;
@@ -987,10 +987,44 @@ if [ "$status" -eq 0 ]; then pass '--db inside the graph directory is accepted';
 out_call install-agent-plugin --out=/tmp/x
 case $out in *'its plugin is managed from the host'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'install-agent-plugin is refused in container mode before anything runs'; else fail "plugin refused: $status, $out"; fi
-# After the -- of enricher add, nothing is a file to place.
-out_call enricher add tool -- tool --output=/nowhere/x
-case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *'[--] [tool] [--output=/nowhere/x]') said=yes ;; *) said=no ;; esac
-if [ "$said" = yes ]; then pass 'arguments after -- are passed on as given'; else fail "after --: $status, $out"; fi
+# ---- the enricher list is the host's ----------------------------------------------------
+
+ENRICHERS_RUN="call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-settings] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-settings/roots.json] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] [--mount] [type=bind,source=$INSTALL/settings,target=$INSTALL/settings] [--entrypoint] [/opt/knossos/bin/knossos] [$IMAGE]"
+rm -rf "$INSTALL/settings"
+# After the -- of enricher add, nothing is a file to place either.
+out_call enricher add tool --timeout=5 -- tool --output=/nowhere/x
+if [ "$status" -eq 0 ] && [ "$(calls)" = "$ENRICHERS_RUN [enricher] [add] [tool] [--timeout=5] [--] [tool] [--output=/nowhere/x]" ] && [ -d "$INSTALL/settings" ]; then
+    pass 'enricher add is one run of the image with only the settings directory mounted read-write, no project, no network, and its arguments as given'
+else
+    fail "enricher add: $status, $out, $(calls)"
+fi
+out_call enricher --json remove tool
+if [ "$status" -eq 0 ] && [ "$(calls)" = "$ENRICHERS_RUN [enricher] [--json] [remove] [tool]" ]; then pass 'enricher remove is the same single run'; else fail "enricher remove: $status, $out, $(calls)"; fi
+out_call enricher add tool -- python3 "$DATA/tool.py"
+case $out in "knossos: the enricher command names $DATA/tool.py, in the graph directory $DATA, which every container can write; put it in $INSTALL/settings, which containers only read, and add the enricher again.") said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then pass 'an enricher command in the graph directory is refused, and nothing runs'; else fail "enricher in graph: $status, $out, $(calls)"; fi
+# A list planted in the graph directory, or named by the caller, is not what a scan reads.
+printf '{"enrichers": [{"name": "planted", "command": ["sh", "-c", "id"]}]}\n' > "$DATA/enrichers.json"
+reset_docker
+(cd "$PROJECT" && KNOSSOS_ENRICHERS_FILE="$DATA/enrichers.json" TMPDIR="$WORK/tmp" kn scan "$PROJECT" </dev/null >/dev/null 2>&1); status=$?
+exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
+case $exec_line in *"[-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] "*) named=yes ;; *) named=no ;; esac
+if [ "$status" -eq 0 ] && [ "$named" = yes ] && [ "$(grep -o 'KNOSSOS_ENRICHERS_FILE' "$FAKE_DOCKER_STATE/calls" | wc -l | tr -d ' ')" -eq 2 ] && [ "$(count_calls run)" -eq 1 ]; then
+    pass "a scan is given the install directory's enricher list, never one in the graph directory or the caller's"
+else
+    fail "scan enrichers file: $status, $(calls)"
+fi
+rm -f "$DATA/enrichers.json"
+out_call enricher list --json
+case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *"[/opt/knossos/bin/knossos] [enricher] [list] [--json]") said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'enricher list runs in the project container, which reads the list read-only'; else fail "enricher list: $status, $(calls)"; fi
+ln -s "$WORK/outside" "$INSTALL/settings.link"
+rm -rf "$INSTALL/settings"
+mv "$INSTALL/settings.link" "$INSTALL/settings"
+out_call enricher add tool -- tool
+case $out in *"$INSTALL/settings is a symlink"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then pass 'a settings directory that is a symlink is refused'; else fail "settings symlink: $status, $out"; fi
+rm -f "$INSTALL/settings"
 
 # ---- the allow-list is the host's -------------------------------------------------------
 

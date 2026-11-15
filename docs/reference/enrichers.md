@@ -93,6 +93,34 @@ valid entries still run. A file that is not valid JSON, or not shaped
 enrichers a project requests are kept rather than removed (see
 [Failure and carried-over facts](#failure-and-carried-over-facts)).
 
+### In container mode
+
+A container install keeps the list in `<data dir>/install/settings/enrichers.json`,
+where every container can read it and none can change it. An enricher is a
+command a scan starts, so a scanned project that could add one would run code
+in the container of every other project you scan.
+
+- `knossos enricher add` and `knossos enricher remove` work as above. The
+  launcher runs them in a short run of the image that sees only that
+  `settings` directory, read-write, with no project and no network.
+- `knossos enricher list` and every scan read the file read-only.
+- An `enrichers.json` in the graph directory is ignored, and so is a
+  `KNOSSOS_ENRICHERS_FILE` you set yourself.
+
+The command runs inside the container, as the user you run Knossos as. So it
+must exist there:
+
+- a program the image has: `python3`, `php`, `node` or `sh`;
+- a script in `<data dir>/install/settings`, which every container sees at the
+  same path, read-only. Put it there on the host, then add it, for example
+  `knossos enricher add endpoints -- python3 ~/.knossos/install/settings/endpoints.py`.
+
+A command in the graph directory is refused when you add it, because any
+project's container could replace it. A file in one of your projects is only
+mounted while that project is scanned. A command that does not exist in the
+container makes the scan report `ENRICHER_FAILED` with the reason
+`missing_command`, and the enricher's previous facts are kept.
+
 ### The project's `enrichers` key
 
 A project asks for enrichers by name, in its `knossos.json`:

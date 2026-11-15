@@ -246,7 +246,10 @@ final class AllowedRoots
      *
      * `KNOSSOS_SETTINGS_DIR` names another directory. The container launcher
      * sets it to the graph directory, because there the roots file is the
-     * read-only list the host keeps, and these two settings stay writable.
+     * read-only list the host keeps. Only `pane-autostart.json` stays there: it
+     * says whether the pane opens, nothing more. `enrichers.json` names
+     * commands a scan starts, so the launcher also sets `KNOSSOS_ENRICHERS_FILE`
+     * to a file no container can write ({@see \Knossos\Configuration\EnrichersFile}).
      */
     public static function settingsDirectory(string $databasePath): string
     {

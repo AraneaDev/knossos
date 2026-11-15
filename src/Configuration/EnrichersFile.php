@@ -13,7 +13,11 @@ use Knossos\Roots\AllowedRoots;
  * The installation's `enrichers.json`: which external enrichers exist and how to start them.
  *
  * Sits beside `roots.json`, so `KNOSSOS_ROOTS_FILE` moves both, unless
- * `KNOSSOS_SETTINGS_DIR` names its directory ({@see AllowedRoots::settingsDirectory()}). Read
+ * `KNOSSOS_SETTINGS_DIR` names its directory ({@see AllowedRoots::settingsDirectory()}), or
+ * `KNOSSOS_ENRICHERS_FILE` names the file itself. The container launcher sets
+ * the last one to a file in the install directory, which every container only
+ * reads: an enricher is a command a scan starts, so no scanned project may be
+ * able to register one that then runs while another project is scanned. Read
  * tolerantly: a broken file or entry never fails a scan, it only shrinks the
  * set of enrichers and leaves a line in {@see problems()} for the scan to
  * report. `knossos enricher` writes it through {@see write()}; editing it by
@@ -23,9 +27,17 @@ final readonly class EnrichersFile
 {
     public function __construct(public string $path) {}
 
-    /** The enrichers file that belongs to a database path, following the roots file's location. */
+    /** The variable that names the file outright, ahead of every other rule. */
+    public const FILE_VARIABLE = 'KNOSSOS_ENRICHERS_FILE';
+
+    /** The enrichers file that belongs to a database path: the one `KNOSSOS_ENRICHERS_FILE` names, else beside the roots file. */
     public static function forDatabase(string $databasePath): self
     {
+        $named = getenv(self::FILE_VARIABLE);
+        if (is_string($named) && $named !== '') {
+            return new self($named);
+        }
+
         return new self(AllowedRoots::settingsDirectory($databasePath) . '/enrichers.json');
     }
 

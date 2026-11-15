@@ -719,7 +719,9 @@ install_container() {
     KNOSSOS_ROOTS_FILE=$ROOTS_FILE
     export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
     BAKED_DIR=$CINSTALL
-    for entry in "" /plugin /containers; do
+    # settings/ holds the enricher list, which only the launcher's own short
+    # run of the image may write (knossos enricher add and remove).
+    for entry in "" /plugin /containers /settings; do
         [ ! -L "$CINSTALL$entry" ] || die "$CINSTALL$entry is a symlink; remove it and run the installer again. Nothing was changed"
         mkdir -p "$CINSTALL$entry" || die "could not create $CINSTALL$entry"
     done

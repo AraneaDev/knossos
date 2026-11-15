@@ -15,7 +15,9 @@ use Knossos\Configuration\EnrichersFile;
  *
  * The file is the one {@see EnrichersFile::forDatabase()} names, so `--db`,
  * `KNOSSOS_DATA_DIR` and `KNOSSOS_ROOTS_FILE` move it exactly as they move
- * `roots.json`. A new entry is checked by the reader's own rules before it is
+ * `roots.json`, and `KNOSSOS_ENRICHERS_FILE` names it outright. In container
+ * mode the launcher runs `add` and `remove` in a short run of the image that
+ * can write only that file's directory; every other container reads it. A new entry is checked by the reader's own rules before it is
  * written, so `add` never writes one the next scan would skip, and a file
  * that already has problems is never rewritten: the rewrite would keep only
  * the entries that load, dropping the broken ones without anyone asking.
