@@ -342,7 +342,7 @@ process the earlier ones read `outside`.
 
 ## Branch
 
-![The Branch tab: a detached checkout four commits ahead of main, 14 things to look at, most of them new dependencies across boundaries, and what it changed by boundary with its lines and its reach](../../images/claude-code/branch.png)
+![The Branch tab: a detached checkout twelve commits ahead of main, six things to look at (a new cycle of three and new dependencies across boundaries), and what it changed by boundary with its lines and its dependents](../../images/claude-code/branch.png)
 
 Branch answers two things at a glance: what this branch changed against its
 default branch, and whether it broke anything.
