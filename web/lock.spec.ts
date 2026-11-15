@@ -413,6 +413,8 @@ describe('claim', () => {
           writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
           const got = await claim(data, root, TOKEN)
           expect(got.kind === 'mine' ? { kind: 'mine' } : { kind: 'running', proven: got.proven }).toEqual(want)
+          // One it will not trust is named, for the person to tell whether it is theirs.
+          if (got.kind === 'running' && !got.proven) expect(got.holder).toEqual({ pid: process.ppid, port: server.port })
           // Whatever answered, it was sent nothing of the token.
           expect(carriesToken(seen)).toBe(false)
         } finally {

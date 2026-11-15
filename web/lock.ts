@@ -26,7 +26,8 @@ import { join } from 'node:path'
  * alive and stayed silent (a pane suspended, or stuck): its pages are the ones that may still come looking on its
  * port, and nothing else will answer them there. Null for any other stale lock, and for a port below 1024.
  */
-export type Claim = { kind: 'mine'; record(port: number): void; release(): void; holder(): Promise<number | null>; replaced: Replaced | null } | { kind: 'running'; url: string; proven: boolean }
+export type Claim = { kind: 'mine'; record(port: number): void; release(): void; holder(): Promise<number | null>; replaced: Replaced | null } | { kind: 'running'; url: string; proven: true }
+  | { kind: 'running'; url: string; proven: false; holder: Replaced }
 
 /** A holder replaced while it was alive and silent: its process and the port it served on. */
 export type Replaced = { pid: number; port: number }
@@ -413,7 +414,7 @@ export async function claim(dataDir: string, root: string, token: string, silent
       const verdict = await holds(file, port, token, other.pid as number, silent)
       // Proven, or still starting: the token may go there. An older server that cannot be shown to be this user's is named, not trusted.
       if (verdict === 'pane') return { kind: 'running', url, proven: true }
-      if (verdict === 'old') return { kind: 'running', url, proven: false }
+      if (verdict === 'old') return { kind: 'running', url, proven: false, holder: { pid: other.pid as number, port: port! } }
       if (port !== null) silenced.add(key)
       if (verdict === 'silent') silentHolders.add(key)
     }

@@ -52,7 +52,7 @@ const pluginRoot = process.env.KNOSSOS_WEB_PLUGIN_ROOT || CHECKOUT
 if (!process.env.KNOSSOS_BIN && existsSync(join(CHECKOUT, 'bin/knossos'))) process.env.KNOSSOS_BIN = join(CHECKOUT, 'bin/knossos')
 const editor = asked.editor ?? (process.env.KNOSSOS_EDITOR || null)
 
-const { hostProject, silentText } = await import('../web/host')
+const { hostProject, silentText, unprovenText } = await import('../web/host')
 type Hosted = Awaited<ReturnType<typeof hostProject>>
 const { lockFile, probe } = await import('../web/lock')
 const { ending } = await import('../web/life')
@@ -275,7 +275,7 @@ function retake(): Promise<void> {
   return acquire().then(
     found => {
       // An older server that cannot be shown to be this user's is sent nothing: the pane stays lost, and says why.
-      if (found.kind === 'running' && !found.proven) return client?.status(UNPROVEN)
+      if (found.kind === 'running' && !found.proven) return client?.status(unprovenText(found.holder, lockFile(dataDir, root)))
       lost = false
     },
     (error: unknown) => {
@@ -285,8 +285,6 @@ function retake(): Promise<void> {
 }
 
 const origin = (url: string) => new URL(url).origin
-/** What the pane says of a server it will not send the token to. */
-const UNPROVEN = 'A Knossos server from an older version runs for this project, and it cannot be shown to be yours. Stop it, then start knossos again.'
 /** How long the server a stream is about to open on is given to prove it is this project's pane. */
 const PROVE_MS = 3_000
 
@@ -301,7 +299,7 @@ try {
   const theme = asked.theme ?? background.theme
   const ground = groundFor(background.ground, theme)
   const started = await acquire()
-  if (started.kind === 'running' && !started.proven) throw new Error(UNPROVEN)
+  if (started.kind === 'running' && !started.proven) throw new Error(unprovenText(started.holder, lockFile(dataDir, root)))
   const first = started.url
   let current = first
   const token = new URL(first).searchParams.get('t') ?? ''
