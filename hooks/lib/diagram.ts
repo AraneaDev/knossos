@@ -379,9 +379,30 @@ export type Coupling = { source: string; target: string; edges: string }
  * only as far as the width needs, the source and target sharing the cut.
  */
 export function pairColumns(items: Coupling[], width: number, sourceStyle: Style, targetStyle: Style, indent = 3, key = 'pairs'): Row[] {
-  const arrow = ' ──► '
+  const { sw, tw, count } = pairWidths(items, width, indent)
+  return items.map((item, i) => {
+    const target = fit(item.target, tw)
+    return {
+      key: `${key}-${i}`,
+      segments: [
+        { text: spaces(indent) },
+        { text: padEnd(fit(item.source, sw), sw), ...sourceStyle },
+        { text: PAIR_ARROW, color: FAINT },
+        { text: target, ...targetStyle },
+        { text: spaces(tw - cells(target) + 2 + count - cells(item.edges)) },
+        { text: item.edges, color: HEADING },
+      ],
+    }
+  })
+}
+
+/** The arrow between a pair's two names. */
+const PAIR_ARROW = ' ──► '
+
+/** The widths {@link pairColumns} gives a pair's source, its target and its count in `width`, past `indent`. */
+function pairWidths(items: Coupling[], width: number, indent: number): { sw: number; tw: number; count: number } {
   const count = Math.max(1, ...items.map(i => cells(i.edges)))
-  const room = Math.max(4, width - indent - cells(arrow) - 2 - count)
+  const room = Math.max(4, width - indent - cells(PAIR_ARROW) - 2 - count)
   let sw = Math.max(1, ...items.map(i => cells(i.source)))
   let tw = Math.max(1, ...items.map(i => cells(i.target)))
   if (sw + tw > room) {
@@ -390,21 +411,11 @@ export function pairColumns(items: Coupling[], width: number, sourceStyle: Style
     else if (tw <= half) sw = room - tw
     else [sw, tw] = [half, room - half]
   }
-  return items.map((item, i) => {
-    const target = fit(item.target, tw)
-    return {
-      key: `${key}-${i}`,
-      segments: [
-        { text: spaces(indent) },
-        { text: padEnd(fit(item.source, sw), sw), ...sourceStyle },
-        { text: arrow, color: FAINT },
-        { text: target, ...targetStyle },
-        { text: spaces(tw - cells(target) + 2 + count - cells(item.edges)) },
-        { text: item.edges, color: HEADING },
-      ],
-    }
-  })
+  return { sw, tw, count }
 }
+
+/** Where {@link pairColumns} starts its targets' column, from the row's start: past the indent, the sources and the arrow. */
+export const pairTargetAt = (items: Coupling[], width: number, indent = 3): number => indent + pairWidths(items, width, indent).sw + cells(PAIR_ARROW)
 
 // ---------------------------------------------------------------- a neighbourhood
 

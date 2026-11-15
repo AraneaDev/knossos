@@ -37,8 +37,26 @@ export const GRID_GAP = 4
 /** The cells between a fact's label and its value, past the longest label. */
 export const LABEL_GAP = 3
 
+/** The cells each level of a tree, or a line under another row's name, stands in from the level above it. */
+export const NEST = 2
+/** The cells between two parts of one row that are not one phrase: a name and its author, two keys, a figure and its hint. */
+export const PART_GAP = 2
+
 /** The margin at `tier`. */
 export const marginOf = (tier: Tier): number => (tier === 'narrow' ? NARROW_MARGIN : MARGIN)
+
+/** `depth` levels in from the row a line stands under (a folder under its boundary's name, a file under its folder), as a segment. */
+export const nest = (depth = 1): Segment => ({ text: spaces(NEST * depth) })
+
+/** The cells between two parts of a row, {@link PART_GAP} unless the part after asks for `n`: as a segment, and as text ({@link apartText}). */
+export const apart = (n = PART_GAP): Segment => ({ text: spaces(n) })
+export const apartText = (n = PART_GAP): string => spaces(n)
+
+/** Rows set on the pane's margin at `tier`, for what stands outside a card (the empty screens, the allow-root offer). */
+export const onMargin = (rows: readonly Row[], tier: Tier): Row[] => rows.map(row => ({ ...row, segments: [{ text: spaces(marginOf(tier)) }, ...row.segments], inset: marginOf(tier) + (row.inset ?? 0) }))
+
+/** The cells a body row is offset by past its gutter's start: under a gutter `extra` cells wider (a table's kind letter, a heat map's first column). */
+export const bodyIndent = (extra = 0): Segment => ({ text: spaces(GUTTER + extra) })
 
 /**
  * The gutter before a body row, the one way a row fills it: the selection

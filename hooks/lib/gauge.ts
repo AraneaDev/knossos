@@ -11,6 +11,7 @@
 import { ACCENT, FAINT } from './palette'
 import { MEDIUM_MAX, MEDIUM_MIN, tierOf } from './table'
 import { cells } from './text'
+import { apartText } from './spacing'
 import type { Segment } from './types'
 import type { Tier } from './table'
 
@@ -44,6 +45,6 @@ function slider(columns: number, tier: Tier, span: (typeof SPANS)[Tier]): Segmen
     { text: '─'.repeat(TRACK - 1 - at), color: FAINT },
   ].filter(s => s.text !== '')
   const next: Segment[] = span.after === null ? [] : [{ text: ` ${span.after}`, dim: true }]
-  const figure: Segment = { text: `  ${span.next === null ? columns : `${columns}/${span.next}`}`, dim: true }
+  const figure: Segment = { text: `${apartText()}${span.next === null ? columns : `${columns}/${span.next}`}`, dim: true }
   return [{ text: `${tier} `, dim: true }, ...track, ...next, figure]
 }

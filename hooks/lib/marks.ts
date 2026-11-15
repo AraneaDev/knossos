@@ -7,7 +7,7 @@
  * scroll hints are drawing, not marks, and stay where they are drawn.
  */
 import { ACCENT, STATUS_COLOURS } from './palette'
-import { grouped } from './text'
+import { grouped, spaces } from './text'
 import type { Segment } from './types'
 
 export type MarkTone = 'ok' | 'warn' | 'alert' | 'accent' | 'dim' | 'text'
@@ -109,7 +109,7 @@ export function mark(entry: Mark, trailing = ''): Segment {
 export function kindMark(kind: string | null | undefined): Segment {
   // Own keys only: a kind named like an Object.prototype member (`constructor`) is no kind the registry holds.
   const entry = typeof kind === 'string' && Object.hasOwn(KIND, kind) ? KIND[kind] : undefined
-  return entry === undefined ? { text: '  ' } : mark(entry, ' ')
+  return entry === undefined ? { text: spaces(2) } : mark(entry, ' ')
 }
 
 /**

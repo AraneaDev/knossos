@@ -22,18 +22,18 @@ import type { Dashboard } from '../../types'
 import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, huesOf, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { HEAT_KEYS } from './raster'
-import { blank, button, segmentsWidth, wrapGroups } from './rows'
+import { blank, button, clip, segmentsWidth, wrapGroups } from './rows'
 import { numberWidth, tableHead, tableRow, tableSpec } from './table'
 import { SWATCH } from './chips'
 import { cells, displayName, fit, grouped, padEnd, placeSegments, spaces } from './text'
 import { placeText } from './paths'
-import { bodyLine, bodyRow, gutter, GUTTER, labelledRows, toBody } from './spacing'
+import { atBody, bodyIndent, bodyLine, gutter, GUTTER, labelledRows, toBody } from './spacing'
 import type { Fact } from './spacing'
 import type { Row, Segment } from './types'
 import type { TableSpec, Tier } from './table'
 import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
-import { pairColumns, pairDiagram } from './diagram'
+import { pairColumns, pairDiagram, pairTargetAt } from './diagram'
 import type { Openable } from './views'
 import { busy } from './motion'
 
@@ -180,7 +180,7 @@ function heatCell(value: number, max: number, forbidden: boolean, width: number,
 export function heatRows(input: BoundariesInput, columns: number, hues: Hues = NO_HUES, scale = 1, marked: HeatCell | null = null): Row[] {
   const spec = heatSpec(input, columns, scale)
   const max = Math.max(0, ...input.cells.flat())
-  const head: Segment[] = [{ text: spaces(GUTTER) + padEnd(fit(CORNER, spec.label), spec.label) + ' ', dim: true }]
+  const head: Segment[] = [bodyIndent(), { text: padEnd(fit(CORNER, spec.label), spec.label) + ' ', dim: true }]
   // The marked cell's column letter and row label stand on the marked row's tint, so the eye finds its cross.
   const on = (seg: Segment, yes: boolean): Segment => (yes ? { ...seg, bg: SELECTED_BG } : seg)
   input.boundaries.forEach((b, i) => {
@@ -200,7 +200,7 @@ export function heatRows(input: BoundariesInput, columns: number, hues: Hues = N
             on({ text: padEnd(fit(` ${b.label}`, spec.label - cells(b.code)), spec.label - cells(b.code)) }, marked?.from === from),
             { text: ' ' },
           ]
-        : [{ text: spaces(GUTTER + spec.label + 1) }]
+        : [bodyIndent(spec.label + 1)]
       input.boundaries.forEach((_, to) => {
         const on = marked !== null && marked.from === from && marked.to === to
         segments.push(...heatCell(input.cells[from]?.[to] ?? 0, max, input.forbidden[from]?.[to] ?? false, spec.cell, r, spec.rows, on))
@@ -378,7 +378,8 @@ export function heatSection(input: BoundariesInput | null, columns: number, hues
 function placesRow(key: string, places: { source: string; target: string }, at: number, columns: number): Row {
   const first = Math.max(1, at - GUTTER - 1)
   const from = placeSegments(places.source, first)
-  return bodyRow(key, [...from, { text: spaces(at - GUTTER - segmentsWidth(from)) }, ...placeSegments(places.target, Math.max(1, columns - at))])
+  // A card too narrow to hold the target's column past the source's keeps the row inside its edge all the same.
+  return { key, segments: clip(atBody([...from, { text: spaces(at - GUTTER - segmentsWidth(from)) }, ...placeSegments(places.target, Math.max(1, columns - at))]), columns) }
 }
 
 /**
@@ -418,16 +419,19 @@ export function couplingSection(input: BoundariesInput, cell: HeatCell, view: Co
   const node = (b: BoundaryLine) => ({ key: b.name, label: b.label, ...(boundaryColour(b.name, hues) === undefined ? {} : { color: boundaryColour(b.name, hues)! }) })
   const said = `${grouped(count)}${view?.truncated === true ? '+' : ''} ${count === 1 ? 'dep' : 'deps'}`
   // The two boxes at the body, so they line up with the pairs listed under them.
-  const body: Row[] = [...toBody(pairDiagram(node(from), node(to), said, Math.max(1, columns - GUTTER), forbidden, 'coupling-pair').rows), blank('coupling-gap')]
+  const body: Row[] = toBody(pairDiagram(node(from), node(to), said, Math.max(1, columns - GUTTER), forbidden, 'coupling-pair').rows)
+  // A line that says how the pairs stand runs on under the boxes; the pairs listed are another kind of block, after a blank row.
+  if (view?.phase === 'done' && view.items.length > 0) body.push(blank('coupling-gap'))
   if (view === null || view.phase === 'loading') body.push(bodyLine('coupling-loading', busy('reading the couplings…'), columns))
   else if (view.phase === 'silent') body.push(bodyLine('coupling-silent', 'knossos did not say which components; press l to try another cell', columns))
   else if (view.items.length === 0) body.push(bodyLine('coupling-none', 'no component pair listed', columns))
   else {
     // Each pair, then under it where its two sides are declared, so two of one name can be told apart: each place under its own side.
-    const pairs = pairColumns(view.items.map(i => ({ source: i.source, target: i.target, edges: grouped(i.edges) })), columns, {}, {}, GUTTER, 'coupling')
-    body.push(...pairs.flatMap((pair, n) => {
+    const items = view.items.map(i => ({ source: i.source, target: i.target, edges: grouped(i.edges) }))
+    const at = pairTargetAt(items, columns, GUTTER)
+    body.push(...pairColumns(items, columns, {}, {}, GUTTER, 'coupling').flatMap((pair, n) => {
       const places = view.items[n]!.places
-      return places === null ? [pair] : [pair, placesRow(`coupling-place-${n}`, places, segmentsWidth(pair.segments.slice(0, 3)), columns)]
+      return places === null ? [pair] : [pair, placesRow(`coupling-place-${n}`, places, at, columns)]
     }))
   }
   return { key: 'coupling', title, note, body }

@@ -41,7 +41,7 @@ import { cells, fit, grouped, padEnd, padStart, plural, spaces } from './text'
 import type { Row, Segment } from './types'
 import type { Openable } from './views'
 import { NOTE, PLACE, REACH, mark } from './marks'
-import { bodyLine, bodyRow, bodyText, GUTTER, toBody } from './spacing'
+import { apart, bodyLine, bodyRow, bodyText, GUTTER, PART_GAP, toBody } from './spacing'
 import { countsLine } from './notes-view'
 import { baselineWords } from './baseline'
 
@@ -235,7 +235,7 @@ export function notesLineBlock(data: OverviewData, selected: number, walk: numbe
     make: (columns): Section => {
       const tone = counts.missing > 0 ? mark(NOTE.missing) : counts.stale > 0 ? mark(NOTE.stale) : counts.flagged > 0 ? mark(NOTE.flagged) : undefined
       // The mark in the gutter after the marker, the line at the body.
-      const line: Segment[] = [button(`row:${walk}`, countsLine(counts)), { text: '  the Notes tab', dim: true }]
+      const line: Segment[] = [button(`row:${walk}`, countsLine(counts)), apart(), { text: 'the Notes tab', dim: true }]
       return { key: 'notes', title: 'Notes', body: [walkedRow('notes-line', selected === walk, line, columns, tone)] }
     },
   }
@@ -451,7 +451,7 @@ export function healthBlock(data: OverviewData): Block | null {
             { text: levels(values, per), color: flat ? FAINT : ACCENT },
             { text: ' ' },
             { text: padStart(last[i]!, lastWidth), color: HEADING },
-            ...(withRange ? [{ text: `  ${padEnd(ranges[i]!, rangeWidth - 2)}`, dim: true }] : []),
+            ...(withRange ? [apart(), { text: padEnd(ranges[i]!, rangeWidth - PART_GAP), dim: true }] : []),
           ],
         }
       })
@@ -545,7 +545,7 @@ export function sessionBlock(changes: ChangesInput, look: LookAt | null, selecte
         ...(tests > 0 && changes.untested > 0 ? [[{ text: '· ', dim: true }, warned(`${REACH.untested.glyph} ${untestedText(changes.untested)}`)]] : []),
       ]
       body.push(...wrapGroups('session-said', said, columns, 1, GUTTER))
-      const open: Segment[] = [button('row:0', 'Changes'), { text: '  every file, its dependents and its tests', dim: true }]
+      const open: Segment[] = [button('row:0', 'Changes'), apart(), { text: 'every file, its dependents and its tests', dim: true }]
       const copy: Segment[] = look?.command ? [button('tests', 'copy test command', 't')] : []
       const room = columns - GUTTER - open.reduce((n, s) => n + cells(s.text), 0) - copy.reduce((n, s) => n + cells(s.text), 0)
       body.push(walkedRow('session-open', selected === 0, room >= 2 ? [...open, { text: spaces(room) }, ...copy] : open, columns))

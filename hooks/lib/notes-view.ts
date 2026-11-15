@@ -19,7 +19,7 @@ import type { Hues } from './palette'
 import { button, clip, segmentsWidth } from './rows'
 import { chip } from './chips'
 import { cells, fit, grouped, plural, spaces, wrapWords } from './text'
-import { bodyLine, bodyRow, bodyText, labelledRows } from './spacing'
+import { apart, apartText, bodyLine, bodyRow, bodyText, labelledRows, nest, NEST, PART_GAP } from './spacing'
 import type { Fact } from './spacing'
 import type { Row, Segment } from './types'
 import { entryRow, entrySpec } from './views'
@@ -122,13 +122,13 @@ function askRows(ask: NotesAsk | null, columns: number): Row[] {
   if (ask.action === 'check') {
     return [
       bodyRow('notes-ask', [{ text: `Flag the note on ${label} for the model; why (optional): `, color: STATUS_COLOURS.warn }, { text: ask.value ?? '', field: { id: 'notes-reason', value: ask.value ?? '', placeholder: 'Enter flags it' } }]),
-      bodyRow('notes-ask-keys', [button('notes-no', 'no', 'n'), { text: '  Enter flags it', dim: true }]),
+      bodyRow('notes-ask-keys', [button('notes-no', 'no', 'n'), apart(), { text: 'Enter flags it', dim: true }]),
     ]
   }
   const question = ask.action === 'remove' ? `Remove ${whose(ask.author)} note on ${label}?` : ask.action === 'uncheck' ? `Take back the flag on ${label}?` : `Move the note on ${ask.component} to ${ask.to ?? ''}?`
   return [
     ...bodyText('notes-ask', question, columns, { color: STATUS_COLOURS.warn }),
-    bodyRow('notes-ask-keys', [button('notes-yes', 'yes', 'y'), { text: '  ' }, button('notes-no', 'no', 'n')]),
+    bodyRow('notes-ask-keys', [button('notes-yes', 'yes', 'y'), apart(), button('notes-no', 'no', 'n')]),
   ]
 }
 
@@ -141,13 +141,13 @@ function importRows(i: NotesImport, columns: number): Row[] {
     [i.unmatched, "on components this project doesn't have"],
     [i.stale, 'will show stale (files differ here)'],
   ]
-  const lines = [`Import knossos-notes.json · exported ${(i.origin?.exported_at ?? '').slice(0, 10)} from ${i.origin?.root ?? 'somewhere'}`, ...counts.filter(([n]) => (n ?? 0) > 0).map(([n, what]) => `  ${n} ${what}`)]
+  const lines = [`Import knossos-notes.json · exported ${(i.origin?.exported_at ?? '').slice(0, 10)} from ${i.origin?.root ?? 'somewhere'}`, ...counts.filter(([n]) => (n ?? 0) > 0).map(([n, what]) => `${apartText(NEST)}${n} ${what}`)]
   const nothing = (i.new ?? 0) + (i.replaced ?? 0) === 0
   const hideYes = nothing || i.running === true
   if (nothing) lines.push('nothing to import')
   return [
     ...lines.flatMap((line, k) => bodyText(`notes-import-${k}`, line, columns, { color: STATUS_COLOURS.warn })),
-    bodyRow('notes-ask-keys', [...(hideYes ? [] : [button('notes-yes', 'yes', 'y'), { text: '  ' }]), button('notes-no', 'no', 'n')]),
+    bodyRow('notes-ask-keys', [...(hideYes ? [] : [button('notes-yes', 'yes', 'y'), apart()]), button('notes-no', 'no', 'n')]),
   ]
 }
 
@@ -186,7 +186,7 @@ const movedTo = (n: NoteItem): string => (n.missing && n.suggested !== null ? `m
 function noteEntry(n: NoteItem, at: number, selected: number, indent: number, text: string, name: string, cols: NoteColumns): Entry {
   const author = authorOf(n)
   const moved = movedTo(n)
-  const lead = cols.name + 2 + cols.author + 2 + cells(moved)
+  const lead = cols.name + PART_GAP + cols.author + PART_GAP + cells(moved)
   const mark0 = n.missing ? mark(NOTE.missing) : n.checked ? mark(NOTE.flagged) : undefined
   return {
     selected: at === selected,
@@ -198,9 +198,9 @@ function noteEntry(n: NoteItem, at: number, selected: number, indent: number, te
       const room = Math.max(1, Math.min(cols.name, width - 8) - indent)
       const shown = fit(name, room)
       return [
-        { text: ' '.repeat(indent) },
+        { text: spaces(indent) },
         button(`row:${at}`, shown),
-        { text: `${' '.repeat(Math.max(0, room - cells(shown)))}  ${author.padEnd(cols.author)}  `, dim: true },
+        { text: `${spaces(room - cells(shown) + PART_GAP)}${author.padEnd(cols.author)}${apartText()}`, dim: true },
         ...(moved === '' ? [] : [{ text: fit(moved, Math.max(0, width - (lead - cells(moved)))), color: STATUS_COLOURS.warn }]),
         ...withHit(fit(n.line, Math.max(0, width - lead)), text),
       ]
@@ -210,7 +210,7 @@ function noteEntry(n: NoteItem, at: number, selected: number, indent: number, te
 
 /** A group's label in the tree: a boundary's swatch and name (its fold in the gutter), or a folder's fold and path, two cells in under the boundary's name. */
 function groupLabel(line: Extract<TreeLine, { kind: 'boundary' | 'folder' }>, at: number, hues: Hues): Segment[] {
-  if (line.kind === 'folder') return [{ text: '  ' }, foldOf(line), { text: ' ' }, button(`row:${at}`, `${line.path === '' ? '.' : line.path}/`)]
+  if (line.kind === 'folder') return [nest(), foldOf(line), { text: ' ' }, button(`row:${at}`, `${line.path === '' ? '.' : line.path}/`)]
   return line.name === null ? [{ text: '· ', dim: true }, button(`row:${at}`, 'no boundary')] : [...chip(line.name, hues).slice(0, 1), { text: ' ' }, button(`row:${at}`, boundaryLabel(line.name, hues))]
 }
 
@@ -240,7 +240,7 @@ function detailSection(n: NoteItem, columns: number, hues: Hues): Section {
       // A note on no file is where its component's name says; one on a gone name says so.
       const path: Segment = n.path !== null ? { text: n.path } : { text: n.missing ? 'on a name the graph no longer holds' : n.component, dim: true }
       // The boundary beside the path while both fit, else on the line under it.
-      return cells(path.text) + 2 + segmentsWidth(own) <= width || own.length === 0 ? [clip([path, ...(own.length === 0 ? [] : [{ text: '  ' }, ...own])], width)] : [clip([path], width), clip(own, width)]
+      return cells(path.text) + PART_GAP + segmentsWidth(own) <= width || own.length === 0 ? [clip([path, ...(own.length === 0 ? [] : [apart(), ...own])], width)] : [clip([path], width), clip(own, width)]
     },
   }
   const status: Fact = { key: 'notes-detail-why', label: 'status', numbered: true, lines: width => why.flatMap(w => wrapWords(w.text, width).map(part => [{ text: part, color: w.tone }])) }
@@ -287,7 +287,7 @@ export function notesArrangement(input: NotesInput, selected: number, hues: Hues
       }
       // A note under "Needs you" by its full name; in the tree, under its folder, by what the folder leaves to say.
       // In the tree a note stands under its folder's path, or, on no file, under its boundary's name.
-      const placed = walk.map(line => (line.kind === 'needs' ? { indent: 0, name: noteName(line.item), item: line.item } : line.kind === 'note' ? { indent: line.item.path === null ? 2 : 4, name: nameInFolder(line.item), item: line.item } : null))
+      const placed = walk.map(line => (line.kind === 'needs' ? { indent: 0, name: noteName(line.item), item: line.item } : line.kind === 'note' ? { indent: NEST * (line.item.path === null ? 1 : 2), name: nameInFolder(line.item), item: line.item } : null))
       const cols = noteColumns(
         placed.filter(p => p !== null),
         columns,

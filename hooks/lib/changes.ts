@@ -12,7 +12,7 @@ import { ACCENT, boundaryLabel, HEADING, NO_HUES, STATUS_COLOURS } from './palet
 import type { Hues } from './palette'
 import { button, clip, segmentsWidth, tinted, wrapGroups } from './rows'
 import { numberWidth, tableHead, tableRow, tableSpec, withDependents } from './table'
-import { atBody, bodyRow, bodyText, groupGap, gutter, GUTTER, labelledRows } from './spacing'
+import { apart, atBody, bodyRow, bodyText, groupGap, gutter, GUTTER, labelledRows } from './spacing'
 import { chip } from './chips'
 import { cells, grouped, padEnd, padStart, plural, spaces, wrapWords } from './text'
 import type { Loc, Row, Segment } from './types'
@@ -123,7 +123,7 @@ export function timelineRow(input: Pick<ChangesInput, 'timeline' | 'earlier'>, c
   if (scans.length === 0) return null
   const own = scans.filter(t => t.origin === 'session').length
   const counts: Segment[] = [
-    { text: '  ' },
+    apart(),
     { text: grouped(own), color: ACCENT },
     { text: ' this session', dim: true },
     ...(own === scans.length ? [] : [{ text: ' · ', dim: true }, { text: grouped(scans.length - own), color: HEADING }, { text: ' outside', dim: true }]),

@@ -19,10 +19,10 @@
  * list cut short shows the rows around the marker and an `n more ↓` line.
  */
 import { FAINT, HEADING, TITLE } from './palette'
-import { clip, dimRow, rowsHeight, rowWidth, segmentsWidth, tinted } from './rows'
+import { clip, rowsHeight, rowWidth, segmentsWidth, tinted } from './rows'
 import { tierOf } from './table'
 import { cells, fit, spaces } from './text'
-import { blankRow, GRID_GAP, GUTTER, MARGIN, marginOf, trimBlanks } from './spacing'
+import { blankRow, bodyIndent, bodyLine, GRID_GAP, MARGIN, marginOf, trimBlanks } from './spacing'
 import type { ListSpan, Row, Segment } from './types'
 import type { Tier } from './table'
 import { CARD_ICON } from './marks'
@@ -275,9 +275,9 @@ export function windowedTable<T>(
 export function moreRows(key: string, window: { start: number; end: number }, length: number, width: number, walk?: number | ((index: number) => number)): Row[] {
   const parts = [...(window.start > 0 ? [{ text: `${window.start} above ↑`, item: window.start - 1 }] : []), ...(length > window.end ? [{ text: `${length - window.end} more ↓`, item: window.end }] : [])]
   if (parts.length === 0) return []
-  if (walk === undefined) return [dimRow(key, `${spaces(GUTTER)}${parts.map(p => p.text).join(' · ')}`, width)]
+  if (walk === undefined) return [bodyLine(key, parts.map(p => p.text).join(' · '), width)]
   const at = (item: number): number => (typeof walk === 'number' ? walk + item : walk(item))
-  const segments: Segment[] = [{ text: spaces(GUTTER) }]
+  const segments: Segment[] = [bodyIndent()]
   parts.forEach((part, i) => {
     if (i > 0) segments.push({ text: ' · ', dim: true })
     segments.push({ text: part.text, dim: true, press: { id: `more:${at(part.item)}`, label: part.text } })

@@ -15,7 +15,7 @@ import { button, clip, segmentsWidth, tintedRow } from './rows'
 import { bar, barRange, tierOf } from './table'
 import { chip, SWATCH } from './chips'
 import { cells, fit, grouped, padEnd, padStart, pathParts, placeSegments, plural, spaces } from './text'
-import { gutter, GUTTER } from './spacing'
+import { apart, bodyIndent, gutter, GUTTER, nest, NEST, PART_GAP } from './spacing'
 import type { Row, Segment } from './types'
 import { CARD_ICON, CHANGE, SEVERITY, mark } from './marks'
 import type { BranchFile, BranchFinding, BranchGroup, BranchLine } from './branch'
@@ -93,7 +93,7 @@ export function findingRows(shown: BranchFinding[], start: number, selected: num
     const press = `row:${at}`
     const name = (text: string, width: number): Segment[] => padded([button(press, fit(text, width))], width)
     const own = (line: BranchLine, width: number): Segment[] => (width === 0 ? [] : [{ text: ' ' }, ...chipCell(line, hues, width)])
-    if (f.kind === 'policy') return itemRow(`finding-${at}`, at === selected, [...name(f.line.name, policySource), { text: ' → ', dim: true }, { text: padEnd(fit(f.target, policyTarget), policyTarget) }, { text: `  ${f.policy}`, dim: true }], columns, mark(SEVERITY.error))
+    if (f.kind === 'policy') return itemRow(`finding-${at}`, at === selected, [...name(f.line.name, policySource), { text: ' → ', dim: true }, { text: padEnd(fit(f.target, policyTarget), policyTarget) }, apart(), { text: f.policy, dim: true }], columns, mark(SEVERITY.error))
     if (f.kind === 'cycle') {
       const rest = `${f.members.slice(1).map(m => m.name).join(' → ')}${f.size > f.members.length ? ' → …' : ''}`
       return itemRow(`finding-${at}`, at === selected, [{ text: `${padStart(String(f.size), sizeWidth)} `, dim: true }, button(press, fit(f.line.name, cycleName)), { text: ` → ${rest}`, dim: true }], columns, { text: CARD_ICON.cycles, color: STATUS_COLOURS.warn })
@@ -103,10 +103,10 @@ export function findingRows(shown: BranchFinding[], start: number, selected: num
       return itemRow(`finding-${at}`, at === selected, [...name(f.line.name, crossSource), ...own(f.line, fromChip), { text: ' → ', dim: true }, ...target], columns, mark(SEVERITY.warn))
     }
     if (f.kind === 'hub') {
-      const figures: Segment[] = [{ text: `  ${padStart(grouped(f.before), before)} → ${padStart(grouped(f.after), after)} `, dim: true }, { text: `+${grouped(f.after - f.before)}`, color: STATUS_COLOURS.warn }]
+      const figures: Segment[] = [apart(), { text: `${padStart(grouped(f.before), before)} → ${padStart(grouped(f.after), after)} `, dim: true }, { text: `+${grouped(f.after - f.before)}`, color: STATUS_COLOURS.warn }]
       return itemRow(`finding-${at}`, at === selected, [...name(f.line.name, hubName), ...own(f.line, hubChip), ...figures], columns, mark(SEVERITY.warn))
     }
-    const place = f.line.place === '' ? [] : [{ text: '  ' }, ...placeSegments(f.line.place, Math.max(1, room - deadName - (deadChip > 0 ? deadChip + 1 : 0) - 2), f.line.loc)]
+    const place = f.line.place === '' ? [] : [apart(), ...placeSegments(f.line.place, Math.max(1, room - deadName - (deadChip > 0 ? deadChip + 1 : 0) - PART_GAP), f.line.loc)]
     return itemRow(`finding-${at}`, at === selected, [...name(f.line.name, deadName), ...own(f.line, deadChip), ...place], columns, mark(SEVERITY.warn))
   })
 }
@@ -144,20 +144,22 @@ export function changedRows(groups: BranchGroup[], shown: ChangedRow[], start: n
   // Where the files' column ends: a file's path runs to it, under its boundary's name.
   const pathEnd = lead + (barWidth > 0 ? 1 + barWidth : 0) + (withFiles ? 1 + files : 0)
   const figures = (l: { added: number; deleted: number }, reach: string): Segment[] => [
-    { text: `  ${padStart(`+${grouped(l.added)}`, added)}`, color: STATUS_COLOURS.ok },
+    apart(),
+    { text: padStart(`+${grouped(l.added)}`, added), color: STATUS_COLOURS.ok },
     { text: ` ${padStart(`${CHANGE.removed.glyph}${grouped(l.deleted)}`, deleted)}`, color: STATUS_COLOURS.alert },
-    { text: `  ${padStart(reach, REACH_CELLS)}` },
+    apart(),
+    { text: padStart(reach, REACH_CELLS) },
   ]
   // The reach column's title over the figures it heads, keyed apart from the card's own top edge.
-  const head: Row = { key: 'branch-changed-cols', segments: [{ text: spaces(GUTTER + pathEnd + tail - REACH_CELLS) }, { text: padStart('reach', REACH_CELLS), dim: true }] }
+  const head: Row = { key: 'branch-changed-cols', segments: [bodyIndent(pathEnd + tail - REACH_CELLS), { text: padStart('reach', REACH_CELLS), dim: true }] }
   return [
     head,
     ...shown.map((r, n): Row => {
       const at = at0 + start + n
       if (r.kind === 'file') {
-        const { dir, base } = pathParts(r.f.path, Math.max(1, pathEnd - 2))
+        const { dir, base } = pathParts(r.f.path, Math.max(1, pathEnd - NEST))
         const path: Segment[] = [{ text: dir, dim: true }, { ...button(`row:${at}`, base), press: { id: `row:${at}`, label: r.f.path } }]
-        return itemRow(`file-${at}`, at === selected, [{ text: '  ' }, ...padded(path.filter(s => s.text !== ''), pathEnd - 2), ...figures(r.f, grouped(r.f.dependents))], columns)
+        return itemRow(`file-${at}`, at === selected, [nest(), ...padded(path.filter(s => s.text !== ''), pathEnd - NEST), ...figures(r.f, grouped(r.f.dependents))], columns)
       }
       const g = r.g
       const colour = g.outside || g.name === null ? FAINT : (boundaryColour(g.name, hues) ?? FAINT)

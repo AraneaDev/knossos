@@ -23,7 +23,7 @@ import { opensFile } from './editor'
 import { boundaryStyle, chip } from './chips'
 import { button, segmentsWidth, tintedRow } from './rows'
 import { cells, compact, fit, grouped, padEnd, padStart, pathParts, placeLeast, placeSegments, spaces } from './text'
-import { GUTTER, gutter } from './spacing'
+import { bodyIndent, GUTTER, gutter } from './spacing'
 import type { Loc, Preview, Row, Segment } from './types'
 
 export const BAR_MIN = 4
@@ -155,13 +155,13 @@ export function percentile(values: number[], at: number): number {
 
 /** A column-title row for a table, dim. */
 export function tableHead(key: string, spec: TableSpec, titles: { name: string; boundary: string; numbers: string[]; place?: string; kind?: string }): Row {
-  let text = spaces(MARK + (spec.kind ?? 0)) + padEnd(fit(titles.name, spec.name), spec.name)
+  let text = padEnd(fit(titles.name, spec.name), spec.name)
   // A title that would be cut says nothing: the column's colours say what it is.
   if (spec.boundary > 0) text += ` ${padEnd(cells(titles.boundary) <= spec.boundary ? titles.boundary : '', spec.boundary)}`
   if (spec.bar > 0) text += ` ${spaces(spec.bar)}`
   spec.numbers.forEach((w, i) => (text += ` ${padStart(titles.numbers[i] ?? '', w)}`))
   if ((spec.place ?? 0) > 0) text += ` ${fit(titles.place ?? 'where', spec.place ?? 0)}`
-  return { key, segments: [{ text, dim: true }] }
+  return { key, segments: [bodyIndent(spec.kind ?? 0), { text, dim: true }] }
 }
 
 export type TableLine = {

@@ -21,7 +21,7 @@
  * column is broken rather than cut, so the return type always shows.
  */
 import { wrapValue } from './spacing'
-import { cells } from './text'
+import { cells, spaces } from './text'
 
 /** A call's parts: what it is called, its parameters as written, and what follows the list (`: int`, or nothing). */
 export type CallParts = { name: string; params: string[]; rest: string }
@@ -73,7 +73,7 @@ export function signatureLines(line: string, width: number): string[] {
   const parts = callParts(line)
   // Too narrow to indent a parameter and keep a word beside it: words, broken where they must be.
   if (parts === null || width < PARAM_INDENT * 2 + 4) return wrapValue(line, width)
-  const indent = ' '.repeat(PARAM_INDENT)
+  const indent = spaces(PARAM_INDENT)
   const param = (p: string): string[] => {
     const text = p === '…' ? p : `${p},`
     const [first = '', ...more] = wrapValue(text, width - PARAM_INDENT * 2)

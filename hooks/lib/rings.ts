@@ -28,7 +28,7 @@ import type { Hues } from './palette'
 import { absolute, baseName } from './paths'
 import { button, clip, inList, segmentsWidth } from './rows'
 import { chip } from './chips'
-import { bodyLine, bodyText, GUTTER } from './spacing'
+import { apart, atBody, bodyIndent, bodyLine, bodyText, GUTTER, PART_GAP } from './spacing'
 import { cells, displayName, fit, grouped, plural, spaces } from './text'
 import type { Loc, Row, Segment } from './types'
 import { PLACE, REACH, kindMark, mark } from './marks'
@@ -261,17 +261,16 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
 /** The rings as plain lists, for a pane too narrow for frames: each ring's figures and standing, its components in columns under them, its tests. */
 function ringLists(input: RingsInput, columns: number, selected: number, offset: number, hues: Hues): Row[] {
   const offsets = offsetsOf(input.rings, offset)
-  const body = spaces(GUTTER)
   const room = Math.max(1, columns - GUTTER - 2)
   return input.rings.flatMap((ring, index): Row[] => {
-    const head: Segment[] = [{ text: body }, { text: ring.label, bold: true, color: HEADING }, { text: ` · ${countOf(ring)}`, dim: true }]
+    const head: Segment[] = atBody([{ text: ring.label, bold: true, color: HEADING }, { text: ` · ${countOf(ring)}`, dim: true }])
     const state = standing(ring)
     // How the ring stands beside its figures while both fit, else on a row of its own under them.
-    const beside = segmentsWidth(head) + 2 + segmentsWidth(state) <= columns
-    const rows: Row[] = beside ? [{ key: `ring-${index}-head`, segments: [...head, { text: '  ' }, ...state] }] : [{ key: `ring-${index}-head`, segments: clip(head, columns) }, { key: `ring-${index}-standing`, segments: clip([{ text: `${body}  ` }, ...state], columns) }]
-    memberGrid(ring, offsets[index]!, room, selected, hues, input.centre?.boundary ?? null).forEach((line, i) => rows.push({ key: `ring-${index}-names-${i}`, segments: [{ text: `${body} ` }, ...line] }))
+    const beside = segmentsWidth(head) + PART_GAP + segmentsWidth(state) <= columns
+    const rows: Row[] = beside ? [{ key: `ring-${index}-head`, segments: [...head, apart(), ...state] }] : [{ key: `ring-${index}-head`, segments: clip(head, columns) }, { key: `ring-${index}-standing`, segments: clip([bodyIndent(PART_GAP), ...state], columns) }]
+    memberGrid(ring, offsets[index]!, room, selected, hues, input.centre?.boundary ?? null).forEach((line, i) => rows.push({ key: `ring-${index}-names-${i}`, segments: [bodyIndent(1), ...line] }))
     const tests = testsLine(ring, room)
-    if (tests.length > 0) rows.push({ key: `ring-${index}-tests`, segments: [{ text: `${body}  ` }, ...tests] })
+    if (tests.length > 0) rows.push({ key: `ring-${index}-tests`, segments: [bodyIndent(PART_GAP), ...tests] })
     return rows
   })
 }
