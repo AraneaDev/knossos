@@ -5,7 +5,7 @@ import { arrange } from './cards'
 import { NO_HUES } from './palette'
 import { tierOf } from './table'
 import { changesArrangement, changesInput } from './changes'
-import { ledgerChanges, NO_CHANGES } from './session-changes'
+import { ledgerChanges, NO_CHANGES, stamp } from './session-changes'
 import { branchArrangement, branchInput } from './branch'
 import { notesArrangement, notesInput } from './notes-view'
 
@@ -155,9 +155,11 @@ describe("Changes on the pane's spacing", () => {
 
 describe("Branch on the pane's spacing", () => {
   it('puts every finding\'s mark in the gutter, lines each kind up in columns, and right-aligns what changed under its heads', () => {
+    // The pane says the merge base's time in the reader's own zone: the row is built the same way, so it holds in any zone.
+    const left = stamp(1_790_953_266_000)
     const at: Record<number, string[]> = {
     60: [
-      "    left main at fd13714 (2026-10-02 17:01)",
+      `    left main at fd13714 (${left})`,
       "  ▲ 10 things to look at",
       "  ✗ Greeter::greet → Caller       core-stays-out",
       "  ✗ Kernel::boot   → Application  no-cli",
@@ -177,7 +179,7 @@ describe("Branch on the pane's spacing", () => {
       "  ▸ · outside the g… ╸        1 file      +2 −0",
     ],
     100: [
-      "     left main at fd13714 (2026-10-02 17:01)",
+      `     left main at fd13714 (${left})`,
       "   ▲ 10 things to look at",
       "   ✗ Greeter::greet → Caller       core-stays-out",
       "   ✗ Kernel::boot   → Application  no-cli",
@@ -197,7 +199,7 @@ describe("Branch on the pane's spacing", () => {
       "   ▸ · outside the graph ╸                         1 file      +2 −0",
     ],
     140: [
-      "     left main at fd13714 (2026-10-02 17:01)",
+      `     left main at fd13714 (${left})`,
       "   ▲ 10 things to look at",
       "   ✗ Greeter::greet → Caller       core-stays-out",
       "   ✗ Kernel::boot   → Application  no-cli",
