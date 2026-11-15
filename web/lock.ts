@@ -72,14 +72,18 @@ function held(file: string): { pid: unknown; port: unknown } | null {
   }
 }
 
-/** Whether a server answers at `url` (its token in it) with its page. */
+/**
+ * Whether a server answers at `url` (its token in it) with its page. One that has not answered when the probe
+ * gives up counts as answering: something listens there, and a live server that is busy (just started, or on a
+ * loaded machine) is slow, not gone. Only a refusal, or an answer that is not the page, says nobody holds it.
+ */
 async function answers(url: string): Promise<boolean> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(PROBE_MS) })
     await res.body?.cancel()
     return res.status === 200
-  } catch {
-    return false
+  } catch (error) {
+    return (error as Error).name === 'TimeoutError'
   }
 }
 

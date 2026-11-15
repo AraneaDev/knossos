@@ -222,6 +222,39 @@ describe('claim', () => {
     }
   })
 
+  it('keeps a live server that is slow to answer: two panes taking over at once under load stay on one server', async () => {
+    const data = scratch()
+    const root = scratch()
+    // Busy, as a pane's own server is right after it started on a loaded machine: it answers, but after the probe gave up.
+    const server = createServer((_req, res) => void setTimeout(() => res.writeHead(200).end('page'), 1_000))
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as AddressInfo).port
+    try {
+      mkdirSync(join(data, 'web'), { recursive: true })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port }))
+      expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: addressOf(port, TOKEN) })
+      expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.ppid, port })
+    } finally {
+      server.closeAllConnections()
+      server.close()
+    }
+  })
+
+  it("takes over a lock whose pid is alive but whose port answers as another project's server: a pid used again after a restart", async () => {
+    const data = scratch()
+    const root = scratch()
+    const server = createServer((_req, res) => void res.writeHead(403).end())
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as AddressInfo).port
+    try {
+      mkdirSync(join(data, 'web'), { recursive: true })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port }))
+      expect((await claim(data, root, TOKEN)).kind).toBe('mine')
+    } finally {
+      server.close()
+    }
+  })
+
   it('takes over a lock whose pid is alive but whose URL nobody answers: a pid used again after a restart', async () => {
     const data = scratch()
     const root = scratch()
