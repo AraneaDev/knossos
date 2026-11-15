@@ -224,7 +224,7 @@ cd /path/to/your-project
 knossos web
 ```
 
-![The Knossos web client's Overview: a kanji-inspired sigil and dark application frame around the terminal workspace, with project stats, composition charts, dependency concentration and cross-boundary flows](docs/images/web-client/overview.png)
+![The Knossos web client's Overview: a kanji-inspired sigil and dark application frame around the pane, with project stats, composition charts, dependency concentration, cross-boundary flows, complexity hotspots and the files most depended on](docs/images/web-client/overview.png)
 
 The local server opens your browser with the same nine tabs, finder, component and file
 details, blast radius, diffs and notes as the native pane. Click a tab or use its number;
