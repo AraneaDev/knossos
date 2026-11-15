@@ -74,7 +74,7 @@ $IMAGE")"
 
 reset_docker
 out=$(cd "$PROJECT/src/deep" && kn version --json </dev/null 2>&1); status=$?
-expected_run="call [run] [-d] [--rm] [--init] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$INSTALL] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT] [--mount] [type=bind,source=$INSTALL,target=$INSTALL] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
+expected_run="call [run] [-d] [--rm] [--init] [--no-healthcheck] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$INSTALL] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT] [--mount] [type=bind,source=$INSTALL,target=$INSTALL] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
 if [ "$status" -eq 0 ] && grep -qxF "$expected_run" "$FAKE_DOCKER_STATE/calls"; then
     pass 'the first call runs the container with same-path mounts, the user, HOME=/tmp, no network and idle-stop'
 else
@@ -369,8 +369,10 @@ wait "$idle" 2>/dev/null
 
 out=$(KNOSSOS_IDLE_RUN_DIR="$IDLE/run" sh "$IDLE_STOP" --run call-1 sh -c 'printf "%s:%s" "$$" "$(cat "$0")"; exit 5' "$IDLE/run/call-1.pid"); status=$?
 if [ "$status" -eq 5 ] && [ "${out%%:*}" = "${out#*:}" ]; then pass 'idle-stop --run records the pid of the command it becomes, and passes its status'; else fail "idle-stop --run: $status $out"; fi
-sleep 30 &
+# A command that ends with 143 on SIGTERM by itself, so the shell reports no killed job.
+sh -c 'trap "exit 143" TERM; sleep 30 & wait' &
 sleeper=$!
+sleep 1
 printf '%s\n' "$sleeper" > "$IDLE/run/call-2.pid"
 KNOSSOS_IDLE_RUN_DIR="$IDLE/run" sh "$IDLE_STOP" --signal TERM call-2
 wait "$sleeper"; status=$?

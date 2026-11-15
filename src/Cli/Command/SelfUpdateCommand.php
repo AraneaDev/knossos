@@ -21,11 +21,13 @@ use Knossos\Runtime\Version;
 /**
  * Updates an installed release, checks for a newer one, or rolls back.
  *
- * Only an installation made by `install.sh` can be updated this way. A source
- * checkout is refused (it is updated with git), and so is a container install
- * for now. `--check --quiet` is what the session-start hook runs in the
- * background: it prints nothing, fails silently, and touches the network at
- * most once a day.
+ * Only a native installation made by `install.sh` is updated here. A source
+ * checkout is refused (it is updated with git), and so is this command inside
+ * a container install's container: there the launcher on the host answers
+ * `knossos self-update` itself (tools/launcher/container-update), because the
+ * code in a container cannot replace its own image. `--check --quiet` is what
+ * the session-start hook runs in the background: it prints nothing, fails
+ * silently, and touches the network at most once a day.
  */
 final class SelfUpdateCommand implements CliCommand
 {
@@ -84,7 +86,7 @@ final class SelfUpdateCommand implements CliCommand
             throw new InstallException('This is a source checkout: update it with git pull.');
         }
         if ($installation->mode() === 'container') {
-            throw new InstallException('This is a container install: container installs are updated by the launcher, not by self-update.');
+            throw new InstallException('This is a container install: it is updated by the launcher on the host, so run knossos self-update there, not inside the container.');
         }
         if ($installation->mode() !== 'native') {
             throw new InstallException(sprintf('%s/install.json is missing or unreadable; run the installer again.', $installation->directory()));

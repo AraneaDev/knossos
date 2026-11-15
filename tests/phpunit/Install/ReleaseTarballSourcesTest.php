@@ -23,11 +23,13 @@ final class ReleaseTarballSourcesTest extends KnossosTestCase
      *
      * The launcher template is in both, at `launcher/knossos`, but the tarball
      * copies it by itself; the entrypoint of the per-project container means
-     * nothing on a host that runs the release natively.
+     * nothing on a host that runs the release natively, and neither does the
+ * helper that installs and updates a container install.
      */
     private const CONTAINER_ONLY = [
         'tools/launcher/knossos' => 'copied to launcher/knossos by itself',
         'tools/launcher/idle-stop' => 'the container entrypoint',
+        'tools/launcher/container-update' => 'installs and updates a container install from the host',
     ];
 
     #[Group('packaging')]
@@ -47,6 +49,7 @@ final class ReleaseTarballSourcesTest extends KnossosTestCase
         assertSame(array_keys(self::CONTAINER_ONLY), array_values(array_intersect($this->imageSources(), array_keys(self::CONTAINER_ONLY))));
         self::assertStringContainsString("COPY tools/launcher/knossos ./launcher/knossos\n", $dockerfile);
         self::assertStringContainsString("COPY tools/launcher/idle-stop ./tools/launcher/idle-stop\n", $dockerfile);
+        self::assertStringContainsString("COPY tools/launcher/container-update ./tools/launcher/container-update\n", $dockerfile);
         self::assertStringContainsString('cp "$ROOT/tools/launcher/knossos" "$TREE/launcher/knossos"', (string) file_get_contents(self::repositoryRoot() . '/tools/release-tarball'));
     }
 

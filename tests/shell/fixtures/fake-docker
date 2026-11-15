@@ -14,7 +14,8 @@
 #   pull-fails             present: `pull` fails
 #   copy/<path>            what `run ... cat <path>` prints, for files read out of an image
 #
-# `exec` prints `exec:` and the argument list after the container name, then
+# `exec` prints `exec:` and the argument list after the container name (a
+# bare `version` prints `Knossos $FAKE_IMAGE_VERSION` instead), then
 # reads stdin when FAKE_EXEC_STDIN=1, waits for a signal when FAKE_EXEC_WAIT=1
 # (it ends with 143 once `exec ... idle-stop --signal` has been called) and
 # exits with FAKE_EXEC_EXIT (default 0). `run` with --rm and a command other
@@ -25,11 +26,10 @@ set -u
 
 STATE=${FAKE_DOCKER_STATE:?FAKE_DOCKER_STATE must be set}
 mkdir -p "$STATE/containers" "$STATE/images"
-{
-    printf 'call'
-    for a in "$@"; do printf ' [%s]' "$a"; done
-    printf '\n'
-} >> "$STATE/calls"
+# One write per call, so calls made at the same time never interleave in the log.
+line='call'
+for a in "$@"; do line="$line [$a]"; done
+printf '%s\n' "$line" >> "$STATE/calls"
 
 if [ -e "$STATE/daemon-down" ]; then
     echo 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?' >&2
@@ -86,7 +86,7 @@ case $command in
         while [ $# -gt 0 ]; do
             case $1 in
                 -d) detached=1 ;;
-                --rm | --init | -i) ;;
+                --rm | --init | --no-healthcheck | -i) ;;
                 --name) name=$2; shift ;;
                 --label) labels="$labels$2
 "; shift ;;
@@ -158,9 +158,14 @@ case $command in
         case ${2-} in
             --signal) printf '%s\n' "$3" > "$STATE/signalled"; exit 0 ;;
         esac
-        printf 'exec:'
-        for a in "$@"; do printf '[%s]' "$a"; done
-        printf '\n'
+        # A bare `version` answers like the image would; everything else shows what it was given.
+        if [ $# -eq 5 ] && [ "$5" = version ]; then
+            echo "Knossos ${FAKE_IMAGE_VERSION:-0.0.0}"
+        else
+            printf 'exec:'
+            for a in "$@"; do printf '[%s]' "$a"; done
+            printf '\n'
+        fi
         if [ "${FAKE_EXEC_STDIN:-}" = 1 ]; then
             printf 'stdin:'
             cat

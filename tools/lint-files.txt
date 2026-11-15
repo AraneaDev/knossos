@@ -12,6 +12,7 @@ shell	install.sh
 shell	tests/shell/check-commit-style.sh
 shell	tests/shell/fixtures/fake-docker
 shell	tests/shell/gate-baseline.sh
+shell	tests/shell/install-container.sh
 shell	tests/shell/install-hooks.sh
 shell	tests/shell/install-native.sh
 shell	tests/shell/knossos-run-hook.sh
@@ -37,6 +38,7 @@ shell	tools/dependency-image-key
 shell	tools/gate-baseline
 shell	tools/install
 shell	tools/install-hooks
+shell	tools/launcher/container-update
 shell	tools/launcher/idle-stop
 shell	tools/launcher/knossos
 shell	tools/lib/quality-skips.sh

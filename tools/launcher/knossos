@@ -113,6 +113,8 @@ esac
 # Its entrypoint is tools/launcher/idle-stop, which exits (and so stops the
 # container, which --rm then removes) once nothing has run in it for 30
 # minutes: every call touches a marker file under <install dir>/containers.
+# The image's health check is off for it: a probe every 30 seconds would only
+# wake an idle container.
 #
 # The container's name is a hash of the install directory, the root, the data
 # directory, the roots file and the image, so two installations never share a
@@ -282,7 +284,32 @@ case ${1-} in
         exit
         ;;
     self-update)
-        die 'self-update in container mode comes with the next release of the installer; re-run the installer to update.'
+        # The background check the session-start hook runs: nothing at all
+        # when it is turned off or the last look is less than a day old, so a
+        # session start costs no container run for it.
+        shift
+        quiet=0
+        case " $* " in *' --check '*) case " $* " in *' --quiet '*) quiet=1 ;; esac ;; esac
+        if [ "$quiet" = 1 ]; then
+            [ "${KNOSSOS_NO_UPDATE_CHECK:-}" != 1 ] || exit 0
+            if [ -f "$INSTALL_DIR/update-check.json" ] && [ -z "$(find "$INSTALL_DIR/update-check.json" -mmin +1439 2>/dev/null)" ]; then
+                exit 0
+            fi
+        fi
+        # The update runs on the host, from the helper in the installed image:
+        # the code in a container cannot replace its own image.
+        helper=$(mktemp "${TMPDIR:-/tmp}/knossos-update.XXXXXX") || die 'could not create a temporary file'
+        if ! "$RUNTIME" run --rm --network none --entrypoint cat "$IMAGE" "$IN_IMAGE/tools/launcher/container-update" > "$helper" 2>/dev/null </dev/null \
+            || [ ! -s "$helper" ]; then
+            rm -f "$helper"
+            [ "$quiet" = 0 ] || exit 0
+            "$RUNTIME" info >/dev/null 2>&1 </dev/null || die "the $RUNTIME daemon is not running; start it and try again."
+            die "could not read the update helper out of $IMAGE; re-run the installer."
+        fi
+        sh "$helper" self-update "--install-dir=$INSTALL_DIR" "$@"
+        status=$?
+        rm -f "$helper"
+        exit "$status"
         ;;
 esac
 
@@ -335,7 +362,7 @@ MARKER="$INSTALL_DIR/containers/$NAME"
 # then finds the winner's container and uses it. A container that is still
 # being created or removed is waited for; one that stopped is removed first.
 start_container() {
-    set -- run -d --rm --init --name "$NAME" \
+    set -- run -d --rm --init --no-healthcheck --name "$NAME" \
         --label "io.knossos.install=$INSTALL_HASH" --label "io.knossos.root=$(hash12 "$ROOT")" \
         --network none --user "$(id -u):$(id -g)"
     if [ "$RUNTIME" = podman ]; then set -- "$@" --userns=keep-id; fi

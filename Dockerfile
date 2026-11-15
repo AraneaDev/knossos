@@ -153,10 +153,13 @@ COPY web ./web
 COPY tui ./tui
 COPY tools/ts-resolve.mjs ./tools/ts-resolve.mjs
 # Container mode: the launcher template a container install writes to the host
-# (at the path a release tarball keeps it), and the entrypoint of the
-# per-project container that launcher starts. Two small shell scripts.
+# (at the path a release tarball keeps it), the entrypoint of the per-project
+# container that launcher starts, and the helper the installer and the
+# launcher read out of the image to install, update and roll back on the host.
+# Three small shell scripts.
 COPY tools/launcher/knossos ./launcher/knossos
 COPY tools/launcher/idle-stop ./tools/launcher/idle-stop
+COPY tools/launcher/container-update ./tools/launcher/container-update
 COPY skills ./skills
 COPY types ./types
 
@@ -185,6 +188,7 @@ RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts \
     /opt/knossos/workers/python/bin/worker.py \
     /opt/knossos/launcher/knossos \
     /opt/knossos/tools/launcher/idle-stop \
+    /opt/knossos/tools/launcher/container-update \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 

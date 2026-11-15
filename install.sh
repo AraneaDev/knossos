@@ -10,6 +10,14 @@
 # <data dir>/current at it and writes one launcher, <bin dir>/knossos, that the
 # MCP registration and the plugin's hooks call.
 #
+# Container mode needs only Docker or Podman, with its daemon running. It pulls
+# the release image (ghcr.io/araneadev/knossos:<version>), checks that it
+# starts and passes doctor, and writes install.json naming the image by digest
+# and the same launcher, which then runs each command in a container per
+# project. The plugin's files come out of the image. Without --mode, native
+# mode is chosen when the host has the runtimes, else container mode when a
+# container runtime answers.
+#
 # Environment:
 #   KNOSSOS_DATA_DIR      install directory, which also holds the graph, when
 #                         --data-dir is not given              (default: ~/.knossos)
@@ -23,6 +31,10 @@
 #                         directory the installer is run from, see --no-roots)
 #   KNOSSOS_MCP_NAME      MCP server name                       (default: knossos)
 #   KNOSSOS_MCP_SCOPE     claude mcp scope: local|user|project  (default: user)
+#   KNOSSOS_IMAGE         container mode: the image to install instead of
+#                         <repository>:<version>, for example one built here
+#   KNOSSOS_IMAGE_REPOSITORY  container mode: where release images come from
+#                         (default: ghcr.io/araneadev/knossos)
 #
 # Nothing changes until the download is checked and the new release has passed
 # `knossos doctor` (against a throwaway data dir, so the real database is never
@@ -215,6 +227,7 @@ remove_partial() {
 # the real ones go either way.
 cleanup() {
     if [ "$SWITCHED" = 1 ]; then rollback_switch || true; fi
+    if [ "$CONTAINER_SWITCHED" = 1 ]; then rollback_container_switch || true; fi
     rm -rf "$TMP"
     remove_partial
     if [ -n "$BIN_DIR" ]; then rm -f "$BIN_DIR/.knossos.tmp.$$"; fi
@@ -395,6 +408,249 @@ choose_root() {
     printf '%s' "$here"
 }
 
+# Register the MCP server with Claude Code, pointing at the launcher. Without a
+# claude on PATH, say how to do it later.
+register_mcp() {
+    if command -v claude >/dev/null 2>&1; then
+        say 'Registering the MCP server with Claude Code...'
+        claude mcp remove "$NAME" -s "$SCOPE" >/dev/null 2>&1 </dev/null || true
+        # No --allow-root: the roots file governs. KNOSSOS_ROOTS_FILE is set
+        # too, so the server reads the file named here.
+        if claude mcp add "$NAME" -s "$SCOPE" \
+            -e "KNOSSOS_DATA_DIR=$DATA_DIR" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE" -- \
+            "$LAUNCHER" serve </dev/null; then
+            log "registered as '$NAME' (scope: $SCOPE)"
+        else
+            warn "registering the MCP server failed; run: claude mcp add $NAME -s $SCOPE -- \"$LAUNCHER\" serve"
+        fi
+    else
+        log "Claude CLI not found; register the MCP server later with: claude mcp add $NAME -s $SCOPE -- \"$LAUNCHER\" serve"
+    fi
+}
+
+# The PATH hint and the last line, for both modes.
+finish() {
+    case ":${PATH:-}:" in
+        *":$BIN_DIR:"*) ;;
+        *)
+            say
+            say "$BIN_DIR is not on your PATH. Add it, for example:"
+            say "  export PATH=\"$BIN_DIR:\$PATH\""
+            ;;
+    esac
+
+    say
+    say "Knossos $VERSION is installed."
+}
+
+# Say what the launcher about to be written replaces, when it is not this
+# installation's own launcher: another file, a link (and where it points), or
+# the launcher of another installation.
+note_replaced_launcher() {
+    if [ -L "$LAUNCHER" ]; then
+        log "replacing $LAUNCHER, which was a link to $(readlink "$LAUNCHER")"
+    elif [ -d "$LAUNCHER" ]; then
+        die "$LAUNCHER is a directory; move it away and run the installer again"
+    elif [ -f "$LAUNCHER" ]; then
+        previous=$(sed -n "s/^INSTALL_DIR='\(.*\)'\$/\1/p" "$LAUNCHER" 2>/dev/null | head -n 1 | sed "s/'\\\\''/'/g")
+        if [ -z "$previous" ]; then
+            log "replacing $LAUNCHER, a file that was not a Knossos launcher"
+        elif [ "$previous" != "$DATA_DIR" ]; then
+            log "replacing $LAUNCHER, the launcher of the Knossos installed in $previous"
+        fi
+    elif [ -e "$LAUNCHER" ]; then
+        die "$LAUNCHER exists and is not a file or a link; move it away and run the installer again"
+    fi
+}
+
+# version_gt A B: whether A is a newer version than B, without PHP: numeric
+# parts as numbers, then a final release after its pre-releases, which compare
+# as text. tools/launcher/container-update has the same rule.
+version_gt() {
+    a=${1%%-*}
+    b=${2%%-*}
+    while [ -n "$a" ] || [ -n "$b" ]; do
+        x=${a%%.*}
+        y=${b%%.*}
+        case $a in *.*) a=${a#*.} ;; *) a='' ;; esac
+        case $b in *.*) b=${b#*.} ;; *) b='' ;; esac
+        x=${x:-0}
+        y=${y:-0}
+        [ "$x" -gt "$y" ] && return 0
+        [ "$x" -lt "$y" ] && return 1
+    done
+    as=''
+    bs=''
+    case $1 in *-*) as=${1#*-} ;; esac
+    case $2 in *-*) bs=${2#*-} ;; esac
+    if [ -z "$as" ]; then [ -n "$bs" ]; return; fi
+    [ -n "$bs" ] || return 1
+    [ "$as" != "$bs" ] && [ "$(printf '%s\n%s\n' "$as" "$bs" | LC_ALL=C sort | tail -n 1)" = "$as" ]
+}
+
+# A throwaway run of the image as this user: no network, no mount, a scratch
+# data directory inside the container.
+run_image() {
+    image=$1
+    shift
+    "$RUNTIME" run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+        -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
+        --entrypoint /opt/knossos/bin/knossos "$image" "$@" </dev/null
+}
+
+# Undo a container install after the helper switched but the launcher did not
+# answer: install.json and the launcher as they were.
+rollback_container_switch() {
+    if [ -n "$LAUNCHER" ] && [ -f "$LAUNCHER" ]; then
+        (cd "$TMP/probe project" 2>/dev/null && "$LAUNCHER" stop >/dev/null 2>&1 </dev/null) || true
+    fi
+    if [ -f "$TMP/install.json.prev" ]; then cp "$TMP/install.json.prev" "$DATA_DIR/install.json"; else rm -f "$DATA_DIR/install.json"; fi
+    if [ -f "$TMP/launcher.prev" ]; then cp "$TMP/launcher.prev" "$LAUNCHER"; else rm -f "$LAUNCHER"; fi
+}
+
+# Container mode: pull the release image, check it, and let the helper it
+# carries (tools/launcher/container-update, the same one self-update runs)
+# write install.json with the image's digest, the launcher and the plugin.
+install_container() {
+    RUNTIME=$container_runtime
+    REPOSITORY=${KNOSSOS_IMAGE_REPOSITORY:-ghcr.io/araneadev/knossos}
+    if [ -n "${KNOSSOS_IMAGE:-}" ]; then
+        REF=$KNOSSOS_IMAGE
+    else
+        if [ -z "$VERSION" ]; then
+            if [ "$REMOTE" = 1 ]; then
+                command -v curl >/dev/null 2>&1 || die 'curl is required to find the latest release; install it or pass --version'
+                resolve_latest
+            else
+                # A local release directory, as the tests use: the newest knossos-<version>-*.tar.gz in it.
+                for file in "$BASE"/knossos-*-*.tar.gz; do
+                    [ -e "$file" ] || continue
+                    stem=${file##*/knossos-}
+                    candidate=${stem%-*-*.tar.gz}
+                    (validate_version "$candidate") >/dev/null 2>&1 || continue
+                    if [ -z "$VERSION" ] || version_gt "$candidate" "$VERSION"; then VERSION=$candidate; fi
+                done
+                [ -n "$VERSION" ] || die "no release asset knossos-<version>-*.tar.gz in $BASE; pass --version"
+            fi
+        fi
+        REF="$REPOSITORY:$VERSION"
+    fi
+
+    if [ "$DRY_RUN" = 1 ]; then
+        say 'Dry run: nothing is created or changed.'
+        log "mode:       container ($RUNTIME)"
+        log "version:    ${VERSION:-the one the image reports}"
+        log "image:      $REF"
+        log "data dir:   $DATA_DIR"
+        log "launcher:   $LAUNCHER"
+        if [ -n "$ROOT_TO_GRANT" ]; then
+            log "grants:     $ROOT_TO_GRANT"
+        else
+            log 'grants:     no project root'
+        fi
+        if [ "$PLUGIN" = 1 ]; then
+            log "plugin:     write $DATA_DIR/plugin from the image, install it and register the MCP server with Claude Code"
+        else
+            log 'plugin:     skipped (--no-plugin)'
+        fi
+        exit 0
+    fi
+
+    TMP=$(mktemp -d "${TMPDIR:-/tmp}/knossos-install.XXXXXX")
+    trap cleanup EXIT
+    trap 'exit 1' INT TERM HUP
+
+    say "Installing Knossos ${VERSION:-from $REF} (container, $RUNTIME)"
+    if "$RUNTIME" image inspect "$REF" >/dev/null 2>&1 </dev/null; then
+        log "image $REF is already on this host"
+    else
+        log "pulling $REF"
+        if ! "$RUNTIME" pull "$REF" > "$TMP/pull.out" 2>&1 </dev/null; then
+            sed 's/^/  /' "$TMP/pull.out" >&2
+            die "could not pull $REF; nothing was changed"
+        fi
+    fi
+
+    # The image must answer with the version asked for and pass doctor before
+    # anything points at it.
+    said=$(run_image "$REF" version 2>&1) || die "the image $REF does not start ($said); nothing was changed"
+    image_version=${said#Knossos }
+    if [ "$said" = "$image_version" ] || ! (validate_version "$image_version") >/dev/null 2>&1; then
+        die "the image $REF answered '$said' instead of its version; nothing was changed"
+    fi
+    if [ -n "$VERSION" ] && [ "$image_version" != "$VERSION" ]; then
+        die "the image $REF holds Knossos $image_version, not $VERSION; nothing was changed"
+    fi
+    VERSION=$image_version
+    log 'running knossos doctor in the image'
+    if ! run_image "$REF" doctor > "$TMP/doctor.out" 2>&1; then
+        cat "$TMP/doctor.out" >&2
+        die "knossos doctor failed in $REF; nothing was changed"
+    fi
+    if ! "$RUNTIME" run --rm --network none --entrypoint cat "$REF" /opt/knossos/tools/launcher/container-update \
+        > "$TMP/container-update" 2>/dev/null </dev/null || [ ! -s "$TMP/container-update" ]; then
+        die "the image $REF has no install helper; it is older than container mode. Nothing was changed"
+    fi
+
+    if [ -f "$DATA_DIR/install.json" ]; then cp "$DATA_DIR/install.json" "$TMP/install.json.prev"; fi
+    if [ -f "$LAUNCHER" ]; then cp "$LAUNCHER" "$TMP/launcher.prev"; fi
+    note_replaced_launcher
+    set -- install "--install-dir=$DATA_DIR" "--bin-dir=$BIN_DIR" "--runtime=$RUNTIME" "--image=$REF" "--version=$VERSION"
+    if [ "$PLUGIN" = 1 ]; then set -- "$@" --plugin "--data-dir=$DATA_DIR"; fi
+    # The helper puts back what it changed when one of its own steps fails.
+    if ! digest=$(sh "$TMP/container-update" "$@" </dev/null); then
+        die 'the install did not complete (see above); the previous state was restored'
+    fi
+    CONTAINER_SWITCHED=1
+    log "image recorded as $digest"
+    log "launcher written to $LAUNCHER"
+    [ "$PLUGIN" = 0 ] || log "plugin written to $DATA_DIR/plugin"
+
+    # The real thing: a call through the launcher, from a scratch directory so
+    # no project of yours is mounted for it, and that container stopped after.
+    mkdir "$TMP/probe project"
+    if installed=$(cd "$TMP/probe project" && "$LAUNCHER" version 2>&1 </dev/null); then
+        (cd "$TMP/probe project" && "$LAUNCHER" stop >/dev/null 2>&1 </dev/null) || true
+        case $installed in
+            "Knossos $VERSION") ;;
+            *) die "the installed launcher answered '$installed', not Knossos $VERSION; the previous state was restored" ;;
+        esac
+        CONTAINER_SWITCHED=0
+        log "$installed"
+    else
+        die "the installed launcher does not run ($installed); the previous state was restored"
+    fi
+
+    # Roots, through the launcher: the root is mounted for that one call, and
+    # the server's own allow-root writes the file.
+    if [ -n "$ROOT_TO_GRANT" ]; then
+        if granted=$(cd "$ROOT_TO_GRANT" 2>/dev/null && "$LAUNCHER" allow-root "$ROOT_TO_GRANT" --execute 2>&1 </dev/null); then
+            log "granted $ROOT_TO_GRANT"
+        else
+            printf '%s\n' "$granted" | sed 's/^/  /' >&2
+            warn "could not add $ROOT_TO_GRANT to the roots file; run: knossos allow-root \"$ROOT_TO_GRANT\" --execute"
+        fi
+    elif [ "$ROOTS" = 1 ] && [ -z "${KNOSSOS_ALLOW_ROOT:-}" ]; then
+        log "no project root granted: the working directory is / or your home directory; add one with knossos allow-root <path> --execute"
+    fi
+
+    if [ "$PLUGIN" = 1 ]; then
+        # The image wrote the plugin; registering it is done here, on the
+        # host, because claude does not exist inside the image. The same two
+        # commands install-agent-plugin --execute runs in native mode.
+        if command -v claude >/dev/null 2>&1; then
+            say 'Installing the Claude Code plugin...'
+            if claude plugin marketplace add "$DATA_DIR/plugin" --scope user </dev/null \
+                && claude plugin install knossos@knossos --scope user --yes </dev/null; then
+                log 'plugin installed'
+            else
+                warn "the plugin was not installed; run: claude plugin marketplace add \"$DATA_DIR/plugin\" --scope user && claude plugin install knossos@knossos --scope user --yes"
+            fi
+        fi
+        register_mcp
+    fi
+}
+
 main() {
     MODE=auto
     VERSION=''
@@ -411,6 +667,7 @@ main() {
     TMP=''
     PREV_LINK=''
     SWITCHED=0
+    CONTAINER_SWITCHED=0
 
     while [ $# -gt 0 ]; do
         case $1 in
@@ -437,8 +694,7 @@ main() {
     done
 
     case $MODE in
-        auto | native) ;;
-        container) die 'container mode is not available in this version of the installer' ;;
+        auto | native | container) ;;
         *) die "--mode must be native or container, not: $MODE" ;;
     esac
 
@@ -487,29 +743,46 @@ main() {
     fi
 
     # A container runtime counts only when its daemon answers: a docker binary
-    # with a stopped daemon cannot run anything.
+    # with a stopped daemon cannot run anything, and says so on its own line.
     container_runtime=''
+    stopped_runtime=''
     for candidate in docker podman; do
-        if command -v "$candidate" >/dev/null 2>&1 && "$candidate" info >/dev/null 2>&1 </dev/null; then
+        command -v "$candidate" >/dev/null 2>&1 || continue
+        if "$candidate" info >/dev/null 2>&1 </dev/null; then
             container_runtime=$candidate
             break
         fi
+        [ -n "$stopped_runtime" ] || stopped_runtime=$candidate
     done
+    no_container_runtime() {
+        if [ -n "$stopped_runtime" ]; then
+            die "$stopped_runtime is installed, but its daemon is not running ($stopped_runtime info failed): start it and run the installer again"
+        fi
+        die "$1"
+    }
 
-    if [ -n "$missing" ]; then
-        {
-            say 'This host cannot run Knossos natively. Missing:'
-            printf '%s\n' "$missing"
-        } >&2
-        if [ -n "$container_runtime" ]; then
-            die "$container_runtime is available, but container mode is not available in this version of the installer"
-        fi
-        if [ "$MODE" = native ]; then
-            die 'install the runtimes listed above and run the installer again'
-        fi
-        die 'install the runtimes listed above (or Docker or Podman, with its daemon running) and run the installer again'
-    fi
-    MODE=native
+    case $MODE in
+        container)
+            [ -n "$container_runtime" ] || no_container_runtime 'container mode needs Docker or Podman, with its daemon running; neither was found'
+            ;;
+        native | auto)
+            if [ -n "$missing" ]; then
+                {
+                    say 'This host cannot run Knossos natively. Missing:'
+                    printf '%s\n' "$missing"
+                } >&2
+                if [ "$MODE" = native ]; then
+                    die 'install the runtimes listed above and run the installer again'
+                fi
+                [ -n "$container_runtime" ] \
+                    || no_container_runtime 'install the runtimes listed above (or Docker or Podman, with its daemon running) and run the installer again'
+                say "Using container mode: $container_runtime is available."
+                MODE=container
+            else
+                MODE=native
+            fi
+            ;;
+    esac
 
     case $(uname -s) in
         Linux) OS=linux ;;
@@ -534,13 +807,14 @@ main() {
     esac
     BASE=${BASE%/}
 
-    if [ "$REMOTE" = 1 ]; then
-        command -v curl >/dev/null 2>&1 || die 'curl is required to download a release'
+    if [ "$MODE" = native ]; then
+        if [ "$REMOTE" = 1 ]; then
+            command -v curl >/dev/null 2>&1 || die 'curl is required to download a release'
+        fi
+        [ -n "$VERSION" ] || resolve_latest
+        ASSET="knossos-$VERSION-$OS-$ARCH.tar.gz"
+        VERSION_DIR="$DATA_DIR/versions/$VERSION"
     fi
-
-    [ -n "$VERSION" ] || resolve_latest
-    ASSET="knossos-$VERSION-$OS-$ARCH.tar.gz"
-    VERSION_DIR="$DATA_DIR/versions/$VERSION"
     # With --data-dir, the roots file sits beside it whatever the caller
     # exported; without, an exported KNOSSOS_ROOTS_FILE is honoured.
     if [ "$DATA_DIR_GIVEN" = 1 ] || [ -z "${KNOSSOS_ROOTS_FILE:-}" ]; then
@@ -557,6 +831,13 @@ main() {
     KNOSSOS_ROOTS_FILE=$ROOTS_FILE
     export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
     unset KNOSSOS_INSTALL_DIR
+    LAUNCHER="$BIN_DIR/knossos"
+
+    if [ "$MODE" = container ]; then
+        install_container
+        finish
+        return 0
+    fi
 
     # ---- dry run -----------------------------------------------------------
 
@@ -662,7 +943,6 @@ main() {
     TEMPLATE="$VERSION_DIR/launcher/knossos"
     [ -f "$TEMPLATE" ] || die "the release has no launcher template at $TEMPLATE; nothing was switched"
     mkdir -p "$BIN_DIR"
-    LAUNCHER="$BIN_DIR/knossos"
     NEW_LAUNCHER="$BIN_DIR/.knossos.tmp.$$"
     write_launcher "$NEW_LAUNCHER" || die "the launcher template at $TEMPLATE has no install directory line; nothing was switched"
     # Run the new launcher against a scratch install dir whose current already
@@ -691,6 +971,7 @@ main() {
     printf '{\n  "mode": "native",\n  "version": "%s",\n  "image": null,\n  "bin_dir": %s,\n  "installed_at": "%s"\n}\n' \
         "$VERSION" "$(json_string "$BIN_DIR")" "$installed_at" > "$DATA_DIR/install.json.tmp.$$"
     mv -f "$DATA_DIR/install.json.tmp.$$" "$DATA_DIR/install.json"
+    note_replaced_launcher
     mv -f "$NEW_LAUNCHER" "$LAUNCHER"
     log "launcher written to $LAUNCHER"
 
@@ -727,34 +1008,9 @@ main() {
             sed 's/^/  /' "$TMP/plugin.out" >&2
             warn "the plugin was not installed (output above); run: $LAUNCHER install-agent-plugin --data-dir=\"$DATA_DIR\" --execute"
         fi
-        if command -v claude >/dev/null 2>&1; then
-            say 'Registering the MCP server with Claude Code...'
-            claude mcp remove "$NAME" -s "$SCOPE" >/dev/null 2>&1 </dev/null || true
-            # No --allow-root: the roots file governs. KNOSSOS_ROOTS_FILE is set
-            # too, so the server reads the file named here.
-            if claude mcp add "$NAME" -s "$SCOPE" \
-                -e "KNOSSOS_DATA_DIR=$DATA_DIR" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE" -- \
-                "$LAUNCHER" serve </dev/null; then
-                log "registered as '$NAME' (scope: $SCOPE)"
-            else
-                warn "registering the MCP server failed; run: claude mcp add $NAME -s $SCOPE -- \"$LAUNCHER\" serve"
-            fi
-        else
-            log "Claude CLI not found; register the MCP server later with: claude mcp add $NAME -s $SCOPE -- \"$LAUNCHER\" serve"
-        fi
+        register_mcp
     fi
-
-    case ":${PATH:-}:" in
-        *":$BIN_DIR:"*) ;;
-        *)
-            say
-            say "$BIN_DIR is not on your PATH. Add it, for example:"
-            say "  export PATH=\"$BIN_DIR:\$PATH\""
-            ;;
-    esac
-
-    say
-    say "Knossos $VERSION is installed."
+    finish
 }
 
 main "$@"; exit

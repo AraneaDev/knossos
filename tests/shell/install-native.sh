@@ -236,13 +236,27 @@ if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'a PHP that is too old is
 
 # ---- container mode --------------------------------------------------------
 
-out=$(run_install "$WORK/container" --mode=container --version="$VERSION"); status=$?
-case $out in *"container mode is not available"*) said=yes ;; *) said=no ;; esac
+# tests/shell/install-container.sh covers the mode itself, with a fake docker.
+# Here, on a PATH with neither docker nor podman (never the system's, which
+# may hold a real one), asking for it says what is missing and creates nothing.
+out=$(PATH=$BARE KNOSSOS_RELEASE_BASE=$RELEASE sh "$INSTALL" --mode=container --no-plugin --data-dir="$WORK/container/data" --bin-dir="$WORK/container/bin" --version="$VERSION" 2>&1 </dev/null); status=$?
+case $out in *"container mode needs Docker or Podman"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/container" ]; then
-    pass '--mode=container is refused in this version'
+    pass '--mode=container without docker or podman says so and creates nothing'
 else
     fail "container mode: status $status, output $out"
 fi
+
+# A knossos in the bin directory that is not this installation's launcher is
+# named before it is replaced.
+TR="$WORK/replace"
+mkdir -p "$TR/bin dir"
+printf '#!/bin/sh\necho mine\n' > "$TR/bin dir/knossos"
+out=$(run_install "$TR" --version="$VERSION"); status=$?
+case $out in *"replacing $TR/bin dir/knossos, a file that was not a Knossos launcher"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'replacing a file that is not a launcher says so'; else fail "replace: status $status, output $out"; fi
+out=$(run_install "$TR" --version="$VERSION")
+case $out in *replacing*) fail "reinstalling over its own launcher says replacing: $out" ;; *) pass 'its own launcher is replaced without a note' ;; esac
 
 # ---- a script cut off mid-download -----------------------------------------
 
