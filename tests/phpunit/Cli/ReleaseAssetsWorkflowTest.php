@@ -21,7 +21,7 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
         self::assertStringNotContainsString('release-pr', $gate);
         self::assertSame(1, substr_count($workflow, '--draft=false'));
         self::assertGreaterThan(strpos($assets, 'gh release upload'), strpos($assets, '--draft=false'));
-        self::assertStringContainsString('needs: [release-please, tarballs]', $assets);
+        self::assertStringContainsString('needs: [release-please, tarballs, image]', $assets);
         self::assertStringContainsString('dist/* --repo', $assets);
         self::assertStringContainsString('cp ../install.sh install.sh', $assets);
     }
@@ -70,10 +70,11 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
         self::assertStringContainsString('type: boolean', $workflow);
         self::assertStringContainsString('if: ${{ !inputs.dry_run }}', $this->job($workflow, 'release-please'));
         self::assertStringContainsString('!inputs.dry_run', $this->job($workflow, 'release-pr'));
-        foreach (['Attach the assets to the draft release', 'Publish the release now that its gate passed and its assets are attached'] as $step) {
-            $block = substr($this->job($workflow, 'assets'), (int) strpos($this->job($workflow, 'assets'), 'name: ' . $step));
-            self::assertStringContainsString("if: \${{ !inputs.dry_run && needs.tarballs.result == 'success' }}", substr($block, 0, 200));
-        }
+        $assets = $this->job($workflow, 'assets');
+        $attach = substr($assets, (int) strpos($assets, 'name: Attach the assets to the draft release'));
+        self::assertStringContainsString("if: \${{ !inputs.dry_run && needs.tarballs.result == 'success' }}", substr($attach, 0, 200));
+        $publish = substr($assets, (int) strpos($assets, 'name: Publish the release now that its gate passed and its assets are attached'));
+        self::assertStringContainsString("if: \${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}", substr($publish, 0, 250));
     }
 
     #[Group('packaging')]
@@ -105,9 +106,126 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
         }
     }
 
+    #[Group('packaging')]
+    public function testTheImageIsBuiltOnANativeRunnerPerArchitectureAfterTheGateAndTheTarballs(): void
+    {
+        $workflow = $this->workflow();
+        $image = $this->job($workflow, 'image');
+
+        self::assertStringContainsString('needs: [release-please, tarballs]', $image);
+        self::assertStringContainsString("if: \${{ !cancelled() && (inputs.dry_run || (needs.release-please.result == 'success' && needs.release-please.outputs.release_created && needs.tarballs.result == 'success')) }}", $image);
+        self::assertStringContainsString('- { runner: ubuntu-24.04, platform: linux/amd64, arch: amd64 }', $image);
+        self::assertStringContainsString('- { runner: ubuntu-24.04-arm, platform: linux/arm64, arch: arm64 }', $image);
+        self::assertStringContainsString('target: runtime', $image);
+        // No emulation: each architecture builds on its own runner.
+        foreach (['qemu', 'binfmt', 'linux/amd64,linux/arm64'] as $absent) {
+            self::assertStringNotContainsString($absent, $workflow);
+        }
+    }
+
+    #[Group('packaging')]
+    public function testADryRunBuildsBothImagesAndPushesNothing(): void
+    {
+        $image = $this->job($this->workflow(), 'image');
+        $build = $this->step($image, 'Build the image for this architecture');
+        $push = $this->step($image, 'Push the image by digest');
+        $login = substr($image, (int) strpos($image, 'uses: docker/login-action@'), 120);
+
+        self::assertStringContainsString('load: true', $build);
+        self::assertStringNotContainsString('push:', $build);
+        self::assertStringNotContainsString('outputs:', $build);
+        self::assertStringContainsString('if: ${{ !inputs.dry_run }}', $push);
+        self::assertStringContainsString('push-by-digest=true,name-canonical=true,push=true', $push);
+        self::assertStringContainsString('name=ghcr.io/araneadev/knossos,', $push);
+        self::assertStringContainsString('if: ${{ !inputs.dry_run }}', $login);
+        self::assertStringContainsString('name: image-digest-${{ matrix.arch }}', $image);
+        // In the assets job, everything that touches the registry is a real release's alone.
+        foreach (['Tag the image with the version and latest', 'Record the image digest in the release notes'] as $name) {
+            self::assertStringContainsString("if: \${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}", $this->step($this->job($this->workflow(), 'assets'), $name));
+        }
+    }
+
+    #[Group('packaging')]
+    public function testEachImageIsStartedAndCarriesWhatContainerModeRuns(): void
+    {
+        $check = $this->step($this->job($this->workflow(), 'image'), 'Start the image and check what container mode needs');
+
+        self::assertStringContainsString('if [ "$DRY_RUN" != true ] && [ "$said" != "Knossos ${TAG#v}" ]; then', $check);
+        foreach (['/opt/knossos/launcher/knossos', '/opt/knossos/tools/launcher/idle-stop', '/opt/knossos/tools/launcher/container-update'] as $path) {
+            self::assertStringContainsString('test -x ' . $path, $check);
+        }
+        self::assertLessThan(strpos($this->job($this->workflow(), 'image'), 'name: Push the image by digest'), strpos($this->job($this->workflow(), 'image'), 'name: Start the image'));
+    }
+
+    #[Group('packaging')]
+    public function testTheImageIsTaggedAndItsDigestRecordedRightBeforeThePublish(): void
+    {
+        $assets = $this->job($this->workflow(), 'assets');
+        $order = array_map(static fn(string $needle): int|false => strpos($assets, $needle), [
+            'gh release upload',
+            'docker buildx imagetools create',
+            'name: Record the image digest in the release notes',
+            '--draft=false',
+        ]);
+        self::assertNotContains(false, $order);
+        $sorted = $order;
+        sort($sorted);
+        assertSame($sorted, $order);
+
+        $tag = $this->step($assets, 'Tag the image with the version and latest');
+        self::assertStringContainsString('-t "ghcr.io/araneadev/knossos:${TAG#v}" -t ghcr.io/araneadev/knossos:latest $sources', $tag);
+        self::assertStringContainsString('for arch in amd64 arm64; do', $tag);
+        self::assertStringContainsString('echo "digest=$digest" >> "$GITHUB_OUTPUT"', $tag);
+        $notes = $this->step($assets, 'Record the image digest in the release notes');
+        self::assertStringContainsString('DIGEST: ${{ steps.image.outputs.digest }}', $notes);
+        self::assertStringContainsString('--notes-file notes.md', $notes);
+        // A failed image build ends in the rollback, like a failed tarball.
+        self::assertStringContainsString("needs.tarballs.result == 'success' && needs.image.result == 'success' && needs.release-please.result == 'success') && 'success' || 'failure'", $assets);
+    }
+
+    #[Group('packaging')]
+    public function testOnlyTheJobsThatPushTheImageMayWritePackages(): void
+    {
+        $workflow = $this->workflow();
+
+        self::assertStringContainsString("permissions:\n  contents: write\n  pull-requests: write\n  packages: read", $workflow);
+        assertSame(2, preg_match_all('/^ +packages: write$/m', $workflow));
+        self::assertStringContainsString("permissions:\n      contents: read\n      packages: write", $this->job($workflow, 'image'));
+        self::assertStringContainsString("permissions:\n      contents: write\n      pull-requests: write\n      packages: write", $this->job($workflow, 'assets'));
+        foreach (['release-please', 'tarballs', 'release-pr'] as $job) {
+            assertSame(0, preg_match_all('/^ +packages: write$/m', $this->job($workflow, $job)), $job);
+        }
+    }
+
+    #[Group('packaging')]
+    public function testTheImageJobsUseOnlyActionsThisRepositoryAlreadyPins(): void
+    {
+        $others = '';
+        foreach (glob(self::repositoryRoot() . '/.github/workflows/*.yml') ?: [] as $file) {
+            if (!str_ends_with($file, '/release-please.yml')) {
+                $others .= (string) file_get_contents($file);
+            }
+        }
+        preg_match_all('#uses: (docker/\S+)#', $this->job($this->workflow(), 'image') . $this->job($this->workflow(), 'assets'), $uses);
+        self::assertNotEmpty($uses[1]);
+        foreach ($uses[1] as $action) {
+            self::assertStringContainsString($action, $others . $this->job($this->workflow(), 'release-please'), $action . ' is not pinned anywhere else in this repository');
+        }
+    }
+
     private function workflow(): string
     {
         return (string) file_get_contents(self::repositoryRoot() . '/.github/workflows/release-please.yml');
+    }
+
+    /** One step's text within a job, from its name to the next step. */
+    private function step(string $job, string $name): string
+    {
+        $start = strpos($job, 'name: ' . $name);
+        self::assertNotFalse($start, 'step ' . $name);
+        $end = strpos($job, "\n      - ", $start);
+
+        return substr($job, $start, $end === false ? null : $end - $start);
     }
 
     /** One job's text, from its key to the next job. */

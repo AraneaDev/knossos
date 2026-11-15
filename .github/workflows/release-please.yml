@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Build the four platform tarballs and the merged SHA256SUMS and keep them as workflow artifacts. No release is created, gated, changed or published.
+        description: Build the four platform tarballs and the merged SHA256SUMS and keep them as workflow artifacts, and build the runtime image for both architectures without pushing it. No release is created, gated, changed or published.
         type: boolean
         default: false
 
@@ -310,20 +310,129 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The runtime image for container mode, built natively on a runner of each
+  # architecture: no emulation and no action beyond the buildx setup this
+  # repository already pins. It runs once the gate and every tarball passed,
+  # and pushes each architecture by digest only, untagged; the assets job joins
+  # the two under :<version> and :latest right before the release is
+  # published. A dry run builds and checks both and pushes nothing. Each image
+  # is started first: it must answer with the tag's version and carry the
+  # launcher template and the scripts container mode runs from it.
+  #
+  # The only job besides the assets job with `packages: write`: pushing is all
+  # it needs it for.
+  image:
+    name: Image ${{ matrix.arch }}
+    needs: [release-please, tarballs]
+    if: ${{ !cancelled() && (inputs.dry_run || (needs.release-please.result == 'success' && needs.release-please.outputs.release_created && needs.tarballs.result == 'success')) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: ${{ !inputs.dry_run }}
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, platform: linux/amd64, arch: amd64 }
+          - { runner: ubuntu-24.04-arm, platform: linux/arm64, arch: arm64 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.dry_run && github.sha || needs.release-please.outputs.sha }}
+          persist-credentials: false
+
+      - name: Key the build
+        id: key
+        run: tools/dependency-image-key | tee -a "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build the image for this architecture
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: runtime
+          platforms: ${{ matrix.platform }}
+          build-args: APT_REFRESH=${{ steps.key.outputs.refresh }}
+          tags: knossos:image-check
+          load: true
+
+      - name: Start the image and check what container mode needs
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          said=$(docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -e KNOSSOS_DATA_DIR=/tmp/check knossos:image-check version)
+          if [ "$DRY_RUN" != true ] && [ "$said" != "Knossos ${TAG#v}" ]; then
+            echo "::error::the image says '$said', but the release tag is $TAG"
+            exit 1
+          fi
+          docker run --rm --network none --entrypoint /bin/sh knossos:image-check -c \
+            'test -x /opt/knossos/launcher/knossos && test -x /opt/knossos/tools/launcher/idle-stop && test -x /opt/knossos/tools/launcher/container-update'
+          echo "$said"
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: ${{ !inputs.dry_run }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The same build from the builder's cache, pushed by digest without a tag.
+      - name: Push the image by digest
+        id: push
+        if: ${{ !inputs.dry_run }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: runtime
+          platforms: ${{ matrix.platform }}
+          build-args: APT_REFRESH=${{ steps.key.outputs.refresh }}
+          outputs: type=image,name=ghcr.io/araneadev/knossos,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Keep the digest for the assets job
+        if: ${{ !inputs.dry_run }}
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          case $DIGEST in sha256:*) ;; *) echo "::error::no digest for $ARCH"; exit 1 ;; esac
+          mkdir -p digests
+          printf '%s\n' "$DIGEST" > "digests/$ARCH"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !inputs.dry_run }}
+        with:
+          name: image-digest-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 7
+
   # Merges the four checksum lines into one SHA256SUMS, and either keeps the
   # result as a workflow artifact (a dry run) or attaches it, the tarballs and
-  # install.sh to the draft release and publishes it. The draft is published
-  # only when the gate in the first job passed and every asset is attached. Any
-  # other outcome, a failed or cancelled tarball build or upload included,
-  # ends in the same rollback the gate has: the draft is deleted and the
-  # Release PR goes back to pending. `always()` keeps this job running when the
-  # run is cancelled, which is when a draft is most likely to be left behind.
+  # install.sh to the draft release, tags the image and publishes it. The
+  # draft is published only when the gate in the first job passed, every
+  # asset is attached and the image is tagged. Any other outcome, a failed or
+  # cancelled tarball build, image build or upload included, ends in the same
+  # rollback the gate has: the draft is deleted and the Release PR goes back
+  # to pending. `always()` keeps this job running when the run is cancelled,
+  # which is when a draft is most likely to be left behind.
+  #
+  # Its permissions are the workflow's plus `packages: write`, for the image
+  # tags; a job-level block replaces the workflow's, so all of them are named.
   assets:
     name: Attach the assets and publish
-    needs: [release-please, tarballs]
+    needs: [release-please, tarballs, image]
     if: ${{ always() && (inputs.dry_run || (needs.release-please.result == 'success' && needs.release-please.outputs.release_created)) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: write
     steps:
       # always(): the rollback at the end needs tools/ci/release-rollback on
       # disk, also in a failed or cancelled run, where the implicit success()
@@ -375,8 +484,59 @@ jobs:
           TAG: ${{ needs.release-please.outputs.tag_name }}
         run: gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY"
 
+      # The two architectures under the release's version and latest, as one
+      # multi-arch image, only now that everything else is in place. The digest
+      # of that image goes into the release notes: it is what a container
+      # install records.
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}
+        with:
+          pattern: image-digest-*
+          merge-multiple: true
+          path: digests
+
+      - name: Tag the image with the version and latest
+        id: image
+        if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -eu
+          sources=''
+          for arch in amd64 arm64; do
+            if [ ! -s "digests/$arch" ]; then
+              echo "::error::the $arch image digest is missing"
+              exit 1
+            fi
+            sources="$sources ghcr.io/araneadev/knossos@$(cat "digests/$arch")"
+          done
+          # shellcheck disable=SC2086 # one source reference per word
+          docker buildx imagetools create -t "ghcr.io/araneadev/knossos:${TAG#v}" -t ghcr.io/araneadev/knossos:latest $sources
+          digest=$(docker buildx imagetools inspect "ghcr.io/araneadev/knossos:${TAG#v}" --format '{{json .Manifest}}' | jq -r .digest)
+          case $digest in sha256:*) ;; *) echo "::error::could not read the digest of the tagged image"; exit 1 ;; esac
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Record the image digest in the release notes
+        if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
+          # shellcheck disable=SC2016 # the backticks are Markdown, not a command
+          printf '\n## Container image\n\n- `ghcr.io/araneadev/knossos:%s` (linux/amd64, linux/arm64)\n- `ghcr.io/araneadev/knossos@%s`\n' "${TAG#v}" "$DIGEST" >> notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+
       - name: Publish the release now that its gate passed and its assets are attached
-        if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' }}
+        if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release-please.outputs.tag_name }}
@@ -384,15 +544,15 @@ jobs:
 
       # The same rule as the gate's rollback: anything but `success` removes
       # the draft and re-opens the Release PR. The gate result handed over
-      # folds in the first job and the tarball builds, because a step cannot
-      # see a job that did not run its way. With the checkout failed there is
+      # folds in the first job, the tarball builds and the image builds,
+      # because a step cannot see a job that did not run its way. With the checkout failed there is
       # no script, so the draft is deleted inline.
       - name: Remove the draft release and re-open it when its assets or gate failed
         if: ${{ always() && !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           CREATED: ${{ needs.release-please.outputs.release_created }}
-          GATE: ${{ (job.status == 'success' && needs.tarballs.result == 'success' && needs.release-please.result == 'success') && 'success' || 'failure' }}
+          GATE: ${{ (job.status == 'success' && needs.tarballs.result == 'success' && needs.image.result == 'success' && needs.release-please.result == 'success') && 'success' || 'failure' }}
           TAG: ${{ needs.release-please.outputs.tag_name }}
           SHA: ${{ needs.release-please.outputs.sha }}
         run: |
@@ -410,7 +570,7 @@ jobs:
   # pass leaves it alone and the next run releases it.
   release-pr:
     name: Release PR
-    needs: [release-please, tarballs, assets]
+    needs: [release-please, tarballs, image, assets]
     if: ${{ !cancelled() && !inputs.dry_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
