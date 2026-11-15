@@ -160,7 +160,9 @@ for planted in install install/plugin install/containers; do
         *) mkdir -p "$T3/data dir/install"; ln -s "$HOME" "$T3/data dir/$planted" ;;
     esac
     out=$(ci "$T3" --version=1.0.0 --no-plugin --no-roots); status=$?
-    case $out in *'is a symlink'*) said=yes ;; *) said=no ;; esac
+    # Refused as a symlink, or earlier, as an install directory no launcher
+    # of this installation vouches for.
+    case $out in *'is a symlink'* | *'which the knossos launcher in '*' was not installed with'*) said=yes ;; *) said=no ;; esac
     if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$T3/bin dir/knossos" ] && [ "$(cat "$SENTINEL")" = 'do not touch' ] \
         && [ -z "$(find "$HOME" -mindepth 1 ! -name .secret | head -n 1)" ]; then
         pass "a symlink planted at <data dir>/$planted is refused and nothing is written through it"
@@ -710,8 +712,14 @@ STUB="$WORK/stub runtimes"
 mkdir -p "$STUB"
 cat > "$STUB/php" <<'PHP'
 #!/bin/sh
+# STUB_PHP_WARN: a startup warning on stdout first, as PHP prints one for a
+# stale extension= line with its default display_errors.
 case "$*" in
-    *extension_loaded*) printf '%s' "${STUB_PHP_LACKS:-}" ;;
+    *extension_loaded*)
+        [ -z "${STUB_PHP_WARN:-}" ] || printf 'PHP Warning:  Module "pdo_sqlite" is already loaded in Unknown on line 0\n'
+        lacks=${STUB_PHP_LACKS:-}
+        printf '\nKNOSSOS-MISSING-EXTENSIONS:%s\n' "${lacks% }"
+        ;;
     *PHP_VERSION_ID*) exit 0 ;;
     *) echo 8.3.0 ;;
 esac
@@ -769,6 +777,16 @@ reset_docker
 out=$(detect "$STUB:$BARE" "$WORK/all there" --dry-run); status=$?
 case $out in *'mode:       native'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a host with everything doctor checks gets native mode'; else fail "all there: $status, $out"; fi
+reset_docker
+out=$(STUB_PHP_WARN=1 detect "$STUB:$BARE" "$WORK/php warns" --dry-run); status=$?
+case $out in *'mode:       native'*) said=yes ;; *) said=no ;; esac
+case $out in *'Missing:'*) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a PHP startup warning on stdout is not read as a missing extension'; else fail "php warning: $status, $out"; fi
+reset_docker
+out=$(STUB_PHP_LACKS='tokenizer ' detect "$STUB:$BARE" "$WORK/no tokenizer"); status=$?
+case $out in *'  - the PHP extension(s) tokenizer (not loaded by php)'*'Using container mode: docker is available.'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a PHP without tokenizer, which the PHP worker needs, is not given native mode'; else fail "no tokenizer: $status, $out"; fi
+rm -rf "${WORK:?}/php warns" "${WORK:?}/no tokenizer"
 rm -rf "${WORK:?}/no mbstring" "${WORK:?}/no git" "${WORK:?}/all there"
 
 # ---- a root container mode never mounts is not granted -------------------------------------
@@ -818,6 +836,74 @@ else
     kill "$!" 2>/dev/null
 fi
 rm -rf "${OTHER_INSTALL:?}"
+
+# ---- another installation's install directory, and graphs other launchers marked ---------
+
+# A container install made with one bin directory; a second install into the
+# same data directory with another bin directory is another installation.
+reset_docker
+out=$(cid "$WORK/elsewhere" "$WORK/inst a/data" "$WORK/inst a/bin" --no-plugin --no-roots); status=$?
+if [ "$status" -eq 0 ]; then pass 'a first container install for the neighbour cases'; else fail "install a: $status, $out"; fi
+owned_refused() {
+    what=$1 data=$2 text=$3
+    shift 3
+    reset_docker
+    out=$(cid "$WORK/elsewhere" "$data" "$WORK/other bin" --no-plugin --no-roots "$@"); status=$?
+    case $out in *"$text"*) said=yes ;; *) said=no ;; esac
+    if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(count_calls run)" -eq 0 ] && [ ! -e "$WORK/other bin" ]; then
+        pass "$what is refused, and nothing is pulled, run or created"
+    else
+        fail "$what: $status, $out"
+    fi
+}
+owned_refused "another installation's data directory, from another bin directory" "$WORK/inst a/data" \
+    "the data directory $WORK/inst a/data holds $WORK/inst a/data/install, which the knossos launcher in $WORK/other bin was not installed with"
+owned_refused "another installation's data directory, dry run" "$WORK/inst a/data" "which the knossos launcher in $WORK/other bin was not installed with" --dry-run
+reset_docker
+out=$(cid "$WORK/elsewhere" "$WORK/inst a/data" "$WORK/inst a/bin" --no-plugin --no-roots); status=$?
+if [ "$status" -eq 0 ]; then pass 'the same installation, with its own bin directory, reinstalls'; else fail "reinstall a: $status, $out"; fi
+ln -s "$WORK/inst a/data" "$WORK/link to a"
+reset_docker
+out=$(cid "$WORK/elsewhere" "$WORK/link to a" "$WORK/inst a/bin" --no-plugin --no-roots); status=$?
+if [ "$status" -eq 0 ]; then pass 'and so it does through a link to its data directory'; else fail "reinstall a through a link: $status, $out"; fi
+rm -f "$WORK/link to a"
+for shape in file link empty; do
+    ODD="$WORK/odd install $shape"
+    mkdir -p "$ODD"
+    case $shape in
+        file) : > "$ODD/install" ;;
+        link) ln -s "$WORK/inst a/data/install" "$ODD/install" ;;
+        empty) mkdir "$ODD/install" ;;
+    esac
+    owned_refused "a data directory holding an install that is a $shape" "$ODD" "the data directory $ODD holds $ODD/install, which the knossos launcher in $WORK/other bin was not installed with"
+    rm -rf "${ODD:?}"
+done
+# A graph directory a launcher recorded and marked, and a directory below it.
+MARKED="$WORK/marked graph"
+mkdir -p "$MARKED/.knossos-graph" "$MARKED/sub"
+: > "$MARKED/knossos.sqlite"
+owned_refused 'a graph directory another installation marked' "$MARKED" \
+    "the data directory $MARKED is a graph directory another Knossos container install uses (it holds .knossos-graph)"
+owned_refused 'a data directory inside a marked graph directory' "$MARKED/sub/data" "lies in $MARKED, the graph directory of a container install"
+rm -rf "${MARKED:?}"
+# Names Knossos uses, in a shape it never makes them.
+SHAPED="$WORK/shaped data"
+mkdir -p "$SHAPED/watch/repo/.git"
+owned_refused 'a data directory whose watch/ holds a directory' "$SHAPED" \
+    "the data directory $SHAPED holds watch, which Knossos only makes as a directory that holds plain files only"
+rm -rf "${SHAPED:?}"
+mkdir -p "$SHAPED/roots.json"
+owned_refused 'a data directory whose roots.json is a directory' "$SHAPED" "holds roots.json, which Knossos only makes as a plain file"
+rm -rf "${SHAPED:?}"
+# A fresh install that fails after it made the install directory removes it,
+# so the next run is not refused for it.
+reset_docker
+out=$(FAKE_PLUGIN_FAILS=1 ci "$WORK/failed fresh" --version=1.0.0 --no-roots); status=$?
+if [ "$status" -ne 0 ] && [ ! -e "$WORK/failed fresh/data dir/install" ]; then pass 'a fresh install that fails leaves no install directory behind'; else fail "failed fresh install: $status, $(ls -A "$WORK/failed fresh/data dir" 2>&1), $out"; fi
+reset_docker
+out=$(ci "$WORK/failed fresh" --version=1.0.0 --no-plugin --no-roots); status=$?
+if [ "$status" -eq 0 ]; then pass 'and the next run installs'; else fail "after a failed fresh install: $status, $out"; fi
+rm -rf "${WORK:?}/inst a" "${WORK:?}/failed fresh"
 
 # A lookup that never returns, cut off as the session hook's timeout cuts it
 # off: the attempt is already recorded, so the next session does not retry.

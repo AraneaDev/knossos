@@ -5,11 +5,11 @@
 #              [--bin-dir=DIR] [--no-plugin] [--no-roots] [--dry-run]
 #              [--force-clean]
 #
-# Native mode needs PHP 8.3+ with the json, mbstring, pdo and pdo_sqlite
-# extensions, Node 24+, Python 3.11+, git, tar and sha256sum or shasum on the
-# host: what the release's `knossos doctor` checks, and what this script
-# unpacks and checks a release with. It downloads the release tarball for this platform, checks it against the
-# release's SHA256SUMS, unpacks it under <data dir>/versions/<version>, points
+# Native mode needs PHP 8.3+ with the json, mbstring, pdo, pdo_sqlite and
+# tokenizer extensions, Node 24+, Python 3.11+, git, tar and sha256sum or
+# shasum on the host: what the release's `knossos doctor` checks, and what
+# this script unpacks and checks a release with. It downloads the release
+# tarball for this platform, checks it against the release's SHA256SUMS, unpacks it under <data dir>/versions/<version>, points
 # <data dir>/current at it and writes one launcher, <bin dir>/knossos, that the
 # MCP registration and the plugin's hooks call.
 #
@@ -242,6 +242,10 @@ remove_partial() {
 cleanup() {
     if [ "$SWITCHED" = 1 ]; then rollback_switch || true; fi
     if [ "$CONTAINER_SWITCHED" = 1 ]; then rollback_container_switch || true; fi
+    # An install directory this run made, for an install that did not
+    # complete: left behind, no launcher would vouch for it, and the next run
+    # would refuse the data directory.
+    if [ "$CINSTALL_MADE" = 1 ] && [ -n "$CINSTALL" ]; then rm -rf "$CINSTALL"; fi
     rm -rf "$TMP"
     remove_partial
     if [ -n "$BIN_DIR" ]; then rm -f "$BIN_DIR/.knossos.tmp.$$"; fi
@@ -589,7 +593,9 @@ graph_holding() {
     at=/
     rest=${1#/}
     while :; do
-        if is_container_graph "$at"; then
+        # A container install's graph, or a graph directory a launcher marked
+        # when it recorded it (.knossos-graph): containers write both.
+        if is_container_graph "$at" || { [ -d "${at%/}/.knossos-graph" ] && [ ! -L "${at%/}/.knossos-graph" ]; }; then
             printf '%s' "$at"
             return 0
         fi
@@ -679,26 +685,27 @@ refuse_other_mode() {
 # tests/shell/install-container.sh compares them.
 # shellcheck disable=SC2016 # the lists are data, never expanded
 GRAPH_ENTRIES='
-knossos.sqlite
-knossos.sqlite-wal
-knossos.sqlite-shm
-knossos.sqlite-journal
-knossos.sqlite.migrate.lock
-scan-failures.jsonl
-scan-failures.jsonl.lock
-scan-failures.jsonl.*.tmp
-watch
-backups
-roots.json
-roots.json.lock
-.roots.json.*.tmp
-enrichers.json
-.enrichers.json.*.tmp
-pane-autostart.json
-.pane-autostart.json.*.tmp
-mcp-serve.log
-install
-.knossos-files.*
+knossos.sqlite file
+knossos.sqlite-wal file
+knossos.sqlite-shm file
+knossos.sqlite-journal file
+knossos.sqlite.migrate.lock file
+scan-failures.jsonl file
+scan-failures.jsonl.lock file
+scan-failures.jsonl.*.tmp file
+watch files
+backups files
+roots.json file
+roots.json.lock file
+.roots.json.*.tmp file
+enrichers.json file
+.enrichers.json.*.tmp file
+pane-autostart.json file
+.pane-autostart.json.*.tmp file
+mcp-serve.log file
+install own-install
+.knossos-graph mark
+.knossos-files.* files
 '
 NATIVE_ENTRIES='
 install.json
@@ -715,26 +722,56 @@ self-update.lock
 self-update.tmp
 '
 
-# entry_kind NAME: `graph` or `native` for a name on one of the lists above,
-# nothing for any other.
+# entry_kind NAME: `graph SHAPE` or `native` for a name on one of the lists
+# above, nothing for any other.
 entry_kind() {
-    for kind in graph native; do
-        if [ "$kind" = graph ]; then list=$GRAPH_ENTRIES; else list=$NATIVE_ENTRIES; fi
-        while IFS= read -r pattern; do
-            [ -n "$pattern" ] || continue
-            # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
-            case $1 in $pattern) printf '%s' "$kind"; return 0 ;; esac
-        done <<LIST
-$list
+    while read -r pattern shape; do
+        [ -n "$pattern" ] || continue
+        # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
+        case $1 in $pattern) printf 'graph %s' "$shape"; return 0 ;; esac
+    done <<LIST
+$GRAPH_ENTRIES
 LIST
-    done
+    while read -r pattern; do
+        [ -n "$pattern" ] || continue
+        # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
+        case $1 in $pattern) printf 'native'; return 0 ;; esac
+    done <<LIST
+$NATIVE_ENTRIES
+LIST
+}
+
+# entry_has_shape PATH SHAPE: whether PATH is what Knossos makes under that
+# shape (see GRAPH_ENTRIES). Nothing is followed: a link is never the shape.
+entry_has_shape() {
+    [ ! -L "$1" ] || return 1
+    case $2 in
+        file) [ -f "$1" ] ;;
+        files | mark)
+            [ -d "$1" ] && [ -r "$1" ] && [ -x "$1" ] || return 1
+            if [ "$2" = mark ]; then
+                inner=$(find "$1/." ! -name . -prune -print 2>/dev/null) || return 1
+            else
+                inner=$(find "$1/." ! -name . -prune ! -type f -print 2>/dev/null) || return 1
+            fi
+            [ -z "$inner" ]
+            ;;
+        own-install)
+            [ -d "$1" ] && [ -n "${OWN_INSTALL_ID:-}" ] || return 1
+            found_id=$(dir_id "$1") || return 1
+            [ "${found_id#*:}" = "${OWN_INSTALL_ID#*:}" ]
+            ;;
+        *) return 1 ;;
+    esac
 }
 
 # foreign_entry DIR [native-ok]: the first entry directly in DIR that is not
-# on GRAPH_ENTRIES, as `native NAME` when it is on NATIVE_ENTRIES and `other
-# NAME` otherwise; nothing when there is none. With `native-ok`, entries on
-# NATIVE_ENTRIES are passed over, so only an `other` one is reported. A name
-# holding a newline is never one Knossos makes.
+# on GRAPH_ENTRIES in its shape: `native NAME` for one on NATIVE_ENTRIES,
+# `install NAME` for an install/ that is not this installation's own, `shape
+# NAME SHAPE` for a listed name in another shape, `other NAME` for anything
+# else; nothing when there is none. With `native-ok`, entries on
+# NATIVE_ENTRIES are passed over. A name holding a newline is never one
+# Knossos makes.
 foreign_entry() {
     find "$1/." ! -name . -prune -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r found; do
         case $found in
@@ -744,8 +781,18 @@ foreign_entry() {
                 break
                 ;;
         esac
-        case $(entry_kind "$name") in
-            graph) ;;
+        kind=$(entry_kind "$name")
+        case $kind in
+            'graph own-install')
+                entry_has_shape "${1%/}/$name" own-install && continue
+                printf 'install %s' "$name"
+                break
+                ;;
+            graph\ *)
+                entry_has_shape "${1%/}/$name" "${kind#graph }" && continue
+                printf 'shape %s %s' "${kind#graph }" "$name"
+                break
+                ;;
             native)
                 [ "${2-}" != native-ok ] || continue
                 printf 'native %s' "$name"
@@ -756,6 +803,48 @@ foreign_entry() {
     done
 }
 
+# shape_text SHAPE: the shape in words, for a refusal.
+shape_text() {
+    case $1 in
+        file) printf 'a plain file' ;;
+        files) printf 'a directory that holds plain files only' ;;
+        mark) printf 'an empty directory' ;;
+        *) printf 'what Knossos makes' ;;
+    esac
+}
+
+# dir_id DIR: "<device>:<inode>" of DIR itself, or ":<inode>", as the
+# launcher reads it (a symlink is not followed).
+dir_id() {
+    # GNU coreutils (Linux) and BusyBox: stat -c.
+    id=$(stat -c '%d:%i' -- "$1" 2>/dev/null) || id=''
+    case $id in [0-9]*:[0-9]*) case $id in *[!0-9:]*) ;; *) printf '%s' "$id"; return 0 ;; esac ;; esac
+    # BSD stat (macOS, FreeBSD, OpenBSD, NetBSD): stat -f, where %d is the
+    # device and %i the inode, as with -c above.
+    id=$(stat -f '%d:%i' -- "$1" 2>/dev/null) || id=''
+    case $id in [0-9]*:[0-9]*) case $id in *[!0-9:]*) ;; *) printf '%s' "$id"; return 0 ;; esac ;; esac
+    # Neither (a system without a stat command): POSIX ls -di gives the inode
+    # alone; the device is left out of the comparison.
+    id=$(ls -di -- "$1" 2>/dev/null) || id=''
+    id=${id#"${id%%[! ]*}"}
+    id=${id%%[! 0-9]*}
+    id=${id%% *}
+    case $id in '' | *[!0-9]*) return 1 ;; esac
+    printf ':%s' "$id"
+}
+
+# own_install_id DATA: the inode the launcher in the bin directory pins, when
+# that launcher was written for DATA/install: the one thing that says an
+# install directory there is this installation's own. Nothing otherwise.
+own_install_id() {
+    [ -f "$LAUNCHER" ] && [ ! -L "$LAUNCHER" ] || return 0
+    data_real=$(CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P) || return 0
+    baked=$(sed -n "s/^INSTALL_DIR='\(.*\)'\$/\1/p" "$LAUNCHER" 2>/dev/null | head -n 1 | sed "s/'\\\\''/'/g")
+    pin=$(sed -n "s/^INSTALL_PIN='\([0-9]*:[0-9][0-9]*\)'\$/\1/p" "$LAUNCHER" 2>/dev/null | head -n 1)
+    [ "$baked" = "${data_real%/}/install" ] && [ -n "$pin" ] || return 0
+    printf '%s' "$pin"
+}
+
 # refuse_foreign_entries DIR: refuse a container install into DIR when DIR
 # holds an entry that is on neither list. A native install's entries are left
 # to refuse_other_mode, which names them all and offers --force-clean. The
@@ -764,9 +853,23 @@ foreign_entry() {
 # changes nothing about that.
 refuse_foreign_entries() {
     [ -d "$1" ] || return 0
-    if is_container_graph "$1"; then return 0; fi
+    OWN_INSTALL_ID=$(own_install_id "$1")
+    if [ -e "$1/install" ] || [ -L "$1/install" ]; then
+        # This installation's own: reinstalled or repaired in place. Not
+        # checked again: every one of its containers can write the graph
+        # already, and reinstalling there changes nothing about that.
+        if entry_has_shape "$1/install" own-install; then return 0; fi
+        die "the data directory $1 holds $1/install, which the knossos launcher in $BIN_DIR was not installed with: it is another Knossos installation's install directory, or looks like one, and its record, update helper and plugin would be writable by this installation's containers. To reinstall that installation, run the installer with its --bin-dir; if nothing uses $1/install, remove it (the graph beside it stays); or choose an empty directory with --data-dir. Nothing was changed."
+    fi
+    if [ -e "$1/.knossos-graph" ] || [ -L "$1/.knossos-graph" ]; then
+        die "the data directory $1 is a graph directory another Knossos container install uses (it holds .knossos-graph), so that installation's containers could rewrite the install directory this one would put there; choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR), or remove $1/.knossos-graph if no installation uses it any more. Nothing was changed."
+    fi
     foreign=$(foreign_entry "$1" native-ok)
     case $foreign in
+        shape\ *)
+            shape=${foreign#shape }
+            die "the data directory $1 holds ${shape#* }, which Knossos only makes as $(shape_text "${shape%% *}"), and in container mode every container would be able to write all of it; choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR). Nothing was changed."
+            ;;
         other\ *) die "the data directory $1 holds ${foreign#other }, which is not something Knossos puts in a data directory, and in container mode every container would be able to write all of it; choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR). Nothing was changed." ;;
     esac
 }
@@ -938,6 +1041,7 @@ install_container() {
     BAKED_DIR=$CINSTALL
     # settings/ holds the enricher list, which only the launcher's own short
     # run of the image may write (knossos enricher add and remove).
+    if [ ! -e "$CINSTALL" ] && [ ! -L "$CINSTALL" ]; then CINSTALL_MADE=1; fi
     for entry in "" /plugin /containers /settings; do
         [ ! -L "$CINSTALL$entry" ] || die "$CINSTALL$entry is a symlink; remove it and run the installer again. Nothing was changed"
         mkdir -p "$CINSTALL$entry" || die "could not create $CINSTALL$entry"
@@ -971,6 +1075,7 @@ install_container() {
             *) die "the installed launcher answered '$installed', not Knossos $VERSION; the previous state was restored" ;;
         esac
         CONTAINER_SWITCHED=0
+        CINSTALL_MADE=0
         log "$installed"
     else
         die "the installed launcher does not run ($installed); the previous state was restored"
@@ -1027,6 +1132,7 @@ main() {
     SWITCHED=0
     CONTAINER_SWITCHED=0
     CINSTALL=""
+    CINSTALL_MADE=0
     BAKED_DIR=""
 
     while [ $# -gt 0 ]; do
@@ -1096,12 +1202,18 @@ main() {
     elif ! php -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);' >/dev/null 2>&1 </dev/null; then
         add_missing "PHP 8.3 or newer (found $(php -r 'echo PHP_VERSION;' 2>/dev/null </dev/null))"
     else
-        # The extensions DoctorService checks, by the name extension_loaded() takes.
+        # The extensions DoctorService::REQUIRED_EXTENSIONS lists, by the name
+        # extension_loaded() takes (tests/phpunit/Install/InstallDetectionTest
+        # ties the two). The answer is one marked line, and PHP's own startup
+        # warnings go to stderr: a stale extension= line in php.ini prints one
+        # on stdout by default, which must never read as a missing extension.
         # shellcheck disable=SC2016 # the $-prefixed names in this php -r program are PHP variables.
-        if ! lacking=$(php -r 'foreach (["json", "mbstring", "pdo", "pdo_sqlite"] as $e) { if (!extension_loaded($e)) { echo $e, " "; } }' 2>/dev/null </dev/null); then
-            add_missing 'the PHP extensions json, mbstring, pdo and pdo_sqlite (php could not be asked which are loaded)'
+        probe=$(php -d display_errors=stderr -d display_startup_errors=0 -r '$missing = []; foreach (["json", "mbstring", "pdo", "pdo_sqlite", "tokenizer"] as $e) { if (!extension_loaded($e)) { $missing[] = $e; } } echo "\n", "KNOSSOS-MISSING-EXTENSIONS:", implode(" ", $missing), "\n";' 2>/dev/null </dev/null) || probe=''
+        lacking=$(printf '%s\n' "$probe" | sed -n 's/^KNOSSOS-MISSING-EXTENSIONS://p' | head -n 1)
+        if ! printf '%s\n' "$probe" | grep -q '^KNOSSOS-MISSING-EXTENSIONS:'; then
+            add_missing 'the PHP extensions json, mbstring, pdo, pdo_sqlite and tokenizer (php could not be asked which are loaded)'
         elif [ -n "$lacking" ]; then
-            lacking=$(printf '%s' "${lacking% }" | sed 's/ /, /g')
+            lacking=$(printf '%s' "$lacking" | sed 's/ /, /g')
             add_missing "the PHP extension(s) $lacking (not loaded by php)"
         fi
     fi

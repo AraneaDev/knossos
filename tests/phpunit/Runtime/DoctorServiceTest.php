@@ -124,13 +124,13 @@ final class DoctorServiceTest extends KnossosTestCase
             $this->assertContains($check['status'], ['ok', 'error', 'skipped', 'warning']);
         }
 
-        // The 17 checks fired when databasePath is ':memory:' (data.writable
+        // The 20 checks fired when databasePath is ':memory:' (data.writable
         // is conditional and excluded in this mode) — verifies both shape
         // AND the exact set of named checks in a single run() call.
         $names = array_column($result['checks'], 'name');
         $expected = [
             'php.version', 'php.memory_limit',
-            'php.extension.json', 'php.extension.mbstring', 'php.extension.pdo', 'php.extension.pdo_sqlite',
+            'php.extension.json', 'php.extension.mbstring', 'php.extension.pdo', 'php.extension.pdo_sqlite', 'php.extension.tokenizer',
             'node.version', 'git.version', 'python.version',
             'sqlite.integrity', 'sqlite.foreign_keys', 'sqlite.migrations',
             'worker.php', 'worker.typescript', 'worker.python', 'worker.rust',
@@ -139,7 +139,7 @@ final class DoctorServiceTest extends KnossosTestCase
         foreach ($expected as $name) {
             $this->assertContains($name, $names, "missing check: {$name}");
         }
-        assertSame(19, count($names));
+        assertSame(20, count($names));
     }
 
     /** The doctor says which file opener this host uses, so a slow helper-per-file scan is visible. */
@@ -214,6 +214,18 @@ final class DoctorServiceTest extends KnossosTestCase
         $service = new DoctorService($this->pdo, $this->installationRoot, ':memory:');
 
         $check = $this->findCheck($service->run(), 'php.extension.pdo_sqlite');
+
+        assertSame('ok', $check['status']);
+        assertSame('loaded', $check['detail']);
+    }
+
+    public function testRunPhpExtensionTokenizerCheckIsOkWhenExtensionLoaded(): void
+    {
+        assertSame(true, extension_loaded('tokenizer'), 'tokenizer extension is required for the PHP worker');
+
+        $service = new DoctorService($this->pdo, $this->installationRoot, ':memory:');
+
+        $check = $this->findCheck($service->run(), 'php.extension.tokenizer');
 
         assertSame('ok', $check['status']);
         assertSame('loaded', $check['detail']);
