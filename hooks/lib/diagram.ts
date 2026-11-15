@@ -497,7 +497,8 @@ function sideBySide(centre: DiagramNode, usedBy: Neighbour[], uses: Neighbour[],
 
 function stacked(centre: DiagramNode, usedBy: Neighbour[], uses: Neighbour[], width: number, ew: number, longest: number, empty: Empty, key: string): { rows: Row[]; canvas: Canvas } {
   // Two columns of boxes either side of one spine: the users left of it, what it uses right of it.
-  const nw = Math.max(5, Math.min(boxWidth(Math.min(NEIGHBOUR_MAX, longest)), Math.floor((width - 2 * ew - 1) / 2)))
+  // Box, edge to the spine, edge to the box, box: two boxes and two edges fill the width, the spine standing on the first edge's end.
+  const nw = Math.max(5, Math.min(boxWidth(Math.min(NEIGHBOUR_MAX, longest)), Math.floor((width - 2 * ew) / 2)))
   const spine = nw + ew
   const rx = spine + ew
   const cw = Math.min(width, boxWidth(Math.min(LABEL_MAX, cells(centre.label))))

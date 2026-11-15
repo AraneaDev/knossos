@@ -743,7 +743,7 @@ describe('the issues tab', () => {
     expect(dead(70)).toMatch(/^ +○ ∅ m FactCollector::/)
     // Two marks cost four cells, so they stay even where the boundary and the place have gone.
     expect(dead(30)).toMatch(/^ +○ ∅ m FactCollector::/)
-    expect(dead(52)).toMatch(/FactCollector::… ■ php-worker …ollector\.php:108$/)
+    expect([dead(60), dead(50)]).toEqual([expect.stringMatching(/^ +○ ∅ m FactCollector::… ■ php-worker …tCollector\.php:108$/), expect.stringMatching(/^ +○ ∅ m FactCollector::before… …llector\.php:108$/)])
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)
     expect(dead(30)).not.toContain('.php')

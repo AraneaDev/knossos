@@ -114,6 +114,14 @@ describe('the card frame', () => {
       for (const r of rows) expect(rowWidth(r) === columns || isBlank(r), r.key).toBe(true)
     })
   }
+  it('stands a collapsed card, its title and count alone, on the same margin as every other card', () => {
+    for (const [columns, margin] of [[60, 1], [100, 2], [140, 2]] as const) {
+      const rows = cardRows({ key: 'policy', title: 'Policy violations', note: [{ text: '✓ 0' }], body: [], empty: 'none' }, columns, tierOf(columns))
+      expect(rows).toHaveLength(1)
+      expect(rawText(rows[0]!), `${columns}`).toMatch(new RegExp(`^ {${margin}}── ! Policy violations ─+ ✓ 0 ── {${margin}}$`))
+    }
+  })
+
 
   it('sets the count at the right end of the title rule', () => {
     const [head] = cardRows({ key: 'c', title: 'Blast radius', note: [{ text: '17 dependents' }], body: [] }, 100, 'medium')

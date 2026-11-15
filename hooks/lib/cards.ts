@@ -155,7 +155,7 @@ function cardRowsOf(section: Section, width: number, tier: Tier): Row[] {
   if (section.body.length === 0 && section.empty !== undefined) {
     // Its note says how it stands when it has one (`✓ 0`); else the word.
     const note = section.note !== undefined && section.note.length > 0 ? section.note : [{ text: section.empty, dim: true }]
-    return [topRow({ key: section.key, title: section.title, note, ...(section.glyph === undefined ? {} : { glyph: section.glyph }), body: [] }, width)]
+    return [topRow({ key: section.key, title: section.title, note, ...(section.glyph === undefined ? {} : { glyph: section.glyph }), body: [] }, width, marginOf(tier))]
   }
   if (section.bare === true) return section.body.map(row => (row.code !== undefined || rowWidth(row) <= width ? row : { ...row, segments: clip(row.segments, width) }))
   // A blank row under the title, so the title stands apart from what it heads; the body's own blank rows at its ends would double it.

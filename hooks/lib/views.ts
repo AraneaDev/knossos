@@ -141,6 +141,8 @@ export type FileView = {
 
 /** The share of a row a place (`file:line`) may take before it is cut from the front. */
 const PLACE_SHARE = 0.35
+/** The fewest cells a place is cut to before its column goes. */
+const PLACE_MIN = 12
 /** The narrowest the main text of an issue row is allowed before the boundary, then the place, give way. */
 const MAIN_MIN = 16
 
@@ -298,8 +300,8 @@ export function detailList(detail: DetailInput): Openable[] {
 
 /** An issue row's columns: its main text, then the boundary, then the place. */
 export type EntrySpec = { main: number; boundary: number; place: number }
-/** One issue row: `need` is how wide its main text is uncut; `loc` makes its place a link. */
-export type Entry = { selected?: boolean; mark?: Segment; need: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; loc?: Loc | null }
+/** One issue row: `need` is how wide its main text is uncut, `marks` the cells of it its marks take; `loc` makes its place a link. */
+export type Entry = { selected?: boolean; mark?: Segment; need: number; marks?: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; loc?: Loc | null }
 
 /**
  * Fits issue rows to `columns`, packed to the left like a table: the main
@@ -309,14 +311,18 @@ export type Entry = { selected?: boolean; mark?: Segment; need: number; main: (w
  * {@link MAIN_MIN}.
  */
 export function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): EntrySpec {
-  const placeNeed = Math.min(Math.max(12, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
+  const placeNeed = Math.min(Math.max(PLACE_MIN, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
   // A boundary is a chip: its swatch and a space before its label.
   const longest = Math.max(0, ...entries.map(e => cells(boundaryLabel(e.boundary ?? null, hues))))
   const boundaryNeed = longest === 0 ? 0 : Math.min(12, longest) + 2
   const mainNeed = Math.max(1, ...entries.map(e => e.need))
+  // The marks are not the text: the main text keeps its least beside them, so they outlast the boundary and the place.
+  const least = Math.min(MAIN_MIN + Math.max(0, ...entries.map(e => e.marks ?? 0)), mainNeed)
   const attempt = (boundary: number, place: number): EntrySpec | null => {
     const room = columns - MARK - (boundary > 0 ? boundary + 1 : 0) - (place > 0 ? place + 1 : 0)
-    return room >= Math.min(MAIN_MIN, mainNeed) ? { main: Math.min(room, mainNeed), boundary, place } : null
+    // A place is cut from its front, so it gives up cells, down to its own least, before anything goes whole.
+    if (room < least && place > 0 && place - (least - room) >= PLACE_MIN) return attempt(boundary, place - (least - room))
+    return room >= least ? { main: Math.min(room, mainNeed), boundary, place } : null
   }
   return attempt(boundaryNeed, placeNeed) ?? attempt(0, placeNeed) ?? attempt(0, 0) ?? { main: Math.max(1, columns - MARK), boundary: 0, place: 0 }
 }
@@ -432,7 +438,7 @@ function deadEntries(items: DeadLine[], offset: number, selected: number): Entry
     boundary: c.boundary,
     place: c.place,
     loc: c.loc ?? null,
-    need: cells(c.name) + MARKS,
+    need: cells(c.name) + MARKS, marks: MARKS,
     main: width => {
       // Too narrow only when the names would be squeezed below their least, or below the longest when all are short.
       if (width - MARKS < Math.min(MAIN_MIN, longestName)) return [button(`row:${offset + i}`, fit(c.name, width))]
