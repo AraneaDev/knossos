@@ -29,7 +29,7 @@ export const NARROW_MARGIN = 1
 export const GUTTER = 3
 /** Where a card's body starts, from the pane's edge. */
 export const BODY = MARGIN + GUTTER
-/** The blank rows above a card's title, below it, and between two groups inside a card. */
+/** The blank rows above a card's title and below it: inside a card, only before a block of a different kind ({@link groupGap}). */
 export const CARD_GAP_ROWS = 1
 /** The cells between two cards side by side, rule end to rule start, so two rules never read as one. */
 export const GRID_GAP = 4
@@ -42,7 +42,11 @@ export const marginOf = (tier: Tier): number => (tier === 'narrow' ? NARROW_MARG
 /** A blank row, `width` cells of space where a card's rows are all as wide as the card: the one way the pane draws one. */
 export const blankRow = (key: string, width = 1): Row => ({ key, segments: [{ text: spaces(Math.max(1, width)) }] })
 
-/** The blank row between two groups inside a card (a verdict, a table, a command line). */
+/**
+ * The one blank row a card holds inside it: before a block of a different
+ * kind (a table after a verdict line, a command line after a table). Facts
+ * of one card, its rows and its list items stand on consecutive rows.
+ */
 export const groupGap = (key: string): Row => blankRow(key)
 
 /** Whether `row` shows nothing: only spaces, and nothing pressed, typed in, tinted or drawn as cells or a diff. */
@@ -75,22 +79,21 @@ export function moreRow(n: number, key: string, width = Number.POSITIVE_INFINITY
 export type Fact = { key: string; label: string; lines: (width: number) => Segment[][]; numbered?: true }
 
 /**
- * Facts of different kinds, stacked in `width` with their labels in one dim
- * column and their values in the next, a blank row between two facts. A
- * value wider than its column wraps under its own column, never under the
- * label. The first row of a fact is keyed by it, the rest `key-1` on (all
- * `key-N` from 0 when it is `numbered`); the blank row before it `key-gap`.
+ * Facts of different kinds, stacked in `width` on consecutive rows with
+ * their labels in one dim column and their values in the next. A value
+ * wider than its column wraps under its own column, never under the label,
+ * and runs straight on into the next fact. The first row of a fact is keyed
+ * by it, the rest `key-1` on (all `key-N` from 0 when it is `numbered`).
  */
 export function labelledRows(facts: readonly Fact[], width: number): Row[] {
   const column = Math.max(0, ...facts.map(f => cells(f.label))) + LABEL_GAP
   const room = Math.max(1, width - GUTTER - column)
-  return facts.flatMap((fact, n): Row[] => {
+  return facts.flatMap((fact): Row[] => {
     const lines = fact.lines(room)
-    const rows = (lines.length === 0 ? [[]] : lines).map((line, i): Row => ({
+    return (lines.length === 0 ? [[]] : lines).map((line, i): Row => ({
       key: i === 0 && fact.numbered !== true ? fact.key : `${fact.key}-${i}`,
       segments: [{ text: spaces(GUTTER) }, i === 0 ? { text: padEnd(fact.label, column), dim: true } : { text: spaces(column) }, ...line],
     }))
-    return n === 0 ? rows : [groupGap(`${fact.key}-gap`), ...rows]
   })
 }
 

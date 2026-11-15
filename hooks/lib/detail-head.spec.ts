@@ -28,13 +28,11 @@ describe('the detail head card', () => {
       `  ── ◇ MaintenanceCommand::importNotes ${'─'.repeat(41)} method · ■ Cli ──`,
       '',
       '     where   src/Cli/Command/MaintenanceCommand.php:119',
-      '',
       '     call    importNotes(',
       '               positionals: array,',
       '               options: array,',
       '               context: Knossos\\Cli\\CliCommandContext,',
       '             ): int',
-      '',
       '     name    Knossos\\Cli\\Command\\MaintenanceCommand::importNotes',
     ])
   })
@@ -48,9 +46,9 @@ describe('the detail head card', () => {
   })
 
   it('says how a function is called, between where it is and its full name, the signature alone not dimmed', () => {
-    expect(rows({ ...METHOD, signature: LINE }, 80).map(r => r.key)).toEqual(['detail-place', 'detail-signature-gap', 'detail-signature-0', 'detail-canonical-gap', 'detail-canonical'])
-    expect(rows({ ...METHOD, signature: LINE }, 80)[2]).toEqual({ key: 'detail-signature-0', text: `   call    ${LINE}`, dim: false })
-    expect(rows({ ...METHOD, signature: LINE }, 80)[4]!.dim).toBe(true)
+    expect(rows({ ...METHOD, signature: LINE }, 80).map(r => r.key)).toEqual(['detail-place', 'detail-signature-0', 'detail-canonical'])
+    expect(rows({ ...METHOD, signature: LINE }, 80)[1]).toEqual({ key: 'detail-signature-0', text: `   call    ${LINE}`, dim: false })
+    expect(rows({ ...METHOD, signature: LINE }, 80)[2]!.dim).toBe(true)
     // The labels are dim, one word, lower case.
     const label = detailHead({ ...METHOD, signature: LINE }, NO_HUES).make(80, 99)!.body[0]!.segments[1]
     expect(label).toEqual({ text: 'where   ', dim: true })
@@ -71,13 +69,13 @@ describe('the detail head card', () => {
     for (const r of drawn) {
       const text = rawText(r)
       expect(rowWidth(r), text).toBeLessThanOrEqual(inner)
-      if (text.trim() === '') continue
+      expect(text.trim(), r.key).not.toBe('')
       expect(text.slice(0, column).trim(), r.key).toMatch(/^(where|call|name|)$/)
       // A parameter stands two cells in from the call, inside the value column; every other value starts at it.
       expect(text.charAt(column + (/^detail-signature-[1-9]/.test(r.key) && !text.trimEnd().endsWith(': ?App\\Receipt') ? 2 : 0)), r.key).not.toBe(' ')
     }
     // The place reads whole down its column and its file still opens it; the twelve parameters each on a line, then `…` and the return type.
-    const value = (prefix: string) => drawn.filter(r => r.key.startsWith(prefix) && !r.key.endsWith('-gap')).map(r => rawText(r).slice(column))
+    const value = (prefix: string) => drawn.filter(r => r.key.startsWith(prefix)).map(r => rawText(r).slice(column))
     expect(value('detail-place').join('')).toBe(long.place)
     expect(drawn.flatMap(r => r.segments).filter(s => s.press?.id === 'file:/w/src/Checkout.php').map(s => s.text)).toEqual(['Checkout.php:42'])
     expect(value('detail-signature').filter(l => /^ {2}p\d+:/.test(l))).toHaveLength(12)
@@ -87,7 +85,7 @@ describe('the detail head card', () => {
 
   it('has no signature row for a component that has none', () => {
     for (const signature of [undefined, null, '']) {
-      expect(rows({ ...METHOD, kind: 'class', signature }, 80).map(r => r.key)).toEqual(['detail-place', 'detail-canonical-gap', 'detail-canonical'])
+      expect(rows({ ...METHOD, kind: 'class', signature }, 80).map(r => r.key)).toEqual(['detail-place', 'detail-canonical'])
     }
   })
 

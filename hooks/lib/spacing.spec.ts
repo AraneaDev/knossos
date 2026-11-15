@@ -59,16 +59,15 @@ describe('labelled facts', () => {
     { key: 'name', label: 'name', lines: text('Knossos\\Cli\\Command\\MaintenanceCommand::importNotes') },
   ]
 
-  it('line their values up in one column after a dim label column, a blank row between two facts', () => {
+  it('line their values up in one column after a dim label column, the facts on consecutive rows', () => {
     const rows = labelledRows(facts, 96)
     expect(rows.map(rawText)).toEqual([
       '   where   src/Cli/Command/MaintenanceCommand.php:119',
-      ' ',
       '   call    importNotes(positionals: array): int',
-      ' ',
       '   name    Knossos\\Cli\\Command\\MaintenanceCommand::importNotes',
     ])
-    expect(rows.map(r => r.key)).toEqual(['where', 'call-gap', 'call', 'name-gap', 'name'])
+    expect(rows.map(r => r.key)).toEqual(['where', 'call', 'name'])
+    expect(rows.some(isBlank)).toBe(false)
     expect(rows[0]!.segments[1]).toEqual({ text: 'where   ', dim: true })
   })
 
@@ -89,11 +88,11 @@ describe('labelled facts', () => {
       if (!isBlank(r)) expect(rawText(r).charAt(column), r.key).not.toBe(' ')
     }
     // Nothing was cut: each value reads whole down its column.
-    const value = (key: string) => rows.filter(r => r.key === key || r.key.startsWith(`${key}-`) && !r.key.endsWith('-gap')).map(r => rawText(r).slice(column)).join('')
+    const value = (key: string) => rows.filter(r => r.key === key || r.key.startsWith(`${key}-`)).map(r => rawText(r).slice(column)).join('')
     expect(value('where')).toBe(`src/${'deep/'.repeat(38)}File.php:12`)
     expect(value('name')).toBe(`Knossos\\${'VeryLongNamespace\\'.repeat(6)}ClassWithNoSpacesAtAll::method`)
     // A name with no spaces breaks after a separator, so each piece ends on a whole segment.
-    expect(rows.filter(r => r.key.startsWith('name') && !r.key.endsWith('gap')).slice(0, -1).every(r => /[\\:]$/.test(rawText(r)))).toBe(true)
+    expect(rows.filter(r => r.key.startsWith('name')).slice(0, -1).every(r => /[\\:]$/.test(rawText(r)))).toBe(true)
     expect(rows.find(r => r.key === 'said-1')).toBeDefined()
   })
 })
@@ -114,6 +113,7 @@ describe('the card frame', () => {
       for (const r of rows) expect(rowWidth(r) === columns || isBlank(r), r.key).toBe(true)
     })
   }
+
   it('stands a collapsed card, its title and count alone, on the same margin as every other card', () => {
     for (const [columns, margin] of [[60, 1], [100, 2], [140, 2]] as const) {
       const rows = cardRows({ key: 'policy', title: 'Policy violations', note: [{ text: '✓ 0' }], body: [], empty: 'none' }, columns, tierOf(columns))
@@ -121,7 +121,6 @@ describe('the card frame', () => {
       expect(rawText(rows[0]!), `${columns}`).toMatch(new RegExp(`^ {${margin}}── ! Policy violations ─+ ✓ 0 ── {${margin}}$`))
     }
   })
-
 
   it('sets the count at the right end of the title rule', () => {
     const [head] = cardRows({ key: 'c', title: 'Blast radius', note: [{ text: '17 dependents' }], body: [] }, 100, 'medium')
