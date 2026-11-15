@@ -17,8 +17,8 @@ curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install
 
 It needs `curl` and `sh`, and one of two things on the host:
 
-- **Native mode**: PHP 8.3 or newer with the JSON, mbstring, PDO and PDO
-  SQLite extensions, Node 24 or newer, Python 3.11 or newer and Git, which is
+- **Native mode**: PHP 8.3 or newer with the JSON, mbstring, PDO, PDO SQLite
+  and tokenizer extensions (the PHP worker parses with tokenizer), Node 24 or newer, Python 3.11 or newer and Git, which is
   what `knossos doctor` checks, and `tar` and `sha256sum` or `shasum` to unpack
   and check the release. The release runs on the host. Release tarballs exist
   for Linux and macOS, on x86_64 and arm64.
@@ -320,6 +320,8 @@ with `error:`.
 | `install what is listed above and run the installer again, or install Docker or Podman ...`                             | Native mode lacks something (a runtime, a PHP extension, Git, `tar` or a checksum tool), and no container runtime answers. Install what the list names, or install Docker or Podman and use `--mode=container`. |
 | `install what is listed above and run the installer again, or re-run it with --mode=container: docker is available`     | You passed `--mode=native` on a host that lacks something native mode needs. Install it, or use `--mode=container`.                                                                                             |
 | `the data directory <dir> holds <entry>, which is not something Knossos puts in a data directory, ...`                  | Container mode gives every container the data directory read-write, so it must not hold anything of yours. Choose an empty directory with `--data-dir` or `KNOSSOS_DATA_DIR`.                                   |
+| `the data directory <dir> holds <dir>/install, which the knossos launcher in <bin dir> was not installed with: ...`     | Another installation's install directory, or something that looks like one. Reinstall that installation with its own `--bin-dir`, remove the `install` entry if nothing uses it, or choose another directory.   |
+| `the data directory <dir> is a graph directory another Knossos container install uses (it holds .knossos-graph) ...`    | Another installation's launcher uses it as a graph directory. Choose another directory, or remove `.knossos-graph` if no installation uses it any more.                                                         |
 | `docker is installed, but its daemon is not running (docker info failed): start it and run the installer again`         | The binary exists and the daemon does not answer. Start the daemon.                                                                                                                                             |
 | `container mode needs Docker or Podman, with its daemon running; neither was found`                                     | You passed `--mode=container` on a host without either.                                                                                                                                                         |
 | `<dir> holds a native install (...); remove those entries or pick another --data-dir, or re-run with --force-clean ...` | You are installing container mode over a native install in the same data directory, or the reverse. The message lists the entries. Pick another `--data-dir`, or `--force-clean` removes exactly those entries. |
@@ -377,26 +379,42 @@ directory that holds anything of yours is refused, by the installer and by the
 launcher when `KNOSSOS_DATA_DIR` names a new one. `~/code`, for example, would
 give every scanned project write access to each repository in it, git hooks
 included. Accepted is a directory that does not exist yet, an empty one, or
-one that holds only what Knossos itself puts in a data directory:
+one that holds only what Knossos itself puts in a data directory, each in the
+shape Knossos makes it:
 
-- `knossos.sqlite`, with `-wal`, `-shm`, `-journal` and `.migrate.lock` beside it
+- `knossos.sqlite`, with `-wal`, `-shm`, `-journal` and `.migrate.lock` beside
+  it, each a plain file
 - `scan-failures.jsonl`, with its `.lock` and temporary copies
 - `roots.json`, `enrichers.json` and `pane-autostart.json`, each with its
-  lock or temporary file
-- `watch/`, `backups/` and `mcp-serve.log`
-- `install/`, the install directory of a container install, and the
-  launcher's scratch directories, `.knossos-files.*`
+  lock or temporary file, and `mcp-serve.log`: plain files
+- `watch/` and `backups/`: directories that hold plain files only
+- `.knossos-graph/`, an empty directory: the mark a launcher leaves in a graph
+  directory it uses (see below)
+- `.knossos-files.*`, the launcher's scratch directories
+- `install/`, only when it is this installation's own install directory: the
+  one the `knossos` launcher in your `--bin-dir` was installed with
+
+A file, a link, or another directory under one of these names is refused too.
 
 The entries a native install keeps there (`install.json`, `versions/`,
 `current`, `plugin/`, `previous-version`, `update-check.json` and the
 self-update lock) are refused as well: the host runs the release and the plugin
-from them. The installer names them and offers `--force-clean`. The graph
-directory of an existing container install is not checked again, since its
-containers can write it already.
+from them. The installer names them and offers `--force-clean`.
+
+Two installations never share a data directory. An `install/` that the
+launcher in your `--bin-dir` was not installed with belongs to another
+installation, or looks like it, and installing there would leave its install
+directory writable by your containers, so the installer refuses it. To
+reinstall that installation, run the installer with its own `--bin-dir`. The
+launcher marks each graph directory it uses besides its own data directory
+with `.knossos-graph/`, and the installer refuses to install into a marked
+directory or below one, since that installation's containers write there.
+Your own data directory, reinstalled with the same `--bin-dir`, is not checked
+again: its containers can write it already.
 
 ## Native runtimes
 
-You need PHP 8.3 or newer with JSON, mbstring, PDO and PDO SQLite, Node 24 or newer,
+You need PHP 8.3 or newer with JSON, mbstring, PDO, PDO SQLite and tokenizer, Node 24 or newer,
 Python 3.11 or newer, Composer 2 and Git. Each is a floor. `doctor` reports a
 version below it and does not cap the ones above. Install the locked
 dependencies without running project scripts:

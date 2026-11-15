@@ -89,7 +89,7 @@ curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install
 Run it from the project you want to scan first. It downloads the latest release, checks it
 against the release's `SHA256SUMS`, writes a `knossos` launcher to `~/.local/bin`, allows the
 current project, installs the Claude Code plugin and registers the MCP server. It runs Knossos
-natively when the host has PHP 8.3 or newer with the mbstring, PDO and PDO SQLite extensions,
+natively when the host has PHP 8.3 or newer with the mbstring, PDO, PDO SQLite and tokenizer extensions,
 Node 24 or newer, Python 3.11 or newer, Git, `tar` and `sha256sum` or `shasum`, and in a container
 when it has Docker or Podman instead. [Installation](docs/get-started/installation.md)
 covers what it decides and how to override it, and
@@ -100,7 +100,7 @@ Start a new session. The brief appears at its start, and `/knossos` opens the pa
 ### From a checkout
 
 To develop Knossos, or to run it from source, you need PHP 8.3 or newer with JSON, mbstring, PDO
-and PDO SQLite, Node 24 or newer, Python 3.11 or newer, Composer 2 and Git. Cargo 1.82 or newer is
+PDO SQLite and tokenizer, Node 24 or newer, Python 3.11 or newer, Composer 2 and Git. Cargo 1.82 or newer is
 optional and adds Rust scanning. Clone the repository, then run the installer from the project
 you want to scan first:
 

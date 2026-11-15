@@ -155,15 +155,27 @@ container. Messages begin with `knossos:`.
   nothing is created or mounted through it.
 - **A data directory that holds other things.** Every container can write the
   graph directory, so a new one must be empty, not exist yet, or hold only
-  what Knossos puts in one (the database and its files, `scan-failures.jsonl`,
-  `roots.json`, `enrichers.json`, `pane-autostart.json`, `watch/`,
-  `backups/`, `mcp-serve.log`, `install/` and `.knossos-files.*`).
+  what Knossos puts in one, in the shape Knossos makes it (the database and its
+  files, `scan-failures.jsonl`, `roots.json`, `enrichers.json`,
+  `pane-autostart.json` and `mcp-serve.log` as plain files, `watch/` and
+  `backups/` holding plain files only, an empty `.knossos-graph/` and
+  `.knossos-files.*`; see
+  [installation](../get-started/installation.md#a-data-directory-that-holds-other-things)).
   `KNOSSOS_DATA_DIR (<path>) holds <entry>, which is not something Knossos puts in a graph directory, and every container would be able to write all of it; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install).`
   A native install's data directory is refused the same way, since the host
   runs its release and plugin:
   `KNOSSOS_DATA_DIR (<path>) holds a native Knossos install (<entry>), ...`.
   The check runs the first time a directory is used as a graph; the installer
-  checks the one you install into.
+  checks the one you install into. A graph directory used this way is
+  recorded and marked with an empty `.knossos-graph/`, so another
+  installation's installer refuses to put its install directory there.
+- **Another installation's data directory.** A data directory other than your
+  own never holds an `install` entry, at any call:
+  `KNOSSOS_DATA_DIR (<path>) holds <path>/install, which is not this installation's install directory (<dir>): it is another Knossos installation's, or looks like one, ...`
+  Every container of your installation could otherwise rewrite the record,
+  update helper and plugin that installation's host side runs. Use that
+  installation's own `knossos`. Your own data directory, reached through a
+  link or another spelling, is your own and works.
 - **A project inside a graph directory.**
   `the project root <path> lies in the graph directory <dir>, which every container of that graph can write, so it would not stay read-only; keep projects outside the Knossos data directory, or pick another --data-dir.`
 - **A roots file, `TMPDIR` or a file to write or read inside a graph
@@ -201,8 +213,10 @@ container. Messages begin with `knossos:`.
   The call read the record of the image before the update, so its container
   is removed rather than used.
 
-A refused call creates nothing: the data directory and the directory of a
-roots file are made only after every check has passed.
+A refused call creates nothing: the data directory, the directory of a roots
+file, the graph record and the scratch directory are made only once every
+check of the call has passed, its files and `TMPDIR` included. What can still
+fail after that is the runtime itself, such as a daemon that stops.
 
 ## Commands that work differently
 
