@@ -75,8 +75,9 @@
 #     read from it is ever run or expanded unquoted.
 #   - A file a command is told to write is written into a scratch directory in
 #     the graph directory and moved to the path named by the host: only a
-#     plain file with one link, taken out of every container's reach by a
-#     rename before a byte of it is copied, no more than
+#     plain file with one link, renamed into <install dir>/tmp (where no
+#     container can rename, replace or link it) before a byte of it is
+#     copied, no more than
 #     KNOSSOS_OUTPUT_LIMIT_MB, and checked at the destination before success
 #     is said. A file it is told to read from outside every mount is copied
 #     in. See FILE_ROLES below.
@@ -560,7 +561,22 @@ hash12() {
 }
 
 INSTALL_HASH=$(hash12 "$INSTALL_DIR")
+# The name of a container, and of its idle marker in <install dir>/containers:
+# knossos- and 12 hex digits. The update helper removes markers by the same
+# pattern, word for word (tests/shell/install-container.sh compares them).
+MARKER_GLOB='knossos-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
 USER_SPEC="$(id -u):$(id -g)"
+# run_once ARGS: every throwaway run of the image the launcher makes, in one
+# place: as the caller, no network, only the mounts in ARGS. Rootless Podman
+# maps the caller's ids into the container only with --userns=keep-id
+# (start_container adds it for the long-lived container).
+run_once() {
+    if [ "$RUNTIME" = podman ]; then
+        "$RUNTIME" run --rm --pull=never --network none --user "$USER_SPEC" --userns=keep-id "$@"
+    else
+        "$RUNTIME" run --rm --pull=never --network none --user "$USER_SPEC" "$@"
+    fi
+}
 # The settings a command can change from inside a container, in the install
 # directory: the enricher list and pane-autostart.json. Every container reads
 # them there (KNOSSOS_SETTINGS_DIR and KNOSSOS_ENRICHERS_FILE below); only
@@ -771,8 +787,14 @@ fi
 # container wrote decides it. Run before a container is started and before
 # the update helper runs; the other installation's own launcher never gives
 # such a container this one's directories, but it does not know them either.
+# A runtime that does not answer refuses the call (self-update --check
+# --quiet stays silent): what cannot be asked is not known to be safe.
 foreign_writers() {
-    listed=$("$RUNTIME" ps --filter label=io.knossos.install --format '{{.Names}} {{.Label "io.knossos.install"}}' 2>/dev/null </dev/null) || return 0
+    # A runtime that cannot be asked gives no answer, which is not "none".
+    if ! listed=$("$RUNTIME" ps --filter label=io.knossos.install --format '{{.Names}} {{.Label "io.knossos.install"}}' 2>/dev/null </dev/null); then
+        "$RUNTIME" info >/dev/null 2>&1 </dev/null || die "the $RUNTIME daemon is not running; start it and try again."
+        die "could not ask $RUNTIME which containers run, so it cannot be told whether a container of another Knossos installation can write the install directory $INSTALL_REAL; check that $RUNTIME ps works and try again."
+    fi
     while read -r name owner; do
         if [ -z "$name" ] || [ "$owner" = "$INSTALL_HASH" ]; then continue; fi
         sources=$("$RUNTIME" container inspect --format '{{range .Mounts}}{{if .RW}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$name" 2>/dev/null </dev/null) || continue
@@ -849,10 +871,9 @@ stop_containers() {
         if ! "$RUNTIME" stop "$name" >/dev/null 2>&1 </dev/null; then
             "$RUNTIME" container inspect "$name" >/dev/null 2>&1 </dev/null && die "could not stop container $name"
         fi
+        # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
         case $name in
-            knossos-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
-                rm -f -- "$INSTALL_REAL/containers/$name"
-                ;;
+            $MARKER_GLOB) rm -f -- "$INSTALL_REAL/containers/$name" ;;
         esac
         count=$((count + 1))
     done
@@ -944,7 +965,7 @@ case ${1-} in
         if [ "$quiet" = 1 ]; then (host_tmp) >/dev/null 2>&1 || exit 0; fi
         host_tmp
         helper=$(mktemp "$HOST_TMP/knossos-update.XXXXXX") || die 'could not create a temporary file'
-        if ! "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$IMAGE" "$IN_IMAGE/tools/launcher/container-update" > "$helper" 2>/dev/null </dev/null \
+        if ! run_once --entrypoint cat "$IMAGE" "$IN_IMAGE/tools/launcher/container-update" > "$helper" 2>/dev/null </dev/null \
             || [ ! -s "$helper" ]; then
             rm -f "$helper"
             [ "$quiet" = 0 ] || exit 0
@@ -1338,8 +1359,7 @@ settings_run() {
     if [ -n "$project" ]; then set -- -w "$WORKDIR" --mount "$(bind_spec "$project" readonly)" "$@"; fi
     set -- -e HOME=/tmp -e KNOSSOS_DATA_DIR=/tmp/knossos-settings -e KNOSSOS_ROOTS_FILE=/tmp/knossos-settings/roots.json \
         -e "KNOSSOS_SETTINGS_DIR=$SETTINGS_DIR" -e "KNOSSOS_ENRICHERS_FILE=$ENRICHERS_FILE" --mount "$(bind_spec "$SETTINGS_DIR")" "$@"
-    if [ "$RUNTIME" = podman ]; then set -- --userns=keep-id "$@"; fi
-    "$RUNTIME" run --rm --pull=never --network none --user "$USER_SPEC" "$@" </dev/null
+    run_once "$@" </dev/null
     status=$?
     [ "$status" -ne 125 ] || image_gone
     exit "$status"
@@ -1971,8 +1991,8 @@ MOUNTED
 # it moves files in and out by rename from inside the directory itself, after
 # checking that it still is the directory it made, and checks what it moved
 # out in a private directory of its own before it writes the destination.
-# SCRATCH, SCRATCH_ID, PRIVATE and TAKEN (the directory the output is taken
-# into, out of every container's reach, see take_out_of_reach) are declared
+# SCRATCH, SCRATCH_ID, PRIVATE and TAKEN (the directory in <install dir>/tmp
+# the output is renamed into, see take_out_of_reach) are declared
 # with on_exit, which removes them.
 OUTPUT_SCRATCH=''
 OUTPUT_DEST=''
@@ -2044,8 +2064,13 @@ place_output() {
     # is checked now, with every other refusal.
     host_tmp
     OUTPUT_DEST=$dest
+    # Eight bytes of /dev/urandom; without them no name is unguessable, and a
+    # guessable one lets another container block the command with a FIFO.
     OUTPUT_NAME="output.$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
-    [ "$OUTPUT_NAME" != output. ] || OUTPUT_NAME="output.$$.$(date +%s)"
+    case $OUTPUT_NAME in
+        output.[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *) die "cannot make an unguessable name for the file $dest in the scratch directory: od and /dev/urandom are needed for it; install od (coreutils) or run the command where /dev/urandom can be read." ;;
+    esac
     OUTPUT_SCRATCH="$PENDING/$OUTPUT_NAME"
     [ -e "$dest" ] || return 0
     # A file already in place, which the container cannot see.
@@ -2457,26 +2482,24 @@ forward() {
     "$RUNTIME" exec "$NAME" "$IN_IMAGE/tools/launcher/idle-stop" --signal "$1" "$CALL_ID" >/dev/null 2>&1 </dev/null
 }
 # take_out_of_reach: a directory the host makes for the one file it takes out
-# of the scratch directory, on the scratch directory's filesystem, so that
-# taking it is a rename and never a copy, and outside the graph directory,
-# so that no container can reach it after the rename: the install directory
-# (read-only in every container), else the directory around the graph. With
-# neither on that filesystem, nothing is taken out and the output is refused.
-# Sets TAKEN (declared with the scratch state), or leaves it empty.
+# of the scratch directory, in <install dir>/tmp, which no container can
+# reach and which lies in no read-write mount. Taking the file there must be
+# a rename, never a copy: a copy would read by name from the scratch
+# directory, which every container of the graph can change, so the host
+# could be handed a link, a FIFO or another file than the one it checked.
+# So the install directory has to be on the graph directory's filesystem;
+# when it is not, nothing is taken out and the output is refused. There is no
+# other place to take it to: any directory the host does not own may lie in
+# some installation's read-write mount. Sets TAKEN (declared with the
+# scratch state), or leaves it empty.
 take_out_of_reach() {
     device=$(dir_id "$SCRATCH") || device=''
     device=${device%%:*}
     [ -n "$device" ] || return 0
-    for base in "$INSTALL_REAL" "$(dirname -- "$DATA_REAL")"; do
-        # Never a directory a container may write. The data directory lies
-        # in none (it is refused above), so neither does the one around it;
-        # checked again all the same, as this is where the file is taken to.
-        if writer_of "$base" >/dev/null; then continue; fi
-        here=$(dir_id "$base") || continue
-        [ "${here%%:*}" = "$device" ] || continue
-        TAKEN=$( (umask 077 && mktemp -d "$base/.knossos-taken.XXXXXX") 2>/dev/null) || TAKEN=''
-        [ -z "$TAKEN" ] || return 0
-    done
+    host_tmp
+    here=$(dir_id "$HOST_TMP") || return 0
+    [ "${here%%:*}" = "$device" ] || return 0
+    TAKEN=$( (umask 077 && mktemp -d "$HOST_TMP/knossos-taken.XXXXXX") 2>/dev/null) || TAKEN=''
 }
 
 # finish_output: once the command has succeeded, the file it wrote goes to the
@@ -2489,10 +2512,12 @@ take_out_of_reach() {
 #      must be a plain file with one link and within the limit. Anything else
 #      (a directory, FIFO, device, symlink, a hard-linked file) is refused
 #      before the host takes anything.
-#   3. It is taken out of every container's reach by a rename from inside the
-#      pinned scratch directory into TAKEN, on the same filesystem, so no byte
-#      is copied while a container could still change it, and no new link to
-#      it can be made (a link across mounts fails).
+#   3. It is renamed from inside the pinned scratch directory into TAKEN, in
+#      <install dir>/tmp on the same filesystem. From there no container can
+#      rename, replace or link it: the install directory is read-only to
+#      every container. A container that still holds the file open can still
+#      write into it, which only changes its own bytes, and step 5 bounds how
+#      many the host copies.
 #   4. There it is checked again: a plain file, one link, within the limit.
 #   5. At most the limit, plus one block, is copied into the private
 #      directory: a file a container still holds open for writing cannot grow
@@ -2527,7 +2552,7 @@ finish_output() {
     fi
     take_out_of_reach
     if [ -z "$TAKEN" ]; then
-        refusal="neither the install directory $INSTALL_REAL nor the directory around the graph directory $DATA_REAL is on the graph directory's filesystem, so the host cannot take the file out of every container's reach without copying it; $nothing To fix it, put the graph directory on the same filesystem as its parent or as the install directory, by choosing another --data-dir (or KNOSSOS_DATA_DIR)."
+        refusal="the install directory $INSTALL_REAL is not on the filesystem of the graph directory $DATA_REAL, so the host cannot take the file out of the graph directory by a rename, and it never copies by name from where a container can write; $nothing To fix it, put the install directory on the graph directory's filesystem (run the installer again with --install-dir there), or use a data directory on the install directory's filesystem (--data-dir or KNOSSOS_DATA_DIR)."
         return 1
     fi
     if ! in_scratch mv -f -- "$OUTPUT_NAME" "$TAKEN/output" 2>/dev/null; then

@@ -16,6 +16,7 @@
 #                          and `ps --format` naming the install label gets `name label`
 #   images/<ref>           a pulled image; its content is its digest reference
 #   pull-fails             present: `pull` fails
+#   ps-fails               present: `ps` fails, while the daemon answers `info`
 #   copy/<path>            what `run ... cat <path>` prints, for files read out of an image
 #   stop-gone              present: the next `stop` finds the container removed by
 #                          someone else first (it goes, and stop says No such container)
@@ -305,6 +306,7 @@ case $command in
         exit "${FAKE_EXEC_EXIT:-0}"
         ;;
     ps)
+        [ ! -e "$STATE/ps-fails" ] || { echo 'Error response from daemon: ps failed' >&2; exit 1; }
         filters=''
         format=''
         while [ $# -gt 0 ]; do

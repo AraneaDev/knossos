@@ -440,7 +440,7 @@ out=$(cd / && kn stop --all 2>&1); status=$?
 if [ "$status" -eq 0 ]; then pass 'stop --all works from /'; else fail "stop --all from /: $status, $out"; fi
 out=$(cd / && TMPDIR="$WORK/tmp" KNOSSOS_RELEASE_BASE="$REL" kn self-update --check 2>&1 </dev/null); status=$?
 if [ "$status" -eq 0 ] && [ "$out" = 'Knossos 1.0.0 is the latest version.' ]; then pass 'self-update works from /'; else fail "self-update from /: $status, $out"; fi
-if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--entrypoint] [cat] [$IMAGE] [/opt/knossos/tools/launcher/container-update]"; then
+if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [--entrypoint] [cat] [$IMAGE] [/opt/knossos/tools/launcher/container-update]"; then
     pass 'the update helper is read out of the installed image without network and without a pull'
 else
     fail "helper read: $(calls)"
@@ -960,8 +960,21 @@ else
 fi
 case $out in *"$OUT_IN"*) case $out in *.knossos-files.*) fail "the scratch path was printed: $out" ;; *) pass 'the command prints the path that was named, not the scratch path' ;; esac ;; *) fail "named path not printed: $out" ;; esac
 rm -f "$OUT_IN"
+# Without /dev/urandom read through od, no name is unguessable: refused,
+# never a guessable fallback.
+NOOD="$WORK/no od"
+mkdir -p "$NOOD"
+printf '#!/bin/sh\nexit 1\n' > "$NOOD/od"
+chmod +x "$NOOD/od"
+reset_docker
+out=$(cd "$PROJECT" && PATH="$NOOD:$PATH" FAKE_EXEC_WRITE=x kn export-agent-brief "$PROJECT" "--out=$WORK/outside/no-od.md" </dev/null 2>&1); status=$?
+case $out in "knossos: cannot make an unguessable name for the file $WORK/outside/no-od.md in the scratch directory: od and /dev/urandom are needed for it;"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls exec)" -eq 0 ] && [ ! -e "$WORK/outside/no-od.md" ]; then pass 'without od or /dev/urandom an output is refused, never given a guessable name'; else fail "no od: $status, $out"; fi
+rm -rf "$NOOD"
 # The name the command writes in the scratch directory is new at every call,
 # so another container of the graph cannot plant a FIFO there before it.
+FAKE_EXEC_WRITE='bundle bytes' out_call export-bundle project_1 "--output=$OUT_IN" --json
+rm -f "$OUT_IN"
 first=$(sed -n 's|.*/\.knossos-files\.[^/]*/\(output\.[0-9a-f]*\)\].*|\1|p' "$FAKE_DOCKER_STATE/calls" | head -n 1)
 FAKE_EXEC_WRITE='bundle bytes' out_call export-bundle project_1 "--output=$OUT_IN" --json
 second=$(sed -n 's|.*/\.knossos-files\.[^/]*/\(output\.[0-9a-f]*\)\].*|\1|p' "$FAKE_DOCKER_STATE/calls" | head -n 1)
@@ -1033,7 +1046,7 @@ FAKE_EXEC_KB=512 KNOSSOS_OUTPUT_LIMIT_MB=1 out_call export-bundle project_1 "--o
 if [ "$status" -eq 0 ] && [ "$(wc -c < "$WORK/outside/small.json" | tr -d ' ')" -eq 524288 ]; then pass 'an output under the limit is written whole'; else fail "under the limit: $status, $out"; fi
 rm -f "$WORK/outside/small.json"
 # What a hostile container leaves for the host to take: refused before anything is copied, nothing left behind.
-taken_left() { find "$INSTALL" "$(dirname -- "$DATA")" -maxdepth 1 -name '.knossos-taken.*' 2>/dev/null; }
+taken_left() { find "$INSTALL" "$INSTALL/tmp" "$(dirname -- "$DATA")" -maxdepth 1 \( -name '.knossos-taken.*' -o -name 'knossos-taken.*' \) 2>/dev/null; }
 for shape in hardlink dir fifo; do
     FAKE_EXEC_SHAPE=$shape out_call export-agent-brief "$PROJECT" "--out=$WORK/outside/$shape.md"
     if [ "$status" -eq 2 ] && [ "$out" = "knossos: the command left no plain file with a single link for $WORK/outside/$shape.md; nothing was written.
@@ -1046,10 +1059,13 @@ done
 FAKE_EXEC_WRITE='brief' out_call export-agent-brief "$PROJECT" "--out=$WORK/outside/taken.md"
 if [ "$status" -eq 0 ] && [ "$(cat "$WORK/outside/taken.md")" = brief ] && [ -z "$(taken_left)" ]; then pass 'a plain output is taken out of reach by a rename and written, and the directory it was taken into is removed'; else fail "taken output: $status, $out"; fi
 rm -f "$WORK/outside/taken.md"
-# With neither the install directory nor the directory around the graph on
-# the graph's filesystem, the output is refused, and the message says what to
-# change. A stat earlier on PATH reports another device for those two (the
-# launcher compares devices through stat, see dir_id), as a separate mount would.
+# With the install directory on another filesystem than the graph, the
+# output is refused, and the message says what to change: the host takes an
+# output only into <install dir>/tmp, never into the directory around the
+# graph, which can lie in another installation's graph (still on the graph's
+# filesystem here). A stat earlier on PATH reports another device for the
+# install directory's tmp/ (the launcher compares devices through stat, see
+# dir_id), as a separate mount would.
 REAL_STAT=$(command -v stat)
 APART_BIN="$WORK/apart bin"
 mkdir -p "$APART_BIN"
@@ -1057,17 +1073,17 @@ mkdir -p "$APART_BIN"
     printf '#!/bin/sh\n'
     printf 'for last in "$@"; do :; done\n'
     printf 'case $last in\n'
-    printf '    %s | %s) id=$(%s "$@") || exit; printf "999999:%%s\\n" "${id#*:}"; exit 0 ;;\n' "'$INSTALL'" "'$(dirname -- "$DATA")'" "'$REAL_STAT'"
+    printf '    %s | %s) id=$(%s "$@") || exit; printf "999999:%%s\\n" "${id#*:}"; exit 0 ;;\n' "'$INSTALL'" "'$INSTALL/tmp'" "'$REAL_STAT'"
     printf 'esac\n'
     printf 'exec %s "$@"\n' "'$REAL_STAT'"
 } > "$APART_BIN/stat"
 chmod +x "$APART_BIN/stat"
 reset_docker
 out=$(cd "$PROJECT" && PATH="$APART_BIN:$PATH" FAKE_EXEC_WRITE=brief TMPDIR="$WORK/tmp" kn export-agent-brief "$PROJECT" "--out=$WORK/outside/apart.md" </dev/null 2>&1); status=$?
-expected="knossos: neither the install directory $INSTALL nor the directory around the graph directory $DATA is on the graph directory's filesystem, so the host cannot take the file out of every container's reach without copying it; nothing was written to $WORK/outside/apart.md. To fix it, put the graph directory on the same filesystem as its parent or as the install directory, by choosing another --data-dir (or KNOSSOS_DATA_DIR).
+expected="knossos: the install directory $INSTALL is not on the filesystem of the graph directory $DATA, so the host cannot take the file out of the graph directory by a rename, and it never copies by name from where a container can write; nothing was written to $WORK/outside/apart.md. To fix it, put the install directory on the graph directory's filesystem (run the installer again with --install-dir there), or use a data directory on the install directory's filesystem (--data-dir or KNOSSOS_DATA_DIR).
 KNOSSOS_INVALID_ARGUMENT: Unable to write brief to $WORK/outside/apart.md."
 if [ "$status" -eq 2 ] && [ "$out" = "$expected" ] && [ ! -e "$WORK/outside/apart.md" ] && [ -z "$(scratch_left)" ] && [ -z "$(taken_left)" ]; then
-    pass 'an output the host cannot take out of reach without a copy is refused, saying how to fix it'
+    pass 'an output is never taken into the directory around the graph: with the install directory on another filesystem it is refused, saying how to fix it'
 else
     fail "graph on its own filesystem: $status, $out"
 fi
@@ -1967,6 +1983,21 @@ if [ "$status" -eq 1 ] && [ ! -e "$PWNED" ]; then pass 'and so is the update hel
 out=$(cd / && kn self-update --check --quiet </dev/null 2>&1); status=$?
 if [ "$status" -eq 0 ] && [ -z "$out" ] && [ ! -e "$PWNED" ]; then pass 'the background check stays silent and runs nothing'; else fail "foreign writer, quiet check: $status, $out"; fi
 rm -f "$INSTALL/container-update" "$FAKE_DOCKER_STATE/containers/knossos-bbbbbbbbbbbb"*
+# A runtime that does not answer `ps` cannot say there is no such container:
+# no new container starts, and the update helper does not run.
+reset_docker
+printf '#!/bin/sh\n: > "%s"\n' "$PWNED" > "$INSTALL/container-update"
+: > "$FAKE_DOCKER_STATE/ps-fails"
+out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+case $out in "knossos: could not ask docker which containers run, so it cannot be told whether a container of another Knossos installation can write the install directory $INSTALL; check that docker ps works and try again.") said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'a cold start is refused when the runtime cannot be asked which containers run'; else fail "ps fails, cold start: $status, $out"; fi
+out=$(cd / && kn self-update --check </dev/null 2>&1); status=$?
+if [ "$status" -eq 1 ] && [ ! -e "$PWNED" ]; then pass 'and the update helper does not run then'; else fail "ps fails, update: $status, $out"; fi
+out=$(cd / && kn self-update --check --quiet </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ -z "$out" ] && [ ! -e "$PWNED" ]; then pass 'the background check stays silent then and runs nothing'; else fail "ps fails, quiet check: $status, $out"; fi
+out=$(cd "$PROJECT" && kn stop </dev/null 2>&1); status=$?
+rm -f "$FAKE_DOCKER_STATE/ps-fails" "$INSTALL/container-update"
+case $out in *'does not answer'*) pass 'stop says so too, as before' ;; *) fail "ps fails, stop: $status, $out" ;; esac
 # One of this installation's own containers never counts, nor one of another
 # installation whose read-write mounts hold nothing of this one.
 printf 'running\n' > "$FAKE_DOCKER_STATE/containers/knossos-cccccccccccc"
