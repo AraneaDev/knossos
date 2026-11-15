@@ -589,6 +589,7 @@ php	tests/phpunit/Cli/CoverageMergeTest.php
 php	tests/phpunit/Cli/CreationBriefCommandTest.php
 php	tests/phpunit/Cli/DependencyFanoutTest.php
 php	tests/phpunit/Cli/DockerIgnoreTest.php
+php	tests/phpunit/Cli/DocsSiteWorkflowTest.php
 php	tests/phpunit/Cli/DocstringCoverageTest.php
 php	tests/phpunit/Cli/DocumentationIndexTest.php
 php	tests/phpunit/Cli/DocumentationTest.php

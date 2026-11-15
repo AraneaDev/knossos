@@ -420,3 +420,50 @@ jobs:
         with:
           skip-github-release: true
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+  # The documentation site for the release just published, built from the
+  # released commit and deployed with GitHub Pages' artifact deployment. These
+  # two jobs come after `assets`, which publishes, so a release that was rolled
+  # back never reaches them, and nothing in the rollback or in `release-pr`
+  # reads them: no `always()`, no `needs.docs-*`. `continue-on-error` keeps a
+  # failed build or deploy from failing the run of a release that is already
+  # out; the site is then rebuilt by hand with the Documentation site workflow.
+  docs-site:
+    name: Build the documentation site
+    needs: [release-please, assets]
+    if: ${{ !inputs.dry_run && needs.release-please.outputs.release_created == 'true' && needs.assets.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/docs-site
+        with:
+          docs-ref: ${{ needs.release-please.outputs.tag_name }}
+          upload: "true"
+
+  docs-deploy:
+    name: Deploy the documentation site
+    needs: [docs-site]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
