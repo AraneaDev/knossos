@@ -23,7 +23,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { createServer as createNetServer } from 'node:net'
+import { connect, createServer as createNetServer } from 'node:net'
 import { dirname, extname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -38,11 +38,19 @@ import { reset } from '../hooks/mod/state'
 import { followHead } from '../hooks/mod/watcher'
 import { Hub } from './hub'
 import type { PageEvent, Size } from './hub'
-import { PANE_HEADER, addressOf } from './lock'
+import { PANE_HEADER, addressOf, alive, probe } from './lock'
+import type { Replaced } from './lock'
 import { webPort } from './port'
 
 /** How often each page's stream carries a keep-alive: the page's own ALIVE_MS (web/public/app.mjs), which a page counts on to tell a silent stream. */
 export const ALIVE_MS = 10_000
+/**
+ * How long after the former holder ended its port is still tried for {@link directions}. A tab of it that still
+ * watches comes back at the latest after its silence check (up to 40 s) and one wait of its backoff (5 s at most),
+ * and the server tries the port at its next tick (5 s): 50 s, with room for a loaded machine. A tab that comes back
+ * later than that reloads the address knossos printed.
+ */
+const FORMER_GRACE_MS = 60_000
 /** How often the checkout's commit is read again while a page is connected, beside every word from the watcher. */
 const HEAD_POLL_MS = 5_000
 /** The largest input a page sends. */
@@ -161,11 +169,13 @@ export async function startServer(o: {
    */
   holder?: () => Promise<number | null>
   /**
-   * The port of the server whose stale lock this one replaced. Once it is free the server listens there too, with
-   * only directions here: a tab of that server that was away when it stepped down (asleep, or between tries) finds
-   * its way when it comes back.
+   * The holder this server's claim replaced while it was alive and silent (see `Claim.replaced`). Once its port is
+   * free the server listens there too, with only directions here: a tab of that server that was away when it
+   * stepped down (asleep, or between tries) finds its way when it comes back. See {@link FORMER_GRACE_MS}.
    */
-  formerPort?: number | null
+  former?: Replaced | null
+  /** How long after the former holder ended its port is still tried ({@link FORMER_GRACE_MS} by default). */
+  formerGraceMs?: number
 }): Promise<{ url: string; token: string; port: number; ready: Promise<void>; stepped: Promise<void>; close(): Promise<void> }> {
   // Before anything starts: a port it cannot have stops it here, with nothing to undo.
   const wanted = await portFor(o.port ?? 0, o.movable === true)
@@ -197,9 +207,12 @@ export async function startServer(o: {
   let closing: Promise<void> | null = null
   /** Whether the server listens yet: its port is known from then on. */
   let listening = false
-  /** What answers on the former port once it has it, and whether it is trying for it. */
+  /** What answers on the former port once it has it, whether it is trying for it, and whether it gave up for good. */
   let pointer: ReturnType<typeof createServer> | null = null
   let pointing = false
+  let pointDone = false
+  /** When the former holder was first seen gone, by the monotonic clock. */
+  let formerGone: number | null = null
   /** Whether the tick is asking the lock: the ask probes the other server, and a slow one must not pile up asks. */
   let asking = false
   // The poll's tick also asks whether the lock is still this server's: a lock another server holds leaves this one serving no one's project.
@@ -358,18 +371,56 @@ export async function startServer(o: {
   listening = true
   origin = `http://127.0.0.1:${port}`
 
-  /** Listens on the former port with {@link directions}, once it is free: tried on each tick until it is. */
+  /**
+   * Listens on the former holder's port with {@link directions}, once it is free, tried on each tick: while that
+   * holder still runs (stopped, or stepping down, it still holds its port), and for {@link FORMER_GRACE_MS} after
+   * it ended. A port that something else holds is never taken from it: a failed try looks once at what listens
+   * there, and anything but the former holder's own silence or pane ends the trying for good, as does the grace.
+   */
   function pointFrom(): void {
-    const former = o.formerPort ?? null
-    if (!listening || former === null || former === port || pointer !== null || pointing || closing !== null) return
+    const former = o.former ?? null
+    if (!listening || former === null || former.port === port || pointer !== null || pointing || pointDone || closing !== null) return
+    if (!alive(former.pid)) {
+      formerGone ??= performance.now()
+      if (performance.now() - formerGone > (o.formerGraceMs ?? FORMER_GRACE_MS)) return void (pointDone = true)
+    }
     pointing = true
     const there = createServer((req, res) => directions(req, res))
-    there.once('error', () => (pointing = false))
-    there.listen(former, '127.0.0.1', () => {
+    there.once('error', () => {
+      void heldBy(former).then(other => {
+        if (other) pointDone = true
+        pointing = false
+      })
+    })
+    there.listen(former.port, '127.0.0.1', () => {
       pointing = false
       if (closing !== null) return void there.close()
       pointer = there
     })
+  }
+  /**
+   * Whether the former port, which a try could not have, is held by another program: something accepts there, and
+   * it is not the former holder, which has ended, or answers neither in silence (stopped) nor as a pane server.
+   * Nothing accepting is a moment of a port being let go, and is tried again.
+   */
+  async function heldBy(former: Replaced): Promise<boolean> {
+    const accepts = () =>
+      new Promise<boolean>(resolve => {
+        const socket = connect(former.port, '127.0.0.1')
+        socket.setTimeout(1_000, () => socket.destroy())
+        socket.once('connect', () => {
+          socket.destroy()
+          resolve(true)
+        })
+        socket.once('error', () => resolve(false))
+        socket.once('close', () => resolve(false))
+      })
+    if (!(await accepts())) return false
+    if (!alive(former.pid)) return true
+    if ((await probe(addressOf(former.port, token), 1_000)) !== 'other') return false
+    // An answer that is not a pane's, or a connection cut while the holder let its port go: only the first is
+    // another program's, and it still accepts.
+    return accepts()
   }
   /**
    * The former port's only answers, under the same token rule: a page's event stream is told where the pane is

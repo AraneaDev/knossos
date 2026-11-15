@@ -22,10 +22,20 @@ import { join } from 'node:path'
 /**
  * `mine`: `record` the port once the server listens, `release` when it stops, and `holder` to learn whether
  * another pane server took the project over: its port once the lock names another live process and a pane server
- * answers there, null otherwise. `replaced` is the port of the stale lock this claim removed, if it named one: where
- * pages of the server it replaced may still come looking.
+ * answers there, null otherwise. `replaced` is the holder of the stale lock this claim removed, when that holder was
+ * alive and stayed silent (a pane suspended, or stuck): its pages are the ones that may still come looking on its
+ * port, and nothing else will answer them there. Null for any other stale lock, and for a port below 1024.
  */
-export type Claim = { kind: 'mine'; record(port: number): void; release(): void; holder(): Promise<number | null>; replaced: number | null } | { kind: 'running'; url: string }
+export type Claim = { kind: 'mine'; record(port: number): void; release(): void; holder(): Promise<number | null>; replaced: Replaced | null } | { kind: 'running'; url: string }
+
+/** A holder replaced while it was alive and silent: its process and the port it served on. */
+export type Replaced = { pid: number; port: number }
+
+/** Whether a port may be pointed from at all: never a privileged one, which no pane server is given by default. */
+export const pointable = (port: number): boolean => port >= 1024
+
+/** A lock's holder as a key. */
+const keyOf = (held: { pid: unknown; port: unknown }): string => `${String(held.pid)}:${String(held.port)}`
 
 /** A live process that holds the lock but whose server has not answered yet, and whether it is stopped (a pane suspended with Ctrl-Z). */
 export type Silent = { pid: number; stopped: boolean }
@@ -75,7 +85,7 @@ const HOLDER_PROBE_MS = 1_000
 const STARTING_MS = 10_000
 
 /** Whether a process `pid` runs: one this user may not signal runs too. */
-function alive(pid: unknown): boolean {
+export function alive(pid: unknown): boolean {
   if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return false
   try {
     process.kill(pid, 0)
@@ -128,7 +138,7 @@ async function oldPage(body: ReadableStream<Uint8Array> | null): Promise<boolean
  * {@link PANE_HEADER}; one from before that header is known by its page, which a newer pane may meet on one
  * machine during an update.
  */
-async function probe(url: string, ms: number): Promise<'pane' | 'other' | 'silent'> {
+export async function probe(url: string, ms: number): Promise<'pane' | 'other' | 'silent'> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(ms) })
     if (res.status !== 200) {
@@ -156,21 +166,22 @@ function stopped(pid: number): boolean {
 }
 
 /**
- * Whether the pane server at `url`, run by the live process `pid`, holds the lock: it answers as a pane server
- * within {@link PATIENCE_MS}, each try waiting longer. Silence through every try is a server that does not serve,
- * and its lock is stale; `silent` is told once, when the first try goes unanswered, so that the person learns
- * what the start waits for.
+ * Whether the pane server at `url`, run by the live process `pid`, holds the lock: `pane` when it answers as a pane
+ * server within {@link PATIENCE_MS}, each try waiting longer, `other` for any other answer or none, and `silent`
+ * when it stayed silent through every try, a server that does not serve (suspended, or stuck): the lock is stale
+ * then too. `silent` is told once, when the first try goes unanswered, so that the person learns what the start
+ * waits for.
  *
  * A known limit: a server that is alive but answers only after more than about 4 s is taken over. That is safe:
  * it steps down at its next tick, once it sees the lock name the new server.
  */
-async function serves(url: string, pid: number, silent?: (holder: Silent) => void): Promise<boolean> {
+async function serves(url: string, pid: number, silent?: (holder: Silent) => void): Promise<'pane' | 'other' | 'silent'> {
   for (const [i, ms] of PATIENCE_MS.entries()) {
     const answer = await probe(url, ms)
-    if (answer !== 'silent') return answer === 'pane'
+    if (answer !== 'silent') return answer
     if (i === 0) silent?.({ pid, stopped: stopped(pid) })
   }
-  return false
+  return 'silent'
 }
 
 /** The errors of a file system that has no hard links. */
@@ -229,14 +240,14 @@ function guarded(file: string, act: () => void): boolean {
 
 const isPort = (port: unknown): port is number => typeof port === 'number' && Number.isInteger(port) && port > 0 && port < 65_536
 
-/** Whether the lock in `file`, held by the live process `pid` it names, still holds: its server answers at `url`, or is still starting. */
-async function holds(file: string, url: string | null, pid: number, silent?: (holder: Silent) => void): Promise<boolean> {
+/** Whether the lock in `file`, held by the live process `pid` it names, still holds (`pane`): its server answers at `url`, or is still starting. */
+async function holds(file: string, url: string | null, pid: number, silent?: (holder: Silent) => void): Promise<'pane' | 'other' | 'silent'> {
   if (url !== null) return serves(url, pid, silent)
   try {
     const age = Date.now() - statSync(file).mtimeMs
-    return age > -CLOCK_SLACK_MS && age < STARTING_MS
+    return age > -CLOCK_SLACK_MS && age < STARTING_MS ? 'pane' : 'other'
   } catch {
-    return false
+    return 'other'
   }
 }
 
@@ -278,13 +289,15 @@ export async function claim(dataDir: string, root: string, token: string, silent
     guarded(file, () => {
       if (existsSync(file) && doomed(held(file))) rmSync(file, { force: true })
     })
-  /** The port of the last stale lock this claim removed: see {@link Claim}. */
-  let replaced: number | null = null
+  /** The holder of the last stale lock this claim removed, when it was a live one that stayed silent: see {@link Claim}. */
+  let replaced: Replaced | null = null
+  /** The live holders found silent through every try, by `pid:port`: the only ones whose port may be pointed from. */
+  const silentHolders = new Set<string>()
   /** Removes the stale lock that read as `seen`, and only that one. */
   const removeStale = (seen: { pid: unknown; port: unknown } | null, patient: boolean) =>
     removeIf(now => {
       const doomed = now === null ? seen === null && !(patient && writing(file)) : seen !== null && now.pid === seen.pid && now.port === seen.port
-      if (doomed) replaced = now !== null && isPort(now.port) ? now.port : replaced
+      if (doomed && now !== null && silentHolders.has(keyOf(now)) && alive(now.pid) && isPort(now.port) && pointable(now.port)) replaced = { pid: now.pid as number, port: now.port }
       return doomed
     })
   /** When this start first found the lock unreadable, by its own clock: how long it waits on one is bounded by that, not by the file. */
@@ -346,10 +359,12 @@ export async function claim(dataDir: string, root: string, token: string, silent
     }
     const url = other !== null && isPort(other.port) ? addressOf(other.port, token) : null
     // A holder already found silent through every try is not waited on again in this claim (a removal that lost the guard comes back here).
-    const key = other === null ? '' : `${String(other.pid)}:${String(other.port)}`
+    const key = other === null ? '' : keyOf(other)
     if (other !== null && other.pid !== process.pid && alive(other.pid) && !silenced.has(key)) {
-      if (await holds(file, url, other.pid as number, silent)) return { kind: 'running', url: url ?? '' }
+      const verdict = await holds(file, url, other.pid as number, silent)
+      if (verdict === 'pane') return { kind: 'running', url: url ?? '' }
       if (url !== null) silenced.add(key)
+      if (verdict === 'silent') silentHolders.add(key)
     }
     // Its process is gone, or its pid is another process's now: the lock is stale.
     if (!removeStale(other, patient)) await new Promise(done => setTimeout(done, GUARD_WAIT_MS))
