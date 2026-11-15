@@ -245,11 +245,13 @@ final class AllowedRoots
      * Where `enrichers.json` and `pane-autostart.json` live: beside the roots file.
      *
      * `KNOSSOS_SETTINGS_DIR` names another directory. The container launcher
-     * sets it to the graph directory, because there the roots file is the
-     * read-only list the host keeps. Only `pane-autostart.json` stays there: it
-     * says whether the pane opens, nothing more. `enrichers.json` names
-     * commands a scan starts, so the launcher also sets `KNOSSOS_ENRICHERS_FILE`
-     * to a file no container can write ({@see \Knossos\Configuration\EnrichersFile}).
+     * sets it to `<install dir>/settings`, which every container only reads:
+     * `enrichers.json` names commands a scan starts and `pane-autostart.json`
+     * says which projects open the pane, so no scanned project may write
+     * either. The launcher carries out `enricher add|remove` and
+     * `autostart --set` in a short run of the image that may write only that
+     * directory, and also sets `KNOSSOS_ENRICHERS_FILE`
+     * ({@see \Knossos\Configuration\EnrichersFile}).
      */
     public static function settingsDirectory(string $databasePath): string
     {

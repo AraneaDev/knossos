@@ -13,7 +13,8 @@ use PHPUnit\Framework\Attributes\Group;
  * The container launcher writes the allow-list in shell, and the server reads it in PHP.
  *
  * A container install grants roots on the host: tools/launcher/knossos writes
- * `<install dir>/roots.json` itself and chooses each project root from it with
+ * `<install dir>/roots.json` itself (the install directory lies outside the
+ * data directory) and chooses each project root from it with
  * its own reader, while the server in every container reads the same file
  * through {@see RootsFile} and {@see AllowedRoots}. A file the two read
  * differently either mounts a root the server then refuses, or, written as
@@ -30,21 +31,33 @@ final class LauncherRootsRoundTripTest extends KnossosTestCase
     {
         $work = sys_get_temp_dir() . '/knossos-launcher-roots-' . bin2hex(random_bytes(6));
         mkdir($work . '/home', 0o700, true);
-        mkdir($work . '/data/install/plugin', 0o700, true);
-        mkdir($work . '/data/install/containers', 0o700, true);
+        mkdir($work . '/data', 0o700, true);
+        mkdir($work . '/share/knossos/plugin', 0o700, true);
+        mkdir($work . '/share/knossos/containers', 0o700, true);
         mkdir($work . '/bin', 0o700, true);
         mkdir($work . '/docker', 0o700, true);
         $this->work = (string) realpath($work);
-        file_put_contents($this->work . '/data/install/install.json', json_encode([
+        $install = $this->work . '/share/knossos';
+        file_put_contents($install . '/install.json', json_encode([
             'mode' => 'container',
-            'layout' => 'separate',
+            'layout' => 'install-dir',
             'version' => '1.0.0',
             'image' => 'knossos:test',
             'runtime' => 'docker',
             'bin_dir' => $this->work . '/bin',
-        ]));
+            'data_dir' => $this->work . '/data',
+        ], JSON_UNESCAPED_SLASHES));
         copy(self::repositoryRoot() . '/tests/shell/fixtures/fake-docker', $this->work . '/bin/docker');
         chmod($this->work . '/bin/docker', 0o755);
+        // The launcher as the installer writes it: the install directory and its inode baked in.
+        $stat = stat($install);
+        assertSame(true, is_array($stat));
+        $template = (string) file_get_contents(self::repositoryRoot() . '/tools/launcher/knossos');
+        file_put_contents($this->work . '/bin/knossos', str_replace(
+            ["INSTALL_DIR='__KNOSSOS_INSTALL_DIR__'", "INSTALL_PIN='__KNOSSOS_INSTALL_PIN__'"],
+            ["INSTALL_DIR='" . $install . "'", "INSTALL_PIN='" . $stat['dev'] . ':' . $stat['ino'] . "'"],
+            $template,
+        ));
     }
 
     protected function tearDown(): void
@@ -84,7 +97,7 @@ final class LauncherRootsRoundTripTest extends KnossosTestCase
             assertSame(0, $status, $folder . ': ' . $output);
         }
 
-        $file = $this->work . '/data/install/roots.json';
+        $file = $this->work . '/share/knossos/roots.json';
         $expected = array_map(static fn(string $name): string => AllowedRoots::normaliseRoot($projects . '/' . $name), $names);
         assertSame($expected, (new RootsFile($file))->read());
         assertSame($expected, $this->launcherReader($file));
@@ -98,7 +111,7 @@ final class LauncherRootsRoundTripTest extends KnossosTestCase
         mkdir($projects . '/kept', 0o700, true);
         [$status] = $this->launcher(['allow-root', $projects . '/kept', '--execute']);
         assertSame(0, $status);
-        $file = $this->work . '/data/install/roots.json';
+        $file = $this->work . '/share/knossos/roots.json';
         $before = (string) file_get_contents($file);
         foreach (["tab\there", "new\nline", 'not-utf8-' . "\xff", "bell\x07"] as $name) {
             mkdir($projects . '/' . $name, 0o700, true);
@@ -119,7 +132,7 @@ final class LauncherRootsRoundTripTest extends KnossosTestCase
         foreach (['one', 'two', 'wide', 'nested', 'listed elsewhere'] as $name) {
             mkdir($projects . '/' . $name, 0o700, true);
         }
-        $file = $this->work . '/data/install/roots.json';
+        $file = $this->work . '/share/knossos/roots.json';
         // Keys a person might add by hand, holding strings that look like roots.
         file_put_contents($file, json_encode([
             '_note' => $projects . '/wide',
@@ -151,9 +164,8 @@ final class LauncherRootsRoundTripTest extends KnossosTestCase
     private function launcher(array $arguments): array
     {
         return $this->runCommand(
-            ['sh', self::repositoryRoot() . '/tools/launcher/knossos', ...$arguments],
+            ['sh', $this->work . '/bin/knossos', ...$arguments],
             [
-                'KNOSSOS_INSTALL_DIR' => $this->work . '/data/install',
                 'HOME' => $this->work . '/home',
                 'FAKE_DOCKER_STATE' => $this->work . '/docker',
                 'FAKE_ANY_IMAGE' => '1',

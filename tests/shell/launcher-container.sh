@@ -55,23 +55,32 @@ has_call() { grep -qxF "$1" "$FAKE_DOCKER_STATE/calls" 2>/dev/null; }
 count_calls() { if [ -f "$FAKE_DOCKER_STATE/calls" ]; then grep -c "^call \\[$1\\]" "$FAKE_DOCKER_STATE/calls"; else echo 0; fi; }
 
 IMAGE="ghcr.io/araneadev/knossos@sha256:1111111111111111111111111111111111111111111111111111111111111111"
-# The layout install.sh makes: the graph in the data dir, the host state in
-# <data dir>/install with real plugin/ and containers/ directories.
+# The layout install.sh makes: the graph alone in the data dir, and the host
+# state in an install directory outside it, with real plugin/ and containers/
+# directories, whose install.json records the data dir.
 DATA="$WORK/data dir"
-INSTALL="$DATA/install"
-mkdir -p "$INSTALL/plugin" "$INSTALL/containers"
+INSTALL="$WORK/share/knossos"
+mkdir -p "$DATA" "$INSTALL/plugin" "$INSTALL/containers"
+# write_record IMAGE [RUNTIME] [DIR] [DATA]: install.json as the update helper writes it.
 write_record() {
-    printf '{\n  "mode": "container",\n  "layout": "separate",\n  "version": "1.0.0",\n  "image": "%s",\n  "runtime": "%s",\n  "bin_dir": "%s",\n  "installed_at": "2026-01-01T00:00:00Z"\n}\n' \
-        "$1" "${2:-docker}" "$WORK/bin" > "$INSTALL/install.json"
+    printf '{\n  "mode": "container",\n  "layout": "install-dir",\n  "version": "1.0.0",\n  "image": "%s",\n  "runtime": "%s",\n  "bin_dir": "%s",\n  "data_dir": "%s",\n  "installed_at": "2026-01-01T00:00:00Z"\n}\n' \
+        "$1" "${2:-docker}" "$WORK/bin" "${4:-$DATA}" > "${3:-$INSTALL}/install.json"
 }
 write_record "$IMAGE"
 # The device and inode numbers of a directory, as the installer bakes them in.
 pin_of() { stat -c '%d:%i' -- "$1" 2>/dev/null || stat -f '%d:%i' -- "$1"; }
 PIN=$(pin_of "$INSTALL")
-# bake PIN OUT: a launcher for INSTALL with PIN baked in, as install.sh writes it.
+# bake PIN OUT [DIR]: a launcher for DIR (INSTALL) with PIN baked in, as install.sh writes it.
 bake() {
-    sed -e "s|__KNOSSOS_INSTALL_DIR__|$INSTALL|" -e "s|^INSTALL_PIN='__KNOSSOS_INSTALL_PIN__'\$|INSTALL_PIN='$1'|" "$TEMPLATE" > "$2"
+    sed -e "s|__KNOSSOS_INSTALL_DIR__|${3:-$INSTALL}|" -e "s|^INSTALL_PIN='__KNOSSOS_INSTALL_PIN__'\$|INSTALL_PIN='$1'|" "$TEMPLATE" > "$2"
     chmod +x "$2"
+}
+# install_at DIR OUT [DATA]: an install directory at DIR, as install.sh makes
+# it, recording DATA (or the test's data dir), and its launcher at OUT.
+install_at() {
+    mkdir -p "$1/plugin" "$1/containers"
+    write_record "$IMAGE" docker "$1" "${3:-$DATA}"
+    bake "$(pin_of "$1")" "$2" "$1"
 }
 LAUNCHER="$WORK/knossos"
 bake "$PIN" "$LAUNCHER"
@@ -94,7 +103,7 @@ $IMAGE")"
 
 reset_docker
 out=$(cd "$PROJECT/src/deep" && kn version --json </dev/null 2>&1); status=$?
-expected_run="call [run] [-d] [--rm] [--init] [--no-healthcheck] [--pull=never] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$DATA] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$DATA,target=$DATA] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
+expected_run="call [run] [-d] [--rm] [--init] [--no-healthcheck] [--pull=never] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$INSTALL/settings] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$DATA,target=$DATA] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
 if [ "$status" -eq 0 ] && grep -qxF "$expected_run" "$FAKE_DOCKER_STATE/calls"; then
     pass 'the first call runs the container with same-path mounts, the install dir as one read-only mount, the user, HOME=/tmp, no network and idle-stop'
 else
@@ -102,7 +111,7 @@ else
 fi
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls")
 case $exec_line in
-    "call [exec] [-i] [-w] [$PROJECT/src/deep] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$DATA] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] "*"[$NAME] [/opt/knossos/tools/launcher/idle-stop] [--run] ["*"] [/opt/knossos/bin/knossos] [version] [--json]")
+    "call [exec] [-i] [-w] [$PROJECT/src/deep] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$INSTALL/settings] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] "*"[$NAME] [/opt/knossos/tools/launcher/idle-stop] [--run] ["*"] [/opt/knossos/bin/knossos] [version] [--json]")
         pass 'the call is an exec -i in the working directory, without -t when there is no terminal'
         ;;
     *) fail "exec line: $exec_line" ;;
@@ -209,7 +218,7 @@ cp "$INSTALL/roots.json" "$ROOTS"
 (cd "$PROJECT" && KNOSSOS_DATA_DIR="$GRAPH" KNOSSOS_ROOTS_FILE="$ROOTS" "$LAUNCHER" version </dev/null >/dev/null 2>&1)
 run_line=$(grep '^call \[run\]' "$FAKE_DOCKER_STATE/calls")
 case $run_line in
-    *"[-e] [KNOSSOS_DATA_DIR=$GRAPH] [-e] [KNOSSOS_ROOTS_FILE=$ROOTS] [-e] [KNOSSOS_SETTINGS_DIR=$GRAPH] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$GRAPH,target=$GRAPH] [--mount] [type=bind,source=$WORK/roots dir,target=$WORK/roots dir,readonly] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] "*)
+    *"[-e] [KNOSSOS_DATA_DIR=$GRAPH] [-e] [KNOSSOS_ROOTS_FILE=$ROOTS] [-e] [KNOSSOS_SETTINGS_DIR=$INSTALL/settings] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$GRAPH,target=$GRAPH] [--mount] [type=bind,source=$WORK/roots dir,target=$WORK/roots dir,readonly] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] "*)
         pass "a caller's data dir and roots file are mounted beside the project and the install directory, each at its own path"
         ;;
     *) fail "separate dirs: $run_line" ;;
@@ -268,10 +277,10 @@ write_record "$IMAGE"
 
 # Another installation on the same machine never shares a container.
 INSTALL2="$WORK/second/install"
-mkdir -p "$INSTALL2/plugin" "$INSTALL2/containers"
-cp "$INSTALL/install.json" "$INSTALL2/install.json"
+install_at "$INSTALL2" "$WORK/second launcher"
+cp "$INSTALL/roots.json" "$INSTALL2/roots.json"
 : > "$FAKE_DOCKER_STATE/calls"
-(cd "$PROJECT" && KNOSSOS_INSTALL_DIR="$INSTALL2" kn version </dev/null >/dev/null 2>&1)
+(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/second launcher" version </dev/null >/dev/null 2>&1)
 if grep -qF "io.knossos.install=$(hash12 "$INSTALL2")" "$FAKE_DOCKER_STATE/calls" && ! grep -qF "[--name] [$NAME]" "$FAKE_DOCKER_STATE/calls"; then
     pass 'a second installation gets its own container for the same project'
 else
@@ -406,11 +415,18 @@ refused 'the home directory as the project root' 'the project root' \
     sh -c 'cd "$HOME" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$1" version </dev/null' _ "$LAUNCHER"
 refused 'the filesystem root as the project root' 'the project root / is the filesystem root' \
     sh -c 'cd / && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$1" version </dev/null' _ "$LAUNCHER"
-cp "$INSTALL/install.json" "$HOME/install.json"
-mkdir -p "$HOME/plugin" "$HOME/containers"
-refused 'an install directory that is the home directory' 're-run the installer with --data-dir' \
-    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$HOME" KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$PROJECT" "$DATA" "$LAUNCHER"
-rm -rf "$HOME/install.json" "$HOME/plugin" "$HOME/containers"
+install_at "$HOME" "$WORK/home launcher"
+refused 'an install directory that is the home directory' "the install directory $HOME is your home directory, which every container would be given read-only; run the installer again with --install-dir set to a directory of its own" \
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$PROJECT" "$DATA" "$WORK/home launcher"
+rm -rf "$HOME/install.json" "$HOME/plugin" "$HOME/containers" "$WORK/home launcher"
+# A pinned launcher never takes its install directory from the environment.
+: > "$FAKE_DOCKER_STATE/calls"
+out=$(cd "$PROJECT" && KNOSSOS_INSTALL_DIR="$INSTALL2" kn version </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && grep -qF "io.knossos.install=$(hash12 "$INSTALL")" "$FAKE_DOCKER_STATE/calls" && ! grep -qF "$INSTALL2" "$FAKE_DOCKER_STATE/calls"; then
+    pass 'KNOSSOS_INSTALL_DIR at run time changes nothing for a container launcher: the baked install directory is used'
+else
+    fail "run-time KNOSSOS_INSTALL_DIR: $status, $out, $(calls)"
+fi
 
 # ---- stop and self-update work from anywhere -------------------------------------------
 
@@ -429,7 +445,11 @@ if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--entrypoint] 
 else
     fail "helper read: $(calls)"
 fi
-if [ -z "$(find "$WORK/tmp" -name 'knossos-update.*')" ]; then pass "the launcher's copy of the helper is gone once it has run"; else fail "helper copy left: $(ls "$WORK/tmp")"; fi
+if [ -z "$(find "$WORK/tmp" "$INSTALL/tmp" -name 'knossos-update.*')" ] && [ -z "$(ls -A "$WORK/tmp")" ]; then
+    pass "the launcher's copy of the helper is made in the install directory, never in TMPDIR, and is gone once it has run"
+else
+    fail "helper copy left: $(ls "$WORK/tmp" "$INSTALL/tmp" 2>&1)"
+fi
 
 # The background check: a fresh answer costs nothing, one from the future is due.
 : > "$FAKE_DOCKER_STATE/calls"
@@ -552,34 +572,31 @@ printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/root
 
 # ---- symlinks: everything the container is given is the physical path -------------------
 
-REAL="$WORK/real"
-# The graph, the roots file and the project outside the install's default
-# graph directory ($REAL), where a container of that graph could not change them.
+# The graph, the roots file and the project reached through links of yours,
+# outside every graph directory.
 PHYS="$WORK/phys"
-mkdir -p "$PHYS/graph" "$PHYS/roots" "$PHYS/proj/src" "$REAL/install/plugin" "$REAL/install/containers"
-cp "$INSTALL/install.json" "$REAL/install/install.json"
+mkdir -p "$PHYS/graph" "$PHYS/roots" "$PHYS/proj/src"
 ln -s "$PHYS/graph" "$WORK/graph link"
 ln -s "$PHYS/roots" "$WORK/roots link"
 ln -s "$PHYS/proj" "$WORK/proj link"
-ln -s "$REAL/install" "$WORK/install link"
 printf '{"roots": ["%s"]}\n' "$WORK/proj link" > "$PHYS/roots/roots.json"
 reset_docker
-out=$(cd "$WORK/proj link/src" && KNOSSOS_INSTALL_DIR="$REAL/install" KNOSSOS_DATA_DIR="$WORK/graph link" \
+out=$(cd "$WORK/proj link/src" && KNOSSOS_DATA_DIR="$WORK/graph link" \
     KNOSSOS_ROOTS_FILE="$WORK/roots link/roots.json" "$LAUNCHER" version </dev/null 2>&1); status=$?
 run_line=$(grep '^call \[run\] \[-d\]' "$FAKE_DOCKER_STATE/calls")
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
 agree=yes
-for wanted in "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$REAL/install]" "[-e] [KNOSSOS_DATA_DIR=$PHYS/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$PHYS/roots/roots.json]" \
+for wanted in "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL]" "[-e] [KNOSSOS_DATA_DIR=$PHYS/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$PHYS/roots/roots.json]" \
     "[--mount] [type=bind,source=$PHYS/proj,target=$PHYS/proj,readonly]" "[--mount] [type=bind,source=$PHYS/graph,target=$PHYS/graph]" \
-    "[--mount] [type=bind,source=$PHYS/roots,target=$PHYS/roots,readonly]" "[--mount] [type=bind,source=$REAL/install,target=$REAL/install,readonly]" \
-    "[$REAL/install/containers/knossos-"; do
+    "[--mount] [type=bind,source=$PHYS/roots,target=$PHYS/roots,readonly]" "[--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly]" \
+    "[$INSTALL/containers/knossos-"; do
     case $run_line in *"$wanted"*) ;; *) agree=no; printf '  run lacks %s\n' "$wanted" ;; esac
 done
-for wanted in "[-w] [$PHYS/proj/src]" "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$REAL/install]" "[-e] [KNOSSOS_DATA_DIR=$PHYS/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$PHYS/roots/roots.json]"; do
+for wanted in "[-w] [$PHYS/proj/src]" "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL]" "[-e] [KNOSSOS_DATA_DIR=$PHYS/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$PHYS/roots/roots.json]"; do
     case $exec_line in *"$wanted"*) ;; *) agree=no; printf '  exec lacks %s\n' "$wanted" ;; esac
 done
 case "$run_line$exec_line" in *link*) agree=no; printf '  a symlinked spelling reached the container\n' ;; esac
-if [ "$status" -eq 0 ] && [ "$agree" = yes ] && [ -n "$(find "$REAL/install/containers" -name 'knossos-*' 2>/dev/null)" ]; then
+if [ "$status" -eq 0 ] && [ "$agree" = yes ]; then
     pass 'through symlinked graph, roots and project directories, the mounts, the environment, the working directory and the marker all use the physical path'
 else
     fail "symlinks: $status, $out"
@@ -589,6 +606,7 @@ case $exec_line in
     *"[-e] [KNOSSOS_ALLOWED_ROOTS=$PHYS/proj]"*) pass 'a root listed through a symlink is granted in its physical form inside' ;;
     *) fail "allowed root through a symlink: $exec_line" ;;
 esac
+find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
 
 # ---- the install directory: nothing in it is trusted that a container could plant ----
 
@@ -601,7 +619,7 @@ planted() {
     what=$1
     reset_docker
     out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
-    case $out in *'re-run the installer'*) said=yes ;; *) said=no ;; esac
+    case $out in *"run the installer again with --install-dir=$INSTALL to repair it"*) said=yes ;; *) said=no ;; esac
     if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ] && [ "$(count_calls exec)" -eq 0 ] && sentinel_intact; then
         pass "a symlink planted at $what is refused, nothing runs and nothing outside is written"
     else
@@ -637,26 +655,49 @@ mv "$INSTALL/install.json" "$WORK/install.json.real"
 ln -s "$WORK/install.json.real" "$INSTALL/install.json"
 reset_docker
 out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
-case $out in *"$INSTALL/install.json is a symlink; re-run the installer"*) said=yes ;; *) said=no ;; esac
+case $out in *"$INSTALL/install.json is a symlink; run the installer again with --install-dir=$INSTALL to repair it"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then pass 'a symlinked install.json is refused in container mode, and nothing runs'; else fail "planted install.json: $status, $out"; fi
 rm -f "$INSTALL/install.json"
 mv "$WORK/install.json.real" "$INSTALL/install.json"
 
+# A launcher whose baked install directory is a link, or lies below one: the
+# installer bakes the physical path, so either was put there by someone else.
 ln -s "$INSTALL" "$WORK/install link"
+bake "$(pin_of "$WORK/install link")" "$WORK/linked launcher" "$WORK/install link"
 reset_docker
-out=$(cd "$PROJECT" && KNOSSOS_INSTALL_DIR="$WORK/install link" kn version </dev/null 2>&1); status=$?
-case $out in *'is a symlink; re-run the installer'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'an install directory that is a symlink is refused'; else fail "install dir link: $status, $out"; fi
+out=$(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/linked launcher" version </dev/null 2>&1); status=$?
+case $out in *"the install directory is a symlink; run the installer again with --install-dir=$WORK/install link to repair it"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'an install directory that is a symlink is refused, saying how to repair it'; else fail "install dir link: $status, $out"; fi
+mkdir -p "$WORK/link parent"
+ln -s "$WORK/share" "$WORK/link parent/share"
+bake "$PIN" "$WORK/below link launcher" "$WORK/link parent/share/knossos"
 reset_docker
-out=$(cd "$PROJECT" && KNOSSOS_INSTALL_DIR="$WORK/install link/" kn version </dev/null 2>&1); status=$?
-if [ "$status" -eq 1 ] && [ "$(count_calls run)" -eq 0 ]; then pass 'an install directory reached through a symlinked parent is refused'; else fail "install dir via link: $status, $out"; fi
+out=$(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/below link launcher" version </dev/null 2>&1); status=$?
+case $out in *'the install directory is not at its own physical path'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'an install directory reached through a symlinked parent is refused'; else fail "install dir via link: $status, $out"; fi
+rm -rf "$WORK/link parent" "$WORK/install link" "$WORK/linked launcher" "$WORK/below link launcher"
 
-# A record in container mode without the separate layout: no release wrote one.
-printf '{"mode": "container", "image": "%s", "runtime": "docker"}\n' "$IMAGE" > "$INSTALL/install.json"
-reset_docker
-out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
-case $out in *'a layout no release wrote'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'a container record at the old location is refused'; else fail "old layout: $status, $out"; fi
+# A record in container mode of another layout: no release wrote one, the
+# install directory inside the data directory included.
+for layout in none separate; do
+    if [ "$layout" = none ]; then
+        printf '{"mode": "container", "image": "%s", "runtime": "docker", "data_dir": "%s"}\n' "$IMAGE" "$DATA" > "$INSTALL/install.json"
+    else
+        printf '{"mode": "container", "layout": "separate", "image": "%s", "runtime": "docker", "data_dir": "%s"}\n' "$IMAGE" "$DATA" > "$INSTALL/install.json"
+    fi
+    reset_docker
+    out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+    case $out in *"records a layout no release wrote; run the installer again with --install-dir=$INSTALL to repair it"*) said=yes ;; *) said=no ;; esac
+    if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass "a container record with the $layout layout is refused"; else fail "old layout $layout: $status, $out"; fi
+done
+# A record that names no data directory, or one in a form the launcher does not decode.
+for data_dir in '' 'relative/path' '/x\ty'; do
+    printf '{"mode": "container", "layout": "install-dir", "image": "%s", "runtime": "docker", "data_dir": "%s"}\n' "$IMAGE" "$data_dir" > "$INSTALL/install.json"
+    reset_docker
+    out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+    case $out in *"install.json names no data directory; run the installer again"*) said=yes ;; *) said=no ;; esac
+    if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass "a record whose data_dir is '$data_dir' is refused"; else fail "data_dir '$data_dir': $status, $out"; fi
+done
 write_record "$IMAGE"
 
 # A graph or roots directory inside the read-only install directory is refused.
@@ -708,7 +749,7 @@ pin_refused() {
     reset_docker
     out=$(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$launcher" "$@" </dev/null 2>&1); status=$?
     cp "$WORK/record.kept" "$INSTALL/install.json"
-    if [ "$status" -eq 1 ] && [ "$out" = "knossos: the install directory $INSTALL is not the one the installer created; re-run the installer to fix it." ] \
+    if [ "$status" -eq 1 ] && [ "$out" = "knossos: the install directory $INSTALL is not the one the installer made this launcher for (it was replaced, copied or restored); run the installer again with --install-dir=$INSTALL to repair it: your roots and enrichers are kept." ] \
         && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then
         pass "$what is refused before install.json is read"
     else
@@ -755,52 +796,67 @@ reset_docker
 out=$(cd "$PROJECT" && PATH="$NOSTAT" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/inode only" version </dev/null 2>&1); status=$?
 if [ "$status" -eq 0 ]; then pass 'without stat, the inode read by ls -di is compared'; else fail "ls -di pin: $status, $out"; fi
 out=$(cd "$PROJECT" && PATH="$NOSTAT" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/wrong inode only" version </dev/null 2>&1); status=$?
-case $out in *'is not the one the installer created'*) said=yes ;; *) said=no ;; esac
+case $out in *'is not the one the installer made this launcher for'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'without stat, an inode that differs is refused'; else fail "ls -di wrong pin: $status, $out"; fi
 sed "s|__KNOSSOS_INSTALL_DIR__|$INSTALL|" "$TEMPLATE" > "$WORK/no pin"
 chmod +x "$WORK/no pin"
 reset_docker
 out=$(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/no pin" version </dev/null 2>&1); status=$?
-case $out in *'this launcher carries no record of which directory the installer created; re-run the installer'*) said=yes ;; *) said=no ;; esac
+case $out in *"this launcher carries no record of which install directory the installer made it for; run the installer again with --install-dir=$INSTALL to repair it"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then pass 'a container launcher without a pin is refused'; else fail "no pin: $status, $out"; fi
 
-# ---- no read-write mount holds a directory the host trusts ------------------------------
+# ---- no mount holds a directory the host trusts ------------------------------------------
 #
-# A container that can write an ancestor of the install directory can rename
-# it aside and plant one of its own, which the host then trusts; one that can
-# write the launcher's directory can replace the launcher. Each such layout is
-# refused before anything runs.
+# A container that can write a directory the host trusts, or an ancestor of
+# it, could replace what the host runs next; a project's own files come from
+# wherever it was cloned from. Each such layout is refused before anything
+# runs. The install directory lies apart from every data directory, so none
+# of these holds it in the layout the installer makes.
 
-# nested_install DIR: an install directory at DIR, as install.sh makes it.
-nested_install() {
-    mkdir -p "$1/plugin" "$1/containers"
-    cp "$INSTALL/install.json" "$1/install.json"
-}
 NEST="$WORK/nest"
-nested_install "$NEST/proj/.kn/install"
-refused 'a project root that contains the data directory' "the project root $NEST/proj contains the install directory $NEST/proj/.kn/install, which a container must never be able to write; run knossos from a project that does not contain it, or re-run the installer with --data-dir outside the project." \
-    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$NEST/proj" "$NEST/proj/.kn/install" "$LAUNCHER"
-refused 'a project root that is the data directory' "the project root $NEST/proj/.kn contains the install directory" \
-    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$NEST/proj/.kn" "$NEST/proj/.kn/install" "$LAUNCHER"
-# The graph elsewhere, the install directory still inside the project.
-refused 'a project root that contains the install directory' "the project root $NEST/proj contains the install directory $NEST/proj/.kn/install" \
-    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_DATA_DIR="$3" env -u KNOSSOS_ROOTS_FILE "$4" version </dev/null' _ "$NEST/proj" "$NEST/proj/.kn/install" "$GRAPH" "$LAUNCHER"
+# The install directory inside the project root.
+install_at "$NEST/proj/.kn/install" "$WORK/nest launcher" "$GRAPH"
+refused 'a project root that contains the install directory' "the project root $NEST/proj contains the install directory $NEST/proj/.kn/install, which a container must never be able to write; run knossos from a project that does not contain it, or run the installer again with --install-dir outside the project." \
+    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$NEST/proj" "$WORK/nest launcher"
+# The same refusal for a container that is already running: it is never reused.
+reset_docker
+out=$(cd "$NEST/proj" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/nest launcher" version </dev/null 2>&1); status=$?
+if [ "$status" -eq 1 ] && [ "$(count_calls exec)" -eq 0 ] && [ "$(count_calls container)" -eq 0 ]; then
+    pass 'a refused layout is refused before any container is looked at'
+else
+    fail "refused layout with a running container: $status, $out, $(calls)"
+fi
+rm -rf "$NEST" "$WORK/nest launcher"
+# The data directory around the install directory: one level, as the layout
+# before the install directory moved out had it, or deeper.
+for depth in one two; do
+    if [ "$depth" = one ]; then inner="$NEST/data/install"; else inner="$NEST/data/deep/install"; fi
+    install_at "$inner" "$WORK/nest launcher" "$NEST/data"
+    refused "a data directory that holds the install directory $depth level(s) down" "the install directory $inner lies in the graph directory $NEST/data, which a container can write; run the installer again with --install-dir set to a directory of its own" \
+        sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$PROJECT" "$WORK/nest launcher"
+    # Another installation's install directory in a caller's data directory:
+    # not graph data, so that directory is never given to a container.
+    if [ "$depth" = one ]; then entry=install; else entry=deep; fi
+    refused "a caller's KNOSSOS_DATA_DIR that holds another installation's install directory $depth level(s) down" "KNOSSOS_DATA_DIR ($NEST/data) holds $entry, which is not something Knossos puts in a graph directory" \
+        sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$PROJECT" "$NEST/data" "$LAUNCHER"
+    rm -rf "$NEST" "$WORK/nest launcher"
+done
 # A graph directory set by hand inside the project.
 mkdir -p "$PROJECT/.graph"
 refused 'a project root that contains the graph directory' "the project root $PROJECT contains the Knossos data directory $PROJECT/.graph" \
     sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$1/.graph" env -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$PROJECT" "$LAUNCHER"
 rm -rf "$PROJECT/.graph"
-# A roots file in a directory around the data directory.
-nested_install "$NEST/outer/data/install"
-refused 'a roots file directory that contains the data directory' "the directory of KNOSSOS_ROOTS_FILE ($NEST/outer) contains the install directory $NEST/outer/data/install, which a container must never be able to write; move the roots file to a directory of its own and point KNOSSOS_ROOTS_FILE at it." \
-    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_ROOTS_FILE="$3/roots.json" env -u KNOSSOS_DATA_DIR "$4" version </dev/null' _ "$PROJECT" "$NEST/outer/data/install" "$NEST/outer" "$LAUNCHER"
-# A graph directory two levels above the install directory.
-refused 'a graph directory that holds the install directory deeper than one level' "KNOSSOS_DATA_DIR ($NEST/outer) contains the install directory $NEST/outer/data/install deeper than one level" \
-    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_DATA_DIR="$3" env -u KNOSSOS_ROOTS_FILE "$4" version </dev/null' _ "$PROJECT" "$NEST/outer/data/install" "$NEST/outer" "$LAUNCHER"
+# A roots file in a directory around the install directory, or around the data directory.
+refused 'a roots file directory that contains the install directory' "the directory of KNOSSOS_ROOTS_FILE ($WORK/share) contains the install directory $INSTALL, which a container must never be able to write; move the roots file to a directory of its own and point KNOSSOS_ROOTS_FILE at it." \
+    sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$2/roots.json" env -u KNOSSOS_DATA_DIR "$3" version </dev/null' _ "$PROJECT" "$WORK/share" "$LAUNCHER"
+mkdir -p "$NEST/outer/data"
+refused 'a roots file directory that contains the data directory' "the directory of KNOSSOS_ROOTS_FILE ($NEST/outer) contains the Knossos data directory $NEST/outer/data" \
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2/data" KNOSSOS_ROOTS_FILE="$2/roots.json" "$3" version </dev/null' _ "$PROJECT" "$NEST/outer" "$LAUNCHER"
+rm -rf "$NEST"
 # The launcher inside the project, and inside the graph directory.
 mkdir -p "$NEST/tools/proj/bin"
 cp "$LAUNCHER" "$NEST/tools/proj/bin/knossos"
-refused "a project root that contains the launcher's directory" "the project root $NEST/tools/proj contains $NEST/tools/proj/bin, the directory of the knossos launcher, which a container must never be able to write; run knossos from a project that does not contain it, or re-run the installer with --bin-dir outside the project." \
+refused "a project root that contains the launcher's directory" "the project root $NEST/tools/proj contains $NEST/tools/proj/bin, the directory of the knossos launcher, which a container must never be able to write; run knossos from a project that does not contain it, or run the installer again with --bin-dir outside the project." \
     sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$NEST/tools/proj" "$NEST/tools/proj/bin/knossos"
 mkdir -p "$DATA/bin"
 cp "$LAUNCHER" "$DATA/bin/knossos"
@@ -813,23 +869,21 @@ sed "s|\"bin_dir\": \"[^\"]*\"|\"bin_dir\": \"$NEST/tools/proj/bin\"|" "$INSTALL
 refused "a project root that contains the bin directory install.json names" "contains $NEST/tools/proj/bin, the directory of the knossos launcher" \
     sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$NEST/tools/proj" "$LAUNCHER"
 write_record "$IMAGE"
-# The same refusal for a container that is already running: it is never reused.
-reset_docker
-out=$(cd "$NEST/proj" && KNOSSOS_INSTALL_DIR="$NEST/proj/.kn/install" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version </dev/null 2>&1); status=$?
-if [ "$status" -eq 1 ] && [ "$(count_calls exec)" -eq 0 ] && [ "$(count_calls container)" -eq 0 ]; then
-    pass 'a refused layout is refused before any container is looked at'
-else
-    fail "refused layout with a running container: $status, $out, $(calls)"
-fi
+rm -rf "$NEST"
 
 # Every layout that is accepted mounts the graph directory as its own
-# read-write mount, with the install directory read-only directly below it.
+# read-write mount and the install directory as its own read-only one, and
+# no read-write mount holds the install directory.
 graph_mounted() {
     run_line=$(grep '^call \[run\] \[-d\]' "$FAKE_DOCKER_STATE/calls" | tail -n 1)
     case $run_line in
-        *"[--mount] [type=bind,source=$1,target=$1] "*"[--mount] [type=bind,source=$2,target=$2,readonly] "*) return 0 ;;
+        *"[--mount] [type=bind,source=$1,target=$1] "*"[--mount] [type=bind,source=$2,target=$2,readonly] "*) ;;
+        *) return 1 ;;
     esac
-    return 1
+    printf '%s' "$run_line" | awk '{ gsub(/\] \[/, "\n"); print }' | sed -n 's|^type=bind,source=\([^,]*\),target=[^,]*$|\1|p' | while IFS= read -r rw; do
+        case $2 in "$rw" | "$rw"/*) echo held ;; esac
+    done | grep -q held && return 1
+    return 0
 }
 all_graph=yes
 for layout in default roots-apart; do
@@ -840,7 +894,7 @@ for layout in default roots-apart; do
     esac
     if ! graph_mounted "$DATA" "$INSTALL"; then all_graph=no; printf '  %s: %s\n' "$layout" "$(calls)"; fi
 done
-if [ "$all_graph" = yes ]; then pass 'the graph directory is always its own read-write mount, the install directory read-only below it'; else fail 'a layout ran without the graph directory as its own mount'; fi
+if [ "$all_graph" = yes ]; then pass 'the graph directory and the install directory are each their own mount, and no read-write mount holds the install directory'; else fail 'a layout ran with the install directory in a read-write mount'; fi
 
 # ---- a reused container runs the image, network and user that were checked --------------
 
@@ -1095,7 +1149,8 @@ case $out in *'its plugin is managed from the host'*) said=yes ;; *) said=no ;; 
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'install-agent-plugin is refused in container mode before anything runs'; else fail "plugin refused: $status, $out"; fi
 # ---- the enricher list is the host's ----------------------------------------------------
 
-ENRICHERS_RUN="call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-settings] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-settings/roots.json] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] [--mount] [type=bind,source=$INSTALL/settings,target=$INSTALL/settings] [--entrypoint] [/opt/knossos/bin/knossos] [$IMAGE]"
+SETTINGS_ENV="[-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-settings] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-settings/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$INSTALL/settings] [-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] [--mount] [type=bind,source=$INSTALL/settings,target=$INSTALL/settings]"
+ENRICHERS_RUN="call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] $SETTINGS_ENV [--entrypoint] [/opt/knossos/bin/knossos] [$IMAGE]"
 rm -rf "$INSTALL/settings"
 # After the -- of enricher add, nothing is a file to place either.
 out_call enricher add tool --timeout=5 -- tool --output=/nowhere/x
@@ -1110,12 +1165,14 @@ out_call enricher add tool -- python3 "$DATA/tool.py"
 case $out in "knossos: the enricher command names $DATA/tool.py, in the graph directory $DATA, which every container can write; put it in $INSTALL/settings, which containers only read, and add the enricher again. This check only catches a path given as a word of its own: an enricher must not read or run anything from the graph directory in any way.") said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then pass 'an enricher command in the graph directory is refused, and nothing runs'; else fail "enricher in graph: $status, $out, $(calls)"; fi
 # A list planted in the graph directory, or named by the caller, is not what a scan reads.
-printf '{"enrichers": [{"name": "planted", "command": ["sh", "-c", "id"]}]}\n' > "$DATA/enrichers.json"
 reset_docker
+(cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+printf '{"enrichers": [{"name": "planted", "command": ["sh", "-c", "id"]}]}\n' > "$DATA/enrichers.json"
+: > "$FAKE_DOCKER_STATE/calls"
 (cd "$PROJECT" && KNOSSOS_ENRICHERS_FILE="$DATA/enrichers.json" TMPDIR="$WORK/tmp" kn scan "$PROJECT" </dev/null >/dev/null 2>&1); status=$?
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
 case $exec_line in *"[-e] [KNOSSOS_ENRICHERS_FILE=$INSTALL/settings/enrichers.json] "*) named=yes ;; *) named=no ;; esac
-if [ "$status" -eq 0 ] && [ "$named" = yes ] && [ "$(grep -o 'KNOSSOS_ENRICHERS_FILE' "$FAKE_DOCKER_STATE/calls" | wc -l | tr -d ' ')" -eq 2 ] && [ "$(count_calls run)" -eq 1 ]; then
+if [ "$status" -eq 0 ] && [ "$named" = yes ] && [ "$(grep -o 'KNOSSOS_ENRICHERS_FILE' "$FAKE_DOCKER_STATE/calls" | wc -l | tr -d ' ')" -eq 1 ] && [ "$(count_calls exec)" -eq 1 ]; then
     pass "a scan is given the install directory's enricher list, never one in the graph directory or the caller's"
 else
     fail "scan enrichers file: $status, $(calls)"
@@ -1132,25 +1189,64 @@ case $out in *"$INSTALL/settings is a symlink"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then pass 'a settings directory that is a symlink is refused'; else fail "settings symlink: $status, $out"; fi
 rm -f "$INSTALL/settings"
 
+# ---- the pane setting is the host's too -------------------------------------------------
+
+# autostart --set is a short run of the image, with the settings directory
+# read-write and the project root read-only beside it, and nothing else.
+out_call autostart "$PROJECT/src" --set=on --json
+if [ "$status" -eq 0 ] && [ "$(calls)" = "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] $SETTINGS_ENV [-w] [$PROJECT] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--entrypoint] [/opt/knossos/bin/knossos] [$IMAGE] [autostart] [$PROJECT/src] [--set=on] [--json]" ] \
+    && [ -d "$INSTALL/settings" ]; then
+    pass 'autostart --set is one run of the image with the settings directory read-write, the project read-only, no graph and no network'
+else
+    fail "autostart --set: $status, $out, $(calls)"
+fi
+out_call autostart "$PROJECT" --json
+case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in
+    *"[-e] [KNOSSOS_SETTINGS_DIR=$INSTALL/settings] "*"[/opt/knossos/bin/knossos] [autostart] [$PROJECT] [--json]") said=yes ;;
+    *) said=no ;;
+esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(count_calls exec)" -eq 1 ]; then pass 'reading the pane setting runs in the project container, which reads the install directory read-only'; else fail "autostart read: $status, $(calls)"; fi
+# A pane setting planted in the graph directory is not the one any container reads.
+printf '{"projects": {"%s": true}}\n' "$PROJECT" > "$DATA/pane-autostart.json"
+: > "$FAKE_DOCKER_STATE/calls"
+out=$(cd "$PROJECT" && kn autostart "$PROJECT" --json </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$(count_calls exec)" -eq 1 ] && ! grep -qF "KNOSSOS_SETTINGS_DIR=$DATA" "$FAKE_DOCKER_STATE/calls"; then
+    pass 'a pane setting planted in the graph directory is not the one the container is told to read'
+else
+    fail "pane setting from the graph: $status, $out, $(calls)"
+fi
+rm -f "$DATA/pane-autostart.json"
+# autostart --set from a project the mount rule refuses starts nothing.
+refused 'autostart --set in the home directory' 'the project root' \
+    sh -c 'cd "$HOME" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$1" autostart . --set=on </dev/null' _ "$LAUNCHER"
+
 # ---- the allow-list is the host's -------------------------------------------------------
 
 TRUSTED="$INSTALL/roots.json"
 cp "$TRUSTED" "$WORK/trusted.kept"
 # A list in the graph directory, which every container can write, never chooses a mount.
+# The containers run before the list is planted, as a container of the graph
+# would plant it; a new container would not start with it there at all.
 mkdir -p "$WORK/wide/p1"
-printf '{"roots": ["%s"]}\n' "$WORK/wide" > "$DATA/roots.json"
 printf '{"roots": []}\n' > "$TRUSTED"
 reset_docker
 (cd "$WORK/wide/p1" && kn version </dev/null >/dev/null 2>&1)
-if grep -qF "[--mount] [type=bind,source=$WORK/wide/p1,target=$WORK/wide/p1,readonly]" "$FAKE_DOCKER_STATE/calls" && ! grep -qF "source=$WORK/wide," "$FAKE_DOCKER_STATE/calls"; then
+printf '{"roots": ["%s"]}\n' "$WORK/wide" > "$DATA/roots.json"
+: > "$FAKE_DOCKER_STATE/calls"
+(cd "$WORK/wide/p1" && kn version </dev/null >/dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$(count_calls run)" -eq 0 ] && grep -qF "[knossos-$(hash12 "$INSTALL
+$WORK/wide/p1
+$DATA
+$TRUSTED
+$IMAGE")]" "$FAKE_DOCKER_STATE/calls"; then
     pass 'a roots entry written to the graph directory is ignored when the root is chosen'
 else
     fail "graph roots file widened the mount: $(calls)"
 fi
 # What the plugin's hooks name, the graph's own roots.json, stands for the host's list.
-reset_docker
+: > "$FAKE_DOCKER_STATE/calls"
 (cd "$WORK/wide/p1" && KNOSSOS_ROOTS_FILE="$DATA/roots.json" env -u KNOSSOS_DATA_DIR "$LAUNCHER" version </dev/null >/dev/null 2>&1)
-if grep -qF "[-e] [KNOSSOS_ROOTS_FILE=$TRUSTED]" "$FAKE_DOCKER_STATE/calls" && ! grep -qF "source=$WORK/wide," "$FAKE_DOCKER_STATE/calls"; then
+if grep -qF "[-e] [KNOSSOS_ROOTS_FILE=$TRUSTED]" "$FAKE_DOCKER_STATE/calls" && [ "$(count_calls run)" -eq 0 ]; then
     pass "KNOSSOS_ROOTS_FILE naming the graph's roots.json means the host's list, which the container is given"
 else
     fail "graph roots.json named: $(calls)"
@@ -1173,6 +1269,7 @@ for planted in link fifo; do
     done
 done
 rm -f "$DATA/roots.json" "$HOME/.credential"
+(cd "$WORK/wide/p1" && kn stop </dev/null >/dev/null 2>&1)
 out=$(cd / && kn allow-root "$WORK/wide/p1" </dev/null 2>&1)
 case $out in *"This container install reads only this list; a roots.json in the graph directory $DATA is ignored, so add roots with knossos allow-root.") said=yes ;; *) said=no ;; esac
 if [ "$said" = yes ]; then pass "allow-root says that a roots.json in the graph directory is ignored"; else fail "allow-root note: $out"; fi
@@ -1181,6 +1278,7 @@ rm -f "$DATA/roots.json"
 mkdir -p "$DATA/sub"
 refused "a caller's KNOSSOS_ROOTS_FILE in the graph directory" "KNOSSOS_ROOTS_FILE ($DATA/sub/roots.json) lies in the graph directory $DATA, which a container can write; unset it to use the list the installer keeps in $INSTALL/roots.json, or point it at a file outside every directory a container can write." \
     sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$2/sub/roots.json" env -u KNOSSOS_DATA_DIR "$3" version </dev/null' _ "$PROJECT" "$DATA" "$LAUNCHER"
+rm -rf "$DATA/sub"
 # A link a container planted in the graph directory is never followed to create the roots file's directory.
 mkdir -p "$WORK/escaped to"
 ln -s "$WORK/escaped to" "$DATA/escape"
@@ -1271,11 +1369,17 @@ refused 'an input file reached through a link planted in the graph directory' \
     "the directory of $SECOND/planted/policies.json lies in the graph directory $SECOND, which a container can write, and goes through $SECOND/planted there" \
     sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" quality-gate "--policies=$3/planted/policies.json" </dev/null' _ "$PROJECT" "$LAUNCHER" "$SECOND"
 rm -f "$ESCAPE/policies.json"
-mkdir -p "$DATA/tmp"
-refused 'a TMPDIR in the graph directory' \
-    "TMPDIR ($DATA/tmp) lies in the graph directory $DATA, which a container can write; point TMPDIR at a directory outside it." \
-    sh -c 'cd "$1" && TMPDIR="$3/tmp" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" export-agent-brief "$1" "--out=$4/brief.md" </dev/null' _ "$PROJECT" "$LAUNCHER" "$DATA" "$WORK/outside"
-rm -rf "$DATA/tmp" "$SECOND/planted" "$WORK/person link" "$WORK/person target"
+# TMPDIR in a graph directory is harmless: the host keeps its temporary files
+# in the install directory and writes nothing to TMPDIR.
+mkdir -p "$SECOND/tmp"
+reset_docker
+out=$(cd "$PROJECT" && TMPDIR="$SECOND/tmp" FAKE_EXEC_WRITE=b env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" export-agent-brief "$PROJECT" "--out=$WORK/outside/tmpdir.md" </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$(cat "$WORK/outside/tmpdir.md" 2>/dev/null)" = b ] && [ -z "$(ls -A "$SECOND/tmp")" ]; then
+    pass 'a TMPDIR in a graph directory is never written: an output still goes through the install directory'
+else
+    fail "TMPDIR in a graph: $status, $out, $(ls -A "$SECOND/tmp")"
+fi
+rm -rf "$SECOND/tmp" "$SECOND/planted" "$WORK/person link" "$WORK/person target" "$WORK/outside/tmpdir.md"
 find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
 # A project root reached through a link planted in the graph directory is not mounted.
 ln -s "$ESCAPE" "$DATA/proj"
@@ -1324,23 +1428,22 @@ reset_docker
 if [ ! -e "$OLD_RECORD" ] && [ "$status" -eq 0 ] && [ "$(cat "$OLD_GRAPH/brief.md" 2>/dev/null)" = b ]; then pass 'a record whose directory is gone is dropped, and that path is ordinary again'; else fail "stale record: $status, $(ls "$INSTALL/containers")"; fi
 rm -rf "$OLD_GRAPH"
 
-# ---- only a real container install's record makes a directory a graph -------------------
+# ---- a folder that holds what looks like an install directory is an ordinary folder ----
 
-# A repository that happens to hold install/containers and install/install.json.
+# In this layout no install directory lies in a graph directory, so nothing
+# on the way to a path is opened to tell whether it is one: not a record
+# that looks like a container install's, nor one swapped for a FIFO.
 LOOKALIKE="$WORK/lookalike repo"
 mkdir -p "$LOOKALIKE/install/containers"
-printf '{"name": "some-package", "scripts": {"install": "make"}}\n' > "$LOOKALIKE/install/install.json"
-reset_docker
-(cd "$PROJECT" && TMPDIR="$WORK/tmp" FAKE_EXEC_WRITE=c kn export-agent-brief "$PROJECT" "--out=$LOOKALIKE/brief.md" </dev/null >/dev/null 2>&1); status=$?
-if [ "$status" -eq 0 ] && [ "$(cat "$LOOKALIKE/brief.md" 2>/dev/null)" = c ]; then pass 'a folder with install/containers and an install.json that is no Knossos record is not a graph'; else fail "lookalike treated as a graph: $status"; fi
 printf '{"mode": "container", "layout": "separate"}\n' > "$LOOKALIKE/install/install.json"
-refused 'a folder holding a container install record' "$LOOKALIKE/brief2.md lies in the graph directory $LOOKALIKE" \
-    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" export-agent-brief "$1" "--out=$3/brief2.md" </dev/null' _ "$PROJECT" "$LAUNCHER" "$LOOKALIKE"
+reset_docker
+(cd "$PROJECT" && FAKE_EXEC_WRITE=c kn export-agent-brief "$PROJECT" "--out=$LOOKALIKE/brief.md" </dev/null >/dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$(cat "$LOOKALIKE/brief.md" 2>/dev/null)" = c ]; then pass 'a folder holding a container install record of the old layout is no graph directory'; else fail "lookalike treated as a graph: $status"; fi
 rm -f "$LOOKALIKE/install/install.json"
 mkfifo "$LOOKALIKE/install/install.json"
 reset_docker
-out=$(cd "$PROJECT" && TMPDIR="$WORK/tmp" FAKE_EXEC_WRITE=d timeout 20 env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" export-agent-brief "$PROJECT" "--out=$LOOKALIKE/brief3.md" </dev/null 2>&1); status=$?
-if [ "$status" -eq 0 ]; then pass 'an install.json that is a FIFO is never opened'; else fail "fifo record: $status, $out"; fi
+out=$(cd "$PROJECT" && FAKE_EXEC_WRITE=d timeout 20 env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" export-agent-brief "$PROJECT" "--out=$LOOKALIKE/brief3.md" </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass 'an install.json that is a FIFO on the way to an output is never opened'; else fail "fifo record: $status, $out"; fi
 rm -rf "$LOOKALIKE"
 
 # allow-root: validated and written on the host; no container runs for it.
@@ -1508,6 +1611,23 @@ else
     fail "quoted path: $status $status2, $(calls)"
 fi
 
+# A data directory recorded with a double quote and a backslash in its path
+# is read back as the update helper wrote it, JSON escapes decoded.
+ODD_DATA="$WORK/q\"d\\ata"
+mkdir -p "$ODD_DATA"
+cp "$INSTALL/install.json" "$WORK/record.kept"
+sed "s|\"data_dir\": \"[^\"]*\"|\"data_dir\": \"$WORK/q\\\\\"d\\\\\\\\ata\"|" "$WORK/record.kept" > "$INSTALL/install.json"
+reset_docker
+out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+ODD_CSV=$(printf '%s' "$ODD_DATA" | sed 's/"/""/g')
+if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,\"source=$ODD_CSV\",\"target=$ODD_CSV\"]" "$FAKE_DOCKER_STATE/calls"; then
+    pass 'a recorded data directory holding a double quote and a backslash is decoded and mounted as itself'
+else
+    fail "escaped data_dir: $status, $out, $(grep -F data_dir "$INSTALL/install.json"), $(calls)"
+fi
+cp "$WORK/record.kept" "$INSTALL/install.json"
+rm -rf "$ODD_DATA"
+
 # ---- a root with a colon is never passed as an extra allowed root ------------------------
 
 mkdir -p "$WORK/c:olon/proj"
@@ -1528,13 +1648,13 @@ printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/root
 
 # ---- install.json problems -------------------------------------------------------------
 
-printf '{"mode": "container", "layout": "separate", "runtime": "docker"}\n' > "$INSTALL/install.json"
+printf '{"mode": "container", "layout": "install-dir", "runtime": "docker", "data_dir": "%s"}\n' "$DATA" > "$INSTALL/install.json"
 out=$(cd "$PROJECT" && kn version 2>&1); status=$?
 case $out in *'names no image'*) pass 'a record without an image says to re-run the installer' ;; *) fail "no image: $status $out" ;; esac
-printf '{"mode": "container", "layout": "separate", "image": "x", "runtime": "lxc"}\n' > "$INSTALL/install.json"
+printf '{"mode": "container", "layout": "install-dir", "image": "x", "runtime": "lxc", "data_dir": "%s"}\n' "$DATA" > "$INSTALL/install.json"
 out=$(cd "$PROJECT" && kn version 2>&1); status=$?
 case $out in *"unknown container runtime 'lxc'"*) pass 'an unknown runtime is refused' ;; *) fail "unknown runtime: $status $out" ;; esac
-printf '{"mode":"container","layout":"separate","image":"%s"}' "$IMAGE" > "$INSTALL/install.json"
+printf '{"mode":"container","layout":"install-dir","image":"%s","data_dir":"%s"}' "$IMAGE" "$DATA" > "$INSTALL/install.json"
 reset_docker
 out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
 if [ "$status" -eq 0 ] && grep -q '^call \[run\]' "$FAKE_DOCKER_STATE/calls"; then pass 'a compact record without a runtime means docker'; else fail "compact record: $status $out"; fi
@@ -1580,9 +1700,9 @@ else
     fail "stop with a planted link as roots file: status $status, $out, $(calls)"
 fi
 # Another spelling of the graph's roots.json stands for the host's list, as for every command.
-mkfifo "$DATA/roots.json"
 reset_docker
 (cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+mkfifo "$DATA/roots.json"
 out=$(stop_with_roots "$DATA/./roots.json" 2>&1); status=$?
 if [ "$status" -eq 0 ] && grep -qF "[--filter] [label=io.knossos.root=$(hash12 "$PROJECT")]" "$FAKE_DOCKER_STATE/calls"; then
     pass "stop with <data>/./roots.json uses the host's list and never opens the file in the graph directory"
@@ -1659,14 +1779,23 @@ ln -s versions/1.0.0 "$NATIVE_DATA/current"
 printf '{"mode": "native"}\n' > "$NATIVE_DATA/install.json"
 : > "$NATIVE_DATA/knossos.sqlite"
 refused 'a KNOSSOS_DATA_DIR that holds a native install' \
-    "KNOSSOS_DATA_DIR ($NATIVE_DATA) holds a native Knossos install (current), whose release and plugin the host runs, and every container would be able to replace them; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install)." \
+    "KNOSSOS_DATA_DIR ($NATIVE_DATA) holds current, which a native Knossos install keeps in its data directory and the host runs or trusts, and every container would be able to replace it; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install)." \
     data_call "$NATIVE_DATA"
+# The roots list and the settings a native install keeps beside its graph:
+# in container mode they live in the install directory, and none is graph data.
+for entry in roots.json enrichers.json pane-autostart.json; do
+    LEFT="$WORK/left $entry"
+    mkdir -p "$LEFT"
+    : > "$LEFT/knossos.sqlite"
+    printf '{}\n' > "$LEFT/$entry"
+    refused "a KNOSSOS_DATA_DIR that holds a native $entry" "KNOSSOS_DATA_DIR ($LEFT) holds $entry, which a native Knossos install keeps in its data directory" data_call "$LEFT"
+    rm -rf "$LEFT"
+done
 # One that holds only what Knossos puts in a graph directory is taken.
 KNOWN="$WORK/known graph"
-mkdir -p "$KNOWN/watch" "$KNOWN/backups" "$KNOWN/.knossos-files.AbC123" "$KNOWN/.knossos-graph"
+mkdir -p "$KNOWN/watch" "$KNOWN/backups" "$KNOWN/.knossos-files.AbC123"
 for entry in knossos.sqlite knossos.sqlite-wal knossos.sqlite-shm knossos.sqlite-journal knossos.sqlite.migrate.lock \
-    scan-failures.jsonl scan-failures.jsonl.lock scan-failures.jsonl.42.tmp roots.json roots.json.lock .roots.json.0123abcd.tmp \
-    enrichers.json .enrichers.json.0123abcd.tmp pane-autostart.json .pane-autostart.json.0123abcd.tmp mcp-serve.log; do
+    scan-failures.jsonl scan-failures.jsonl.lock scan-failures.jsonl.42.tmp mcp-serve.log; do
     : > "$KNOWN/$entry"
 done
 reset_docker
@@ -1676,11 +1805,20 @@ if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$KNOWN,target=$K
 else
     fail "known entries: status $status, $out"
 fi
-# Once used, what its containers wrote there is theirs, and it stays usable.
+# Once used, what its containers leave there that is not graph data keeps a
+# new container from starting with it, saying what to remove; a container
+# that runs already is used, and the host reads none of it.
+(cd "$PROJECT" && KNOSSOS_DATA_DIR="$KNOWN" env -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version </dev/null >/dev/null 2>&1)
 mkdir -p "$KNOWN/written by a container"
+: > "$FAKE_DOCKER_STATE/calls"
+out=$(data_call "$KNOWN" 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$(count_calls exec)" -eq 1 ]; then pass 'a graph directory in use by a running container is used for it, whatever its containers wrote'; else fail "used graph, warm: $status, $out"; fi
+refused 'a container start with a graph directory that holds what Knossos never puts there' \
+    "the graph directory $KNOWN holds written by a container, which Knossos does not put there in that form, so no container is started with it" data_call "$KNOWN"
+rm -rf "$KNOWN/written by a container"
 reset_docker
 out=$(data_call "$KNOWN" 2>&1); status=$?
-if [ "$status" -eq 0 ]; then pass 'a graph directory already in use is not refused for what its containers wrote'; else fail "used graph refused: $status, $out"; fi
+if [ "$status" -eq 0 ]; then pass 'and once that is removed, a container starts again'; else fail "graph after cleanup: $status, $out"; fi
 EMPTY_GRAPH="$WORK/empty graph"
 mkdir -p "$EMPTY_GRAPH"
 reset_docker
@@ -1734,90 +1872,204 @@ case $exec_line in
     *) fail "passthrough with a newline: $exec_line" ;;
 esac
 
-# ---- a record swapped for a FIFO after it was checked never hangs a call ---------------------
+# ---- another installation's graph directory: harmless, or refused ------------------------
 
-# A find in front of the real one that, once it has reported install.json as
-# a plain file, puts a FIFO in its place: the moment between the check and
-# the read, made certain.
-SWAP_BIN="$WORK/swap bin"
-mkdir -p "$SWAP_BIN"
-REAL_FIND=$(command -v find)
-cat > "$SWAP_BIN/find" <<SWAP
-#!/bin/sh
-"$REAL_FIND" "\$@"
-status=\$?
-for argument in "\$@"; do
-    if [ "\$argument" = "\${SWAP_FIFO:-}" ] && [ -f "\$argument" ] && [ ! -L "\$argument" ]; then rm -f "\$argument"; mkfifo "\$argument"; fi
-done
-exit \$status
-SWAP
-chmod +x "$SWAP_BIN/find"
-OTHER_INSTALL="$WORK/other installation"
-mkdir -p "$OTHER_INSTALL/install/containers"
-printf '{"mode": "container", "layout": "separate"}\n' > "$OTHER_INSTALL/install/install.json"
-reset_docker
-out=$(cd "$PROJECT" && PATH="$SWAP_BIN:$PATH" SWAP_FIFO="$OTHER_INSTALL/install/install.json" timeout 10 \
-    env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE KNOSSOS_DATA_DIR="$OTHER_INSTALL/graph" "$LAUNCHER" version </dev/null 2>&1); status=$?
-if [ "$status" -ne 124 ] && [ -p "$OTHER_INSTALL/install/install.json" ]; then
-    pass 'an install.json swapped for a FIFO between its check and its read does not hang the call'
-else
-    fail "swapped record: status $status, $out"
-    unblock "$OTHER_INSTALL/install/install.json"
-fi
-find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
-rm -rf "$OTHER_INSTALL"
-
-# ---- another installation's graph directory is never mounted ----------------------------
-
-# Its install/ would be plain read-write content of this installation's
-# graph mount: a container could replace the update helper or the plugin the
-# other installation's host side runs.
+# The three reproductions of the review rounds before the install directory
+# moved out, in this layout. PWNED is what a planted helper or hook would
+# create when the host ran it.
+PWNED="$HOME/pwned"
+plant_everywhere() {
+    mkdir -p "$1/install/containers" "$1/install/plugin/hooks/scripts"
+    printf '{"mode": "container", "layout": "separate", "image": "evil", "runtime": "docker", "data_dir": "%s"}\n' "$1" > "$1/install/install.json"
+    printf '#!/bin/sh\n: > "%s"\n' "$PWNED" > "$1/install/container-update"
+    cp "$1/install/container-update" "$1/install/plugin/hooks/scripts/lib.sh"
+    cp "$1/install/container-update" "$1/container-update"
+    printf '{"roots": ["/"]}\n' > "$1/install/roots.json"
+}
+# 1. Another installation's graph directory as this one's data directory, the
+#    old layout with an install/ in it: refused at first use, as an entry
+#    Knossos does not put in a graph directory; nothing in it is read or run.
 OTHER_DATA="$WORK/other install data"
-mkdir -p "$OTHER_DATA/install/containers" "$OTHER_DATA/install/plugin"
-printf '{"mode": "container", "layout": "separate"}\n' > "$OTHER_DATA/install/install.json"
-printf 'echo planted\n' > "$OTHER_DATA/install/container-update"
+mkdir -p "$OTHER_DATA"
 : > "$OTHER_DATA/knossos.sqlite"
-INSTALL_TEXT="which is not this installation's install directory ($INSTALL): it is another Knossos installation's, or looks like one"
-refused "another container install's graph directory as KNOSSOS_DATA_DIR" "KNOSSOS_DATA_DIR ($OTHER_DATA) holds $OTHER_DATA/install, $INSTALL_TEXT" data_call "$OTHER_DATA"
-if [ ! -e "$INSTALL/containers/graph-$(hash12 "$OTHER_DATA")" ] && [ ! -e "$OTHER_DATA/.knossos-graph" ]; then pass 'and it is neither recorded nor marked'; else fail 'the other graph was recorded or marked'; fi
+plant_everywhere "$OTHER_DATA"
+refused "another installation's graph of the old layout as KNOSSOS_DATA_DIR" "KNOSSOS_DATA_DIR ($OTHER_DATA) holds container-update, which is not something Knossos puts in a graph directory" data_call "$OTHER_DATA"
+if [ ! -e "$INSTALL/containers/graph-$(hash12 "$OTHER_DATA")" ] && [ ! -e "$PWNED" ]; then pass 'and it is not recorded, and nothing in it ran'; else fail 'the other graph was recorded, or something in it ran'; fi
 rm -rf "$OTHER_DATA"
-# Whatever goes by that name: a file, a link, an empty directory.
-for shape in file link empty; do
-    ODD="$WORK/odd install $shape"
-    mkdir -p "$ODD"
-    case $shape in
-        file) : > "$ODD/install" ;;
-        link) ln -s "$INSTALL" "$ODD/install" ;;
-        empty) mkdir "$ODD/install" ;;
-    esac
-    refused "a KNOSSOS_DATA_DIR holding an install that is a $shape" "KNOSSOS_DATA_DIR ($ODD) holds $ODD/install, $INSTALL_TEXT" data_call "$ODD"
-    rm -rf "$ODD"
-done
-# A recorded graph directory in which an install/ appears later: refused from then on.
-LATER="$WORK/later graph"
+#    The same in this layout, which holds graph data only: shared, as two
+#    projects share one graph; the host reads and runs nothing of it.
+mkdir -p "$OTHER_DATA/watch"
+: > "$OTHER_DATA/knossos.sqlite"
 reset_docker
-out=$(data_call "$LATER" 2>&1); status=$?
-if [ "$status" -eq 0 ] && [ -f "$INSTALL/containers/graph-$(hash12 "$LATER")" ] && [ -d "$LATER/.knossos-graph" ]; then
-    pass 'a graph directory used for the first time is recorded and marked with .knossos-graph'
+out=$(data_call "$OTHER_DATA" 2>&1); status=$?
+if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$OTHER_DATA,target=$OTHER_DATA]" "$FAKE_DOCKER_STATE/calls" && grep -qF "[--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly]" "$FAKE_DOCKER_STATE/calls"; then
+    pass "another installation's graph directory of this layout is used as a shared graph, with this installation's own install directory"
 else
-    fail "first use: $status, $out, $(ls -A "$LATER" 2>&1)"
+    fail "shared graph: $status, $out"
 fi
-mkdir -p "$LATER/install/containers"
-refused 'a recorded graph directory that holds an install/ now' "KNOSSOS_DATA_DIR ($LATER) holds $LATER/install, $INSTALL_TEXT" data_call "$LATER"
-rm -rf "$LATER"
+# 2. The mark a container deletes is gone, and so is what it guarded: a
+#    container of this installation running with that graph writes an
+#    install/ there, as one of another installation would; the next calls,
+#    warm and cold, the update check included, run nothing from it.
+plant_everywhere "$OTHER_DATA"
+rm -f "$PWNED"
+: > "$FAKE_DOCKER_STATE/calls"
+out=$(data_call "$OTHER_DATA" 2>&1); status=$?
+(cd "$PROJECT" && KNOSSOS_DATA_DIR="$OTHER_DATA" KNOSSOS_ROOTS_FILE="$OTHER_DATA/install/roots.json" env "$LAUNCHER" version </dev/null >/dev/null 2>&1)
+(cd / && KNOSSOS_DATA_DIR="$OTHER_DATA" env -u KNOSSOS_ROOTS_FILE "$LAUNCHER" self-update --check --quiet </dev/null >/dev/null 2>&1)
+if [ "$status" -eq 0 ] && [ ! -e "$PWNED" ] && ! grep -qF '[evil]' "$FAKE_DOCKER_STATE/calls"; then
+    pass 'a warm call, a roots file named in the graph and the update check run nothing a container planted in the graph'
+else
+    fail "planted install in a used graph: $status, $out, pwned $(ls "$PWNED" 2>&1)"
+fi
+# 3. A planted install/ in a graph keeps the next container from starting
+#    with it; that is all it does.
+refused 'a container start with an install/ planted in a recorded graph' "the graph directory $OTHER_DATA holds container-update, which Knossos does not put there in that form" data_call "$OTHER_DATA"
+if [ ! -e "$PWNED" ]; then pass 'and nothing in it ran'; else fail 'a planted helper ran'; fi
+rm -rf "$OTHER_DATA"
+find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
+# The same planted at the default graph directory.
+plant_everywhere "$DATA"
+rm -f "$PWNED"
+: > "$FAKE_DOCKER_STATE/calls"
+(cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+(cd / && kn self-update --check --quiet </dev/null >/dev/null 2>&1)
+(cd "$PROJECT" && kn stop </dev/null >/dev/null 2>&1)
+if [ ! -e "$PWNED" ] && ! grep -qF '[evil]' "$FAKE_DOCKER_STATE/calls"; then pass 'an install/ planted in the default graph directory is never read or run, by a call, stop or the update check'; else fail "planted install in the default graph: $(calls)"; fi
+rm -rf "$DATA/install" "$DATA/container-update"
+# A running container of another installation whose read-write mount holds
+# this installation's install directory: no new container starts, and the
+# update helper does not run.
+reset_docker
+(cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+(cd "$PROJECT" && kn stop </dev/null >/dev/null 2>&1)
+printf 'running\n' > "$FAKE_DOCKER_STATE/containers/knossos-bbbbbbbbbbbb"
+printf 'io.knossos.install=bbbbbbbbbbbb\nio.knossos.root=000000000000\n' > "$FAKE_DOCKER_STATE/containers/knossos-bbbbbbbbbbbb.labels"
+printf '%s|%s|true\n' "$WORK/share" "$WORK/share" > "$FAKE_DOCKER_STATE/containers/knossos-bbbbbbbbbbbb.mounts"
+: > "$FAKE_DOCKER_STATE/calls"
+out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+case $out in "knossos: the install directory $INSTALL lies in $WORK/share, which container knossos-bbbbbbbbbbbb of another Knossos installation can write; stop that container (docker stop knossos-bbbbbbbbbbbb) and run the installer again with --install-dir set to a directory of its own"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ] && [ "$(count_calls exec)" -eq 0 ]; then
+    pass "a cold start is refused while another installation's running container can write the install directory"
+else
+    fail "foreign writer, cold start: $status, $out, $(calls)"
+fi
+printf '#!/bin/sh\n: > "%s"\n' "$PWNED" > "$INSTALL/container-update"
+out=$(cd / && kn self-update --check </dev/null 2>&1); status=$?
+if [ "$status" -eq 1 ] && [ ! -e "$PWNED" ]; then pass 'and so is the update helper, which is not run'; else fail "foreign writer, update: $status, $out"; fi
+out=$(cd / && kn self-update --check --quiet </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ -z "$out" ] && [ ! -e "$PWNED" ]; then pass 'the background check stays silent and runs nothing'; else fail "foreign writer, quiet check: $status, $out"; fi
+rm -f "$INSTALL/container-update" "$FAKE_DOCKER_STATE/containers/knossos-bbbbbbbbbbbb"*
+# One of this installation's own containers never counts, nor one of another
+# installation whose read-write mounts hold nothing of this one.
+printf 'running\n' > "$FAKE_DOCKER_STATE/containers/knossos-cccccccccccc"
+printf 'io.knossos.install=cccccccccccc\nio.knossos.root=000000000000\n' > "$FAKE_DOCKER_STATE/containers/knossos-cccccccccccc.labels"
+printf '%s|%s|true\n' "$WORK/elsewhere graph" "$WORK/elsewhere graph" > "$FAKE_DOCKER_STATE/containers/knossos-cccccccccccc.mounts"
+out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass "another installation's running container that can write nothing of this one is no reason to refuse"; else fail "unrelated foreign container: $status, $out"; fi
+rm -f "$FAKE_DOCKER_STATE/containers/knossos-cccccccccccc"*
+
 # This installation's own graph, through another spelling, is the default graph.
 ln -s "$DATA" "$WORK/link to own data"
 reset_docker
 out=$(data_call "$WORK/link to own data" 2>&1); status=$?
-out2=$(data_call "$INSTALL/.." 2>&1); status2=$?
+out2=$(data_call "$DATA/." 2>&1); status2=$?
 if [ "$status" -eq 0 ] && [ "$status2" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$DATA,target=$DATA]" "$FAKE_DOCKER_STATE/calls" \
     && [ ! -e "$INSTALL/containers/graph-$(hash12 "$DATA")" ]; then
-    pass "this installation's own graph directory through a link or a .. spelling is the default graph, and works"
+    pass "this installation's own graph directory through a link or a . spelling is the default graph, and works"
 else
     fail "own graph by another spelling: $status $out, $status2 $out2"
 fi
 rm -f "$WORK/link to own data"
+
+# ---- the invariant: nothing under a graph directory is read or run by the host ----------
+#
+# Every name the layout before this one trusted in or beside the graph
+# directory, planted as a hostile entry in both the default graph and a
+# caller's recorded one: a script that leaves PWNED, a FIFO (which would hang
+# a read), a link to a secret (which would leak through a read), a directory.
+# The whole launcher path then runs: calls cold and warm, every command
+# answered on the host, the update check, stop. None may hang (each is cut off
+# at 20 s), print the secret, start the image a planted record names, or run a
+# planted script.
+SECRET="$HOME/.invariant-secret"
+printf 'SECRET-OF-THE-HOST\n' > "$SECRET"
+chmod 0600 "$SECRET"
+hostile() {
+    for name in install install.json container-update roots.json roots.json.lock.d enrichers.json pane-autostart.json plugin \
+        settings containers update-check.json self-update.lock.d .knossos-graph tmp; do
+        rm -rf "${1:?}/$name"
+    done
+    mkdir -p "$1/install/containers" "$1/install/plugin/hooks/scripts" "$1/install/settings" "$1/plugin/hooks/scripts" "$1/containers"
+    printf '#!/bin/sh\n: > "%s"\n' "$PWNED" > "$1/install/container-update"
+    cp "$1/install/container-update" "$1/container-update"
+    cp "$1/install/container-update" "$1/plugin/hooks/scripts/lib.sh"
+    cp "$1/install/container-update" "$1/install/plugin/hooks/scripts/lib.sh"
+    mkfifo "$1/install/install.json" "$1/install/roots.json" "$1/install/settings/enrichers.json" "$1/install.json" "$1/pane-autostart.json"
+    ln -s "$SECRET" "$1/roots.json"
+    ln -s "$SECRET" "$1/enrichers.json"
+    ln -s "$SECRET" "$1/update-check.json"
+    ln -s "$SECRET" "$1/containers/knossos-$(hash12 x)"
+    mkfifo "$1/install/update-check.json"
+    mkdir -p "$1/.knossos-graph" "$1/roots.json.lock.d" "$1/self-update.lock.d" "$1/settings"
+    ln -s "$HOME" "$1/tmp"
+}
+INVARIANT_GRAPH="$WORK/invariant graph"
+mkdir -p "$INVARIANT_GRAPH"
+rm -f "$PWNED"
+invariant_ok=yes
+# each_call LABEL ARGS: one launcher call, cut off at 20 s, that must neither
+# hang nor print the secret.
+each_call() {
+    label=$1
+    shift
+    out=$(timeout 20 "$@" </dev/null 2>&1); status=$?
+    if [ "$status" -eq 124 ]; then invariant_ok=no; printf '  %s hung\n' "$label"; fi
+    case $out in *SECRET-OF-THE-HOST*) invariant_ok=no; printf '  %s printed the secret\n' "$label" ;; esac
+}
+for graph in "$DATA" "$INVARIANT_GRAPH"; do
+    # A container runs with the graph before the entries are planted, as one
+    # of that graph would plant them: the calls after it are warm, until stop.
+    reset_docker
+    (cd "$PROJECT" && KNOSSOS_DATA_DIR="$graph" env -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version </dev/null >/dev/null 2>&1)
+    hostile "$graph"
+    for round in first second; do
+        each_call "$round version ($graph)" sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" version' _ "$PROJECT" "$graph" "$LAUNCHER"
+        each_call "$round roots in the graph ($graph)" sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" KNOSSOS_ROOTS_FILE="$2/roots.json" "$3" find-component . x' _ "$PROJECT" "$graph" "$LAUNCHER"
+    done
+    if [ "$(count_calls exec)" -lt 4 ]; then invariant_ok=no; printf '  the warm calls did not run (%s)\n' "$graph"; fi
+    each_call "allow-root ($graph)" sh -c 'KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" allow-root "$1" --execute' _ "$PROJECT" "$graph" "$LAUNCHER"
+    each_call "claim ($graph)" sh -c 'KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" claim "$1" --json' _ "$PROJECT" "$graph" "$LAUNCHER"
+    each_call "enricher list ($graph)" sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" enricher list --json' _ "$PROJECT" "$graph" "$LAUNCHER"
+    each_call "enricher add ($graph)" sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" enricher add tool -- tool' _ "$PROJECT" "$graph" "$LAUNCHER"
+    each_call "autostart ($graph)" sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" autostart "$1" --set=on --json' _ "$PROJECT" "$graph" "$LAUNCHER"
+    each_call "export ($graph)" sh -c 'cd "$1" && FAKE_EXEC_WRITE=x KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" export-agent-brief "$1" "--out=$4/invariant.md"' _ "$PROJECT" "$graph" "$LAUNCHER" "$WORK/outside"
+    each_call "move-project ($graph)" sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" move-project "$1" "$1" --execute' _ "$PROJECT" "$graph" "$LAUNCHER"
+    each_call "update check ($graph)" sh -c 'cd / && KNOSSOS_DATA_DIR="$1" env -u KNOSSOS_ROOTS_FILE "$2" self-update --check --quiet' _ "$graph" "$LAUNCHER"
+    each_call "stop ($graph)" sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" stop' _ "$PROJECT" "$graph" "$LAUNCHER"
+    each_call "stop --all ($graph)" sh -c 'cd / && KNOSSOS_DATA_DIR="$1" env -u KNOSSOS_ROOTS_FILE "$2" stop --all' _ "$graph" "$LAUNCHER"
+    # Cold now: refused for what lies in the graph, and still nothing read.
+    each_call "cold version ($graph)" sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" version' _ "$PROJECT" "$graph" "$LAUNCHER"
+    case $out in *"the graph directory $graph holds"*) ;; *) invariant_ok=no; printf '  the cold call was not refused for the planted entries: %s\n' "$out" ;; esac
+done
+if grep -qF '[evil]' "$FAKE_DOCKER_STATE/calls" 2>/dev/null; then invariant_ok=no; printf '  a planted image was started\n'; fi
+if [ -e "$PWNED" ]; then invariant_ok=no; printf '  a planted script ran\n'; fi
+if [ "$(cat "$SECRET")" != SECRET-OF-THE-HOST ]; then invariant_ok=no; printf '  the secret was written\n'; fi
+if [ -n "$(find "$HOME" -newer "$SECRET" ! -path "$HOME" 2>/dev/null | head -n 1)" ]; then invariant_ok=no; printf '  something was written in the home directory: %s\n' "$(find "$HOME" -newer "$SECRET" ! -path "$HOME")"; fi
+if [ "$invariant_ok" = yes ]; then
+    pass 'with hostile entries at every name the old layout trusted, in the default and a recorded graph, no call reads, follows, runs or hangs on any of them'
+else
+    fail 'the host read, ran or hung on something in a graph directory'
+fi
+for graph in "$DATA" "$INVARIANT_GRAPH"; do
+    for name in install install.json container-update roots.json enrichers.json pane-autostart.json plugin settings containers update-check.json \
+        roots.json.lock.d self-update.lock.d .knossos-graph tmp; do
+        rm -rf "${graph:?}/$name"
+    done
+done
+rm -rf "$INVARIANT_GRAPH" "$SECRET" "$WORK/outside/invariant.md" "$PWNED"
 find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
+printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/roots.json"
 
 # ---- an entry with a known name is taken only in the shape Knossos makes it --------------
 
@@ -1829,7 +2081,7 @@ shape_refused() {
         'watch holding a directory') mkdir -p "$SHAPED/watch/repo/.git" ;;
         'backups as a link') mkdir -p "$WORK/my backups" && ln -s "$WORK/my backups" "$SHAPED/backups" ;;
         'knossos.sqlite as a directory') mkdir -p "$SHAPED/knossos.sqlite/.git" ;;
-        'a .knossos-graph mark with something in it') mkdir -p "$SHAPED/.knossos-graph" && : > "$SHAPED/.knossos-graph/x" ;;
+        'a scratch directory holding a directory') mkdir -p "$SHAPED/.knossos-files.AbC123/nested" ;;
     esac
     refused "a KNOSSOS_DATA_DIR with $what" "KNOSSOS_DATA_DIR ($SHAPED) holds $entry, which Knossos only makes as $text" data_call "$SHAPED"
     rm -rf "$SHAPED" "$WORK/my backups"
@@ -1837,16 +2089,20 @@ shape_refused() {
 shape_refused 'watch holding a directory' watch 'a directory that holds plain files only'
 shape_refused 'backups as a link' backups 'a directory that holds plain files only'
 shape_refused 'knossos.sqlite as a directory' knossos.sqlite 'a plain file'
-shape_refused 'a .knossos-graph mark with something in it' .knossos-graph 'an empty directory'
-# The shapes Knossos makes are taken.
+shape_refused 'a scratch directory holding a directory' .knossos-files.AbC123 'a directory that holds plain files only'
+# The mark the layout before this one left is no Knossos entry any more.
 SHAPED="$WORK/shaped graph"
-mkdir -p "$SHAPED/watch" "$SHAPED/backups" "$SHAPED/.knossos-graph"
+mkdir -p "$SHAPED/.knossos-graph"
+refused 'a KNOSSOS_DATA_DIR holding the .knossos-graph mark of the earlier layout' "KNOSSOS_DATA_DIR ($SHAPED) holds .knossos-graph, which is not something Knossos puts in a graph directory" data_call "$SHAPED"
+rm -rf "$SHAPED"
+# The shapes Knossos makes are taken.
+mkdir -p "$SHAPED/watch" "$SHAPED/backups"
 : > "$SHAPED/watch/0123.lock"
 : > "$SHAPED/backups/b1.sqlite"
 : > "$SHAPED/knossos.sqlite"
 reset_docker
 out=$(data_call "$SHAPED" 2>&1); status=$?
-if [ "$status" -eq 0 ]; then pass 'watch/ and backups/ holding files, a database file and an empty mark are taken'; else fail "Knossos shapes: $status, $out"; fi
+if [ "$status" -eq 0 ]; then pass 'watch/ and backups/ holding files and a database file are taken'; else fail "Knossos shapes: $status, $out"; fi
 rm -rf "$SHAPED"
 find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
 
@@ -1860,11 +2116,9 @@ not_made() {
 refused 'an --out in the default graph directory, with a new KNOSSOS_DATA_DIR' "$DATA/x.md lies in the graph directory $DATA, which a container can write; write it somewhere else." \
     sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" export-agent-brief "$1" "--out=$4/x.md" </dev/null' _ "$PROJECT" "$NEWG" "$LAUNCHER" "$DATA"
 not_made 'a refused --out'
-mkdir -p "$DATA/tmp"
-refused 'a TMPDIR in the graph directory, with a new KNOSSOS_DATA_DIR' "TMPDIR ($DATA/tmp) lies in the graph directory $DATA, which a container can write" \
-    sh -c 'cd "$1" && TMPDIR="$5/tmp" KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" export-agent-brief "$1" "--out=$4/brief.md" </dev/null' _ "$PROJECT" "$NEWG" "$LAUNCHER" "$WORK" "$DATA"
-not_made 'a refused TMPDIR'
-rm -rf "$DATA/tmp"
+refused 'a KNOSSOS_DATA_DIR that holds the install directory, new' "KNOSSOS_DATA_DIR ($WORK/share) contains the install directory $INSTALL" \
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$PROJECT" "$WORK/share" "$LAUNCHER"
+if [ ! -e "$INSTALL/containers/graph-$(hash12 "$WORK/share")" ]; then pass 'a refused data directory around the install directory gets no record'; else fail 'a record was made for a data directory around the install directory'; fi
 printf '{}\n' > "$DATA/policies.json"
 refused 'an input file in a graph directory outside the mounts, with a new KNOSSOS_DATA_DIR' "$DATA/policies.json lies in the graph directory $DATA, which a container can write, outside this call's mounts" \
     sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" quality-gate "--policies=$4/policies.json" </dev/null' _ "$PROJECT" "$NEWG" "$LAUNCHER" "$DATA"

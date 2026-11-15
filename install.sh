@@ -2,8 +2,8 @@
 # Install Knossos from a release, without a checkout.
 #
 #   install.sh [--mode=native|container] [--version=V] [--data-dir=DIR]
-#              [--bin-dir=DIR] [--no-plugin] [--no-roots] [--dry-run]
-#              [--force-clean]
+#              [--install-dir=DIR] [--bin-dir=DIR] [--no-plugin] [--no-roots]
+#              [--dry-run] [--force-clean]
 #
 # Native mode needs PHP 8.3+ with the json, mbstring, pdo, pdo_sqlite and
 # tokenizer extensions, Node 24+, Python 3.11+, git, tar and sha256sum or
@@ -16,19 +16,25 @@
 # Container mode needs only Docker or Podman, with its daemon running. It pulls
 # the release image (ghcr.io/araneadev/knossos:<version>), checks that it
 # starts and passes doctor, and writes install.json naming the image by digest
-# and the same launcher, which then runs each command in a container per
-# project. The plugin's files come out of the image. The data directory must
-# be empty, new, or hold only what Knossos puts there, since every container
-# can write it. Without --mode, native mode is chosen when the host has all
-# of the above, else container mode when a container runtime answers.
+# into the install directory, and the same launcher, which then runs each
+# command in a container per project. The plugin's files come out of the
+# image. The install directory (--install-dir, default
+# ${XDG_DATA_HOME:-~/.local/share}/knossos) holds everything the host trusts
+# and lies outside every data directory; the data directory holds the graph
+# only, and must be empty, new, or hold only what Knossos puts there, since
+# every container can write it. Without --mode, native mode is chosen when the
+# host has all of the above, else container mode when a container runtime
+# answers.
 #
 # --no-plugin skips both the plugin and the MCP registration, in either mode.
 #
 # Environment:
 #   KNOSSOS_DATA_DIR      the data directory, when --data-dir is not given: the
 #                         install directory and the graph in native mode, the
-#                         graph with the install directory <data dir>/install in
-#                         container mode                        (default: ~/.knossos)
+#                         graph only in container mode          (default: ~/.knossos)
+#   KNOSSOS_INSTALL_DIR   container mode: the install directory, when
+#                         --install-dir is not given; read at install time only
+#                         (default: ${XDG_DATA_HOME:-~/.local/share}/knossos)
 #   KNOSSOS_ROOTS_FILE    the roots file, when --data-dir is not given
 #                         (default: <data dir>/roots.json)
 #   KNOSSOS_BIN_DIR       where the launcher goes               (default: ~/.local/bin)
@@ -71,9 +77,13 @@ die() {
 usage() {
     cat <<'USAGE'
 usage: install.sh [--mode=native|container] [--version=V] [--data-dir=DIR]
-                  [--bin-dir=DIR] [--no-plugin] [--no-roots] [--dry-run]
-                  [--force-clean]
+                  [--install-dir=DIR] [--bin-dir=DIR] [--no-plugin] [--no-roots]
+                  [--dry-run] [--force-clean]
 
+  --install-dir  container mode: where the record, the update helper, the
+                 plugin, the roots list and the settings go (default:
+                 ${XDG_DATA_HOME:-~/.local/share}/knossos); run the installer
+                 again with the same one to repair an installation
   --no-plugin    skip the Claude Code plugin and the MCP server registration
                  with it: no plugin is written and claude is never called
   --no-roots     do not add the directory the installer runs from to the roots file
@@ -242,11 +252,11 @@ remove_partial() {
 cleanup() {
     if [ "$SWITCHED" = 1 ]; then rollback_switch || true; fi
     if [ "$CONTAINER_SWITCHED" = 1 ]; then rollback_container_switch || true; fi
-    # An install directory this run made, for an install that did not
-    # complete: left behind, no launcher would vouch for it, and the next run
-    # would refuse the data directory.
-    if [ "$CINSTALL_MADE" = 1 ] && [ -n "$CINSTALL" ]; then rm -rf "$CINSTALL"; fi
     rm -rf "$TMP"
+    # An install directory this run made, for an install that did not
+    # complete: nothing would use it.
+    if [ "$CINSTALL_MADE" = 1 ] && [ -n "$CINSTALL" ]; then rm -rf "$CINSTALL"; fi
+    if [ -n "$PROBE" ]; then rm -rf "$PROBE"; fi
     remove_partial
     if [ -n "$BIN_DIR" ]; then rm -f "$BIN_DIR/.knossos.tmp.$$"; fi
     if [ -n "$DATA_DIR" ]; then rm -f "$DATA_DIR/install.json.tmp.$$" "$DATA_DIR/current.tmp.$$" "$DATA_DIR/previous-version.tmp.$$"; fi
@@ -521,7 +531,7 @@ run_image() {
 # as they were.
 rollback_container_switch() {
     if [ -n "$LAUNCHER" ] && [ -f "$LAUNCHER" ]; then
-        (cd "$TMP/probe project" 2>/dev/null && "$LAUNCHER" stop >/dev/null 2>&1 </dev/null) || true
+        (cd "$PROBE/probe project" 2>/dev/null && "$LAUNCHER" stop >/dev/null 2>&1 </dev/null) || true
     fi
     if [ -f "$TMP/install.json.prev" ]; then cp "$TMP/install.json.prev" "$CINSTALL/install.json"; else rm -f "$CINSTALL/install.json"; fi
     if [ -f "$TMP/launcher.prev" ]; then cp "$TMP/launcher.prev" "$LAUNCHER"; else rm -f "$LAUNCHER"; fi
@@ -532,20 +542,40 @@ rollback_container_switch() {
     fi
 }
 
+# container_install_of DIR: the install directory of the container install
+# whose graph directory DIR is, when that install lies in the install
+# directory this run would use (the default one, or the one --install-dir or
+# KNOSSOS_INSTALL_DIR names): its install.json records DIR as its data
+# directory, or one of its graph records names DIR. Read from the install
+# directory, where no container writes. Nothing otherwise.
+container_install_of() {
+    [ -n "$INSTALL_DIR" ] && [ -f "$INSTALL_DIR/install.json" ] && [ ! -L "$INSTALL_DIR/install.json" ] || return 0
+    grep -q '"mode"[[:space:]]*:[[:space:]]*"container"' "$INSTALL_DIR/install.json" 2>/dev/null || return 0
+    dir_real=$(CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P) || return 0
+    recorded=$(sed -n 's/^[[:space:]]*"data_dir"[[:space:]]*:[[:space:]]*"\(.*\)",\{0,1\}$/\1/p' "$INSTALL_DIR/install.json" 2>/dev/null | head -n 1 | sed 's/\\\(.\)/\1/g')
+    if [ "$recorded" = "$dir_real" ]; then printf '%s' "$INSTALL_DIR"; return 0; fi
+    for record in "$INSTALL_DIR"/containers/graph-*; do
+        [ -f "$record" ] || continue
+        if [ "$(head -n 1 "$record" 2>/dev/null)" = "$dir_real" ]; then printf '%s' "$INSTALL_DIR"; return 0; fi
+    done
+}
+
 # The entries of the other mode in the data directory, which this install
-# would otherwise trust. A container install keeps its state in <data>/install
-# and gives every container the data directory read-write, so once one has
-# been there, nothing a native install keeps directly in it (install.json,
-# versions/, current, plugin/, previous-version) can be trusted: a container
-# could have put it there. Without a container install, those are trusted
-# only when the native install.json beside them vouches for them. A container
-# install, the other way round, does not install over a native one. The graph
-# database, the roots file and everything else are never touched.
+# would otherwise trust. A container install gives every container its data
+# directory read-write, so once one has used it, nothing a native install
+# keeps directly in it (install.json, versions/, current, plugin/,
+# previous-version) can be trusted: a container could have put it there.
+# Without a container install, those are trusted only when the native
+# install.json beside them vouches for them. A container install, the other
+# way round, does not install over a native one, and keeps its roots list and
+# settings in its install directory, so a native install's roots.json,
+# enrichers.json and pane-autostart.json beside the graph are listed too. The
+# graph database and everything else are never touched.
 other_mode_entries() {
     found=''
     native_entries='install.json versions current plugin previous-version'
     if [ "$MODE" = container ]; then
-        for entry in $native_entries; do
+        for entry in $native_entries roots.json enrichers.json pane-autostart.json; do
             if [ -e "$DATA_DIR/$entry" ] || [ -L "$DATA_DIR/$entry" ]; then found="$found $entry"; fi
         done
     elif [ -e "$DATA_DIR/install" ] || [ -L "$DATA_DIR/install" ]; then
@@ -561,113 +591,30 @@ other_mode_entries() {
     printf '%s' "${found# }"
 }
 
-# is_container_graph DIR: whether DIR is the graph directory of a Knossos
-# container install: DIR/install (not a link) holds containers/ and an
-# install.json that is a plain file of at most 64 KB recording "mode":
-# "container" and "layout": "separate". A repository that merely has those
-# names is not one. Only that install.json is read, and only once the layout
-# is there.
-#
-# The file is opened without blocking where dd can (GNU and BusyBox dd take
-# iflag=nonblock), so one swapped for a FIFO after the check reads as empty
-# instead of hanging the installer; elsewhere it is opened as before.
-is_container_graph() {
-    record="${1%/}/install/install.json"
-    [ ! -L "${1%/}/install" ] && [ -d "${1%/}/install/containers" ] && [ ! -L "$record" ] && [ -f "$record" ] || return 1
-    [ -n "$(find "$record" -prune -type f -size -65537c 2>/dev/null)" ] || return 1
-    if dd if=/dev/null iflag=nonblock count=0 2>/dev/null; then
-        text=$(dd if="$record" iflag=nonblock bs=65536 count=1 2>/dev/null | tr -d ' \t\r\n') || return 1
-    else
-        text=$(dd bs=65536 count=1 < "$record" 2>/dev/null | tr -d ' \t\r\n') || return 1
-    fi
-    case $text in *'"mode":"container"'*) ;; *) return 1 ;; esac
-    case $text in *'"layout":"separate"'*) return 0 ;; esac
-    return 1
-}
-
-# graph_holding DIR: the outermost of / and the directories below it down to
-# DIR that is a container install's graph directory (is_container_graph), or
-# nothing. Asked from the top down, so nothing inside a graph directory, where
-# a container could have put anything, is ever read.
-graph_holding() {
-    at=/
-    rest=${1#/}
-    while :; do
-        # A container install's graph, or a graph directory a launcher marked
-        # when it recorded it (.knossos-graph): containers write both.
-        if is_container_graph "$at" || { [ -d "${at%/}/.knossos-graph" ] && [ ! -L "${at%/}/.knossos-graph" ]; }; then
-            printf '%s' "$at"
-            return 0
-        fi
-        [ -n "$rest" ] || return 1
-        at="${at%/}/${rest%%/*}"
-        case $rest in */*) rest=${rest#*/} ;; *) rest='' ;; esac
-    done
-}
-
-# refuse_in_graph PATH WHAT ADVICE [itself]: PATH may not lie in the graph
-# directory of a container install, which every container of that install can
-# write: a directory there could be swapped for a link at any time, and this
-# installer would then create, write, run and (with --force-clean) remove
-# through it, and the launcher would mount where it leads. With `itself`,
-# PATH may be that graph directory (installing over it again). `{graph}` in
-# ADVICE stands for that graph directory. The path is walked from / one
-# directory at a time, each step from the directory the walk stands in, so
-# the check sees what is there.
-#
-# What this catches at install time: every existing directory on the way,
-# and every link a container could have planted, since such a link lies in a
-# graph directory and the walk refuses before it steps out of one. What it
-# leaves to the launcher: the walk ends at the first component that does not
-# exist, or is a link that leads nowhere. Nothing below it exists, and a
-# container cannot plant anything outside its graph, so no container can have
-# put it there. A dangling link of your own as the data directory is not
-# caught by this walk; `mkdir -p` then refuses to create through it (GNU
-# coreutils: "File exists"), after the image checks, so nothing is written.
-# Should any directory appear there by other means, the walk runs again on
-# the directory as created, before anything is written into it. The launcher
-# refuses such a data directory at every call as well (its walk never creates
-# through a link).
-refuse_in_graph() {
-    (
-        CDPATH=''
-        cd -P / 2>/dev/null || exit 0
-        at=/
-        rest=$1
-        graph=$(graph_holding /) || graph=''
-        while :; do
-            while [ "${rest#/}" != "$rest" ]; do rest=${rest#/}; done
-            if [ -n "$graph" ] && { [ -n "$rest" ] || [ "${4-}" != itself ] || [ "$graph" != "$at" ]; }; then
-                advice=$3
-                case $advice in *'{graph}'*) advice="${advice%%'{graph}'*}$graph${advice#*'{graph}'}" ;; esac
-                die "$2 $1 lies in $graph, the graph directory of a container install, which its containers can write; $advice"
-            fi
-            [ -n "$rest" ] || break
-            component=${rest%%/*}
-            case $rest in */*) rest=${rest#*/} ;; *) rest='' ;; esac
-            [ "$component" != . ] || continue
-            [ -e "$component" ] || break
-            cd -P -- "$component" 2>/dev/null || break
-            at=$(pwd -P) || break
-            graph=$(graph_holding "$at") || graph=''
-        done
-    ) || exit 1
-}
-
-# refuse_nested_graph: the data directory, and the temporary directory this
-# run unpacks into and runs the update helper from, outside every graph
-# directory of a container install (refuse_in_graph).
-refuse_nested_graph() {
-    refuse_in_graph "$DATA_DIR" --data-dir "pick a --data-dir outside {graph}." itself
-    refuse_in_graph "${TMPDIR:-/tmp}" TMPDIR 'point TMPDIR at a directory outside it.'
-}
-
 refuse_other_mode() {
+    if [ "$MODE" = native ] && [ -d "$DATA_DIR" ]; then
+        owner=$(container_install_of "$DATA_DIR")
+        if [ -n "$owner" ]; then
+            die "$DATA_DIR is the graph directory of the container install in $owner, whose containers can write it, so a native install there would run what they could plant; remove that container install (its install directory $owner and its launcher) first, or pick another --data-dir. Nothing was changed."
+        fi
+    fi
     entries=$(other_mode_entries)
     [ -n "$entries" ] || return 0
     if [ "$MODE" = container ]; then what='a native install'; else what='a container install, or files its own install.json does not vouch for'; fi
     if [ "$FORCE_CLEAN" = 0 ] || [ "$DRY_RUN" = 1 ]; then
         die "$DATA_DIR holds $what ($entries); remove those entries or pick another --data-dir, or re-run with --force-clean to remove exactly them."
+    fi
+    # In container mode the data directory may lie in a directory a container
+    # of some installation can write, where a link could have been planted to
+    # point --force-clean at a folder of yours: it removes only in a data
+    # directory named by its own physical path.
+    if [ "$MODE" = container ]; then
+        named=$DATA_DIR
+        while [ "${#named}" -gt 1 ] && [ "${named%/}" != "$named" ]; do named=${named%/}; done
+        resolved=$(CDPATH='' cd -P -- "$DATA_DIR" 2>/dev/null && pwd -P) || resolved=''
+        if [ "$resolved" != "$named" ]; then
+            die "--force-clean removes entries only in a data directory named by its physical path, and $DATA_DIR goes through a symbolic link${resolved:+ to $resolved}; check that this is the directory you mean and run the installer again with --data-dir=${resolved:-<its physical path>}. Nothing was changed."
+        fi
     fi
     for entry in $entries; do
         rm -rf -- "${DATA_DIR:?}/$entry" || die "could not remove $DATA_DIR/$entry"
@@ -695,16 +642,7 @@ scan-failures.jsonl.lock file
 scan-failures.jsonl.*.tmp file
 watch files
 backups files
-roots.json file
-roots.json.lock file
-.roots.json.*.tmp file
-enrichers.json file
-.enrichers.json.*.tmp file
-pane-autostart.json file
-.pane-autostart.json.*.tmp file
 mcp-serve.log file
-install own-install
-.knossos-graph mark
 .knossos-files.* files
 '
 NATIVE_ENTRIES='
@@ -720,6 +658,13 @@ update-check.json
 update-check.json.tmp.*
 self-update.lock
 self-update.tmp
+roots.json
+roots.json.lock
+.roots.json.*.tmp
+enrichers.json
+.enrichers.json.*.tmp
+pane-autostart.json
+.pane-autostart.json.*.tmp
 '
 
 # entry_kind NAME: `graph SHAPE` or `native` for a name on one of the lists
@@ -747,19 +692,10 @@ entry_has_shape() {
     [ ! -L "$1" ] || return 1
     case $2 in
         file) [ -f "$1" ] ;;
-        files | mark)
+        files)
             [ -d "$1" ] && [ -r "$1" ] && [ -x "$1" ] || return 1
-            if [ "$2" = mark ]; then
-                inner=$(find "$1/." ! -name . -prune -print 2>/dev/null) || return 1
-            else
-                inner=$(find "$1/." ! -name . -prune ! -type f -print 2>/dev/null) || return 1
-            fi
+            inner=$(find "$1/." ! -name . -prune ! -type f -print 2>/dev/null) || return 1
             [ -z "$inner" ]
-            ;;
-        own-install)
-            [ -d "$1" ] && [ -n "${OWN_INSTALL_ID:-}" ] || return 1
-            found_id=$(dir_id "$1") || return 1
-            [ "${found_id#*:}" = "${OWN_INSTALL_ID#*:}" ]
             ;;
         *) return 1 ;;
     esac
@@ -767,9 +703,8 @@ entry_has_shape() {
 
 # foreign_entry DIR [native-ok]: the first entry directly in DIR that is not
 # on GRAPH_ENTRIES in its shape: `native NAME` for one on NATIVE_ENTRIES,
-# `install NAME` for an install/ that is not this installation's own, `shape
-# NAME SHAPE` for a listed name in another shape, `other NAME` for anything
-# else; nothing when there is none. With `native-ok`, entries on
+# `shape NAME SHAPE` for a listed name in another shape, `other NAME` for
+# anything else; nothing when there is none. With `native-ok`, entries on
 # NATIVE_ENTRIES are passed over. A name holding a newline is never one
 # Knossos makes.
 foreign_entry() {
@@ -783,11 +718,6 @@ foreign_entry() {
         esac
         kind=$(entry_kind "$name")
         case $kind in
-            'graph own-install')
-                entry_has_shape "${1%/}/$name" own-install && continue
-                printf 'install %s' "$name"
-                break
-                ;;
             graph\ *)
                 entry_has_shape "${1%/}/$name" "${kind#graph }" && continue
                 printf 'shape %s %s' "${kind#graph }" "$name"
@@ -808,9 +738,74 @@ shape_text() {
     case $1 in
         file) printf 'a plain file' ;;
         files) printf 'a directory that holds plain files only' ;;
-        mark) printf 'an empty directory' ;;
         *) printf 'what Knossos makes' ;;
     esac
+}
+
+# refuse_foreign_entries DIR: refuse a container install into DIR when DIR
+# holds an entry that is on neither list. A native install's entries are left
+# to refuse_other_mode, which names them all and offers --force-clean.
+refuse_foreign_entries() {
+    [ -d "$1" ] || return 0
+    foreign=$(foreign_entry "$1" native-ok)
+    case $foreign in
+        shape\ *)
+            shape=${foreign#shape }
+            die "the data directory $1 holds ${shape#* }, which Knossos only makes as $(shape_text "${shape%% *}"), and in container mode every container would be able to write all of it; choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR). Nothing was changed."
+            ;;
+        other\ *) die "the data directory $1 holds ${foreign#other }, which is not something Knossos puts in a data directory, and in container mode every container would be able to write all of it; move it out of $1 (when a container left it there, nothing in it is used), or choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR). Nothing was changed." ;;
+    esac
+}
+
+# What an install directory may hold: what the installer, the launcher and the
+# update helper put there. Every container is given it read-only, so a
+# directory holding anything else (a folder of yours) would be shown to every
+# scanned project. Patterns, one per line.
+# shellcheck disable=SC2016 # the list is data, never expanded
+INSTALL_ENTRIES='
+install.json
+container-update
+plugin
+containers
+settings
+tmp
+roots.json
+roots.json.lock.d
+.roots.*
+update-check.json
+self-update.lock.d
+self-update.lock.d.takeover
+.work.*
+.install.*
+.knossos-taken.*
+'
+
+# refuse_install_entries DIR: refuse an install directory that already holds
+# anything an install directory never holds, or the record of a native
+# install. One that holds a container install's record is that installation,
+# repaired in place: its roots list and settings are kept.
+refuse_install_entries() {
+    [ -e "$1" ] || [ -L "$1" ] || return 0
+    [ -d "$1" ] || die "the install directory $1 exists and is not a directory; choose another --install-dir. Nothing was changed."
+    if { [ -e "$1/install.json" ] || [ -L "$1/install.json" ]; } && { [ -L "$1/install.json" ] || [ ! -f "$1/install.json" ]; }; then
+        die "the install directory $1 holds an install.json that is not a plain file; choose another --install-dir, or remove $1/install.json if nothing uses that directory. Nothing was changed."
+    fi
+    if [ -f "$1/install.json" ] && ! grep -q '"mode"[[:space:]]*:[[:space:]]*"container"' "$1/install.json" 2>/dev/null; then
+        die "the install directory $1 holds an install.json that records no container install (a native install keeps its release there); choose another --install-dir. Nothing was changed."
+    fi
+    odd=$(find "$1/." ! -name . -prune -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r found; do
+        name=${found#"${1%/}/./"}
+        known=no
+        while read -r pattern; do
+            [ -n "$pattern" ] || continue
+            # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
+            case $name in $pattern) known=yes ;; esac
+        done <<LIST
+$INSTALL_ENTRIES
+LIST
+        if [ "$known" = no ]; then printf '%s' "$name"; break; fi
+    done)
+    [ -z "$odd" ] || die "the install directory $1 holds $odd, which is not something Knossos keeps there, and every container would be given it read-only; choose an empty or new directory with --install-dir. Nothing was changed."
 }
 
 # dir_id DIR: "<device>:<inode>" of DIR itself, or ":<inode>", as the
@@ -831,47 +826,6 @@ dir_id() {
     id=${id%% *}
     case $id in '' | *[!0-9]*) return 1 ;; esac
     printf ':%s' "$id"
-}
-
-# own_install_id DATA: the inode the launcher in the bin directory pins, when
-# that launcher was written for DATA/install: the one thing that says an
-# install directory there is this installation's own. Nothing otherwise.
-own_install_id() {
-    [ -f "$LAUNCHER" ] && [ ! -L "$LAUNCHER" ] || return 0
-    data_real=$(CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P) || return 0
-    baked=$(sed -n "s/^INSTALL_DIR='\(.*\)'\$/\1/p" "$LAUNCHER" 2>/dev/null | head -n 1 | sed "s/'\\\\''/'/g")
-    pin=$(sed -n "s/^INSTALL_PIN='\([0-9]*:[0-9][0-9]*\)'\$/\1/p" "$LAUNCHER" 2>/dev/null | head -n 1)
-    [ "$baked" = "${data_real%/}/install" ] && [ -n "$pin" ] || return 0
-    printf '%s' "$pin"
-}
-
-# refuse_foreign_entries DIR: refuse a container install into DIR when DIR
-# holds an entry that is on neither list. A native install's entries are left
-# to refuse_other_mode, which names them all and offers --force-clean. The
-# graph directory of a container install is not checked again: every one of
-# its containers can write it already, and reinstalling or updating there
-# changes nothing about that.
-refuse_foreign_entries() {
-    [ -d "$1" ] || return 0
-    OWN_INSTALL_ID=$(own_install_id "$1")
-    if [ -e "$1/install" ] || [ -L "$1/install" ]; then
-        # This installation's own: reinstalled or repaired in place. Not
-        # checked again: every one of its containers can write the graph
-        # already, and reinstalling there changes nothing about that.
-        if entry_has_shape "$1/install" own-install; then return 0; fi
-        die "the data directory $1 holds $1/install, which the knossos launcher in $BIN_DIR was not installed with: it is another Knossos installation's install directory, or looks like one, and its record, update helper and plugin would be writable by this installation's containers. To reinstall that installation, run the installer with its --bin-dir; if nothing uses $1/install, remove it (the graph beside it stays); or choose an empty directory with --data-dir. Nothing was changed."
-    fi
-    if [ -e "$1/.knossos-graph" ] || [ -L "$1/.knossos-graph" ]; then
-        die "the data directory $1 is a graph directory another Knossos container install uses (it holds .knossos-graph), so that installation's containers could rewrite the install directory this one would put there; choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR), or remove $1/.knossos-graph if no installation uses it any more. Nothing was changed."
-    fi
-    foreign=$(foreign_entry "$1" native-ok)
-    case $foreign in
-        shape\ *)
-            shape=${foreign#shape }
-            die "the data directory $1 holds ${shape#* }, which Knossos only makes as $(shape_text "${shape%% *}"), and in container mode every container would be able to write all of it; choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR). Nothing was changed."
-            ;;
-        other\ *) die "the data directory $1 holds ${foreign#other }, which is not something Knossos puts in a data directory, and in container mode every container would be able to write all of it; choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR). Nothing was changed." ;;
-    esac
 }
 
 # physical_of PATH: the physical form of a path that may not exist yet: its
@@ -899,17 +853,19 @@ within() {
     return 1
 }
 
-# Container mode only. A container can write its project root, and a
-# directory becomes one as soon as knossos runs there. So neither the data
-# directory (which holds the install directory every host call trusts) nor the
-# launcher's directory may lie inside the directory the installer runs from or
-# the root it grants, and the launcher may not lie inside the data directory,
-# which every container can write. The launcher refuses those layouts too, at
-# every call (see the threat note at its top). / and the home directory never
-# become a project root, so a data directory below them is fine.
+# Container mode only. A directory becomes a project root as soon as knossos
+# runs there, and a project's files come from wherever it was cloned from. So
+# neither the data directory, nor the install directory, nor the launcher's
+# directory may lie inside the directory the installer runs from or the root
+# it grants, and neither the launcher nor the install directory may lie
+# inside the data directory, which every container can write. The launcher
+# refuses those layouts too, at every call (see the threat note at its top).
+# / and the home directory never become a project root, so directories below
+# them are fine.
 refuse_writable_layout() {
     data=$(physical_of "$DATA_DIR") || die "spell --data-dir without '.' or '..' in a part that does not exist yet: $DATA_DIR"
     bin=$(physical_of "$BIN_DIR") || die "spell --bin-dir without '.' or '..' in a part that does not exist yet: $BIN_DIR"
+    inst=$(physical_of "$INSTALL_DIR") || die "spell --install-dir without '.' or '..' in a part that does not exist yet: $INSTALL_DIR"
     if within "$bin" "$data"; then
         die "the directory of the knossos launcher $bin lies inside the Knossos data directory $data, which a container can write; re-run the installer with --bin-dir outside the data directory."
     fi
@@ -923,9 +879,80 @@ refuse_writable_layout() {
         if within "$data" "$project"; then
             die "$project contains the Knossos data directory $data, which a container must never be able to write once $project is a project root; re-run the installer with --data-dir outside the project, or run it from another directory."
         fi
+        if within "$inst" "$project"; then
+            die "$project contains the Knossos install directory $inst, which holds what the host trusts and must never be part of a project; re-run the installer with --install-dir outside the project, or run it from another directory."
+        fi
         if within "$bin" "$project"; then
             die "$project contains $bin, the directory of the knossos launcher, which a container must never be able to write once $project is a project root; re-run the installer with --bin-dir outside the project, or run it from another directory."
         fi
+    done
+}
+
+# refuse_install_dir: the install directory may lie in no read-write mount
+# and in no data directory, and holds what every container sees read-only, so
+# it is refused when it is too wide to show, the bin directory or around it,
+# in or around the data directory, below a directory that holds a Knossos
+# graph, in a graph directory this installation recorded, or in a read-write
+# mount of a container that runs now. Asked again once the directories exist.
+refuse_install_dir() {
+    inst=$(physical_of "$INSTALL_DIR") || die "spell --install-dir without '.' or '..' in a part that does not exist yet: $INSTALL_DIR"
+    data=$(physical_of "$DATA_DIR") || die "spell --data-dir without '.' or '..' in a part that does not exist yet: $DATA_DIR"
+    bin=$(physical_of "$BIN_DIR") || die "spell --bin-dir without '.' or '..' in a part that does not exist yet: $BIN_DIR"
+    advice='choose a directory of its own with --install-dir (the default is ~/.local/share/knossos)'
+    home=''
+    if [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then home=$(CDPATH='' cd -P -- "$HOME" && pwd -P); fi
+    if [ "$inst" = / ]; then
+        die "the install directory / is the filesystem root, which every container would be given read-only; $advice. Nothing was changed."
+    fi
+    if [ -n "$home" ] && within "$home" "$inst"; then
+        die "the install directory $inst is your home directory or contains it, which every container would be given read-only; $advice. Nothing was changed."
+    fi
+    if within "$bin" "$inst"; then
+        die "the install directory $inst is or contains the bin directory $bin, whose programs every container would be given read-only; $advice. Nothing was changed."
+    fi
+    if within "$inst" "$data"; then
+        die "the install directory $inst lies in the data directory $data, which every container can write; $advice, outside every data directory. Nothing was changed."
+    fi
+    if within "$data" "$inst"; then
+        die "the data directory $data lies in the install directory $inst; choose a --data-dir outside it, or another --install-dir. Nothing was changed."
+    fi
+    # From / down to the install directory: a directory holding a graph
+    # database is some installation's data directory.
+    at=/
+    rest=${inst#/}
+    while :; do
+        for entry in knossos.sqlite knossos.sqlite-wal; do
+            if [ -e "${at%/}/$entry" ] || [ -L "${at%/}/$entry" ]; then
+                die "the install directory $inst lies in $at, which holds a Knossos graph ($entry): a data directory, which containers can write; $advice, outside every data directory. Nothing was changed."
+            fi
+        done
+        [ -n "$rest" ] || break
+        at="${at%/}/${rest%%/*}"
+        case $rest in */*) rest=${rest#*/} ;; *) rest='' ;; esac
+        [ -d "$at" ] || break
+    done
+    for record in "$inst"/containers/graph-*; do
+        [ -f "$record" ] || continue
+        graph=$(head -n 1 "$record" 2>/dev/null)
+        case $graph in /?*) ;; *) continue ;; esac
+        if within "$inst" "$graph"; then
+            die "the install directory $inst lies in $graph, a graph directory this installation used ($record), which containers can write; $advice, outside it. Nothing was changed."
+        fi
+    done
+    # What the runtime says: a running Knossos container whose read-write
+    # mount holds the install directory could rewrite it.
+    [ -n "${container_runtime:-}" ] || return 0
+    names=$("$container_runtime" ps --filter label=io.knossos.install --format '{{.Names}}' 2>/dev/null </dev/null) || return 0
+    for name in $names; do
+        sources=$("$container_runtime" container inspect --format '{{range .Mounts}}{{if .RW}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$name" 2>/dev/null </dev/null) || continue
+        while IFS= read -r source; do
+            case $source in /*) ;; *) continue ;; esac
+            if within "$inst" "$source"; then
+                die "the install directory $inst lies in $source, which the running Knossos container $name can write; $advice, outside every data directory. Nothing was changed."
+            fi
+        done <<SOURCES
+$sources
+SOURCES
     done
 }
 
@@ -934,6 +961,8 @@ refuse_writable_layout() {
 # write install.json with the image's digest, the launcher and the plugin.
 install_container() {
     refuse_writable_layout
+    refuse_install_dir
+    refuse_install_entries "$INSTALL_DIR"
     RUNTIME=$container_runtime
     REPOSITORY=${KNOSSOS_IMAGE_REPOSITORY:-ghcr.io/araneadev/knossos}
     if [ -n "${KNOSSOS_IMAGE:-}" ]; then
@@ -963,8 +992,12 @@ install_container() {
         log "mode:       container ($RUNTIME)"
         log "version:    ${VERSION:-the one the image reports}"
         log "image:      $REF"
-        log "data dir:   $DATA_DIR (the graph)"
-        log "install:    $DATA_DIR/install (read-only to every container)"
+        log "data dir:   $DATA_DIR (the graph, read-write in every container)"
+        if [ -f "$INSTALL_DIR/install.json" ]; then
+            log "install:    $INSTALL_DIR (repaired in place: roots and settings kept; read-only to every container)"
+        else
+            log "install:    $INSTALL_DIR (read-only to every container)"
+        fi
         log "launcher:   $LAUNCHER"
         if [ -n "$ROOT_TO_GRANT" ]; then
             log "grants:     $ROOT_TO_GRANT"
@@ -974,16 +1007,32 @@ install_container() {
             log 'grants:     no project root'
         fi
         if [ "$PLUGIN" = 1 ]; then
-            log "plugin:     write $DATA_DIR/install/plugin from the image, install it and register the MCP server with Claude Code"
+            log "plugin:     write $INSTALL_DIR/plugin from the image, install it and register the MCP server with Claude Code"
         else
             log 'plugin:     skipped (--no-plugin)'
         fi
         exit 0
     fi
 
-    TMP=$(mktemp -d "${TMPDIR:-/tmp}/knossos-install.XXXXXX")
+    # The install directory: everything the host reads, runs or trusts, made
+    # here as real directories before any container exists, outside every
+    # data directory. This run's own work files go in it too, never in
+    # TMPDIR, which could lie where a container writes. Running the installer
+    # again with the same install directory repairs that installation in
+    # place: its roots list, settings and graph records stay.
+    CINSTALL=$(physical_of "$INSTALL_DIR")
+    if [ ! -e "$CINSTALL" ] && [ ! -L "$CINSTALL" ]; then CINSTALL_MADE=1; fi
     trap cleanup EXIT
     trap 'exit 1' INT TERM HUP
+    # settings/ holds the enricher list and the pane setting, which only the
+    # launcher's own short run of the image may write.
+    for entry in "" /plugin /containers /settings /tmp; do
+        [ ! -L "$CINSTALL$entry" ] || die "$CINSTALL$entry is a symlink; remove it and run the installer again. Nothing was changed"
+        mkdir -p "$CINSTALL$entry" || die "could not create $CINSTALL$entry"
+    done
+    CINSTALL=$(CDPATH='' cd -P -- "$CINSTALL" && pwd -P) || die "could not enter $CINSTALL"
+    INSTALL_DIR=$CINSTALL
+    TMP=$(mktemp -d "$CINSTALL/.install.XXXXXX") || die "could not create a work directory in $CINSTALL"
 
     say "Installing Knossos ${VERSION:-from $REF} (container, $RUNTIME)"
     if "$RUNTIME" image inspect "$REF" >/dev/null 2>&1 </dev/null; then
@@ -1017,19 +1066,15 @@ install_container() {
         die "the image $REF has no install helper; it is older than container mode. Nothing was changed"
     fi
 
-    # The layout of a container install: the graph in the data directory, and
-    # beside it <data dir>/install, the host state directory every container
-    # only reads (install.json, plugin/, containers/, the update helper, the
-    # update check and lock). It is made here, as real directories, before
-    # any container exists, and the launcher gets its physical path baked in.
+    # The graph directory, made now and baked into install.json by its
+    # physical path.
     mkdir -p "$DATA_DIR" || die "could not create $DATA_DIR"
     logical_data=$DATA_DIR
     DATA_DIR=$(CDPATH='' cd -P -- "$DATA_DIR" && pwd -P) || die "could not enter $DATA_DIR"
-    # Again on the directory as created, should a link have moved it.
+    # Again on the directories as they now are, should a link have moved one.
     refuse_writable_layout
-    refuse_in_graph "$DATA_DIR" --data-dir "pick a --data-dir outside {graph}." itself
+    refuse_install_dir
     refuse_foreign_entries "$DATA_DIR"
-    CINSTALL="$DATA_DIR/install"
     # The allow-list of a container install is the host's, in the install
     # directory, where no container can write it: the launcher chooses a
     # project from it and hands it to every container read-only. A roots
@@ -1039,19 +1084,15 @@ install_container() {
     KNOSSOS_ROOTS_FILE=$ROOTS_FILE
     export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
     BAKED_DIR=$CINSTALL
-    # settings/ holds the enricher list, which only the launcher's own short
-    # run of the image may write (knossos enricher add and remove).
-    if [ ! -e "$CINSTALL" ] && [ ! -L "$CINSTALL" ]; then CINSTALL_MADE=1; fi
-    for entry in "" /plugin /containers /settings; do
-        [ ! -L "$CINSTALL$entry" ] || die "$CINSTALL$entry is a symlink; remove it and run the installer again. Nothing was changed"
-        mkdir -p "$CINSTALL$entry" || die "could not create $CINSTALL$entry"
-    done
     if [ -f "$CINSTALL/install.json" ]; then cp "$CINSTALL/install.json" "$TMP/install.json.prev"; fi
     if [ -f "$LAUNCHER" ]; then cp "$LAUNCHER" "$TMP/launcher.prev"; fi
     if [ -f "$CINSTALL/container-update" ]; then cp "$CINSTALL/container-update" "$TMP/helper.prev"; fi
     if [ "$PLUGIN" = 1 ] && [ -f "$CINSTALL/plugin/hooks/scripts/lib.sh" ]; then cp -pR "$CINSTALL/plugin" "$TMP/plugin.prev"; fi
+    # A reinstall that moves the launcher: the old one still names this
+    # install directory, so it says where it is.
+    old_bin=$(sed -n 's/^[[:space:]]*"bin_dir"[[:space:]]*:[[:space:]]*"\(.*\)",\{0,1\}$/\1/p' "$CINSTALL/install.json" 2>/dev/null | head -n 1 | sed 's/\\\(.\)/\1/g')
     note_replaced_launcher
-    set -- install "--install-dir=$CINSTALL" "--bin-dir=$BIN_DIR" "--runtime=$RUNTIME" "--image=$REF" "--version=$VERSION" "--data-dir=$DATA_DIR"
+    set -- install "--install-dir=$CINSTALL" "--bin-dir=$BIN_DIR" "--data-dir=$DATA_DIR" "--runtime=$RUNTIME" "--image=$REF" "--version=$VERSION"
     if [ "$PLUGIN" = 1 ]; then set -- "$@" --plugin; fi
     # The helper puts back what it changed when one of its own steps fails.
     if ! digest=$(sh "$TMP/container-update" "$@" </dev/null); then
@@ -1062,14 +1103,18 @@ install_container() {
         (umask 077 && printf '{\n    "roots": []\n}\n' > "$ROOTS_FILE") || die "could not write $ROOTS_FILE"
     fi
     log "image recorded as $digest"
+    log "install directory $CINSTALL"
     log "launcher written to $LAUNCHER"
     [ "$PLUGIN" = 0 ] || log "plugin written to $CINSTALL/plugin"
 
     # The real thing: a call through the launcher, from a scratch directory so
     # no project of yours is mounted for it, and that container stopped after.
-    mkdir "$TMP/probe project"
-    if installed=$(cd "$TMP/probe project" && "$LAUNCHER" version 2>&1 </dev/null); then
-        (cd "$TMP/probe project" && "$LAUNCHER" stop >/dev/null 2>&1 </dev/null) || true
+    # The scratch project lies in TMPDIR: it is mounted read-only and nothing
+    # is read from it.
+    PROBE=$(mktemp -d "${TMPDIR:-/tmp}/knossos-probe.XXXXXX") || die 'could not create a temporary directory'
+    mkdir "$PROBE/probe project"
+    if installed=$(cd "$PROBE/probe project" && "$LAUNCHER" version 2>&1 </dev/null); then
+        (cd "$PROBE/probe project" && "$LAUNCHER" stop >/dev/null 2>&1 </dev/null) || true
         case $installed in
             "Knossos $VERSION") ;;
             *) die "the installed launcher answered '$installed', not Knossos $VERSION; the previous state was restored" ;;
@@ -1080,9 +1125,12 @@ install_container() {
     else
         die "the installed launcher does not run ($installed); the previous state was restored"
     fi
+    if [ -n "$old_bin" ] && [ "$old_bin" != "$BIN_DIR" ] && [ -f "$old_bin/knossos" ]; then
+        log "the launcher in $old_bin still runs this installation; remove $old_bin/knossos if nothing calls it"
+    fi
 
-    # Roots, through the launcher: the root is mounted for that one call, and
-    # the server's own allow-root writes the file.
+    # Roots, through the launcher: the host writes the list in the install
+    # directory, and no container runs for it.
     if [ -n "$ROOT_TO_GRANT" ]; then
         if granted=$(cd "$ROOT_TO_GRANT" 2>/dev/null && "$LAUNCHER" allow-root "$ROOT_TO_GRANT" --execute 2>&1 </dev/null); then
             log "granted $ROOT_TO_GRANT"
@@ -1099,7 +1147,9 @@ install_container() {
     if [ "$PLUGIN" = 1 ]; then
         # The image wrote the plugin; registering it is done here, on the
         # host, because claude does not exist inside the image. The same two
-        # commands install-agent-plugin --execute runs in native mode.
+        # commands install-agent-plugin --execute runs in native mode. The
+        # directory registered, <install dir>/plugin, keeps its path across
+        # every update: an update rewrites what is in it.
         if command -v claude >/dev/null 2>&1; then
             say 'Installing the Claude Code plugin...'
             if claude plugin marketplace add "$CINSTALL/plugin" --scope user </dev/null \
@@ -1134,6 +1184,9 @@ main() {
     CINSTALL=""
     CINSTALL_MADE=0
     BAKED_DIR=""
+    PROBE=''
+    INSTALL_DIR=''
+    INSTALL_DIR_GIVEN=0
 
     while [ $# -gt 0 ]; do
         case $1 in
@@ -1144,6 +1197,11 @@ main() {
                 DATA_DIR_GIVEN=1
                 ;;
             --bin-dir=*) BIN_DIR=${1#--bin-dir=} ;;
+            --install-dir=*)
+                INSTALL_DIR=${1#--install-dir=}
+                INSTALL_DIR_GIVEN=1
+                [ -n "$INSTALL_DIR" ] || die '--install-dir needs a directory'
+                ;;
             --no-plugin) PLUGIN=0 ;;
             --no-roots) ROOTS=0 ;;
             --dry-run) DRY_RUN=1 ;;
@@ -1180,10 +1238,23 @@ main() {
     [ -z "$VERSION" ] || validate_version "$VERSION"
     DATA_DIR=$(absolute "$DATA_DIR")
     BIN_DIR=$(absolute "$BIN_DIR")
-    # Both end up in install.json, the launcher and the hooks, which are line
-    # based: a newline or another control character would break all three.
-    case $DATA_DIR$BIN_DIR in
-        *[[:cntrl:]]*) die 'the data and bin directories must not contain a newline or another control character' ;;
+    # The install directory of a container install: --install-dir, else
+    # KNOSSOS_INSTALL_DIR, else ${XDG_DATA_HOME:-~/.local/share}/knossos. A
+    # relative XDG_DATA_HOME is ignored, as the XDG base directory rules say.
+    # Worked out for native mode too, which only reads it, to tell whether its
+    # data directory is a container install's graph directory.
+    [ -n "$INSTALL_DIR" ] || INSTALL_DIR=${KNOSSOS_INSTALL_DIR:-}
+    if [ -z "$INSTALL_DIR" ]; then
+        case ${XDG_DATA_HOME:-} in
+            /*) INSTALL_DIR="${XDG_DATA_HOME%/}/knossos" ;;
+            *) if [ -n "${HOME:-}" ]; then INSTALL_DIR="$HOME/.local/share/knossos"; fi ;;
+        esac
+    fi
+    [ -z "$INSTALL_DIR" ] || INSTALL_DIR=$(absolute "$INSTALL_DIR")
+    # All three end up in install.json, the launcher and the hooks, which are
+    # line based: a newline or another control character would break them.
+    case $DATA_DIR$BIN_DIR$INSTALL_DIR in
+        *[[:cntrl:]]*) die 'the data, install and bin directories must not contain a newline or another control character' ;;
     esac
 
     # ---- detect ------------------------------------------------------------
@@ -1355,8 +1426,12 @@ main() {
     unset KNOSSOS_INSTALL_DIR
     LAUNCHER="$BIN_DIR/knossos"
 
-    refuse_nested_graph
-    if [ "$MODE" = container ]; then refuse_foreign_entries "$DATA_DIR"; fi
+    if [ "$MODE" = container ]; then
+        [ -n "$INSTALL_DIR" ] || die 'HOME is not set; pass --install-dir'
+        refuse_foreign_entries "$DATA_DIR"
+    elif [ "$INSTALL_DIR_GIVEN" = 1 ]; then
+        die '--install-dir is for container mode; a native install keeps its release in the data directory (--data-dir)'
+    fi
     refuse_other_mode
     if [ "$MODE" = container ]; then
         install_container
@@ -1428,8 +1503,6 @@ main() {
         done < "$TMP/listing"
 
         mkdir -p "$DATA_DIR/versions"
-        # Again on the directory as created, should a link have moved it.
-        refuse_in_graph "$DATA_DIR" --data-dir "pick a --data-dir outside {graph}." itself
         # A name of its own per process, so two installers never share a directory.
         PARTIAL="$DATA_DIR/versions/$VERSION.partial.$$"
         remove_partial

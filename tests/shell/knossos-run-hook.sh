@@ -165,9 +165,9 @@ expect_output 'environment data location wins over the installed one' '/env|/x y
 
 # A container install names the allow-list its host keeps, in the install directory.
 install_copy "$STUBS/container-baked" '/x y/data'
-sed "s|__KNOSSOS_ROOTS_FILE__|/x y/data/install/roots.json|" "$STUBS/container-baked/lib.sh" > "$STUBS/container-baked/lib.sh.new"
+sed "s|__KNOSSOS_ROOTS_FILE__|/x y/share/knossos/roots.json|" "$STUBS/container-baked/lib.sh" > "$STUBS/container-baked/lib.sh.new"
 mv "$STUBS/container-baked/lib.sh.new" "$STUBS/container-baked/lib.sh"
-expect_output "a container install's roots file reaches the binary" '/x y/data|/x y/data/install/roots.json' \
+expect_output "a container install's roots file reaches the binary" '/x y/data|/x y/share/knossos/roots.json' \
     env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE KNOSSOS_BIN="$STUBS/envdump" /bin/sh "$STUBS/container-baked/knossos-run.sh" dashboard /tmp
 
 # A wrapper installed without its library must still be silent.

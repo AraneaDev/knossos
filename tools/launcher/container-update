@@ -9,8 +9,8 @@
 # the container runtime install.json records and, to look for a newer
 # release, curl or wget.
 #
-#   container-update install --install-dir=DIR --bin-dir=DIR --runtime=docker|podman
-#                            --image=REF --version=V [--plugin --data-dir=DIR]
+#   container-update install --install-dir=DIR --bin-dir=DIR --data-dir=DIR
+#                            --runtime=docker|podman --image=REF --version=V [--plugin]
 #   container-update self-update --install-dir=DIR [--check [--quiet]] [--rollback]
 #                                [--version=V] [--json]
 #
@@ -329,7 +329,7 @@ render_launcher() {
 # network, only the image being installed, which is the code that wrote every
 # plugin file anyway.
 write_plugin() {
-    if [ -L "$INSTALL/plugin" ] || [ ! -d "$INSTALL/plugin" ]; then die "$INSTALL/plugin is not a plain directory; re-run the installer."; fi
+    if [ -L "$INSTALL/plugin" ] || [ ! -d "$INSTALL/plugin" ]; then die "$INSTALL/plugin is not a plain directory; run the installer again with --install-dir=$INSTALL."; fi
     "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
         --mount "$(bind_spec "$INSTALL/plugin")" \
@@ -373,11 +373,12 @@ bind_spec() {
 }
 
 # The graph directory the plugin's hooks were given, so a refresh keeps one
-# set by hand (Installation::pluginDataDir in PHP).
+# set by hand (Installation::pluginDataDir in PHP); else the data directory
+# install.json records.
 plugin_data_dir() {
     value=$(sed -n "s/^KNOSSOS_INSTALLED_DATA_DIR='\(.*\)'\$/\1/p" "$INSTALL/plugin/hooks/scripts/lib.sh" 2>/dev/null | head -n 1)
     value=$(printf '%s' "$value" | sed "s/'\\\\''/'/g")
-    case $value in /*) printf '%s' "$value" ;; *) printf '%s' "${INSTALL%/*}" ;; esac
+    case $value in /*) printf '%s' "$value" ;; *) printf '%s' "$DATA_DIR" ;; esac
 }
 
 # switch_to IMAGE VERSION PREVIOUS_IMAGE PREVIOUS_VERSION PLUGIN_DATA_DIR
@@ -407,11 +408,12 @@ switch_to() {
     stop_containers
     if [ -n "$3" ]; then previous=$(json_string "$3"); else previous=null; fi
     if [ -n "$4" ]; then previous_version=$(json_string "$4"); else previous_version=null; fi
-    # `layout` tells the launcher this install directory is apart from the
-    # graph and only ever read by containers.
-    printf '{\n  "mode": "container",\n  "layout": "separate",\n  "version": %s,\n  "image": %s,\n  "previous_version": %s,\n  "previous_image": %s,\n  "runtime": %s,\n  "bin_dir": %s,\n  "installed_at": "%s"\n}\n' \
+    # `layout` tells the launcher this install directory lies outside every
+    # data directory and is only ever read by containers; `data_dir` is the
+    # graph directory a call uses when KNOSSOS_DATA_DIR is not set.
+    printf '{\n  "mode": "container",\n  "layout": "install-dir",\n  "version": %s,\n  "image": %s,\n  "previous_version": %s,\n  "previous_image": %s,\n  "runtime": %s,\n  "bin_dir": %s,\n  "data_dir": %s,\n  "installed_at": "%s"\n}\n' \
         "$(json_string "$2")" "$(json_string "$1")" "$previous_version" "$previous" "$(json_string "$RUNTIME")" \
-        "$(json_string "$BIN_DIR")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$WORKDIR/install.json"
+        "$(json_string "$BIN_DIR")" "$(json_string "$DATA_DIR")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$WORKDIR/install.json"
     if ! mv -f "$WORKDIR/install.json" "$INSTALL/install.json"; then
         rm -f "$NEW_LAUNCHER"
         die "could not write $INSTALL/install.json; nothing was changed"
@@ -567,21 +569,23 @@ case $INSTALL in /*) INSTALL=${INSTALL%/} ;; *) die '--install-dir must name an 
 # it, then renamed into place, so a name nobody else could know is the only
 # one ever opened for writing.
 if [ "$ACTION" = install ]; then
-    for entry in "" /plugin /containers; do
+    for entry in "" /plugin /containers /settings /tmp; do
         [ ! -L "$INSTALL$entry" ] || die "$INSTALL$entry is a symlink; nothing was changed"
         mkdir -p "$INSTALL$entry" || die "could not create $INSTALL$entry"
     done
 fi
-[ ! -L "$INSTALL" ] || die "the install directory $INSTALL is a symlink; re-run the installer"
-[ "$( (cd -P -- "$INSTALL" 2>/dev/null && pwd -P) )" = "$INSTALL" ] || die "the install directory $INSTALL is not at its own physical path; re-run the installer"
-for entry in install.json plugin containers container-update update-check.json self-update.lock.d; do
-    [ ! -L "$INSTALL/$entry" ] || die "$INSTALL/$entry is a symlink; re-run the installer"
+[ ! -L "$INSTALL" ] || die "the install directory $INSTALL is a symlink; run the installer again with --install-dir=$INSTALL"
+[ "$( (cd -P -- "$INSTALL" 2>/dev/null && pwd -P) )" = "$INSTALL" ] || die "the install directory $INSTALL is not at its own physical path; run the installer again with --install-dir=$INSTALL"
+for entry in install.json plugin containers container-update update-check.json self-update.lock.d roots.json settings tmp; do
+    [ ! -L "$INSTALL/$entry" ] || die "$INSTALL/$entry is a symlink; run the installer again with --install-dir=$INSTALL"
 done
 WORKDIR=$(mktemp -d "$INSTALL/.work.XXXXXX") || die "could not create a work directory in $INSTALL"
 
 case $ACTION in
     install)
         case $BIN_DIR in /*) ;; *) die '--bin-dir must be absolute' ;; esac
+        case $DATA_DIR in /*) DATA_DIR=${DATA_DIR%/} ;; *) die '--data-dir must be absolute' ;; esac
+        [ -n "$DATA_DIR" ] || DATA_DIR=/
         [ -n "$IMAGE_REF" ] || die '--image is required'
         valid_version "$VERSION" || die "not a valid version: $VERSION"
         case $RUNTIME in docker | podman) ;; *) die '--runtime must be docker or podman' ;; esac
@@ -600,7 +604,7 @@ case $ACTION in
             fi
         fi
         plugin_dir=''
-        if [ "$PLUGIN" = 1 ]; then plugin_dir=${DATA_DIR:-${INSTALL%/*}}; fi
+        if [ "$PLUGIN" = 1 ]; then plugin_dir=$DATA_DIR; fi
         switch_to "$CURRENT_IMAGE" "$VERSION" "$PREVIOUS_IMAGE" "$PREVIOUS_VERSION" "$plugin_dir"
         printf '%s\n' "$CURRENT_IMAGE"
         exit 0
@@ -615,18 +619,20 @@ if [ "$QUIET" = 1 ] && [ "$CHECK" = 0 ]; then QUIET=0; die '--quiet goes with --
 if { [ "$CHECK" = 1 ] && [ "$ROLLBACK" = 1 ]; } || { [ -n "$VERSION" ] && { [ "$CHECK" = 1 ] || [ "$ROLLBACK" = 1 ]; }; }; then
     die '--check, --rollback and --version cannot be combined.'
 fi
-[ "$(json_field "$INSTALL/install.json" mode)" = container ] || die "$INSTALL/install.json does not record a container install; run the installer again."
+[ "$(json_field "$INSTALL/install.json" mode)" = container ] || die "$INSTALL/install.json does not record a container install; run the installer again with --install-dir=$INSTALL."
 CURRENT_IMAGE=$(json_field "$INSTALL/install.json" image)
 CURRENT=$(json_field "$INSTALL/install.json" version)
 PREVIOUS_IMAGE=$(json_field "$INSTALL/install.json" previous_image)
 PREVIOUS_VERSION=$(json_field "$INSTALL/install.json" previous_version)
 RUNTIME=$(json_field "$INSTALL/install.json" runtime)
 BIN_DIR=$(json_field "$INSTALL/install.json" bin_dir)
+DATA_DIR=$(json_field "$INSTALL/install.json" data_dir)
 [ -n "$RUNTIME" ] || RUNTIME=docker
-case $BIN_DIR in /*) BIN_DIR=${BIN_DIR%/} ;; *) die "$INSTALL/install.json does not name where the launcher is; run the installer again." ;; esac
+case $DATA_DIR in /*) ;; *) die "$INSTALL/install.json does not name the data directory; run the installer again with --install-dir=$INSTALL." ;; esac
+case $BIN_DIR in /*) BIN_DIR=${BIN_DIR%/} ;; *) die "$INSTALL/install.json does not name where the launcher is; run the installer again with --install-dir=$INSTALL." ;; esac
 LAUNCHER="${BIN_DIR:-}/knossos"
 if [ -z "$CURRENT_IMAGE" ] || ! valid_version "$CURRENT"; then
-    die "$INSTALL/install.json names no image or version; run the installer again."
+    die "$INSTALL/install.json names no image or version; run the installer again with --install-dir=$INSTALL."
 fi
 
 if [ "$CHECK" = 1 ]; then

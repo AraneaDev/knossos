@@ -11,6 +11,9 @@
 #   containers/NAME.labels its labels, one per line
 #   containers/NAME.image  the image it runs
 #   containers/NAME.config `image|network|user` as `inspect` reports them
+#   containers/NAME.mounts one `source|destination|rw` line per mount; an inspect whose
+#                          format asks for `{{if .RW}}` gets the read-write sources only,
+#                          and `ps --format` naming the install label gets `name label`
 #   images/<ref>           a pulled image; its content is its digest reference
 #   pull-fails             present: `pull` fails
 #   copy/<path>            what `run ... cat <path>` prints, for files read out of an image
@@ -75,6 +78,17 @@ case $command in
         case $command.$sub in
             container.inspect)
                 [ -f "$STATE/containers/$1" ] || { echo "Error: No such container: $1" >&2; exit 1; }
+                # The sources of the read-write mounts alone, one per line.
+                case $format in
+                    *'{{if .RW}}'*)
+                        if [ -f "$STATE/containers/$1.mounts" ]; then
+                            while IFS='|' read -r source _ rw; do
+                                [ "$rw" != true ] || printf '%s\n' "$source"
+                            done < "$STATE/containers/$1.mounts"
+                        fi
+                        exit 0
+                        ;;
+                esac
                 # With the configuration in the format: `state|image|network|user` on the first line.
                 case $format in
                     *Config.Image*) printf '%s|%s\n' "$(cat "$STATE/containers/$1")" "$(cat "$STATE/containers/$1.config" 2>/dev/null)" ;;
@@ -292,10 +306,12 @@ case $command in
         ;;
     ps)
         filters=''
+        format=''
         while [ $# -gt 0 ]; do
             case $1 in
                 -q | -a) ;;
                 --filter) filters="$filters ${2#label=}"; shift ;;
+                --format) format=$2; shift ;;
             esac
             shift
         done
@@ -305,9 +321,18 @@ case $command in
             [ "$(cat "$file")" = running ] || continue
             match=1
             for wanted in $filters; do
-                grep -qxF "$wanted" "$file.labels" 2>/dev/null || match=0
+                # A filter by key alone matches any value of that label.
+                case $wanted in
+                    *=*) grep -qxF "$wanted" "$file.labels" 2>/dev/null || match=0 ;;
+                    *) grep -q "^$wanted=" "$file.labels" 2>/dev/null || match=0 ;;
+                esac
             done
-            [ "$match" = 1 ] && printf '%s\n' "${file##*/}"
+            [ "$match" = 1 ] || continue
+            # The name and the install label, as a format asking for both gets them.
+            case $format in
+                *'.Label "io.knossos.install"'*) printf '%s %s\n' "${file##*/}" "$(sed -n 's/^io\.knossos\.install=//p' "$file.labels" 2>/dev/null | head -n 1)" ;;
+                *) printf '%s\n' "${file##*/}" ;;
+            esac
         done
         ;;
     stop | rm)

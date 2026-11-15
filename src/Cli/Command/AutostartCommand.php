@@ -18,6 +18,8 @@ use Knossos\Runtime\PaneAutostart;
  * The switch lives in `pane-autostart.json` beside the roots file (or in
  * `KNOSSOS_SETTINGS_DIR`, see AllowedRoots::settingsDirectory()), keyed by
  * the project's toplevel, so any folder inside a repository answers for it.
+ * In container mode the launcher runs `--set` in a short run of the image
+ * that may write only that settings directory; every other container reads it.
  */
 final class AutostartCommand implements CliCommand
 {

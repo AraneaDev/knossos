@@ -135,7 +135,7 @@ fi
 printf '{"mode": "container"}\n' > "$EMPTY/install.json"
 out=$(KNOSSOS_INSTALL_DIR="$EMPTY" "$LAUNCHER" version 2>&1); status=$?
 case $out in
-    *"names no image; re-run the installer"*) said=yes ;;
+    *"names no image; run the installer again"*) said=yes ;;
     *) said=no ;;
 esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'a container record without an image is refused clearly'; else fail "container mode (status $status, output $out)"; fi
