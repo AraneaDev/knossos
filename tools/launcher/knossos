@@ -505,6 +505,16 @@ add_mount "$ROOTS_DIR_REAL" roots
 # The install directory read-only, on top: always its own mount, even when a
 # read-write one contains it.
 if too_wide "$INSTALL_REAL" >/dev/null; then die "the install directory $INSTALL_REAL $(too_wide "$INSTALL_REAL"), which container mode does not mount; re-run the installer with --data-dir set to a directory of its own."; fi
+# Each mount as `docker inspect` reports it: source|destination|read-write.
+EXPECTED=$(
+    while IFS= read -r mounted; do
+        [ -n "$mounted" ] && printf '%s|%s|true\n' "$mounted" "$mounted"
+    done <<MOUNTED
+$MOUNTS
+MOUNTED
+    printf '%s|%s|false\n' "$INSTALL_REAL" "$INSTALL_REAL"
+)
+EXPECTED=$(printf '%s\n' "$EXPECTED" | LC_ALL=C sort)
 
 NAME="knossos-$(hash12 "$INSTALL_REAL
 $ROOT
@@ -539,11 +549,18 @@ MOUNTED
     set -- "$@" --entrypoint "$IN_IMAGE/tools/launcher/idle-stop" "$IMAGE" "$MARKER"
     attempts=0
     while :; do
-        state=$("$RUNTIME" container inspect --format '{{.State.Status}}' "$NAME" 2>/dev/null) || state=absent
+        found=$("$RUNTIME" container inspect --format "$INSPECT" "$NAME" 2>/dev/null) || found=absent
+        state=${found%%"$NEWLINE"*}
         case $state in
-            running) return 0 ;;
+            running)
+                check_mounts "$found"
+                return 0
+                ;;
             absent)
                 if error=$("$RUNTIME" "$@" 2>&1 >/dev/null </dev/null); then
+                    # Started: what the runtime mounted must be what was checked.
+                    found=$("$RUNTIME" container inspect --format "$INSPECT" "$NAME" 2>/dev/null) || found=''
+                    check_mounts "$found" new
                     return 0
                 fi
                 # Lost the race, or a real failure: only the second leaves no container behind.
@@ -558,6 +575,33 @@ MOUNTED
         [ "$attempts" -lt 30 ] || die "container $NAME did not start (last state: $state)"
         sleep 1
     done
+}
+# The state and the mounts of a container in one inspect, so reusing a running
+# container costs no extra call.
+INSPECT='{{.State.Status}}{{range .Mounts}}{{"\n"}}{{.Source}}|{{.Destination}}|{{.RW}}{{end}}'
+
+# check_mounts INSPECT-OUTPUT [new]: refuse a container whose mounts are not
+# exactly the ones checked, and remove it so it is never exec'd into. On a new
+# one, each source must also still be its own physical path: the runtime resolves
+# symlinks in a bind source when it mounts, so a component swapped for a link
+# between the check and the run would have widened the mount.
+check_mounts() {
+    got=$(printf '%s\n' "${1#*"$NEWLINE"}" | sed '/^$/d' | LC_ALL=C sort)
+    case $1 in *"$NEWLINE"*) ;; *) got='' ;; esac
+    if [ "$got" != "$EXPECTED" ]; then
+        "$RUNTIME" rm -f "$NAME" >/dev/null 2>&1 </dev/null
+        die "container $NAME does not have the mounts that were checked, so it was removed; run the command again."
+    fi
+    [ "${2-}" = new ] || return 0
+    while IFS= read -r mounted; do
+        [ -n "$mounted" ] || continue
+        if [ "$(physical "$mounted")" != "$mounted" ]; then
+            "$RUNTIME" rm -f "$NAME" >/dev/null 2>&1 </dev/null
+            die "$mounted changed while container $NAME was started, so it was removed; run the command again."
+        fi
+    done <<MOUNTED
+$MOUNTS
+MOUNTED
 }
 start_container
 

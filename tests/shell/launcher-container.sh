@@ -102,7 +102,7 @@ case $exec_line in
 esac
 case $exec_line in *'[-t]'*) fail 'exec got -t without a terminal' ;; esac
 case $out in *'[/opt/knossos/bin/knossos][version][--json]'*) pass 'the command and its arguments reach the container' ;; *) fail "output: $out" ;; esac
-if [ "$(count_calls run)" -eq 1 ] && [ "$(count_calls container)" -eq 1 ]; then pass 'one inspect and one run on a cold start'; else fail "cold start calls: $(calls)"; fi
+if [ "$(count_calls run)" -eq 1 ] && [ "$(count_calls container)" -eq 2 ]; then pass 'a cold start is one run, with an inspect before it and one after it that reads the mounts back'; else fail "cold start calls: $(calls)"; fi
 if [ -f "$INSTALL/containers/$NAME" ]; then pass 'the marker is written under <install dir>/containers'; else fail 'no marker'; fi
 
 # ---- the second call reuses it, and touches the marker ----------------------
@@ -659,6 +659,28 @@ if grep -n 'INSTALL[^"]*\.tmp\.\$\$' "$HERE/../../tools/launcher/container-updat
     fail 'a host write into the install directory still uses a pid-named temporary file'
 else
     pass 'no host write into the install directory uses a pid-named temporary file'
+fi
+
+# ---- a container runs only with the mounts that were checked ------------------------------
+
+reset_docker
+out=$(cd "$PROJECT" && FAKE_EXTRA_MOUNT='/etc|/etc|true' kn version </dev/null 2>&1); status=$?
+case $out in *'does not have the mounts that were checked, so it was removed'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && has_call "call [rm] [-f] [$NAME]" && [ "$(count_calls exec)" -eq 0 ]; then
+    pass 'a new container with a mount nobody checked is removed before anything runs in it'
+else
+    fail "mismatch on create: $status, $out, $(calls)"
+fi
+reset_docker
+(cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+printf '%s|%s|true\n' "$HOME" "$HOME" >> "$FAKE_DOCKER_STATE/containers/$NAME.mounts"
+: > "$FAKE_DOCKER_STATE/calls"
+out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+case $out in *'does not have the mounts that were checked'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && has_call "call [rm] [-f] [$NAME]" && [ "$(count_calls exec)" -eq 0 ]; then
+    pass 'a running container whose mounts differ is removed, never reused'
+else
+    fail "mismatch on reuse: $status, $out, $(calls)"
 fi
 
 # ---- install.json problems -------------------------------------------------------------
