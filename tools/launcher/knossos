@@ -340,16 +340,44 @@ USER_SPEC="$(id -u):$(id -g)"
 ENRICHERS_DIR="$INSTALL_REAL/settings"
 ENRICHERS_FILE="$ENRICHERS_DIR/enrichers.json"
 
+# BYTES_AWK: awk functions shared by the readers and writers of JSON text
+# below, run with LC_ALL=C so that every character is one byte. utf8_at(s, i)
+# is the length of the valid UTF-8 sequence that starts at byte i of s, or 0,
+# by the rules PHP's JSON functions apply (no overlong form, no surrogate,
+# nothing above U+10FFFF).
+BYTES_AWK='
+    function bytes_init(    i) { for (i = 1; i < 256; i++) ord[sprintf("%c", i)] = i }
+    function utf8_at(s, i,    b, len, lo, hi, k, t) {
+        b = ord[substr(s, i, 1)]
+        if (b < 128) return 1
+        lo = 128; hi = 191
+        if (b >= 194 && b <= 223) len = 2
+        else if (b >= 224 && b <= 239) { len = 3; if (b == 224) lo = 160; if (b == 237) hi = 159 }
+        else if (b >= 240 && b <= 244) { len = 4; if (b == 240) lo = 144; if (b == 244) hi = 143 }
+        else return 0
+        for (k = 1; k < len; k++) {
+            t = ord[substr(s, i + k, 1)]
+            if (k == 1 && (t < lo || t > hi)) return 0
+            if (k > 1 && (t < 128 || t > 191)) return 0
+        }
+        return len
+    }
+'
+
 # The roots the roots file lists, one per line. Both shapes the server reads
 # ({"roots": [...]} and a bare [...]): every string that is not a key. A string
-# with a \u escape cannot be compared byte for byte and is left out, which only
-# means that root is not used to widen a mount.
+# with a \u or control escape cannot be compared byte for byte and is left out,
+# which only means that root is not used to widen a mount. A string holding a
+# raw control character or bytes that are not UTF-8 makes the file invalid
+# JSON, which the server reads as no roots at all: then nothing is printed
+# either, and the status is 3, so the list is never rewritten.
 roots() {
     [ -r "$KNOSSOS_ROOTS_FILE" ] || return 0
-    awk '
+    LC_ALL=C awk "$BYTES_AWK"'
         { text = text $0 "\n" }
         END {
-            n = length(text); i = 1
+            bytes_init()
+            n = length(text); i = 1; count = 0; broken = 0
             while (i <= n) {
                 c = substr(text, i, 1)
                 if (c != "\"") { i++; continue }
@@ -364,16 +392,39 @@ roots() {
                         i += 2; continue
                     }
                     if (c == "\"") break
-                    value = value c; i++
+                    if (ord[c] < 32) broken = 1
+                    len = utf8_at(text, i)
+                    if (len == 0) { broken = 1; len = 1 }
+                    value = value substr(text, i, len); i += len
                 }
                 i++
                 j = i
                 while (j <= n && substr(text, j, 1) ~ /[ \t\r\n]/) j++
                 if (substr(text, j, 1) == ":") continue
-                if (!skip && value != "") print value
+                if (!skip && value != "") found[++count] = value
             }
+            if (broken) exit 3
+            for (k = 1; k <= count; k++) print found[k]
         }
     ' "$KNOSSOS_ROOTS_FILE" 2>/dev/null
+}
+
+# normalise ROOT: sets `normalised` to ROOT as the server compares roots
+# (AllowedRoots::normaliseRoot): white space trimmed at both ends, then
+# trailing slashes, and / when nothing is left.
+WHITE=$(printf ' \t\r\v\n.')
+WHITE=${WHITE%.}
+normalise() {
+    normalised=$1
+    while :; do
+        case $normalised in
+            ["$WHITE"]*) normalised=${normalised#?} ;;
+            *["$WHITE"]) normalised=${normalised%?} ;;
+            *) break ;;
+        esac
+    done
+    while [ "${normalised%/}" != "$normalised" ]; do normalised=${normalised%/}; done
+    normalised=${normalised:-/}
 }
 
 # Whether a directory may be mounted: not /, not the home directory and not
@@ -408,7 +459,8 @@ project_root() {
         best=''
         written=''
         while IFS= read -r entry; do
-            while [ "${#entry}" -gt 1 ] && [ "${entry%/}" != "$entry" ]; do entry=${entry%/}; done
+            normalise "$entry"
+            entry=$normalised
             case $entry in /*) ;; *) continue ;; esac
             [ -d "$entry" ] || continue
             candidate=$(physical "$entry")
@@ -529,8 +581,9 @@ case ${1-} in
 esac
 
 # From here on a container is started or used, so the mount rule must be able
-# to tell where the home directory is.
-[ -n "$HOME_REAL" ] || die 'container mode needs HOME to point at your home directory, to keep it out of every container; set HOME and try again.'
+# to tell where the home directory is. claim is the one exception: it mounts
+# nothing, and without a home folder it answers `ask`, as in native mode.
+[ -n "$HOME_REAL" ] || [ "${1-}" = claim ] || die 'container mode needs HOME to point at your home directory, to keep it out of every container; set HOME and try again.'
 
 # Every path the container is given, physical, decided once: the mounts, the
 # environment passed in, the working directory, the container's name and the
@@ -658,11 +711,16 @@ HELD
 # container: the list lives where no container can write. The edit is small
 # enough to make safely in shell: the launcher reads the entries as it reads
 # them to choose a project root (roots above), appends one, and writes the
-# whole list again, pretty-printed as JSON with only `\` and `"` escaped, into
-# a new file renamed over the old one, under a lock directory beside it. A
-# list holding an entry this reader cannot reproduce byte for byte (a \u or
-# control escape) is not rewritten. Their answers are the ones the commands
-# give in native mode, so the plugin's hooks read them the same way.
+# whole list again, pretty-printed as JSON with `\` and `"` escaped, into a
+# new file renamed over the old one, under a lock directory beside it. A name
+# holding a control character or bytes that are not UTF-8 is refused before
+# anything is written, and roots are trimmed and compared as the server
+# compares them (normalise), so the server reads exactly the entries this
+# reader does (tests/phpunit/Roots/LauncherRootsRoundTripTest). A list holding
+# an entry this reader cannot reproduce byte for byte (a \u or control
+# escape), or one the server cannot read, is not rewritten. Their answers are
+# the ones the commands give in native mode, so the plugin's hooks read them
+# the same way.
 
 # root_problem DIR: why DIR may not become a project root, or nothing.
 root_problem() {
@@ -673,17 +731,17 @@ root_problem() {
     ) 2>&1 >/dev/null | sed 's/^knossos: //'
 }
 
-# normal ROOT: a root as the server compares it, trailing slashes gone.
+# normal ROOT: ROOT as the server compares it (see normalise).
 normal() {
-    entry=$1
-    while [ "${#entry}" -gt 1 ] && [ "${entry%/}" != "$entry" ]; do entry=${entry%/}; done
-    printf '%s' "$entry"
+    normalise "$1"
+    printf '%s' "$normalised"
 }
 
 # listed ROOT: whether the list names ROOT, compared as the server compares.
 listed() {
     while IFS= read -r entry; do
-        [ "$(normal "$entry")" != "$1" ] || return 0
+        normalise "$entry"
+        [ "$normalised" != "$1" ] || return 0
     done <<ENTRIES
 $(roots)
 ENTRIES
@@ -711,9 +769,12 @@ lock_roots() {
 # write_roots ENTRY...: the list, replaced whole. Prints why when it cannot.
 write_roots() {
     if [ -f "$ROOTS_FILE_REAL" ]; then
-        # 1 is "no such escape"; a match or an error (2) leaves the list as it is.
+        # 1 is "no such escape"; a match or an error (2) leaves the list as it
+        # is, and so does an entry the server cannot read (roots answers 3).
         grep -q '\\[ubfnrt]' "$ROOTS_FILE_REAL" 2>/dev/null
-        if [ $? -ne 1 ]; then
+        found=$?
+        if [ "$found" -eq 1 ]; then roots >/dev/null || found=3; fi
+        if [ "$found" -ne 1 ]; then
             printf '%s' "$ROOTS_FILE_REAL holds an entry with an escape this launcher cannot rewrite safely, or cannot be read; edit it by hand."
             return 1
         fi
@@ -736,8 +797,49 @@ write_roots() {
     return 1
 }
 
-# json_string TEXT: TEXT as a JSON string.
-json_string() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+# json_string TEXT: TEXT as a JSON string, as PHP's json_encode writes it in
+# the answers: `\` and `"` escaped, a control character as its escape, and a
+# byte that is not UTF-8 as \ufffd (the CLI's JSON_INVALID_UTF8_SUBSTITUTE).
+json_string() {
+    TEXT=$1 LC_ALL=C awk "$BYTES_AWK"'
+        BEGIN {
+            bytes_init()
+            s = ENVIRON["TEXT"]; n = length(s); out = ""; i = 1
+            short["\b"] = "b"; short["\t"] = "t"; short["\n"] = "n"; short["\f"] = "f"; short["\r"] = "r"
+            while (i <= n) {
+                c = substr(s, i, 1)
+                if (c == "\\" || c == "\"") { out = out "\\" c; i++; continue }
+                if (ord[c] < 32) { out = out ((c in short) ? "\\" short[c] : sprintf("\\u%04x", ord[c])); i++; continue }
+                len = utf8_at(s, i)
+                if (len == 0) { out = out "\\ufffd"; i++; continue }
+                out = out substr(s, i, len); i += len
+            }
+            printf "\"%s\"", out
+        }
+    '
+}
+
+# recordable TEXT: whether TEXT can go into the allow-list as it is: no
+# control character, and nothing that is not UTF-8. PHP escapes the first and
+# refuses the second; this launcher reads the list line by line and so
+# refuses both.
+recordable() {
+    TEXT=$1 LC_ALL=C awk "$BYTES_AWK"'
+        BEGIN {
+            bytes_init()
+            s = ENVIRON["TEXT"]; n = length(s); i = 1
+            while (i <= n) {
+                if (ord[substr(s, i, 1)] < 32) exit 1
+                len = utf8_at(s, i)
+                if (len == 0) exit 1
+                i += len
+            }
+        }
+    '
+}
+
+# UNRECORDABLE: what allow-root, claim and move-project say for such a name.
+UNRECORDABLE="this folder's name holds a control character (such as a tab or a newline) or bytes that are not valid UTF-8, so it cannot be recorded in the allow-list; rename the folder and try again."
 
 # add_root ROOT: append ROOT to the list under the lock. Prints why when it cannot.
 add_root() {
@@ -817,9 +919,17 @@ case ${1-} in
             case $folder in /*) ;; *) printf 'KNOSSOS_INVALID_ARGUMENT: %s is not absolute. allow-root needs an absolute path so it can be compared against scan requests.\n' "$folder" >&2; exit 2 ;; esac
         fi
         if [ -z "$folder" ] || [ ! -d "$folder" ]; then not_a_folder 'Usage: knossos allow-root <path> [--execute] [--db=FILE] [--json]'; fi
-        path=$(normal "$folder")
-        problem=$(root_problem "$(physical "$path")")
+        normalise "$folder"
+        path=$normalised
+        if ! recordable "$path"; then printf 'KNOSSOS_INVALID_ARGUMENT: %s\n' "$UNRECORDABLE" >&2; exit 2; fi
+        # The folder named, and the entry when it names another folder (a
+        # name with a space at its end, which the server trims).
+        problem=$(root_problem "$(physical "$folder")")
         [ -z "$problem" ] || die "$problem"
+        if [ "$path" != "$folder" ] && [ -d "$path" ]; then
+            problem=$(root_problem "$(physical "$path")")
+            [ -z "$problem" ] || die "$problem"
+        fi
         quoted_path=$(json_string "$path")
         quoted_file=$(json_string "$ROOTS_FILE_REAL")
         if listed "$path"; then
@@ -872,10 +982,19 @@ case ${1-} in
         if [ ! -r "$ROOTS_FILE_REAL" ] && [ -e "$ROOTS_FILE_REAL" ]; then claim_answer error "$root" "Unable to read $ROOTS_FILE_REAL."; fi
         if listed "$started"; then claim_answer present "$started"; fi
         if listed "$root"; then claim_answer present "$root"; fi
-        if [ "$root" = / ] || inside "$HOME_REAL" "$root"; then
+        # The home folder as ClaimCommand finds it: HOME, else the account
+        # database. One that is named but cannot be resolved, or cannot be
+        # found at all, always asks (StartClaim::broad).
+        claim_home=$HOME_REAL
+        if [ -z "${HOME:-}" ] && command -v getent >/dev/null 2>&1; then
+            account=$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)
+            if [ -n "$account" ] && [ -d "$account" ]; then claim_home=$(physical "$account"); fi
+        fi
+        if [ "$root" = / ] || [ -z "$claim_home" ] || inside "$claim_home" "$root"; then
             claim_answer ask "$root" "$root is the filesystem root, your home folder or a folder above it, so it is not allowed without being asked."
         fi
         [ "$execute" = yes ] || claim_answer would-add "$root"
+        recordable "$root" || claim_answer error "$root" "$UNRECORDABLE"
         problem=$(root_problem "$root")
         [ -z "$problem" ] || claim_answer error "$root" "$problem"
         problem=$(add_root "$root") || claim_answer error "$root" "$problem"
@@ -935,6 +1054,7 @@ if [ "${1-}" = move-project ]; then
         case $from in /*) ;; *) die 'in container mode move-project names the old root by its path, so the allow-list on the host can follow it.' ;; esac
         [ -d "$to" ] || die "the new root $to is not an existing directory."
         to=$(normal "$(physical "$to")")
+        recordable "$to" || die "$UNRECORDABLE"
         problem=$(root_problem "$to")
         [ -z "$problem" ] || die "$problem"
         if [ -d "$from" ]; then from=$(physical "$from"); fi
@@ -1192,7 +1312,7 @@ place_output() {
             if [ "$OUTPUT_EXISTED" = yes ] && ! notes_file "$dest"; then
                 reason="NOTES_FILE_NOT_NOTES: $dest exists and is not a knossos notes file; remove it or pick another --file."
                 if [ "$COMMAND" = notes-export ]; then
-                    if [ "$JSON" = yes ]; then printf '{"status":"refused","reason":%s}\n' "$(json_text "$reason")"; else printf 'refused: %s\n' "$reason"; fi
+                    if [ "$JSON" = yes ]; then printf '{"status":"refused","reason":%s}\n' "$(json_string "$reason")"; else printf 'refused: %s\n' "$reason"; fi
                     exit 0
                 fi
                 printf 'KNOSSOS_INVALID_ARGUMENT: %s\n' "$reason" >&2
@@ -1210,8 +1330,6 @@ notes_file() {
     tr -d ' \t\r\n' < "$1" 2>/dev/null | grep -q '"format":"knossos-notes"'
 }
 
-# json_text TEXT: TEXT as a JSON string.
-json_text() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
 
 # take_input PATH: what the command is given for a file it reads.
 take_input() {
@@ -1532,7 +1650,7 @@ finish_output() {
 # shown as the path that was named.
 show_output() {
     to=$OUTPUT_DEST
-    if [ "$JSON" = yes ]; then to=$(json_text "$OUTPUT_DEST"); to=${to#\"}; to=${to%\"}; fi
+    if [ "$JSON" = yes ]; then to=$(json_string "$OUTPUT_DEST"); to=${to#\"}; to=${to%\"}; fi
     replaced=no
     case $COMMAND in export-notes | notes-export) replaced=$OUTPUT_EXISTED ;; esac
     FROM=$OUTPUT_SCRATCH TO=$to REPLACED=$replaced JSONOUT=$JSON awk '

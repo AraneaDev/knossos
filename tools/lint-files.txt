@@ -982,6 +982,7 @@ php	tests/phpunit/ReleaseChecksTest.php
 php	tests/phpunit/Result/PaneStatusContractTest.php
 php	tests/phpunit/Result/ResultEnvelopeTest.php
 php	tests/phpunit/Roots/AllowedRootsTest.php
+php	tests/phpunit/Roots/LauncherRootsRoundTripTest.php
 php	tests/phpunit/Roots/RootExceptionTest.php
 php	tests/phpunit/Roots/RootGuardContainmentTest.php
 php	tests/phpunit/Roots/RootGuardTest.php

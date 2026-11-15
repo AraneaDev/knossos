@@ -1092,6 +1092,45 @@ out=$(cd / && kn allow-root "$WORK/second project" --execute </dev/null 2>&1); s
 case $out in *'holds an entry with an escape this launcher cannot rewrite safely, or cannot be read; edit it by hand.'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 2 ] && [ "$said" = yes ] && cmp -s "$TRUSTED" "$WORK/list.escaped.before"; then pass 'a list holding a \u escape is refused, not rewritten'; else fail "escaped list: $status, $out, $(cat "$TRUSTED")"; fi
 cp "$WORK/list.escaped" "$TRUSTED"
+# A list the server cannot read (a raw tab in a string is invalid JSON) chooses no root and is never rewritten.
+printf '{"roots": ["%s", "/x\ty"]}\n' "$WORK/wide" > "$TRUSTED"
+cp "$TRUSTED" "$WORK/list.broken.before"
+out=$(cd / && kn allow-root "$PROJECT" --execute </dev/null 2>&1); status=$?
+case $out in *'cannot rewrite safely, or cannot be read; edit it by hand.'*) said=yes ;; *) said=no ;; esac
+reset_docker
+(cd "$WORK/wide/p1" && kn version </dev/null >/dev/null 2>&1)
+if [ "$status" -eq 2 ] && [ "$said" = yes ] && cmp -s "$TRUSTED" "$WORK/list.broken.before" && grep -qF "source=$WORK/wide/p1," "$FAKE_DOCKER_STATE/calls" && ! grep -qF "source=$WORK/wide," "$FAKE_DOCKER_STATE/calls"; then
+    pass 'a list holding a raw control character is read as no roots, as the server reads it, and never rewritten'
+else
+    fail "broken list: $status, $out, $(calls)"
+fi
+cp "$WORK/list.escaped" "$TRUSTED"
+# A name the list cannot hold is refused before anything is written.
+TAB_DIR="$WORK/tab$(printf '\t')name"
+mkdir -p "$TAB_DIR" "$WORK/bad$(printf '\377')byte"
+cp "$TRUSTED" "$WORK/list.names.before"
+for bad in "$TAB_DIR" "$WORK/bad$(printf '\377')byte"; do
+    out=$(cd / && kn allow-root "$bad" --execute </dev/null 2>&1); status=$?
+    if [ "$status" -eq 2 ] && [ "$out" = "KNOSSOS_INVALID_ARGUMENT: this folder's name holds a control character (such as a tab or a newline) or bytes that are not valid UTF-8, so it cannot be recorded in the allow-list; rename the folder and try again." ] && cmp -s "$TRUSTED" "$WORK/list.names.before"; then
+        pass 'allow-root refuses a folder name with a control character or bytes that are not UTF-8, and writes nothing'
+    else
+        fail "unrecordable name: $status, $out"
+    fi
+done
+out=$(cd / && kn claim "$TAB_DIR" --execute --json </dev/null 2>&1)
+case $out in '{"status":"error","root":"'"$WORK"'/tab\tname","reason":"this folder'"'"'s name holds a control character'*) said=yes ;; *) said=no ;; esac
+if [ "$said" = yes ] && cmp -s "$TRUSTED" "$WORK/list.names.before"; then pass 'claim answers error for such a name, as valid JSON, and writes nothing'; else fail "claim unrecordable: $out"; fi
+# White space at the ends is trimmed, as the server trims it: `/p ` and `/p` are one root.
+mkdir -p "$WORK/spaced" "$WORK/spaced "
+out=$(cd / && kn allow-root "$WORK/spaced " --execute --json </dev/null 2>&1); status=$?
+out2=$(cd / && kn allow-root "$WORK/spaced" --execute </dev/null 2>&1)
+if [ "$status" -eq 0 ] && [ "$out" = "{\"path\":\"$WORK/spaced\",\"roots_file\":\"$TRUSTED\",\"roots_file_source\":\"named\",\"added\":true}" ] \
+    && [ "$out2" = "$WORK/spaced is already present in $TRUSTED. Nothing to do." ] && [ "$(grep -c spaced "$TRUSTED")" -eq 1 ]; then
+    pass 'a trailing space is trimmed as the server trims it, so both spellings are one root'
+else
+    fail "trimmed root: $status, $out, $out2, $(cat "$TRUSTED")"
+fi
+cp "$WORK/list.escaped" "$TRUSTED"
 
 # claim: the folder's repository, as StartClaim decides, written on the host.
 mkdir -p "$WORK/repo/.git" "$WORK/repo/pkg/sub"
@@ -1109,6 +1148,21 @@ if [ "$out" = "{\"status\":\"present\",\"root\":\"$WORK/repo\",\"reason\":null}"
 out=$(cd / && kn claim "$HOME" --execute --json </dev/null 2>&1)
 case $out in "{\"status\":\"ask\",\"root\":\"$HOME\",\"reason\":\"$HOME is the filesystem root, your home folder or a folder above it, so it is not allowed without being asked.\"}") said=yes ;; *) said=no ;; esac
 if [ "$said" = yes ]; then pass 'claim of the home folder asks first'; else fail "claim home: $out"; fi
+# Without a home folder, claim asks, as ClaimCommand does when neither HOME nor the account database names one.
+NOGETENT="$WORK/no getent"
+mkdir -p "$NOGETENT"
+for tool in env sh awk sed cut sha256sum shasum mkdir rmdir dirname id date sort stat ls grep mktemp chmod mv rm cat head tr docker; do
+    found=$(PATH="$FAKE_BIN:$PATH" command -v "$tool" 2>/dev/null || true)
+    case $found in /*) ln -s "$found" "$NOGETENT/$tool" ;; esac
+done
+cp "$TRUSTED" "$WORK/list.home.before"
+mkdir -p "$WORK/unclaimed"
+out=$(cd / && env -u HOME -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE PATH="$NOGETENT" "$LAUNCHER" claim "$WORK/unclaimed" --execute --json </dev/null 2>&1); status=$?
+case $out in '{"status":"ask",'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && cmp -s "$TRUSTED" "$WORK/list.home.before"; then pass 'claim with HOME unset and no account home asks, and adds nothing'; else fail "claim without HOME: $status, $out"; fi
+out=$(cd / && HOME="$WORK/no such home" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" claim "$WORK/unclaimed" --execute --json </dev/null 2>&1); status=$?
+case $out in '{"status":"ask",'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && cmp -s "$TRUSTED" "$WORK/list.home.before"; then pass 'claim with a HOME that is not a folder asks'; else fail "claim with a missing HOME: $status, $out"; fi
 
 # move-project --execute: the host swaps the old root for the new one; a failed move puts it back.
 mkdir -p "$WORK/moved to"
