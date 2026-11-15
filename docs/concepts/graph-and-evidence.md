@@ -83,6 +83,13 @@ grouping is never mistaken for a decision someone made. A component can sit in
 more than one boundary. `list_boundaries` shows them, and
 [declared rules](../guides/architecture-rules.md) are written against them.
 
+The pane labels each component with one boundary: a declared one before an
+inferred one, so an inferred boundary labels only the components no declared
+one holds. The Overview tile (`28 +6 inferred`) and the Boundaries tab
+(`28 declared · 6 inferred`) therefore count two figures: the boundaries you
+declare, and the inferred ones that still label something. `list_boundaries` lists every boundary, including
+inferred ones that label nothing, so its count can be higher.
+
 ![The Boundaries tab: 34 boundaries, the first five listed with their components and dependencies in and out, what the marked tests boundary depends on and what uses it, and the tests to Query flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
 
 Roles come from classification rules that run after the workers: file-name and
