@@ -90,17 +90,27 @@ if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--entrypoint] 
 else
     fail "helper read: $(calls)"
 fi
-DIGEST=$(field "$DATA/install.json" image)
-case $DIGEST in "$REPO@sha256:"*) pass 'install.json names the image by digest' ;; *) fail "image in install.json: $(cat "$DATA/install.json" 2>&1)" ;; esac
-if [ "$(field "$DATA/install.json" mode)" = container ] && [ "$(field "$DATA/install.json" version)" = 1.0.0 ] \
-    && [ "$(field "$DATA/install.json" runtime)" = docker ] && [ "$(field "$DATA/install.json" bin_dir)" = "$T1/bin dir" ] \
-    && grep -q '"previous_image": null' "$DATA/install.json"; then
+DIGEST=$(field "$DATA/install/install.json" image)
+case $DIGEST in "$REPO@sha256:"*) pass 'install.json names the image by digest' ;; *) fail "image in install.json: $(cat "$DATA/install/install.json" 2>&1)" ;; esac
+if [ "$(field "$DATA/install/install.json" mode)" = container ] && [ "$(field "$DATA/install/install.json" version)" = 1.0.0 ] \
+    && [ "$(field "$DATA/install/install.json" runtime)" = docker ] && [ "$(field "$DATA/install/install.json" bin_dir)" = "$T1/bin dir" ] \
+    && grep -q '"previous_image": null' "$DATA/install/install.json"; then
     pass 'install.json records mode, version, runtime and bin_dir, and no previous image'
 else
-    fail "install.json: $(cat "$DATA/install.json" 2>&1)"
+    fail "install.json: $(cat "$DATA/install/install.json" 2>&1)"
 fi
-if grep -qxF "INSTALL_DIR='$DATA'" "$LAUNCHER" && [ -x "$LAUNCHER" ]; then pass 'the launcher comes from the image with the install directory baked in'; else fail "launcher: $(grep -n '^INSTALL_DIR=' "$LAUNCHER" 2>&1)"; fi
+if grep -qxF "INSTALL_DIR='$DATA/install'" "$LAUNCHER" && [ -x "$LAUNCHER" ]; then pass 'the launcher comes from the image with the install directory baked in'; else fail "launcher: $(grep -n '^INSTALL_DIR=' "$LAUNCHER" 2>&1)"; fi
 if [ ! -e "$DATA/versions" ] && [ ! -e "$DATA/current" ]; then pass 'container mode has no versions/ and no current'; else fail 'versions/ or current exists'; fi
+# The layout: the graph in the data dir, the host state in <data dir>/install,
+# with plugin/ and containers/ as real directories made before any container.
+if [ -d "$DATA/install" ] && [ ! -L "$DATA/install" ] && [ -d "$DATA/install/plugin" ] && [ ! -L "$DATA/install/plugin" ] \
+    && [ -d "$DATA/install/containers" ] && [ ! -L "$DATA/install/containers" ] && [ -f "$DATA/install/container-update" ] \
+    && grep -q '"layout": "separate"' "$DATA/install/install.json" && [ ! -e "$DATA/install.json" ]; then
+    pass 'the install directory is <data dir>/install with real plugin/ and containers/, and install.json records the layout'
+else
+    fail "layout: $(find "$DATA" -maxdepth 2 | sort | tr '\n' ' ')"
+fi
+if [ -z "$(find "$DATA/install" -maxdepth 1 -name '.work.*')" ]; then pass 'no work directory is left in the install directory'; else fail 'a work directory was left behind'; fi
 if [ "$(running)" -eq 0 ] && [ "$(count_calls stop)" -ge 1 ]; then
     pass "the installer's own check through the launcher leaves no container running"
 else
@@ -111,19 +121,42 @@ mkdir -p "$WORK/elsewhere"
 got=$(cd "$WORK/elsewhere" && PATH="$BARE" FAKE_IMAGE_VERSION=1.0.0 env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version 2>&1 </dev/null)
 if [ "$got" = 'Knossos 1.0.0' ]; then pass 'the installed launcher answers through a container'; else fail "launcher version said: $got"; fi
 leftovers=$(find "$T1" -name '*.tmp.*' | head -n 3)
-if [ -z "$leftovers" ] && [ ! -e "$DATA/self-update.lock.d" ]; then pass 'no temporary file or lock is left'; else fail "left behind: $leftovers"; fi
+if [ -z "$leftovers" ] && [ ! -e "$DATA/install/self-update.lock.d" ]; then pass 'no temporary file or lock is left'; else fail "left behind: $leftovers"; fi
 
 # ---- a second run --------------------------------------------------------------------
 
 : > "$FAKE_DOCKER_STATE/calls"
 before=$(cat "$LAUNCHER")
 out=$(ci "$T1" --version=1.0.0 --no-plugin --no-roots); status=$?
-if [ "$status" -eq 0 ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(field "$DATA/install.json" image)" = "$DIGEST" ] \
-    && grep -q '"previous_image": null' "$DATA/install.json" && [ "$(cat "$LAUNCHER")" = "$before" ]; then
+if [ "$status" -eq 0 ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(field "$DATA/install/install.json" image)" = "$DIGEST" ] \
+    && grep -q '"previous_image": null' "$DATA/install/install.json" && [ "$(cat "$LAUNCHER")" = "$before" ]; then
     pass 'a second run reuses the image on the host and changes nothing'
 else
     fail "second run: status $status, $out, $(calls)"
 fi
+
+# ---- symlinks planted where the installer will write ------------------------------------
+
+SENTINEL="$HOME/.secret"
+printf 'do not touch\n' > "$SENTINEL"
+for planted in install install/plugin install/containers; do
+    reset_docker
+    T3="$WORK/planted-$(printf '%s' "$planted" | tr '/' '-')"
+    mkdir -p "$T3/data dir/install"
+    rmdir "$T3/data dir/install" 2>/dev/null || rm -rf "${T3:?}/data dir/install"
+    case $planted in
+        install) ln -s "$HOME" "$T3/data dir/install" ;;
+        *) mkdir -p "$T3/data dir/install"; ln -s "$HOME" "$T3/data dir/$planted" ;;
+    esac
+    out=$(ci "$T3" --version=1.0.0 --no-plugin --no-roots); status=$?
+    case $out in *'is a symlink'*) said=yes ;; *) said=no ;; esac
+    if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$T3/bin dir/knossos" ] && [ "$(cat "$SENTINEL")" = 'do not touch' ] \
+        && [ -z "$(find "$HOME" -mindepth 1 ! -name .secret | head -n 1)" ]; then
+        pass "a symlink planted at <data dir>/$planted is refused and nothing is written through it"
+    else
+        fail "planted $planted: $status, $out, home holds $(find "$HOME" -mindepth 1 | tr '\n' ' ')"
+    fi
+done
 
 # ---- the plugin, the MCP registration, a root --------------------------------------------
 
@@ -135,21 +168,21 @@ rm -f "$CLAUDE_LOG"
 out=$(KNOSSOS_ALLOW_ROOT=$PROJECT ci "$T2" --version=1.0.0); status=$?
 DATA2="$T2/data dir"
 LAUNCHER2="$T2/bin dir/knossos"
-DIGEST2=$(field "$DATA2/install.json" image)
+DIGEST2=$(field "$DATA2/install/install.json" image)
 if [ "$status" -eq 0 ]; then pass 'a full install with the plugin step exits 0'; else fail "plugin install: $status, $out"; fi
-if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-check] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json] [--mount] [type=bind,source=$DATA2,target=$DATA2] [--entrypoint] [/opt/knossos/bin/knossos] [$DIGEST2] [install-agent-plugin] [--execute] [--no-register] [--plugin-dir=$DATA2/plugin] [--bin=$LAUNCHER2] [--data-dir=$DATA2]"; then
-    pass "the plugin is written by the image's install-agent-plugin, as this user, with the install directory mounted at its own path"
+if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-check] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json] [--mount] [type=bind,source=$DATA2/install/plugin,target=$DATA2/install/plugin] [--entrypoint] [/opt/knossos/bin/knossos] [$DIGEST2] [install-agent-plugin] [--execute] [--no-register] [--plugin-dir=$DATA2/install/plugin] [--bin=$LAUNCHER2] [--data-dir=$DATA2]"; then
+    pass "the plugin is written by the image's install-agent-plugin, as this user, with only the plugin directory mounted read-write"
 else
     fail "plugin run: $(grep install-agent-plugin "$FAKE_DOCKER_STATE/calls")"
 fi
-LIB="$DATA2/plugin/hooks/scripts/lib.sh"
+LIB="$DATA2/install/plugin/hooks/scripts/lib.sh"
 if grep -qxF "KNOSSOS_INSTALLED_BIN='$LAUNCHER2'" "$LIB" 2>/dev/null && grep -qxF "KNOSSOS_INSTALLED_DATA_DIR='$DATA2'" "$LIB"; then
     pass "the plugin's lib.sh names the launcher and the install directory"
 else
     fail "lib.sh: $(cat "$LIB" 2>&1)"
 fi
 expect_claude() { if grep -qxF "$1" "$CLAUDE_LOG" 2>/dev/null; then pass "$2"; else fail "$2: no call $1 in $(cat "$CLAUDE_LOG" 2>&1)"; fi; }
-expect_claude "call [plugin] [marketplace] [add] [$DATA2/plugin] [--scope] [user]" 'the marketplace is registered on the host at <install dir>/plugin'
+expect_claude "call [plugin] [marketplace] [add] [$DATA2/install/plugin] [--scope] [user]" 'the marketplace is registered on the host at <install dir>/plugin'
 expect_claude 'call [plugin] [install] [knossos@knossos] [--scope] [user] [--yes]' 'the plugin is installed from it'
 expect_claude "call [mcp] [add] [knossos] [-s] [user] [-e] [KNOSSOS_DATA_DIR=$DATA2] [-e] [KNOSSOS_ROOTS_FILE=$DATA2/roots.json] [--] [$LAUNCHER2] [serve]" 'the MCP server is registered with the launcher'
 if grep -q "^call \[exec\] .*\[/opt/knossos/bin/knossos\] \[allow-root\] \[$PROJECT\] \[--execute\]\$" "$FAKE_DOCKER_STATE/calls" \
@@ -161,7 +194,7 @@ fi
 
 # ---- refusals that change nothing -------------------------------------------------------------
 
-nothing_at() { [ ! -e "$1/data dir/install.json" ] && [ ! -e "$1/bin dir/knossos" ]; }
+nothing_at() { [ ! -e "$1/data dir/install/install.json" ] && [ ! -e "$1/bin dir/knossos" ]; }
 
 reset_docker
 : > "$FAKE_DOCKER_STATE/daemon-down"
@@ -181,7 +214,7 @@ reset_docker
 out=$(PATH="$BARE" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 sh "$INSTALL_SH" --no-plugin --no-roots \
     --data-dir="$WORK/auto/data dir" --bin-dir="$WORK/auto/bin dir" --version=1.0.0 2>&1 </dev/null); status=$?
 case $out in *'php not found'*'Using container mode: docker is available.'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(field "$WORK/auto/data dir/install.json" mode)" = container ]; then
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(field "$WORK/auto/data dir/install/install.json" mode)" = container ]; then
     pass 'without --mode, a host without php but with a running docker gets container mode'
 else
     fail "auto mode: $status, $out"
@@ -218,7 +251,7 @@ reset_docker
 printf 'knossos:local@sha256:9999\n' > "$FAKE_DOCKER_STATE/images/knossos_local"
 out=$(PATH="$BARE" KNOSSOS_IMAGE=knossos:local FAKE_ANY_IMAGE=1 FAKE_IMAGE_VERSION=3.1.0 sh "$INSTALL_SH" --mode=container --no-plugin --no-roots \
     --data-dir="$WORK/local/data dir" --bin-dir="$WORK/local/bin dir" 2>&1 </dev/null); status=$?
-if [ "$status" -eq 0 ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(field "$WORK/local/data dir/install.json" version)" = 3.1.0 ]; then
+if [ "$status" -eq 0 ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(field "$WORK/local/data dir/install/install.json" version)" = 3.1.0 ]; then
     pass 'KNOSSOS_IMAGE installs a local image without pulling, at the version it reports'
 else
     fail "KNOSSOS_IMAGE: $status, $out"
@@ -258,10 +291,10 @@ sed "s|^KNOSSOS_INSTALLED_DATA_DIR=.*|KNOSSOS_INSTALLED_DATA_DIR='$GRAPH'|" "$LI
 
 out=$(FAKE_IMAGE_VERSION=1.0.0 kn self-update --check); status=$?
 if [ "$status" -eq 0 ] && [ "$out" = 'Knossos 1.0.0 is the latest version.' ]; then pass '--check with nothing newer exits 0'; else fail "--check, nothing newer: $status, $out"; fi
-if grep -q '"latest": "1.0.0"' "$DATA2/update-check.json" 2>/dev/null && [ ! -e "$GRAPH/update-check.json" ]; then
+if grep -q '"latest": "1.0.0"' "$DATA2/install/update-check.json" 2>/dev/null && [ ! -e "$GRAPH/update-check.json" ]; then
     pass '--check writes update-check.json to the install directory, not the graph directory'
 else
-    fail "update-check.json: $(cat "$DATA2/update-check.json" 2>&1)"
+    fail "update-check.json: $(cat "$DATA2/install/update-check.json" 2>&1)"
 fi
 : > "$REL/knossos-1.1.0-linux-x86_64.tar.gz"
 : > "$REL/knossos-1.1.0-rc.1-linux-x86_64.tar.gz"
@@ -272,16 +305,16 @@ if [ "$status" -eq 0 ] && [ -z "$out" ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; 
 else
     fail "quiet fresh check: $status, $out, $(calls)"
 fi
-touch -t 202001010000 "$DATA2/update-check.json"
+touch -t 202001010000 "$DATA2/install/update-check.json"
 out=$(kn self-update --check --quiet); status=$?
-if [ "$status" -eq 0 ] && [ -z "$out" ] && grep -q '"latest": "1.1.0"' "$DATA2/update-check.json"; then
+if [ "$status" -eq 0 ] && [ -z "$out" ] && grep -q '"latest": "1.1.0"' "$DATA2/install/update-check.json"; then
     pass 'the background check looks again once the answer is a day old, silently'
 else
-    fail "quiet stale check: $status, $out, $(cat "$DATA2/update-check.json")"
+    fail "quiet stale check: $status, $out, $(cat "$DATA2/install/update-check.json")"
 fi
-touch -t 202001010000 "$DATA2/update-check.json"
+touch -t 202001010000 "$DATA2/install/update-check.json"
 out=$(KNOSSOS_NO_UPDATE_CHECK=1 kn self-update --check --quiet); status=$?
-if [ "$status" -eq 0 ] && [ -z "$out" ] && [ -n "$(find "$DATA2/update-check.json" -mmin +1439)" ]; then pass 'KNOSSOS_NO_UPDATE_CHECK=1 turns the background check off'; else fail "opt-out: $status, $out"; fi
+if [ "$status" -eq 0 ] && [ -z "$out" ] && [ -n "$(find "$DATA2/install/update-check.json" -mmin +1439)" ]; then pass 'KNOSSOS_NO_UPDATE_CHECK=1 turns the background check off'; else fail "opt-out: $status, $out"; fi
 out=$(kn self-update --check); status=$?
 case $out in *'Knossos 1.1.0 is available (you have 1.0.0): run knossos self-update.'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 10 ] && [ "$said" = yes ]; then pass '--check with a newer release exits 10 and names it'; else fail "--check, newer: $status, $out"; fi
@@ -294,14 +327,14 @@ before_running=$(running)
 : > "$FAKE_DOCKER_STATE/calls"
 launcher_before=$(cat "$LAUNCHER2")
 out=$(FAKE_IMAGE_VERSION=1.1.0 kn self-update); status=$?
-NEW_DIGEST=$(field "$DATA2/install.json" image)
+NEW_DIGEST=$(field "$DATA2/install/install.json" image)
 case $out in *'Updated Knossos from 1.0.0 to 1.1.0.'*'restart it.'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 0 ] && [ "$said" = yes ] && has_call "call [pull] [$REPO:1.1.0]"; then pass 'self-update pulls the newer image and says to restart Claude Code'; else fail "update: $status, $out, $(calls)"; fi
-if [ "$(field "$DATA2/install.json" version)" = 1.1.0 ] && [ "$NEW_DIGEST" != "$DIGEST2" ] && case $NEW_DIGEST in "$REPO@sha256:"*) true ;; *) false ;; esac \
-    && [ "$(field "$DATA2/install.json" previous_image)" = "$DIGEST2" ] && [ "$(field "$DATA2/install.json" previous_version)" = 1.0.0 ]; then
+if [ "$(field "$DATA2/install/install.json" version)" = 1.1.0 ] && [ "$NEW_DIGEST" != "$DIGEST2" ] && case $NEW_DIGEST in "$REPO@sha256:"*) true ;; *) false ;; esac \
+    && [ "$(field "$DATA2/install/install.json" previous_image)" = "$DIGEST2" ] && [ "$(field "$DATA2/install/install.json" previous_version)" = 1.0.0 ]; then
     pass 'install.json names the new image by digest and keeps the previous one'
 else
-    fail "install.json after update: $(cat "$DATA2/install.json")"
+    fail "install.json after update: $(cat "$DATA2/install/install.json")"
 fi
 if [ "$before_running" -ge 1 ] && [ "$(running)" -eq 0 ]; then pass "the installation's running containers are stopped"; else fail "containers: $before_running before, $(running) after"; fi
 if grep -qxF "FROM_IMAGE='$NEW_DIGEST'" "$LIB" && grep -qxF "KNOSSOS_INSTALLED_DATA_DIR='$GRAPH'" "$LIB" && grep -qxF "KNOSSOS_INSTALLED_BIN='$LAUNCHER2'" "$LIB"; then
@@ -314,7 +347,7 @@ if [ "$(cat "$LAUNCHER2")" = "$launcher_before" ] && has_call "call [run] [--rm]
 else
     fail "launcher after update: $(calls)"
 fi
-if [ -z "$(find "$T2" -name '*.tmp.*')" ] && [ ! -e "$DATA2/self-update.lock.d" ]; then pass 'no temporary file or lock is left'; else fail 'leftovers after the update'; fi
+if [ -z "$(find "$T2" -name '*.tmp.*')" ] && [ ! -e "$DATA2/install/self-update.lock.d" ]; then pass 'no temporary file or lock is left'; else fail 'leftovers after the update'; fi
 if ! grep '^call \[run\]' "$FAKE_DOCKER_STATE/calls" | grep -qv -e '\[--network\] \[none\]'; then pass 'no container the update runs has a network'; else fail "networked run: $(calls)"; fi
 
 out=$(FAKE_IMAGE_VERSION=1.1.0 kn self-update); status=$?
@@ -322,51 +355,51 @@ if [ "$status" -eq 0 ] && [ "$out" = 'Knossos 1.1.0 is already the latest versio
 
 out=$(kn self-update --rollback); status=$?
 case $out in *'Rolled back from 1.1.0 to 1.0.0.'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(field "$DATA2/install.json" image)" = "$DIGEST2" ] && [ "$(field "$DATA2/install.json" previous_image)" = "$NEW_DIGEST" ] \
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(field "$DATA2/install/install.json" image)" = "$DIGEST2" ] && [ "$(field "$DATA2/install/install.json" previous_image)" = "$NEW_DIGEST" ] \
     && grep -qxF "FROM_IMAGE='$DIGEST2'" "$LIB"; then
     pass '--rollback returns to the previous digest, plugin included'
 else
-    fail "rollback: $status, $out, $(cat "$DATA2/install.json")"
+    fail "rollback: $status, $out, $(cat "$DATA2/install/install.json")"
 fi
 
 # A plugin step that fails puts install.json and the launcher back.
-cp "$DATA2/install.json" "$WORK/record.before"
+cp "$DATA2/install/install.json" "$WORK/record.before"
 cp "$LAUNCHER2" "$WORK/launcher.before"
 out=$(FAKE_IMAGE_VERSION=1.1.0 FAKE_PLUGIN_FAILS=1 kn self-update --version=1.1.0); status=$?
 case $out in *'could not write its plugin'*'previous state was restored'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -ne 0 ] && [ "$said" = yes ] && cmp -s "$WORK/record.before" "$DATA2/install.json" && cmp -s "$WORK/launcher.before" "$LAUNCHER2"; then
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && cmp -s "$WORK/record.before" "$DATA2/install/install.json" && cmp -s "$WORK/launcher.before" "$LAUNCHER2"; then
     pass 'a failure after the switch puts install.json and the launcher back'
-    if [ ! -e "$DATA2/self-update.lock.d" ] && [ ! -e "$DATA2/self-update.lock.d.takeover" ]; then
+    if [ ! -e "$DATA2/install/self-update.lock.d" ] && [ ! -e "$DATA2/install/self-update.lock.d.takeover" ]; then
         pass 'a failed update leaves no lock behind'
     else
         fail 'a failed update left its lock'
     fi
 else
-    fail "failed update: $status, $out, $(cat "$DATA2/install.json")"
+    fail "failed update: $status, $out, $(cat "$DATA2/install/install.json")"
 fi
 
 # An image that is not the version asked for changes nothing.
 out=$(FAKE_IMAGE_VERSION=9.9.9 kn self-update --version=1.1.0); status=$?
-if [ "$status" -ne 0 ] && cmp -s "$WORK/record.before" "$DATA2/install.json"; then pass 'an image of the wrong version is refused before anything changes'; else fail "wrong version: $status, $out"; fi
+if [ "$status" -ne 0 ] && cmp -s "$WORK/record.before" "$DATA2/install/install.json"; then pass 'an image of the wrong version is refused before anything changes'; else fail "wrong version: $status, $out"; fi
 
 # Exactly one previous image is kept.
 : > "$REL/knossos-1.2.0-linux-x86_64.tar.gz"
 FAKE_IMAGE_VERSION=1.1.0 kn self-update --version=1.1.0 >/dev/null
 : > "$FAKE_DOCKER_STATE/calls"
 out=$(FAKE_IMAGE_VERSION=1.2.0 kn self-update); status=$?
-if [ "$status" -eq 0 ] && has_call "call [image] [rm] [$DIGEST2]" && [ "$(field "$DATA2/install.json" previous_image)" = "$NEW_DIGEST" ]; then
+if [ "$status" -eq 0 ] && has_call "call [image] [rm] [$DIGEST2]" && [ "$(field "$DATA2/install/install.json" previous_image)" = "$NEW_DIGEST" ]; then
     pass 'the image before the previous one is removed, the previous one kept'
 else
     fail "prune: $status, $out, $(calls)"
 fi
 
 # One update at a time.
-mkdir "$DATA2/self-update.lock.d"
-printf '%s\n' "$$" > "$DATA2/self-update.lock.d/pid"
+mkdir "$DATA2/install/self-update.lock.d"
+printf '%s\n' "$$" > "$DATA2/install/self-update.lock.d/pid"
 out=$(kn self-update --rollback); status=$?
 case $out in *'another knossos self-update is running'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'a second self-update while one runs is refused'; else fail "lock: $status, $out"; fi
-printf '999999999\n' > "$DATA2/self-update.lock.d/pid"
+printf '999999999\n' > "$DATA2/install/self-update.lock.d/pid"
 out=$(kn self-update --rollback); status=$?
 if [ "$status" -eq 0 ]; then pass 'a lock left by a run that is gone is taken over'; else fail "stale lock: $status, $out"; fi
 
@@ -386,11 +419,11 @@ rm -f "$FAKE_DOCKER_STATE/daemon-down"
 # launcher and the plugin back as they were.
 printf '# mine\n' >> "$LIB"
 cp "$LIB" "$WORK/lib.before"
-cp "$DATA2/install.json" "$WORK/record.before"
+cp "$DATA2/install/install.json" "$WORK/record.before"
 cp "$LAUNCHER2" "$WORK/launcher.before"
 out=$(FAKE_EXEC_EXIT=3 FIV=1.2.0 ci "$T2" --version=1.2.0 --no-roots); status=$?
 case $out in *'the previous state was restored'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -ne 0 ] && [ "$said" = yes ] && cmp -s "$WORK/lib.before" "$LIB" && cmp -s "$WORK/record.before" "$DATA2/install.json" \
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && cmp -s "$WORK/lib.before" "$LIB" && cmp -s "$WORK/record.before" "$DATA2/install/install.json" \
     && cmp -s "$WORK/launcher.before" "$LAUNCHER2"; then
     pass 'a failed check after the switch restores install.json, the launcher and the plugin'
 else
@@ -398,12 +431,12 @@ else
 fi
 
 # Every switch leaves the helper of the image switched to beside install.json.
-if cmp -s "$ROOT/tools/launcher/container-update" "$DATA2/container-update"; then pass 'the update helper is kept beside install.json'; else fail 'no helper copy in the install directory'; fi
+if cmp -s "$ROOT/tools/launcher/container-update" "$DATA2/install/container-update"; then pass 'the update helper is kept beside install.json'; else fail 'no helper copy in the install directory'; fi
 
 # The image the installation runs is pruned: the launcher says so, and
 # self-update fetches it again without needing it.
-CUR=$(field "$DATA2/install.json" version)
-CUR_IMAGE=$(field "$DATA2/install.json" image)
+CUR=$(field "$DATA2/install/install.json" version)
+CUR_IMAGE=$(field "$DATA2/install/install.json" image)
 # As `docker rmi` would: every name of that image goes, its tag included.
 for file in "$FAKE_DOCKER_STATE"/images/*; do
     if [ "$(cat "$file")" = "$CUR_IMAGE" ]; then rm -f "$file"; fi
@@ -413,7 +446,7 @@ case $out in *'is gone from this host: run knossos self-update to fetch it again
 if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'a pruned image is reported with what works'; else fail "pruned image: $status, $out"; fi
 : > "$FAKE_DOCKER_STATE/calls"
 out=$(FAKE_IMAGE_VERSION=$CUR kn self-update --version="$CUR"); status=$?
-if [ "$status" -eq 0 ] && has_call "call [pull] [$REPO:$CUR]" && [ "$(field "$DATA2/install.json" version)" = "$CUR" ]; then
+if [ "$status" -eq 0 ] && has_call "call [pull] [$REPO:$CUR]" && [ "$(field "$DATA2/install/install.json" version)" = "$CUR" ]; then
     pass 'self-update works with the current image gone, and fetches it again'
 else
     fail "repair: $status, $out, $(calls)"
@@ -429,7 +462,7 @@ printf '#!/bin/sh
 exec sleep 30
 ' > "$SLOW/curl"
 chmod +x "$SLOW/curl"
-touch -t 202001010000 "$DATA2/update-check.json"
+touch -t 202001010000 "$DATA2/install/update-check.json"
 : > "$WORK/before-check"
 (cd "$PROJECT" && PATH="$SLOW:$BARE" KNOSSOS_RELEASE_BASE=https://mirror.example/releases KNOSSOS_DATA_DIR="$GRAPH" \
     KNOSSOS_ROOTS_FILE="$GRAPH/roots.json" exec "$LAUNCHER2" self-update --check --quiet </dev/null >/dev/null 2>&1) &
@@ -437,12 +470,12 @@ checker=$!
 sleep 3
 kill -TERM "$checker" 2>/dev/null
 wait "$checker" 2>/dev/null
-if [ -n "$(find "$DATA2/update-check.json" -newer "$WORK/before-check" 2>/dev/null)" ]; then
+if [ -n "$(find "$DATA2/install/update-check.json" -newer "$WORK/before-check" 2>/dev/null)" ]; then
     pass 'a lookup that never returns still leaves a recorded attempt'
 else
-    fail "cut-off lookup: $(cat "$DATA2/update-check.json")"
+    fail "cut-off lookup: $(cat "$DATA2/install/update-check.json")"
 fi
-if grep -q -- '--max-time 12' "$DATA2/container-update" && grep -q -- '--connect-timeout 5' "$DATA2/container-update"; then
+if grep -q -- '--max-time 12' "$DATA2/install/container-update" && grep -q -- '--connect-timeout 5' "$DATA2/install/container-update"; then
     pass "the lookup's own limit is shorter than the session hook's 20 s"
 else
     fail 'the lookup has no limit under the hook timeout'

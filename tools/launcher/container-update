@@ -204,9 +204,8 @@ record_check() {
     [ -n "$latest" ] || latest=$(json_field "$INSTALL/update-check.json" latest)
     if [ -n "$latest" ]; then value=$(json_string "$latest"); else value=null; fi
     printf '{\n    "checked_at": "%s",\n    "latest": %s\n}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$value" \
-        > "$INSTALL/update-check.json.tmp.$$" 2>/dev/null \
-        && mv -f "$INSTALL/update-check.json.tmp.$$" "$INSTALL/update-check.json" 2>/dev/null
-    rm -f "$INSTALL/update-check.json.tmp.$$"
+        > "$WORKDIR/update-check.json" 2>/dev/null \
+        && mv -f "$WORKDIR/update-check.json" "$INSTALL/update-check.json" 2>/dev/null
 }
 
 # ---- the image -------------------------------------------------------------------------
@@ -285,13 +284,19 @@ render_launcher() {
 
 # The plugin of the installation, written by the image's own
 # install-agent-plugin with the options ProcessReleaseProbe::pluginArguments
-# fixes, as the caller and with the install directory mounted at its own path.
-# No claude command runs: the plugin directory is the one Claude Code
-# registered, so the registration stays valid.
+# fixes, as the caller. No claude command runs: the plugin directory is the one
+# Claude Code registered, so the registration stays valid.
+#
+# The one exception to "containers only read the install directory": this
+# short-lived run has to write the plugin files, so it gets <install>/plugin
+# read-write, and nothing else from the host: no project, no graph, no
+# network, only the image being installed, which is the code that wrote every
+# plugin file anyway.
 write_plugin() {
+    if [ -L "$INSTALL/plugin" ] || [ ! -d "$INSTALL/plugin" ]; then die "$INSTALL/plugin is not a plain directory; re-run the installer."; fi
     "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
-        --mount "type=bind,source=$INSTALL,target=$INSTALL" \
+        --mount "type=bind,source=$INSTALL/plugin,target=$INSTALL/plugin" \
         --entrypoint "$IN_IMAGE/bin/knossos" "$1" \
         install-agent-plugin --execute --no-register "--plugin-dir=$INSTALL/plugin" "--bin=$LAUNCHER" "--data-dir=$2" </dev/null
 }
@@ -301,7 +306,7 @@ write_plugin() {
 plugin_data_dir() {
     value=$(sed -n "s/^KNOSSOS_INSTALLED_DATA_DIR='\(.*\)'\$/\1/p" "$INSTALL/plugin/hooks/scripts/lib.sh" 2>/dev/null | head -n 1)
     value=$(printf '%s' "$value" | sed "s/'\\\\''/'/g")
-    case $value in /*) printf '%s' "$value" ;; *) printf '%s' "$INSTALL" ;; esac
+    case $value in /*) printf '%s' "$value" ;; *) printf '%s' "${INSTALL%/*}" ;; esac
 }
 
 # switch_to IMAGE VERSION PREVIOUS_IMAGE PREVIOUS_VERSION PLUGIN_DATA_DIR
@@ -317,19 +322,21 @@ switch_to() {
     # launcher runs it from there, so the next update works even when that
     # image is gone from the host by then.
     if ! "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$1" "$IN_IMAGE/tools/launcher/container-update" \
-        > "$INSTALL/container-update.tmp.$$" 2>/dev/null </dev/null || ! sh -n "$INSTALL/container-update.tmp.$$" 2>/dev/null; then
-        rm -f "$NEW_LAUNCHER" "$INSTALL/container-update.tmp.$$"
+        > "$WORKDIR/container-update" 2>/dev/null </dev/null || ! sh -n "$WORKDIR/container-update" 2>/dev/null; then
+        rm -f "$NEW_LAUNCHER"
         die "the image $1 has no usable update helper at $IN_IMAGE/tools/launcher/container-update; nothing was changed"
     fi
 
     stop_containers
     if [ -n "$3" ]; then previous=$(json_string "$3"); else previous=null; fi
     if [ -n "$4" ]; then previous_version=$(json_string "$4"); else previous_version=null; fi
-    printf '{\n  "mode": "container",\n  "version": %s,\n  "image": %s,\n  "previous_version": %s,\n  "previous_image": %s,\n  "runtime": %s,\n  "bin_dir": %s,\n  "installed_at": "%s"\n}\n' \
+    # `layout` tells the launcher this install directory is apart from the
+    # graph and only ever read by containers.
+    printf '{\n  "mode": "container",\n  "layout": "separate",\n  "version": %s,\n  "image": %s,\n  "previous_version": %s,\n  "previous_image": %s,\n  "runtime": %s,\n  "bin_dir": %s,\n  "installed_at": "%s"\n}\n' \
         "$(json_string "$2")" "$(json_string "$1")" "$previous_version" "$previous" "$(json_string "$RUNTIME")" \
-        "$(json_string "$BIN_DIR")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$INSTALL/install.json.tmp.$$"
-    if ! mv -f "$INSTALL/install.json.tmp.$$" "$INSTALL/install.json"; then
-        rm -f "$INSTALL/install.json.tmp.$$" "$NEW_LAUNCHER"
+        "$(json_string "$BIN_DIR")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$WORKDIR/install.json"
+    if ! mv -f "$WORKDIR/install.json" "$INSTALL/install.json"; then
+        rm -f "$NEW_LAUNCHER"
         die "could not write $INSTALL/install.json; nothing was changed"
     fi
     if ! mv -f "$NEW_LAUNCHER" "$LAUNCHER"; then
@@ -337,7 +344,7 @@ switch_to() {
         die "could not write the launcher $LAUNCHER; the previous state was restored"
     fi
     # A rename: the copy this run may be executing from stays intact.
-    if ! mv -f "$INSTALL/container-update.tmp.$$" "$INSTALL/container-update"; then
+    if ! mv -f "$WORKDIR/container-update" "$INSTALL/container-update"; then
         restore
         die "could not write $INSTALL/container-update; the previous state was restored"
     fi
@@ -353,15 +360,20 @@ The previous state was restored."
 # Put install.json, the launcher and the helper copy back as switch_to found them.
 restore() {
     stop_containers
-    if [ -f "$WORKDIR/install.json.prev" ]; then cp "$WORKDIR/install.json.prev" "$INSTALL/install.json"; else rm -f "$INSTALL/install.json"; fi
+    # Every file is put back by a rename from this run's own work directory,
+    # never written in place: sh may be reading the helper copy.
+    if [ -f "$WORKDIR/install.json.prev" ]; then
+        cp "$WORKDIR/install.json.prev" "$WORKDIR/install.json.back" && mv -f "$WORKDIR/install.json.back" "$INSTALL/install.json"
+    else
+        rm -f "$INSTALL/install.json"
+    fi
     if [ -f "$WORKDIR/launcher.prev" ]; then cp "$WORKDIR/launcher.prev" "$LAUNCHER"; else rm -f "$LAUNCHER"; fi
-    # Put back by a rename too, never by writing into a file sh may be reading.
     if [ -f "$WORKDIR/helper.prev" ]; then
-        cp "$WORKDIR/helper.prev" "$INSTALL/container-update.tmp.$$" && mv -f "$INSTALL/container-update.tmp.$$" "$INSTALL/container-update"
+        cp "$WORKDIR/helper.prev" "$WORKDIR/helper.back" && mv -f "$WORKDIR/helper.back" "$INSTALL/container-update"
     else
         rm -f "$INSTALL/container-update"
     fi
-    rm -f "$BIN_DIR/.knossos.tmp.$$" "$INSTALL/container-update.tmp.$$"
+    rm -f "$BIN_DIR/.knossos.tmp.$$"
 }
 
 # Keep exactly one previous image: the one before the previous goes, unless
@@ -416,7 +428,6 @@ cleanup() {
     if [ -n "${KNOSSOS_UPDATE_HELPER:-}" ] && [ "$KNOSSOS_UPDATE_HELPER" = "$0" ]; then rm -f "$0"; fi
     if [ "${LOCKED:-0}" = 1 ]; then rm -rf "$LOCK"; fi
     [ -z "$BIN_DIR" ] || rm -f "$BIN_DIR/.knossos.tmp.$$"
-    [ -z "$INSTALL" ] || rm -f "$INSTALL/install.json.tmp.$$"
 }
 
 # ---- arguments -------------------------------------------------------------------------------
@@ -459,7 +470,23 @@ done
 case $INSTALL in /*) INSTALL=${INSTALL%/} ;; *) die '--install-dir must name an absolute directory' ;; esac
 [ -n "$INSTALL" ] || INSTALL=/
 
-WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/knossos-container-update.XXXXXX") || die 'could not create a temporary directory'
+# The host state directory, as install.sh made it and the launcher checks it:
+# the path itself, physical, and no entry a symlink. Every file this run
+# writes there is first written in a fresh `mktemp -d` work directory inside
+# it, then renamed into place, so a name nobody else could know is the only
+# one ever opened for writing.
+if [ "$ACTION" = install ]; then
+    for entry in "" /plugin /containers; do
+        [ ! -L "$INSTALL$entry" ] || die "$INSTALL$entry is a symlink; nothing was changed"
+        mkdir -p "$INSTALL$entry" || die "could not create $INSTALL$entry"
+    done
+fi
+[ ! -L "$INSTALL" ] || die "the install directory $INSTALL is a symlink; re-run the installer"
+[ "$( (cd -P -- "$INSTALL" 2>/dev/null && pwd -P) )" = "$INSTALL" ] || die "the install directory $INSTALL is not at its own physical path; re-run the installer"
+for entry in install.json plugin containers container-update update-check.json self-update.lock.d; do
+    [ ! -L "$INSTALL/$entry" ] || die "$INSTALL/$entry is a symlink; re-run the installer"
+done
+WORKDIR=$(mktemp -d "$INSTALL/.work.XXXXXX") || die "could not create a work directory in $INSTALL"
 
 case $ACTION in
     install)
@@ -468,7 +495,6 @@ case $ACTION in
         valid_version "$VERSION" || die "not a valid version: $VERSION"
         case $RUNTIME in docker | podman) ;; *) die '--runtime must be docker or podman' ;; esac
         LAUNCHER="$BIN_DIR/knossos"
-        mkdir -p "$INSTALL" || die "could not create $INSTALL"
         lock
         CURRENT_IMAGE=$(digest_of "$IMAGE_REF") || die "the image $IMAGE_REF is not on this host"
         # Installing over a container install keeps what it replaces for --rollback.
@@ -483,7 +509,7 @@ case $ACTION in
             fi
         fi
         plugin_dir=''
-        if [ "$PLUGIN" = 1 ]; then plugin_dir=${DATA_DIR:-$INSTALL}; fi
+        if [ "$PLUGIN" = 1 ]; then plugin_dir=${DATA_DIR:-${INSTALL%/*}}; fi
         switch_to "$CURRENT_IMAGE" "$VERSION" "$PREVIOUS_IMAGE" "$PREVIOUS_VERSION" "$plugin_dir"
         printf '%s\n' "$CURRENT_IMAGE"
         exit 0
@@ -538,7 +564,9 @@ fi
 command -v "$RUNTIME" >/dev/null 2>&1 || die "$RUNTIME is not installed or not on PATH"
 "$RUNTIME" info >/dev/null 2>&1 </dev/null || die "the $RUNTIME daemon is not running; start it and try again."
 lock
-if [ -d "$INSTALL/plugin" ]; then plugin_dir=$(plugin_data_dir); else plugin_dir=''; fi
+# A plugin that was written once is refreshed; an empty plugin/ (an install
+# with --no-plugin) stays empty.
+if [ -f "$INSTALL/plugin/hooks/scripts/lib.sh" ]; then plugin_dir=$(plugin_data_dir); else plugin_dir=''; fi
 
 if [ "$ROLLBACK" = 1 ]; then
     if [ -z "$PREVIOUS_IMAGE" ] || ! valid_version "$PREVIOUS_VERSION"; then die 'There is no previous version to roll back to'; fi

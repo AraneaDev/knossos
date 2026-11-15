@@ -34,14 +34,14 @@ set -f
 INSTALL_DIR='__KNOSSOS_INSTALL_DIR__'
 
 INSTALL_DIR="${KNOSSOS_INSTALL_DIR:-$INSTALL_DIR}"
-KNOSSOS_DATA_DIR="${KNOSSOS_DATA_DIR:-$INSTALL_DIR}"
-KNOSSOS_ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$KNOSSOS_DATA_DIR/roots.json}"
-export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
 
 # install.json, joined into one line: pretty-printed or not, with or without a
-# space after the colon. A missing file means native.
+# space after the colon. A missing file means native. No release writes it as
+# a symlink, and one is not read: that is an unreadable mode below.
 record=''
-if [ -r "$INSTALL_DIR/install.json" ]; then
+if [ -L "$INSTALL_DIR/install.json" ]; then
+    record='{"mode": "symlink"}'
+elif [ -r "$INSTALL_DIR/install.json" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
         record="$record$line"
     done < "$INSTALL_DIR/install.json"
@@ -89,6 +89,10 @@ fi
 
 case $mode in
     native)
+        # The graph defaults to the install directory, as it always has.
+        KNOSSOS_DATA_DIR="${KNOSSOS_DATA_DIR:-$INSTALL_DIR}"
+        KNOSSOS_ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$KNOSSOS_DATA_DIR/roots.json}"
+        export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
         if [ ! -x "$INSTALL_DIR/current/bin/knossos" ]; then
             echo "knossos: no installed release found in $INSTALL_DIR; re-run the installer to repair it." >&2
             exit 1
@@ -113,15 +117,22 @@ esac
 # ---- container mode ----------------------------------------------------------
 #
 # One container per project root, started on the first call and reused by
-# every call after it through `exec`. The project root, the data directory, the
-# directory of the roots file and the install directory are mounted at the
-# SAME absolute paths, so a path means the same thing inside as outside and a
-# project keeps the id a native install would give it. The container runs as
-# the caller's user and group with HOME=/tmp and no network. None of those
-# directories may be /, the home directory or a directory above it: the
-# launcher refuses rather than hand a container the whole home directory.
-# The installation's plugin and install.json are mounted again read-only, so
-# code in a container cannot change what the host's hooks run.
+# every call after it through `exec`. The project root, the data directory and
+# the directory of the roots file are mounted read-write at the SAME absolute
+# paths, so a path means the same thing inside as outside and a project keeps
+# the id a native install would give it. The container runs as the caller's
+# user and group with HOME=/tmp and no network. None of those directories may
+# be /, the home directory or a directory above it: the launcher refuses
+# rather than hand a container the whole home directory.
+#
+# The install directory (<data dir>/install by default, baked in above) holds
+# everything the host side trusts: install.json, plugin/, the update helper,
+# update-check.json, the update lock and containers/. It is mounted into every
+# container READ-ONLY, as one mount over the read-write data directory, so
+# code in a container (a scanned project is untrusted input to the workers)
+# can never create, replace or remove anything in it: no planted symlink can
+# steer what the host later mounts or writes. The launcher still checks at
+# every call that the directory and each entry it uses are no symlinks.
 #
 # Its entrypoint is tools/launcher/idle-stop, which exits (and so stops the
 # container, which --rm then removes) once nothing has run in it for 30
@@ -162,6 +173,33 @@ NEWLINE='
 
 # A path's physical form, or nothing when it is not a directory that can be entered.
 physical() { (CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P); }
+
+# The host state directory must be exactly what the installer made: the
+# baked-in path itself (no symlink anywhere in it), and real directories and
+# files inside it. Anything else is not trusted.
+untrusted() {
+    die "$1; re-run the installer to repair the install directory $INSTALL_DIR."
+}
+[ ! -L "$INSTALL_DIR" ] || untrusted "the install directory is a symlink"
+INSTALL_REAL=$(physical "$INSTALL_DIR")
+if [ -z "$INSTALL_REAL" ] || [ "$INSTALL_REAL" != "$INSTALL_DIR" ]; then untrusted "the install directory is not at its own physical path"; fi
+for entry in plugin containers container-update update-check.json self-update.lock.d; do
+    [ ! -L "$INSTALL_DIR/$entry" ] || untrusted "$INSTALL_DIR/$entry is a symlink"
+done
+if [ ! -d "$INSTALL_DIR/containers" ] || [ ! -d "$INSTALL_DIR/plugin" ]; then untrusted "$INSTALL_DIR has no containers/ or plugin/ directory"; fi
+# A container install keeps its install directory apart from the graph since
+# before the first release that offered container mode, so a record without
+# that layout was never written by a released version: it is refused, not
+# migrated.
+field layout
+[ "$value" = separate ] || untrusted "this container install keeps its record where the graph is, a layout no release wrote"
+
+# The graph defaults to the directory around the install directory, the one
+# the person picked with --data-dir: switching between native and container
+# mode keeps the same graph.
+KNOSSOS_DATA_DIR="${KNOSSOS_DATA_DIR:-$(dirname -- "$INSTALL_DIR")}"
+KNOSSOS_ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$KNOSSOS_DATA_DIR/roots.json}"
+export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
 
 # inside PATH DIR: whether PATH is DIR or lies under it. Every path is under /.
 inside() {
@@ -381,8 +419,6 @@ make_dir() {
     made=$(physical "$1")
     [ -n "$made" ] || die "could not enter $1"
 }
-INSTALL_REAL=$(physical "$INSTALL_DIR")
-[ -n "$INSTALL_REAL" ] || die "could not enter the install directory $INSTALL_DIR"
 make_dir "$KNOSSOS_DATA_DIR" KNOSSOS_DATA_DIR
 DATA_REAL=$made
 make_dir "$(dirname -- "$KNOSSOS_ROOTS_FILE")" KNOSSOS_ROOTS_FILE
@@ -429,10 +465,12 @@ ROOT=${answer%%"$NEWLINE"*}
 LISTED_AS=${answer#*"$NEWLINE"}
 if inside "$HERE" "$ROOT"; then WORKDIR=$HERE; else WORKDIR=$ROOT; fi
 
-# Every directory the container needs, each mounted at its own physical path,
-# and only through add_mount: it applies the mount rule to exactly the path it
-# mounts (no /, no home directory, nothing above it). One that lies inside
-# another is already visible through it and is not mounted twice.
+# Every directory the container may write, each mounted at its own physical
+# path, and only through add_mount: it applies the mount rule to exactly the
+# path it mounts (no /, no home directory, nothing above it, nothing inside
+# the read-only install directory). One that lies inside another is already
+# visible through it and is not mounted twice. The install directory itself
+# is the one read-only mount, added in start_container.
 MOUNTS=''
 add_mount() {
     path=$(physical "$1")
@@ -448,6 +486,9 @@ add_mount() {
             *) die "the install directory $path $reason, which container mode does not mount; re-run the installer with --data-dir set to a directory of its own." ;;
         esac
     fi
+    if inside "$path" "$INSTALL_REAL"; then
+        die "$path lies inside the install directory $INSTALL_REAL, which a container may only read; point KNOSSOS_DATA_DIR, KNOSSOS_ROOTS_FILE or the project elsewhere."
+    fi
     kept=''
     while IFS= read -r mounted; do
         [ -n "$mounted" ] || continue
@@ -461,7 +502,9 @@ MOUNTED
 add_mount "$ROOT" project
 add_mount "$DATA_REAL" data
 add_mount "$ROOTS_DIR_REAL" roots
-add_mount "$INSTALL_REAL" install
+# The install directory read-only, on top: always its own mount, even when a
+# read-write one contains it.
+if too_wide "$INSTALL_REAL" >/dev/null; then die "the install directory $INSTALL_REAL $(too_wide "$INSTALL_REAL"), which container mode does not mount; re-run the installer with --data-dir set to a directory of its own."; fi
 
 NAME="knossos-$(hash12 "$INSTALL_REAL
 $ROOT
@@ -469,8 +512,10 @@ $DATA_REAL
 $ROOTS_FILE_REAL
 $IMAGE")"
 MARKER="$INSTALL_REAL/containers/$NAME"
-{ mkdir -p "$INSTALL_REAL/containers" 2>/dev/null && : > "$MARKER" 2>/dev/null; } \
-    || die "could not write $MARKER"
+# containers/ was checked above to be a real directory; the marker must be a
+# plain file or absent, never a link this write could follow.
+[ ! -L "$MARKER" ] || untrusted "$MARKER is a symlink"
+: > "$MARKER" 2>/dev/null || die "could not write $MARKER"
 
 # Start the container unless it runs. Two calls may get here at once: the
 # runtime refuses the second `run` because the name is taken, and that call
@@ -490,12 +535,7 @@ start_container() {
     done <<MOUNTED
 $MOUNTS
 MOUNTED
-    # What the host runs from the install directory, read-only over the
-    # read-write mount: the plugin's hooks, the update helper and the record
-    # of the image.
-    for protected in "$INSTALL_REAL/plugin" "$INSTALL_REAL/container-update" "$INSTALL_REAL/install.json"; do
-        if [ -e "$protected" ]; then set -- "$@" --mount "type=bind,source=$protected,target=$protected,readonly"; fi
-    done
+    set -- "$@" --mount "type=bind,source=$INSTALL_REAL,target=$INSTALL_REAL,readonly"
     set -- "$@" --entrypoint "$IN_IMAGE/tools/launcher/idle-stop" "$IMAGE" "$MARKER"
     attempts=0
     while :; do
@@ -547,13 +587,17 @@ CALL_ID="$$-$(date +%s 2>/dev/null)"
 terminal=no
 if wants_terminal "${1-}"; then terminal=yes; fi
 set -- "$NAME" "$IN_IMAGE/tools/launcher/idle-stop" --run "$CALL_ID" "$IN_IMAGE/bin/knossos" "$@"
+# A root the roots file names through a symlink gets its physical form added
+# to the allowed roots (see below).
+extra_root=no
+if [ -n "$LISTED_AS" ] && [ "$LISTED_AS" != "$ROOT" ]; then extra_root=yes; fi
 # A caller's other KNOSSOS_* settings reach the command too, by name, as they
 # would in native mode.
 for variable in $(env | sed -n 's/^\(KNOSSOS_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u); do
     case $variable in
         KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN | KNOSSOS_TEST_TERMINALS) ;;
         KNOSSOS_ALLOWED_ROOTS)
-            if [ -z "$LISTED_AS" ] || [ "$LISTED_AS" = "$ROOT" ]; then set -- -e "$variable" "$@"; fi
+            if [ "$extra_root" = no ]; then set -- -e "$variable" "$@"; fi
             ;;
         *) set -- -e "$variable" "$@" ;;
     esac
@@ -562,7 +606,7 @@ done
 # nowhere (only the physical target is mounted), so the server would not count
 # it as allowed. Its physical form is added to the allowed roots, which grants
 # nothing the roots file did not.
-if [ -n "$LISTED_AS" ] && [ "$LISTED_AS" != "$ROOT" ]; then
+if [ "$extra_root" = yes ]; then
     set -- -e "KNOSSOS_ALLOWED_ROOTS=${KNOSSOS_ALLOWED_ROOTS:+$KNOSSOS_ALLOWED_ROOTS:}$ROOT" "$@"
 fi
 if [ "$terminal" = yes ]; then

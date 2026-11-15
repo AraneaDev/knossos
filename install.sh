@@ -455,7 +455,7 @@ note_replaced_launcher() {
         previous=$(sed -n "s/^INSTALL_DIR='\(.*\)'\$/\1/p" "$LAUNCHER" 2>/dev/null | head -n 1 | sed "s/'\\\\''/'/g")
         if [ -z "$previous" ]; then
             log "replacing $LAUNCHER, a file that was not a Knossos launcher"
-        elif [ "$previous" != "$DATA_DIR" ]; then
+        elif [ "$previous" != "${BAKED_DIR:-$DATA_DIR}" ]; then
             log "replacing $LAUNCHER, the launcher of the Knossos installed in $previous"
         fi
     elif [ -e "$LAUNCHER" ]; then
@@ -505,12 +505,12 @@ rollback_container_switch() {
     if [ -n "$LAUNCHER" ] && [ -f "$LAUNCHER" ]; then
         (cd "$TMP/probe project" 2>/dev/null && "$LAUNCHER" stop >/dev/null 2>&1 </dev/null) || true
     fi
-    if [ -f "$TMP/install.json.prev" ]; then cp "$TMP/install.json.prev" "$DATA_DIR/install.json"; else rm -f "$DATA_DIR/install.json"; fi
+    if [ -f "$TMP/install.json.prev" ]; then cp "$TMP/install.json.prev" "$CINSTALL/install.json"; else rm -f "$CINSTALL/install.json"; fi
     if [ -f "$TMP/launcher.prev" ]; then cp "$TMP/launcher.prev" "$LAUNCHER"; else rm -f "$LAUNCHER"; fi
-    if [ -f "$TMP/helper.prev" ]; then cp "$TMP/helper.prev" "$DATA_DIR/container-update"; else rm -f "$DATA_DIR/container-update"; fi
-    if [ "$PLUGIN" = 1 ] && [ -n "$DATA_DIR" ]; then
-        rm -rf "$DATA_DIR/plugin"
-        if [ -d "$TMP/plugin.prev" ]; then cp -pR "$TMP/plugin.prev" "$DATA_DIR/plugin"; fi
+    if [ -f "$TMP/helper.prev" ]; then cp "$TMP/helper.prev" "$CINSTALL/container-update"; else rm -f "$CINSTALL/container-update"; fi
+    if [ "$PLUGIN" = 1 ] && [ -n "$CINSTALL" ]; then
+        rm -rf "$CINSTALL/plugin"
+        if [ -d "$TMP/plugin.prev" ]; then cp -pR "$TMP/plugin.prev" "$CINSTALL/plugin"; else mkdir -p "$CINSTALL/plugin"; fi
     fi
 }
 
@@ -547,7 +547,8 @@ install_container() {
         log "mode:       container ($RUNTIME)"
         log "version:    ${VERSION:-the one the image reports}"
         log "image:      $REF"
-        log "data dir:   $DATA_DIR"
+        log "data dir:   $DATA_DIR (the graph)"
+        log "install:    $DATA_DIR/install (read-only to every container)"
         log "launcher:   $LAUNCHER"
         if [ -n "$ROOT_TO_GRANT" ]; then
             log "grants:     $ROOT_TO_GRANT"
@@ -555,7 +556,7 @@ install_container() {
             log 'grants:     no project root'
         fi
         if [ "$PLUGIN" = 1 ]; then
-            log "plugin:     write $DATA_DIR/plugin from the image, install it and register the MCP server with Claude Code"
+            log "plugin:     write $DATA_DIR/install/plugin from the image, install it and register the MCP server with Claude Code"
         else
             log 'plugin:     skipped (--no-plugin)'
         fi
@@ -598,13 +599,31 @@ install_container() {
         die "the image $REF has no install helper; it is older than container mode. Nothing was changed"
     fi
 
-    if [ -f "$DATA_DIR/install.json" ]; then cp "$DATA_DIR/install.json" "$TMP/install.json.prev"; fi
+    # The layout of a container install: the graph in the data directory, and
+    # beside it <data dir>/install, the host state directory every container
+    # only reads (install.json, plugin/, containers/, the update helper, the
+    # update check and lock). It is made here, as real directories, before
+    # any container exists, and the launcher gets its physical path baked in.
+    mkdir -p "$DATA_DIR" || die "could not create $DATA_DIR"
+    logical_data=$DATA_DIR
+    DATA_DIR=$(CDPATH='' cd -P -- "$DATA_DIR" && pwd -P) || die "could not enter $DATA_DIR"
+    if [ "$ROOTS_FILE" = "$logical_data/roots.json" ]; then ROOTS_FILE="$DATA_DIR/roots.json"; fi
+    KNOSSOS_DATA_DIR=$DATA_DIR
+    KNOSSOS_ROOTS_FILE=$ROOTS_FILE
+    export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
+    CINSTALL="$DATA_DIR/install"
+    BAKED_DIR=$CINSTALL
+    for entry in "" /plugin /containers; do
+        [ ! -L "$CINSTALL$entry" ] || die "$CINSTALL$entry is a symlink; remove it and run the installer again. Nothing was changed"
+        mkdir -p "$CINSTALL$entry" || die "could not create $CINSTALL$entry"
+    done
+    if [ -f "$CINSTALL/install.json" ]; then cp "$CINSTALL/install.json" "$TMP/install.json.prev"; fi
     if [ -f "$LAUNCHER" ]; then cp "$LAUNCHER" "$TMP/launcher.prev"; fi
-    if [ -f "$DATA_DIR/container-update" ]; then cp "$DATA_DIR/container-update" "$TMP/helper.prev"; fi
-    if [ "$PLUGIN" = 1 ] && [ -d "$DATA_DIR/plugin" ]; then cp -pR "$DATA_DIR/plugin" "$TMP/plugin.prev"; fi
+    if [ -f "$CINSTALL/container-update" ]; then cp "$CINSTALL/container-update" "$TMP/helper.prev"; fi
+    if [ "$PLUGIN" = 1 ] && [ -f "$CINSTALL/plugin/hooks/scripts/lib.sh" ]; then cp -pR "$CINSTALL/plugin" "$TMP/plugin.prev"; fi
     note_replaced_launcher
-    set -- install "--install-dir=$DATA_DIR" "--bin-dir=$BIN_DIR" "--runtime=$RUNTIME" "--image=$REF" "--version=$VERSION"
-    if [ "$PLUGIN" = 1 ]; then set -- "$@" --plugin "--data-dir=$DATA_DIR"; fi
+    set -- install "--install-dir=$CINSTALL" "--bin-dir=$BIN_DIR" "--runtime=$RUNTIME" "--image=$REF" "--version=$VERSION" "--data-dir=$DATA_DIR"
+    if [ "$PLUGIN" = 1 ]; then set -- "$@" --plugin; fi
     # The helper puts back what it changed when one of its own steps fails.
     if ! digest=$(sh "$TMP/container-update" "$@" </dev/null); then
         die 'the install did not complete (see above); the previous state was restored'
@@ -612,7 +631,7 @@ install_container() {
     CONTAINER_SWITCHED=1
     log "image recorded as $digest"
     log "launcher written to $LAUNCHER"
-    [ "$PLUGIN" = 0 ] || log "plugin written to $DATA_DIR/plugin"
+    [ "$PLUGIN" = 0 ] || log "plugin written to $CINSTALL/plugin"
 
     # The real thing: a call through the launcher, from a scratch directory so
     # no project of yours is mounted for it, and that container stopped after.
@@ -648,11 +667,11 @@ install_container() {
         # commands install-agent-plugin --execute runs in native mode.
         if command -v claude >/dev/null 2>&1; then
             say 'Installing the Claude Code plugin...'
-            if claude plugin marketplace add "$DATA_DIR/plugin" --scope user </dev/null \
+            if claude plugin marketplace add "$CINSTALL/plugin" --scope user </dev/null \
                 && claude plugin install knossos@knossos --scope user --yes </dev/null; then
                 log 'plugin installed'
             else
-                warn "the plugin was not installed; run: claude plugin marketplace add \"$DATA_DIR/plugin\" --scope user && claude plugin install knossos@knossos --scope user --yes"
+                warn "the plugin was not installed; run: claude plugin marketplace add \"$CINSTALL/plugin\" --scope user && claude plugin install knossos@knossos --scope user --yes"
             fi
         fi
         register_mcp
@@ -676,6 +695,8 @@ main() {
     PREV_LINK=''
     SWITCHED=0
     CONTAINER_SWITCHED=0
+    CINSTALL=""
+    BAKED_DIR=""
 
     while [ $# -gt 0 ]; do
         case $1 in

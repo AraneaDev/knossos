@@ -57,6 +57,10 @@ case $command in
             container.inspect)
                 [ -f "$STATE/containers/$1" ] || { echo "Error: No such container: $1" >&2; exit 1; }
                 cat "$STATE/containers/$1"
+                # With the mounts in the format: one `source|destination|rw` line each.
+                case $format in
+                    *Mounts*) [ ! -f "$STATE/containers/$1.mounts" ] || cat "$STATE/containers/$1.mounts" ;;
+                esac
                 ;;
             image.inspect)
                 file=$(image_file "$1")
@@ -84,6 +88,7 @@ case $command in
         detached=0
         entrypoint=''
         never=0
+        mounts=
         while [ $# -gt 0 ]; do
             case $1 in
                 -d) detached=1 ;;
@@ -92,7 +97,18 @@ case $command in
                 --label) labels="$labels$2
 "; shift ;;
                 --entrypoint) entrypoint=$2; shift ;;
-                --network | --user | -e | --mount | -v | -w) shift ;;
+                --mount)
+                    spec=$2
+                    source=${spec#*source=}
+                    source=${source%%,target=*}
+                    target=${spec#*target=}
+                    rw=true
+                    case $target in *,readonly) target=${target%,readonly}; rw=false ;; esac
+                    mounts="$mounts$source|$target|$rw
+"
+                    shift
+                    ;;
+                --network | --user | -e | -v | -w) shift ;;
                 --pull=never) never=1 ;;
                 --userns=* | --network=* | --user=* | --pull=*) ;;
                 -*) echo "fake-docker: unknown run option $1" >&2; exit 2 ;;
@@ -111,6 +127,7 @@ case $command in
             if [ -e "$STATE/race" ]; then
                 rm -f "$STATE/race"
                 printf 'running\n' > "$STATE/containers/$name"
+                printf '%s' "$mounts" > "$STATE/containers/$name.mounts"
                 echo "docker: Error response from daemon: Conflict. The container name \"/$name\" is already in use." >&2
                 exit 125
             fi
@@ -122,6 +139,9 @@ case $command in
             printf 'running\n' > "$STATE/containers/$name"
             printf '%s' "$labels" > "$STATE/containers/$name.labels"
             printf '%s\n' "$image" > "$STATE/containers/$name.image"
+            # FAKE_EXTRA_MOUNT: a mount the runtime added that nobody asked for.
+            printf '%s%s' "$mounts" "${FAKE_EXTRA_MOUNT:+$FAKE_EXTRA_MOUNT
+}" > "$STATE/containers/$name.mounts"
             echo "fakeid-$name"
             exit 0
         fi
@@ -198,7 +218,7 @@ case $command in
             shift
         done
         for file in "$STATE"/containers/*; do
-            case $file in *.labels | *.image) continue ;; esac
+            case $file in *.labels | *.image | *.mounts) continue ;; esac
             [ -f "$file" ] || continue
             [ "$(cat "$file")" = running ] || continue
             match=1
@@ -211,7 +231,7 @@ case $command in
     stop | rm)
         for a in "$@"; do
             case $a in -*) continue ;; esac
-            rm -f "$STATE/containers/$a" "$STATE/containers/$a.labels" "$STATE/containers/$a.image"
+            rm -f "$STATE/containers/$a" "$STATE/containers/$a.labels" "$STATE/containers/$a.image" "$STATE/containers/$a.mounts"
         done
         ;;
     *)
