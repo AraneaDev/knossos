@@ -38,7 +38,7 @@ import { reset } from '../hooks/mod/state'
 import { followHead } from '../hooks/mod/watcher'
 import { Hub } from './hub'
 import type { PageEvent, Size } from './hub'
-import { addressOf } from './lock'
+import { PANE_HEADER, addressOf } from './lock'
 import { webPort } from './port'
 
 /** How often the checkout's commit is read again while a page is connected, beside every word from the watcher. */
@@ -153,8 +153,11 @@ export async function startServer(o: {
   headPollMs?: number
   /** Where the server's log lines go (`console.error` when absent). */
   log?: (text: string) => void
-  /** Whether the project's lock is still this server's, asked on the head poll's tick: once it is not, the server closes itself. */
-  holds?: () => boolean
+  /**
+   * The port of another pane server that took the project's lock over, or null while the lock is this one's;
+   * asked on the head poll's tick. Once it names one, the server closes itself.
+   */
+  holder?: () => Promise<number | null>
 }): Promise<{ url: string; token: string; port: number; ready: Promise<void>; stepped: Promise<void>; close(): Promise<void> }> {
   // Before anything starts: a port it cannot have stops it here, with nothing to undo.
   const wanted = await portFor(o.port ?? 0, o.movable === true)
@@ -175,18 +178,33 @@ export async function startServer(o: {
   hub.attach(io)
   const act = handlersOf(io)
   const ready = startUp(io, 'deliberate').catch((error: unknown) => io.ui.log(`knossos web: start-up failed: ${messageOf(error)}`))
-  /** Settles once the server closed itself because another took the project's lock: its pages reconnect to that one. */
+  /**
+   * Settles once the server closed itself because another took the project's lock. A terminal pane, whose host
+   * learns of it here, takes the project's usual take-over path to the lock's server.
+   */
   let stepDown = () => undefined as void
   const stepped = new Promise<void>(resolve => (stepDown = resolve))
+  /** The server's stop once asked for: see {@link close}. */
+  let closing: Promise<void> | null = null
+  /** Whether the tick is asking the lock: the ask probes the other server, and a slow one must not pile up asks. */
+  let asking = false
   // The poll's tick also asks whether the lock is still this server's: a lock another server holds leaves this one serving no one's project.
   const headPoll = setInterval(() => {
-    if (o.holds?.() === false) {
-      clearInterval(headPoll)
-      // Its start-up is let finish first, or it would go on after the close and start a watcher for a server that no longer runs.
-      void ready.then(close).then(stepDown, stepDown)
-      return
-    }
     follow()
+    if (o.holder === undefined || asking) return
+    asking = true
+    void o
+      .holder()
+      .then(port => {
+        if (port === null || closing !== null) return
+        clearInterval(headPoll)
+        // Its start-up is let finish first, or it would go on after the close and start a watcher for a server that no longer runs;
+        // that wait has no bound of its own, as each step of the start-up is a wrapper call with its own timeout.
+        // Input a page posts meanwhile reaches this server and is lost, as in any take-over: a page does not send it twice.
+        return ready.then(close).then(stepDown, stepDown)
+      })
+      .catch(() => undefined)
+      .finally(() => (asking = false))
   }, o.headPollMs ?? HEAD_POLL_MS)
   const streams = new Set<ServerResponse>()
 
@@ -285,6 +303,8 @@ export async function startServer(o: {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     // The URLs carry the token: no page they lead to is told where it came from.
     res.setHeader('referrer-policy', 'no-referrer')
+    // What tells a probe that a pane server answers here, and not another program on a port used again.
+    res.setHeader(PANE_HEADER, '1')
     if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
     if (req.method === 'GET' && url.pathname === '/') return void file(res, 'index.html')
     if (req.method === 'GET' && url.pathname === '/manifest.webmanifest') {
@@ -321,7 +341,6 @@ export async function startServer(o: {
   origin = `http://127.0.0.1:${port}`
 
   /** Stops the server; asked again (a step-down, then the host's own stop), it is the same stop. */
-  let closing: Promise<void> | null = null
   function close(): Promise<void> {
     closing ??= (async () => {
       clearInterval(headPoll)

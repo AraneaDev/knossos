@@ -55,7 +55,7 @@ const pluginRoot = process.env.KNOSSOS_WEB_PLUGIN_ROOT || CHECKOUT
 if (!process.env.KNOSSOS_BIN && existsSync(join(CHECKOUT, 'bin/knossos'))) process.env.KNOSSOS_BIN = join(CHECKOUT, 'bin/knossos')
 const editor = asked.editor ?? (process.env.KNOSSOS_EDITOR || null)
 
-const { hostProject } = await import('./host')
+const { hostProject, silentText } = await import('./host')
 const { openBrowser } = await import('./browser')
 const { stopWatcher } = await import('../hooks/mod/state')
 const { ending } = await import('./life')
@@ -86,7 +86,7 @@ const show = async (url: string) => {
 }
 
 try {
-  hosted = await hostProject({ root, dataDir, pluginRoot, editor, port: asked.port })
+  hosted = await hostProject({ root, dataDir, pluginRoot, editor, port: asked.port, silent: holder => void process.stdout.write(`${silentText(holder)}\n`) })
 } catch (error) {
   fail(messageOf(error))
 }
@@ -98,7 +98,7 @@ if (hosted.kind === 'running') {
 
 if (asked.port === null && hosted.kept !== null && hosted.port !== hosted.kept) process.stdout.write(`Port ${hosted.kept} is taken, so the address changed: ${hosted.url}\n`)
 process.stdout.write(`Knossos web pane for ${root}: ${hosted.url}\nPress Ctrl-C to stop it.\n`)
-// Another server took the project over (this one stopped answering for a while): its pages went over to that one, and this one ends.
+// Another server took the project over (this one did not answer for a while): the terminal panes attached here reconnect to that one, and this one ends.
 void hosted.stepped.then(() => {
   process.stdout.write(`Another server took over the pane for ${root}; this one stops.\n`)
   stop(0)

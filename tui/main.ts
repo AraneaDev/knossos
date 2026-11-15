@@ -52,7 +52,7 @@ const pluginRoot = process.env.KNOSSOS_WEB_PLUGIN_ROOT || CHECKOUT
 if (!process.env.KNOSSOS_BIN && existsSync(join(CHECKOUT, 'bin/knossos'))) process.env.KNOSSOS_BIN = join(CHECKOUT, 'bin/knossos')
 const editor = asked.editor ?? (process.env.KNOSSOS_EDITOR || null)
 
-const { hostProject } = await import('../web/host')
+const { hostProject, silentText } = await import('../web/host')
 type Hosted = Awaited<ReturnType<typeof hostProject>>
 const { lockFile } = await import('../web/lock')
 const { ending } = await import('../web/life')
@@ -217,14 +217,25 @@ function backgroundOfTerminal(): Promise<{ theme: 'dark' | 'light'; ground: [num
   })
 }
 
+/** Says what a start waits for while the project's server does not answer: on the pane once it draws, else where "Starting the pane..." is. */
+let told = false
+const silent = (holder: Parameters<typeof silentText>[0]) => {
+  told = true
+  if (client !== null) return client.status(silentText(holder))
+  out(`\x1b[H\x1b[2J${silentText(holder)}`)
+}
+
 /** The project's server: started here, or the one that runs, waited for until it says where it listens. */
 async function host(): Promise<Hosted> {
   const deadline = Date.now() + STARTING_MS
   for (;;) {
-    const found = await hostProject({ root, dataDir, pluginRoot, editor, port: null, log })
+    const found = await hostProject({ root, dataDir, pluginRoot, editor, port: null, log, silent })
     // Held from this moment, so that whatever ends the process releases it; a server that has not said where it listens replaces nothing.
     if (found.kind === 'mine' || found.url !== '') {
       hosted = found
+      // The wait is over: its line goes (a pane not drawn yet paints over it whole).
+      if (told) client?.status(null)
+      told = false
       // A server of this pane's own that another took the project from has closed itself: the pane is then one more
       // attached to the project, and its next reconnect goes to the lock's server, as a take-over does.
       if (found.kind === 'mine') void found.stepped.then(() => {

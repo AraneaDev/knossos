@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { lockFile } from '../web/lock'
-import { markedPluginRoot, scratch, spawnFixture } from '../web/fixtures/helpers'
+import { HAS_PROC, markedPluginRoot, scratch, spawnFixture } from '../web/fixtures/helpers'
 import { ENTER, LEAVE } from './terminal'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -182,6 +182,41 @@ describe('knossos (the terminal pane)', () => {
     await Promise.all([first.exited, second.exited])
     expect(JSON.parse(readFileSync(lockFile(data, dir), 'utf8'))).toEqual(lock)
     expect(other.child.exitCode).toBeNull()
+  })
+
+  it.skipIf(!HAS_PROC)('says that the pane holding the project is suspended, takes it over, and the suspended one joins once resumed', { timeout: 40_000 }, async () => {
+    const dir = scratch()
+    const data = scratch()
+    const env = envOf(data, markedPluginRoot(mark()))
+    const first = tui(dir, env)
+    await first.until(text => text.includes('Overview'), 'the first pane drawing')
+    const own = JSON.parse(readFileSync(lockFile(data, dir), 'utf8')) as { pid: number; port: number }
+    // Stopped as Ctrl-Z stops it: its server is still there to connect to, and answers nothing.
+    process.kill(own.pid, 'SIGSTOP')
+    let resumed = false
+    try {
+      const second = tui(dir, env)
+      await second.until(text => text.includes(`Knossos in another terminal (pid ${own.pid}) is suspended`), 'the second pane saying why it waits')
+      await second.until(text => text.includes('Overview'), 'the second pane drawing, once it took over')
+      expect(pidOf(data, dir)).not.toBe(own.pid)
+      process.kill(own.pid, 'SIGCONT')
+      resumed = true
+      // Resumed, the first pane's server sees the lock name the other and closes; the first pane joins the other's server.
+      for (let i = 0; i < 200 && (await fetch(`http://127.0.0.1:${own.port}/`).then(() => true, () => false)); i++) await wait(50)
+      await expect(fetch(`http://127.0.0.1:${own.port}/`)).rejects.toThrow()
+      const seen = second.out().length
+      for (let i = 0; i < 60 && !second.out().slice(seen).includes('Component0'); i++) {
+        first.child.stdin.write('2')
+        await wait(300)
+      }
+      expect(second.out().slice(seen)).toContain('Component0')
+      first.child.stdin.write('q')
+      second.child.stdin.write('q')
+      await Promise.all([first.exited, second.exited])
+      expect(existsSync(lockFile(data, dir))).toBe(false)
+    } finally {
+      if (!resumed) process.kill(own.pid, 'SIGCONT')
+    }
   })
 
   it('stops the whole job on Ctrl-Z under a shell with job control, and takes the terminal again when the shell resumes it', { timeout: 40_000 }, async () => {

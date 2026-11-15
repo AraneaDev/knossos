@@ -11,6 +11,7 @@ import type { Frame } from './hub'
 import { cardPlace } from '../hooks/lib/place'
 import { followHead } from '../hooks/mod/watcher'
 import { mod } from '../hooks/mod/state'
+import { PANE_HEADER } from './lock'
 import { startServer } from './server'
 
 // A wheel whose handler throws: what the server answers for an internal failure.
@@ -283,25 +284,56 @@ describe('startServer', () => {
     expect(lines.findIndex(l => l.startsWith('dashboard'))).toBeLessThan(lines.findIndex(l => l.startsWith('claim --execute')))
   })
 
-  it('closes itself once the lock is no longer its own, and ends its pages for them to reconnect elsewhere', async () => {
-    let holds = true
-    running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, headPollMs: 20, holds: () => holds })
+  it('closes itself once another server took the lock over, and ends its pages for them to reconnect', async () => {
+    let holder: number | null = null
+    let asked = 0
+    running = await startServer({
+      root: scratch(),
+      pluginRoot: fixturePluginRoot(),
+      dataDir: scratch(),
+      port: 0,
+      headPollMs: 20,
+      holder: async () => {
+        asked++
+        return holder
+      },
+    })
     await running.ready
     const base = running.url.slice(0, running.url.indexOf('?'))
-    const stream = await events(`${base}events?t=${running.token}&id=a&cols=100&rows=40`)
-    await stream.next(() => true)
+    const raw = await fetch(`${base}events?t=${running.token}&id=a&cols=100&rows=40`)
+    const body = raw.body!.getReader()
+    let text = ''
+    const read = (async () => {
+      for (;;) {
+        const { done, value } = await body.read()
+        if (done) return
+        text += new TextDecoder().decode(value)
+      }
+    })()
     let stepped = false
     void running.stepped.then(() => (stepped = true))
     // Many ticks while the lock is still its own: it keeps serving.
-    await new Promise(resolve => setTimeout(resolve, 150))
+    await vi.waitFor(() => expect(asked).toBeGreaterThan(3))
     expect(stepped).toBe(false)
     expect((await get(running.url)).status).toBe(200)
-    holds = false
+    holder = 41234
     await running.stepped
+    // The stream ended with the close.
+    await read
+    expect(text).toContain('data: ')
     await expect(fetch(running.url)).rejects.toThrow()
     // Its host's own stop afterwards is the same stop, not a second one that fails.
     await running.close()
-    stream.close()
+  })
+
+  it('says it is a pane server in every answer, the refused ones too', async () => {
+    const server = await started()
+    const base = server.url.slice(0, server.url.indexOf('?'))
+    for (const url of [server.url, base, `${base}nowhere?t=${server.token}`]) {
+      const res = await fetch(url)
+      await res.body?.cancel()
+      expect(res.headers.get(PANE_HEADER)).toBe('1')
+    }
   })
 
   it("reads the checkout's commit only while a page is connected, and at once when one connects", async () => {

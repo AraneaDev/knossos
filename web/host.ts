@@ -6,6 +6,7 @@
  * routes the server's log lines through `log`.
  */
 import { claim, identity } from './lock'
+import type { Silent } from './lock'
 import { startServer } from './server'
 
 /** Why `error` happened, as text. */
@@ -34,12 +35,14 @@ export async function hostProject(o: {
   editor: string | null
   port: number | null
   log?: (text: string) => void
+  /** Told when the server that holds the project does not answer at once, with what the start now waits for (see {@link silentText}). */
+  silent?: (holder: Silent) => void
 }): Promise<Hosted> {
   let kept: ReturnType<typeof identity>
   let lock: Awaited<ReturnType<typeof claim>>
   try {
     kept = identity(o.dataDir, o.root)
-    lock = await claim(o.dataDir, o.root, kept.token)
+    lock = await claim(o.dataDir, o.root, kept.token, o.silent)
   } catch (error) {
     throw new Error(`could not take the project's lock: ${messageOf(error)}`, { cause: error })
   }
@@ -56,7 +59,7 @@ export async function hostProject(o: {
       token: kept.token,
       editor: o.editor,
       ...(o.log === undefined ? {} : { log: o.log }),
-      holds: lock.holds,
+      holder: lock.holder,
     })
   } catch (error) {
     lock.release()
@@ -68,10 +71,21 @@ export async function hostProject(o: {
   } catch (error) {
     // The server is up but nothing says so: stop it and free the lock rather than leave both held. Its start-up is
     // let finish first, or it would go on after the close and start a watcher for a server that no longer runs.
+    // It has no bound of its own: each step of the start-up is a wrapper call with its own timeout.
     await server.ready
     await server.close().catch(() => undefined)
     lock.release()
     throw error
   }
   return { kind: 'mine', url: server.url, token: server.token, port: server.port, kept: kept.port, ready: server.ready, stepped: server.stepped, close: server.close, release: lock.release }
+}
+
+/**
+ * What a start says while the server that holds the project does not answer: a pane suspended in another terminal
+ * (resumed with `fg`, it steps down for the one that took over), or a server that is not serving; either way it is
+ * taken over once the wait is over.
+ */
+export function silentText(holder: Silent): string {
+  if (holder.stopped) return `Knossos in another terminal (pid ${holder.pid}) is suspended. Resume it there with fg, or wait a few seconds and this one takes over.`
+  return `The Knossos server of pid ${holder.pid} does not answer. Waiting a few seconds, then this one takes over.`
 }
