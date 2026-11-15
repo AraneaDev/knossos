@@ -341,6 +341,139 @@ inside() {
     return 1
 }
 
+# ---- directories a container can write -------------------------------------------
+#
+# The rule every host path below follows: the host never resolves, creates,
+# reads or writes a name inside a directory that a container may write, apart
+# from the pinned scratch handling (FILE_ROLES). "A container may write" means
+# a container of THIS installation (writer_of):
+#   - the default graph directory, the one around the install directory;
+#   - every other graph directory this installation has mounted read-write:
+#     each call records its graph directory in <install dir>/containers (see
+#     GRAPH_RECORD below), where no container can write, before any container
+#     is given it;
+#   - and, beyond what the installation itself knows, any directory on the way
+#     that holds a container install's install directory (install/ with
+#     containers/ and install.json in it), which is the graph of some other
+#     container install;
+# and everything below each of them, except the install directory, which every
+# container only reads. A directory that is too wide to mount (/, the home
+# directory and above it) is never given to a container, so it is none of these.
+# Links above all of them are yours, and are followed as usual.
+INSTALL_PARENT=$(dirname -- "$INSTALL_REAL")
+GRAPH_DIRS=$INSTALL_PARENT
+recorded=$(find "$INSTALL_REAL/containers" -type f -name 'graph-*' -exec cat {} + 2>/dev/null) || recorded=''
+while IFS= read -r graph; do
+    case $graph in /?*) GRAPH_DIRS="$GRAPH_DIRS$NEWLINE$graph" ;; esac
+done <<RECORDED
+$recorded
+RECORDED
+
+# looks_like_graph DIR: whether DIR holds a container install's install
+# directory, told by its layout alone: nothing in it is read.
+looks_like_graph() {
+    [ ! -L "${1%/}/install" ] && [ -d "${1%/}/install/containers" ] && [ -f "${1%/}/install/install.json" ]
+}
+
+# writer_of DIR [strict]: prints the graph directory that holds DIR, and
+# succeeds, when a container may write DIR (see the rule above). With
+# `strict`, DIR itself being a graph directory does not count, only one that
+# holds it from above. DIR is physical.
+writer_of() {
+    inside "$1" "$INSTALL_REAL" && return 1
+    while IFS= read -r graph; do
+        [ -n "$graph" ] || continue
+        [ "${2-}" != strict ] || [ "$graph" != "$1" ] || continue
+        too_wide "$graph" >/dev/null && continue
+        if inside "$1" "$graph"; then
+            printf '%s' "$graph"
+            return 0
+        fi
+    done <<GRAPHS
+$GRAPH_DIRS
+GRAPHS
+    above=$1
+    if [ "${2-}" = strict ]; then
+        [ "$above" != / ] || return 1
+        above=${above%/*}
+        above=${above:-/}
+    fi
+    while :; do
+        if ! too_wide "$above" >/dev/null && looks_like_graph "$above"; then
+            printf '%s' "$above"
+            return 0
+        fi
+        [ "$above" != / ] || return 1
+        above=${above%/*}
+        above=${above:-/}
+    done
+}
+
+# walk_to PATH WHAT ADVICE MODE: prints the physical form of the directory
+# PATH, reached from / one component at a time. Each step is taken from the
+# directory the walk stands in, so no name is ever resolved again through a
+# component that a container could have changed since it was checked. Once
+# the walk stands in a directory a container may write (writer_of):
+#   - create, existing: the one step allowed is into the install directory;
+#     any other is refused, before anything is created or followed;
+#   - through: a step into a plain directory is allowed, a symbolic link is
+#     never followed, nothing is created, and where each step leads is checked.
+# Outside every such directory a link is yours and is followed, and with
+# `create` a missing directory is made there, never through `.` or `..`.
+# WHAT names the path in a refusal, ADVICE ends it; `{graph}` in it stands for that graph directory.
+# Run as a subshell: a refusal exits it, so call it as `x=$(walk_to ...) || exit 1`.
+walk_to() (
+    path=$1 what=$2 advice=$3 mode=$4
+    case $path in /*) ;; *) die "$what is not an absolute path." ;; esac
+    CDPATH=''
+    cd -P / 2>/dev/null || die 'could not enter /'
+    at=/
+    rest=$path
+    while :; do
+        while [ "${rest#/}" != "$rest" ]; do rest=${rest#/}; done
+        [ -n "$rest" ] || break
+        component=${rest%%/*}
+        case $rest in */*) rest=${rest#*/} ;; *) rest='' ;; esac
+        if graph=$(writer_of "$at"); then
+            case $advice in *'{graph}'*) advice="${advice%%'{graph}'*}$graph${advice#*'{graph}'}" ;; esac
+            [ "$component" != . ] || continue
+            linked=''
+            if [ -L "$component" ]; then linked=", and goes through ${at%/}/$component there, a symbolic link the host does not follow"; fi
+            if [ "$mode" != through ] && [ "${at%/}/$component" != "$INSTALL_REAL" ]; then
+                die "$what lies in the graph directory $graph, which a container can write$linked; $advice"
+            fi
+            if [ -n "$linked" ] || [ "$component" = .. ] || [ ! -d "$component" ]; then
+                die "$what lies in the graph directory $graph, which a container can write${linked:-, and ${at%/}/$component is not a plain directory there}; $advice"
+            fi
+            cd -P -- "$component" 2>/dev/null || die "could not enter ${at%/}/$component"
+            next=$(pwd -P) || die "could not read where ${at%/}/$component leads"
+            [ "$next" = "${at%/}/$component" ] || die "${at%/}/$component, in the graph directory $graph, changed while the host checked it; $advice"
+            at=$next
+            continue
+        fi
+        if [ ! -e "$component" ] && [ ! -L "$component" ]; then
+            [ "$mode" = create ] || die "$what names ${at%/}/$component, which does not exist."
+            case /$component/$rest/ in */../* | */./*) die "$what names a directory to create through '..' or '.'; spell it without them." ;; esac
+            mkdir -- "$component" 2>/dev/null || die "could not create ${at%/}/$component"
+        fi
+        cd -P -- "$component" 2>/dev/null || die "could not enter ${at%/}/$component"
+        at=$(pwd -P) || die "could not read where ${at%/}/$component leads"
+    done
+    printf '%s\n' "$at"
+)
+
+# host_tmp: sets TMP_REAL to the physical temporary directory of the host
+# (TMPDIR, else /tmp), which must lie outside every directory a container may
+# write: the host runs, reads and writes its own temporary files there.
+TMP_REAL=''
+host_tmp() {
+    [ -z "$TMP_REAL" ] || return 0
+    TMP_REAL=$(walk_to "${TMPDIR:-/tmp}" "TMPDIR (${TMPDIR:-/tmp})" 'point TMPDIR at a directory outside it.' existing) || exit 1
+    if graph=$(writer_of "$TMP_REAL"); then
+        die "TMPDIR (${TMPDIR:-/tmp}) lies in the graph directory $graph, which a container can write; point TMPDIR at a directory outside it."
+    fi
+}
+
 # The first 12 hex digits of the SHA-256 of the argument.
 hash12() {
     if command -v sha256sum >/dev/null 2>&1; then
@@ -651,7 +784,9 @@ case ${1-} in
             [ "${KNOSSOS_NO_UPDATE_CHECK:-}" != 1 ] || exit 0
             cache="$INSTALL_DIR/update-check.json"
             if [ -f "$cache" ] && [ -z "$(find "$cache" -mmin +1439 2>/dev/null)" ]; then
-                now=$(mktemp "${TMPDIR:-/tmp}/knossos-now.XXXXXX") || exit 0
+                (host_tmp) >/dev/null 2>&1 || exit 0
+                host_tmp
+                now=$(mktemp "$TMP_REAL/knossos-now.XXXXXX") || exit 0
                 future=$(find "$cache" -newer "$now" 2>/dev/null)
                 rm -f "$now"
                 [ -n "$future" ] || exit 0
@@ -667,7 +802,9 @@ case ${1-} in
         if [ -s "$INSTALL_DIR/container-update" ]; then
             exec sh "$INSTALL_DIR/container-update" self-update "--install-dir=$INSTALL_DIR" "$@"
         fi
-        helper=$(mktemp "${TMPDIR:-/tmp}/knossos-update.XXXXXX") || die 'could not create a temporary file'
+        if [ "$quiet" = 1 ]; then (host_tmp) >/dev/null 2>&1 || exit 0; fi
+        host_tmp
+        helper=$(mktemp "$TMP_REAL/knossos-update.XXXXXX") || die 'could not create a temporary file'
         if ! "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$IMAGE" "$IN_IMAGE/tools/launcher/container-update" > "$helper" 2>/dev/null </dev/null \
             || [ ! -s "$helper" ]; then
             rm -f "$helper"
@@ -691,49 +828,26 @@ esac
 # marker all use these, so each names inside exactly what is mounted. The core
 # keys projects by their real path too (RootGuard::resolve), as native mode does.
 #
-# A directory that does not exist yet is created first, and never through a
-# `..` component, so the directory checked is the one created.
-make_dir() {
-    case $1 in /*) ;; *) die "$2 must be an absolute path in container mode, got $1" ;; esac
-    if [ ! -d "$1" ]; then
-        case /$1/ in */../* | */./*) die "$2 names a directory to create through '..' or '.' ($1); spell it without them." ;; esac
-        mkdir -p -- "$1" 2>/dev/null || die "could not create $1"
-    fi
-    made=$(physical "$1")
-    [ -n "$made" ] || die "could not enter $1"
-}
-make_dir "$KNOSSOS_DATA_DIR" KNOSSOS_DATA_DIR
-DATA_REAL=$made
-INSTALL_PARENT=$(dirname -- "$INSTALL_REAL")
+# Before anything is created for them, the data directory and the directory of
+# a caller's roots file are walked (walk_to): nothing is created, and no link
+# followed, inside a directory a container may write, so a link a container
+# planted in a graph directory can neither move the mount nor make the host
+# create a directory where it points.
+if reason=$(too_wide "$INSTALL_REAL"); then die "the install directory $INSTALL_REAL $reason, which container mode does not mount; re-run the installer with --data-dir set to a directory of its own."; fi
+case $KNOSSOS_DATA_DIR in /*) ;; *) die "KNOSSOS_DATA_DIR must be an absolute path in container mode, got $KNOSSOS_DATA_DIR" ;; esac
+DATA_REAL=$(walk_to "$KNOSSOS_DATA_DIR" "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR)" 'pick a data directory outside {graph}.' create) || exit 1
+# A data directory inside another graph directory is written by that graph's
+# containers too: anything in it could be changed under this one.
+if graph=$(writer_of "$DATA_REAL" strict); then
+    die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) lies in the graph directory $graph, which a container can write; pick a data directory outside $graph."
+fi
+GRAPH_DIRS="$GRAPH_DIRS$NEWLINE$DATA_REAL"
 ROOTS_DIR_REAL=$INSTALL_REAL
 ROOTS_FILE_REAL="$INSTALL_REAL/roots.json"
 GRAPH_ROOTS_REFUSED="unset it to use the list the installer keeps in $INSTALL_REAL/roots.json, or point it at a file outside every directory a container can write."
 if [ -n "$ROOTS_GIVEN" ]; then
-    # Refused before anything is created for it: under the graph directory,
-    # make_dir's mkdir -p would follow links a container planted there.
-    # Each component is resolved in turn, so a link is never followed out of
-    # the graph directory once the walk has entered it.
     case $ROOTS_GIVEN in /*) ;; *) die "KNOSSOS_ROOTS_FILE must be an absolute path in container mode, got $ROOTS_GIVEN" ;; esac
-    walked=/
-    saved_ifs=$IFS
-    IFS=/
-    for component in $(dirname -- "$ROOTS_GIVEN"); do
-        IFS=$saved_ifs
-        [ -n "$component" ] || continue
-        # Inside the graph directory, the one way on is into the install directory.
-        if inside "$walked" "$DATA_REAL" && ! inside "$walked" "$INSTALL_REAL" && [ "${walked%/}/$component" != "$INSTALL_REAL" ]; then
-            die "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN) lies in the graph directory $DATA_REAL, which a container can write; $GRAPH_ROOTS_REFUSED"
-        fi
-        next=$(physical "${walked%/}/$component")
-        [ -n "$next" ] || break
-        walked=$next
-    done
-    IFS=$saved_ifs
-    if inside "$walked" "$DATA_REAL" && ! inside "$walked" "$INSTALL_REAL"; then
-        die "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN) lies in the graph directory $DATA_REAL, which a container can write; $GRAPH_ROOTS_REFUSED"
-    fi
-    make_dir "$(dirname -- "$ROOTS_GIVEN")" KNOSSOS_ROOTS_FILE
-    ROOTS_DIR_REAL=$made
+    ROOTS_DIR_REAL=$(walk_to "$(dirname -- "$ROOTS_GIVEN")" "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN)" "$GRAPH_ROOTS_REFUSED" create) || exit 1
     ROOTS_FILE_REAL="${ROOTS_DIR_REAL%/}/${ROOTS_GIVEN##*/}"
     if [ "$ROOTS_FILE_REAL" = "$INSTALL_PARENT/roots.json" ] || [ "$ROOTS_FILE_REAL" = "$DATA_REAL/roots.json" ]; then
         ROOTS_DIR_REAL=$INSTALL_REAL
@@ -741,8 +855,8 @@ if [ -n "$ROOTS_GIVEN" ]; then
     elif inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then
         # In the install directory: the host's own, read-only to every container.
         :
-    elif inside "$ROOTS_FILE_REAL" "$DATA_REAL"; then
-        die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies in the graph directory $DATA_REAL, which a container can write; $GRAPH_ROOTS_REFUSED"
+    elif graph=$(writer_of "$ROOTS_DIR_REAL"); then
+        die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies in the graph directory $graph, which a container can write; $GRAPH_ROOTS_REFUSED"
     fi
 fi
 KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL
@@ -756,6 +870,8 @@ KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL
 # keeps its arguments exactly as given, even one that happens to name a
 # directory.
 TARGET=$HERE
+# The directory as the caller spelled it, which the project root is walked from below.
+TARGET_GIVEN=''
 takes_path=no
 case ${1-} in
     scan | rescan | allow-root | claim | autostart | session-brief | brief | watch | record-scan-failure | move-project | \
@@ -775,6 +891,7 @@ if [ "$takes_path" = yes ] && [ $# -ge 2 ]; then
         *)
             if [ -d "$2" ] && given=$(physical "$2") && [ -n "$given" ]; then
                 TARGET=$given
+                TARGET_GIVEN=$(absolute "$2")
                 command=$1
                 shift 2
                 set -- "$command" "$TARGET" "$@"
@@ -1207,7 +1324,8 @@ ENTRIES
             if ! listed "$to"; then set -- "$@" "$to"; fi
             write_roots "$@"
         }
-        ROOTS_BEFORE=$(mktemp "${TMPDIR:-/tmp}/knossos-roots.XXXXXX") || die 'could not create a temporary file'
+        host_tmp
+        ROOTS_BEFORE=$(mktemp "$TMP_REAL/knossos-roots.XXXXXX") || die 'could not create a temporary file'
         ROOTS_HAD=no
         if [ -f "$ROOTS_FILE_REAL" ]; then ROOTS_HAD=yes; fi
         if ! problem=$(
@@ -1282,8 +1400,34 @@ $MOUNTS
 MOUNTED
     MOUNTS="$kept$path|$3$NEWLINE"
 }
+# The project root as it was reached, walked again: through a graph directory
+# (a project may lie in one) only along plain directories, never a link a
+# container could have planted there to move the mount elsewhere.
+# That is the roots entry when one chose it, else the path the caller gave.
+spelled=$ROOT
+if [ -n "$LISTED_AS" ] && [ "$LISTED_AS" != "$ROOT" ]; then
+    spelled=$LISTED_AS
+elif [ "$ROOT" = "$TARGET" ] && [ -n "$TARGET_GIVEN" ]; then
+    spelled=$TARGET_GIVEN
+fi
+checked=$(walk_to "$spelled" "the project root ($spelled)" 'run knossos from a project outside it, or take that entry out of the allow-list.' through) || exit 1
+[ "$checked" = "$ROOT" ] || die "the project root $spelled no longer leads to $ROOT; run the command again."
 add_mount "$ROOT" project false
 add_mount "$DATA_REAL" data true
+# The graph directory is recorded for this installation before any container
+# is given it, so that a later call with another KNOSSOS_DATA_DIR knows that
+# containers can write it (writer_of). The default graph needs no record.
+if [ "$DATA_REAL" != "$INSTALL_PARENT" ]; then
+    GRAPH_RECORD="$INSTALL_REAL/containers/graph-$(hash12 "$DATA_REAL")"
+    [ ! -L "$GRAPH_RECORD" ] || untrusted "$GRAPH_RECORD is a symlink"
+    if [ ! -f "$GRAPH_RECORD" ]; then
+        graph_tmp=$(mktemp "$INSTALL_REAL/containers/.graph.XXXXXX" 2>/dev/null) || die "could not write in $INSTALL_REAL/containers"
+        if ! printf '%s\n' "$DATA_REAL" > "$graph_tmp" || ! mv -f -- "$graph_tmp" "$GRAPH_RECORD"; then
+            rm -f -- "$graph_tmp"
+            die "could not record the graph directory $DATA_REAL in $INSTALL_REAL/containers"
+        fi
+    fi
+fi
 # The roots file's directory read-only, unless it is the install directory.
 if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then add_mount "$ROOTS_DIR_REAL" roots false; fi
 # The install directory read-only, on top: always its own mount, even when a
@@ -1424,7 +1568,8 @@ cleanup_files() {
 scratch() {
     [ -z "$SCRATCH" ] || return 0
     trap cleanup_files EXIT
-    PRIVATE=$( (umask 077 && mktemp -d "${TMPDIR:-/tmp}/knossos-files.XXXXXX") ) || die 'could not create a private temporary directory'
+    host_tmp
+    PRIVATE=$( (umask 077 && mktemp -d "$TMP_REAL/knossos-files.XXXXXX") ) || die 'could not create a private temporary directory'
     SCRATCH=$( (umask 077 && mktemp -d "$DATA_REAL/.knossos-files.XXXXXX") ) || die "could not create a scratch directory in $DATA_REAL"
     SCRATCH_ID=$(dir_id "$SCRATCH") || die "could not read the scratch directory $SCRATCH"
 }
@@ -1437,13 +1582,20 @@ in_scratch() {
 # The host refuses a destination it cannot place, before anything runs: its
 # directory must exist, and the name must not be a link or a directory.
 place_output() {
-    dest=$(located "$1")
+    dest=$(absolute "$1")
     parent=$(dirname -- "$dest")
     [ -d "$parent" ] || die "cannot write $dest: the directory $parent does not exist."
+    # Its directory is reached without a link a container could have planted
+    # (walk_to), and must lie outside every directory a container may write.
+    parent=$(walk_to "$parent" "the directory of $dest" 'write it somewhere else.' through) || exit 1
+    dest="${parent%/}/${dest##*/}"
     [ ! -L "$dest" ] || die "$dest is a symlink; name the file itself, not a link to it."
     [ ! -d "$dest" ] || die "$dest is a directory; name a file to write."
     if inside "$dest" "$DATA_REAL" || inside "$dest" "$INSTALL_REAL"; then
         die "$dest lies in the Knossos data directory, which a container can write; write it somewhere else."
+    fi
+    if graph=$(writer_of "$parent"); then
+        die "$dest lies in the graph directory $graph, which a container can write; write it somewhere else."
     fi
     [ -z "$OUTPUT_DEST" ] || die "a call can name one file to write in container mode."
     scratch
@@ -1491,10 +1643,21 @@ notes_answer() {
 
 # take_input PATH: what the command is given for a file it reads.
 take_input() {
-    file=$(located "$1")
+    file=$(absolute "$1")
+    in_dir=$(dirname -- "$file")
+    if [ -d "$in_dir" ]; then
+        # Reached without a link a container could have planted (walk_to).
+        in_dir=$(walk_to "$in_dir" "the directory of $file" 'copy the file somewhere else first.' through) || exit 1
+        file="${in_dir%/}/${file##*/}"
+    fi
     if mounted "$file" || [ ! -f "$file" ]; then
         given=$file
         return 0
+    fi
+    # Not in a mount, so the host copies it in: never from a directory a
+    # container may write, where the name could lead anywhere by now.
+    if graph=$(writer_of "$in_dir"); then
+        die "$file lies in the graph directory $graph, which a container can write, outside this call's mounts; copy it somewhere else first."
     fi
     scratch
     INPUTS=$((INPUTS + 1))
@@ -1791,6 +1954,10 @@ take_out_of_reach() {
     device=${device%%:*}
     [ -n "$device" ] || return 0
     for base in "$INSTALL_REAL" "$(dirname -- "$DATA_REAL")"; do
+        # Never a directory a container may write. The data directory lies
+        # in none (it is refused above), so neither does the one around it;
+        # checked again all the same, as this is where the file is taken to.
+        if writer_of "$base" >/dev/null; then continue; fi
         here=$(dir_id "$base") || continue
         [ "${here%%:*}" = "$device" ] || continue
         TAKEN=$( (umask 077 && mktemp -d "$base/.knossos-taken.XXXXXX") 2>/dev/null) || TAKEN=''

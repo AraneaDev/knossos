@@ -545,6 +545,67 @@ other_mode_entries() {
     printf '%s' "${found# }"
 }
 
+# graph_holding DIR: the nearest of DIR and the directories above it that is
+# the graph directory of a container install, told by its layout alone
+# (install/ holding containers/ and install.json; nothing in it is read), or
+# nothing. Every container of that install can write everything below it.
+graph_holding() {
+    at=$1
+    while :; do
+        if [ ! -L "${at%/}/install" ] && [ -d "${at%/}/install/containers" ] && [ -f "${at%/}/install/install.json" ]; then
+            printf '%s' "$at"
+            return 0
+        fi
+        [ "$at" != / ] || return 1
+        at=${at%/*}
+        at=${at:-/}
+    done
+}
+
+# refuse_in_graph PATH WHAT ADVICE [itself]: PATH may not lie in the graph
+# directory of a container install, which every container of that install can
+# write: a directory there could be swapped for a link at any time, and this
+# installer would then create, write, run and (with --force-clean) remove
+# through it, and the launcher would mount where it leads. With `itself`,
+# PATH may be that graph directory (installing over it again). `{graph}` in
+# ADVICE stands for that graph directory. The path is
+# walked from / one directory at a time, each step from the directory the
+# walk stands in, so the check sees what is there; a missing directory ends
+# the walk, as nothing below it exists yet.
+refuse_in_graph() {
+    (
+        CDPATH=''
+        cd -P / 2>/dev/null || exit 0
+        at=/
+        rest=$1
+        graph=$(graph_holding /) || graph=''
+        while :; do
+            while [ "${rest#/}" != "$rest" ]; do rest=${rest#/}; done
+            if [ -n "$graph" ] && { [ -n "$rest" ] || [ "${4-}" != itself ] || [ "$graph" != "$at" ]; }; then
+                advice=$3
+                case $advice in *'{graph}'*) advice="${advice%%'{graph}'*}$graph${advice#*'{graph}'}" ;; esac
+                die "$2 $1 lies in $graph, the graph directory of a container install, which its containers can write; $advice"
+            fi
+            [ -n "$rest" ] || break
+            component=${rest%%/*}
+            case $rest in */*) rest=${rest#*/} ;; *) rest='' ;; esac
+            [ "$component" != . ] || continue
+            [ -e "$component" ] || break
+            cd -P -- "$component" 2>/dev/null || break
+            at=$(pwd -P) || break
+            graph=$(graph_holding "$at") || graph=''
+        done
+    ) || exit 1
+}
+
+# refuse_nested_graph: the data directory, and the temporary directory this
+# run unpacks into and runs the update helper from, outside every graph
+# directory of a container install (refuse_in_graph).
+refuse_nested_graph() {
+    refuse_in_graph "$DATA_DIR" --data-dir "pick a --data-dir outside {graph}." itself
+    refuse_in_graph "${TMPDIR:-/tmp}" TMPDIR 'point TMPDIR at a directory outside it.'
+}
+
 refuse_other_mode() {
     entries=$(other_mode_entries)
     [ -n "$entries" ] || return 0
@@ -975,6 +1036,7 @@ main() {
     unset KNOSSOS_INSTALL_DIR
     LAUNCHER="$BIN_DIR/knossos"
 
+    refuse_nested_graph
     refuse_other_mode
     if [ "$MODE" = container ]; then
         install_container

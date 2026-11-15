@@ -553,26 +553,29 @@ printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/root
 # ---- symlinks: everything the container is given is the physical path -------------------
 
 REAL="$WORK/real"
-mkdir -p "$REAL/graph" "$REAL/roots" "$REAL/proj/src" "$REAL/install/plugin" "$REAL/install/containers"
+# The graph, the roots file and the project outside the install's default
+# graph directory ($REAL), where a container of that graph could not change them.
+PHYS="$WORK/phys"
+mkdir -p "$PHYS/graph" "$PHYS/roots" "$PHYS/proj/src" "$REAL/install/plugin" "$REAL/install/containers"
 cp "$INSTALL/install.json" "$REAL/install/install.json"
-ln -s "$REAL/graph" "$WORK/graph link"
-ln -s "$REAL/roots" "$WORK/roots link"
-ln -s "$REAL/proj" "$WORK/proj link"
+ln -s "$PHYS/graph" "$WORK/graph link"
+ln -s "$PHYS/roots" "$WORK/roots link"
+ln -s "$PHYS/proj" "$WORK/proj link"
 ln -s "$REAL/install" "$WORK/install link"
-printf '{"roots": ["%s"]}\n' "$WORK/proj link" > "$REAL/roots/roots.json"
+printf '{"roots": ["%s"]}\n' "$WORK/proj link" > "$PHYS/roots/roots.json"
 reset_docker
 out=$(cd "$WORK/proj link/src" && KNOSSOS_INSTALL_DIR="$REAL/install" KNOSSOS_DATA_DIR="$WORK/graph link" \
     KNOSSOS_ROOTS_FILE="$WORK/roots link/roots.json" "$LAUNCHER" version </dev/null 2>&1); status=$?
 run_line=$(grep '^call \[run\] \[-d\]' "$FAKE_DOCKER_STATE/calls")
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
 agree=yes
-for wanted in "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$REAL/install]" "[-e] [KNOSSOS_DATA_DIR=$REAL/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$REAL/roots/roots.json]" \
-    "[--mount] [type=bind,source=$REAL/proj,target=$REAL/proj,readonly]" "[--mount] [type=bind,source=$REAL/graph,target=$REAL/graph]" \
-    "[--mount] [type=bind,source=$REAL/roots,target=$REAL/roots,readonly]" "[--mount] [type=bind,source=$REAL/install,target=$REAL/install,readonly]" \
+for wanted in "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$REAL/install]" "[-e] [KNOSSOS_DATA_DIR=$PHYS/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$PHYS/roots/roots.json]" \
+    "[--mount] [type=bind,source=$PHYS/proj,target=$PHYS/proj,readonly]" "[--mount] [type=bind,source=$PHYS/graph,target=$PHYS/graph]" \
+    "[--mount] [type=bind,source=$PHYS/roots,target=$PHYS/roots,readonly]" "[--mount] [type=bind,source=$REAL/install,target=$REAL/install,readonly]" \
     "[$REAL/install/containers/knossos-"; do
     case $run_line in *"$wanted"*) ;; *) agree=no; printf '  run lacks %s\n' "$wanted" ;; esac
 done
-for wanted in "[-w] [$REAL/proj/src]" "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$REAL/install]" "[-e] [KNOSSOS_DATA_DIR=$REAL/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$REAL/roots/roots.json]"; do
+for wanted in "[-w] [$PHYS/proj/src]" "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$REAL/install]" "[-e] [KNOSSOS_DATA_DIR=$PHYS/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$PHYS/roots/roots.json]"; do
     case $exec_line in *"$wanted"*) ;; *) agree=no; printf '  exec lacks %s\n' "$wanted" ;; esac
 done
 case "$run_line$exec_line" in *link*) agree=no; printf '  a symlinked spelling reached the container\n' ;; esac
@@ -583,7 +586,7 @@ else
 fi
 # The roots entry was spelled through a symlink: inside, only its physical form exists.
 case $exec_line in
-    *"[-e] [KNOSSOS_ALLOWED_ROOTS=$REAL/proj]"*) pass 'a root listed through a symlink is granted in its physical form inside' ;;
+    *"[-e] [KNOSSOS_ALLOWED_ROOTS=$PHYS/proj]"*) pass 'a root listed through a symlink is granted in its physical form inside' ;;
     *) fail "allowed root through a symlink: $exec_line" ;;
 esac
 
@@ -1165,6 +1168,100 @@ if [ ! -e "$WORK/escaped to/new" ]; then pass 'and nothing is created at the end
 rm -f "$DATA/escape"
 refused "a caller's KNOSSOS_ROOTS_FILE inside the project" "KNOSSOS_ROOTS_FILE ($PROJECT/src/roots.json) lies inside the project root $PROJECT, whose files the scanned project controls" \
     sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$1/src/roots.json" env -u KNOSSOS_DATA_DIR "$2" version </dev/null' _ "$PROJECT" "$LAUNCHER"
+
+# ---- a data directory is never reached through a link a container planted ---------------
+
+# The default graph directory ($DATA) is read-write in every container of the
+# default setup, so a link there may lead anywhere by the next call: to a
+# folder of yours, which would be mounted read-write, or to one that does not
+# exist yet, which the host would create.
+ESCAPE="$HOME/escape"
+mkdir -p "$ESCAPE"
+printf 'keep\n' > "$ESCAPE/sentinel"
+escape_intact() { [ "$(cat "$ESCAPE/sentinel" 2>/dev/null)" = keep ] && [ "$(ls -A "$ESCAPE")" = sentinel ]; }
+data_call() { sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$PROJECT" "$1" "$LAUNCHER"; }
+ln -s "$ESCAPE/new graph" "$DATA/work"
+refused 'a KNOSSOS_DATA_DIR whose last component is a link planted in the default graph directory, to a folder that does not exist' \
+    "KNOSSOS_DATA_DIR ($DATA/work) lies in the graph directory $DATA, which a container can write, and goes through $DATA/work there, a symbolic link the host does not follow; pick a data directory outside $DATA." \
+    data_call "$DATA/work"
+if [ ! -e "$ESCAPE/new graph" ] && escape_intact; then pass 'and nothing is created where that link points'; else fail "created through a planted last component: $(ls -A "$ESCAPE")"; fi
+rm -f "$DATA/work"
+ln -s "$ESCAPE" "$DATA/work"
+refused 'a KNOSSOS_DATA_DIR whose last component is a link planted in the default graph directory, to a folder of yours' \
+    "KNOSSOS_DATA_DIR ($DATA/work) lies in the graph directory $DATA, which a container can write, and goes through $DATA/work there" \
+    data_call "$DATA/work"
+if escape_intact; then pass 'and that folder is neither mounted nor changed'; else fail "folder behind a planted link changed: $(ls -A "$ESCAPE")"; fi
+rm -f "$DATA/work"
+ln -s "$ESCAPE" "$DATA/mid"
+refused 'a KNOSSOS_DATA_DIR whose middle component is a link planted in the default graph directory' \
+    "KNOSSOS_DATA_DIR ($DATA/mid/work) lies in the graph directory $DATA, which a container can write, and goes through $DATA/mid there, a symbolic link the host does not follow; pick a data directory outside $DATA." \
+    data_call "$DATA/mid/work"
+if [ ! -e "$ESCAPE/work" ] && escape_intact; then pass 'and nothing is created below where that link points'; else fail "created through a planted middle component: $(ls -A "$ESCAPE")"; fi
+rm -f "$DATA/mid"
+mkdir -p "$DATA/second"
+refused 'a KNOSSOS_DATA_DIR inside the default graph directory' \
+    "KNOSSOS_DATA_DIR ($DATA/second) lies in the graph directory $DATA, which a container can write; pick a data directory outside $DATA." \
+    data_call "$DATA/second"
+refused 'a KNOSSOS_DATA_DIR inside the default graph directory that does not exist yet' \
+    "KNOSSOS_DATA_DIR ($DATA/not yet) lies in the graph directory $DATA, which a container can write; pick a data directory outside $DATA." \
+    data_call "$DATA/not yet"
+if [ ! -e "$DATA/not yet" ]; then pass 'and it is not created'; else fail "$DATA/not yet was created"; fi
+# A link of yours that leads into the default graph directory changes nothing.
+ln -s "$DATA" "$WORK/to data"
+refused 'a KNOSSOS_DATA_DIR that a link of yours leads into the default graph directory' \
+    "KNOSSOS_DATA_DIR ($WORK/to data/second) lies in the graph directory $DATA, which a container can write; pick a data directory outside $DATA." \
+    data_call "$WORK/to data/second"
+ln -s "$DATA/second" "$WORK/to second"
+refused 'a KNOSSOS_DATA_DIR that is a link of yours to a folder in the default graph directory' \
+    "KNOSSOS_DATA_DIR ($WORK/to second) lies in the graph directory $DATA, which a container can write; pick a data directory outside $DATA." \
+    data_call "$WORK/to second"
+rm -rf "$DATA/second" "$WORK/to data" "$WORK/to second"
+# Outside it, through a link you made above it: works, and the physical path is used.
+mkdir -p "$WORK/person target"
+ln -s "$WORK/person target" "$WORK/person link"
+SECOND="$WORK/person target/graph two"
+reset_docker
+out=$(data_call "$WORK/person link/graph two" 2>&1); status=$?
+if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$SECOND,target=$SECOND]" "$FAKE_DOCKER_STATE/calls" \
+    && [ "$(cat "$INSTALL/containers/graph-$(hash12 "$SECOND")" 2>/dev/null)" = "$SECOND" ]; then
+    pass 'a KNOSSOS_DATA_DIR outside the default graph, reached through a link of yours, is created, mounted at its physical path and recorded'
+else
+    fail "data dir through your own link: $status, $out, $(calls)"
+fi
+# Once used, that graph directory counts as one a container can write.
+mkdir -p "$SECOND/inner"
+refused 'a KNOSSOS_DATA_DIR inside another graph directory this installation has used' \
+    "KNOSSOS_DATA_DIR ($SECOND/inner) lies in the graph directory $SECOND, which a container can write; pick a data directory outside $SECOND." \
+    data_call "$SECOND/inner"
+ln -s "$ESCAPE" "$SECOND/planted"
+refused 'a KNOSSOS_DATA_DIR through a link planted in another graph directory this installation has used' \
+    "KNOSSOS_DATA_DIR ($SECOND/planted/x) lies in the graph directory $SECOND, which a container can write, and goes through $SECOND/planted there" \
+    data_call "$SECOND/planted/x"
+if [ ! -e "$ESCAPE/x" ] && escape_intact; then pass 'and nothing is created there either'; else fail "created through a link in a used graph: $(ls -A "$ESCAPE")"; fi
+refused "a caller's KNOSSOS_ROOTS_FILE in another graph directory this installation has used" \
+    "KNOSSOS_ROOTS_FILE ($SECOND/roots.json) lies in the graph directory $SECOND, which a container can write" \
+    sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$2/roots.json" env -u KNOSSOS_DATA_DIR "$3" version </dev/null' _ "$PROJECT" "$SECOND" "$LAUNCHER"
+refused 'an --out in another graph directory this installation has used' \
+    "$SECOND/brief.md lies in the graph directory $SECOND, which a container can write; write it somewhere else." \
+    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" export-agent-brief "$1" "--out=$3/brief.md" </dev/null' _ "$PROJECT" "$LAUNCHER" "$SECOND"
+printf 'SECRET-INPUT\n' > "$ESCAPE/policies.json"
+refused 'an input file reached through a link planted in the graph directory' \
+    "the directory of $SECOND/planted/policies.json lies in the graph directory $SECOND, which a container can write, and goes through $SECOND/planted there" \
+    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" quality-gate "--policies=$3/planted/policies.json" </dev/null' _ "$PROJECT" "$LAUNCHER" "$SECOND"
+rm -f "$ESCAPE/policies.json"
+mkdir -p "$DATA/tmp"
+refused 'a TMPDIR in the graph directory' \
+    "TMPDIR ($DATA/tmp) lies in the graph directory $DATA, which a container can write; point TMPDIR at a directory outside it." \
+    sh -c 'cd "$1" && TMPDIR="$3/tmp" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" export-agent-brief "$1" "--out=$4/brief.md" </dev/null' _ "$PROJECT" "$LAUNCHER" "$DATA" "$WORK/outside"
+rm -rf "$DATA/tmp" "$SECOND/planted" "$WORK/person link" "$WORK/person target"
+find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
+# A project root reached through a link planted in the graph directory is not mounted.
+ln -s "$ESCAPE" "$DATA/proj"
+refused 'a project path through a link planted in the graph directory' \
+    "the project root ($DATA/proj) lies in the graph directory $DATA, which a container can write, and goes through $DATA/proj there" \
+    sh -c 'cd / && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$1" scan "$2/proj" </dev/null' _ "$LAUNCHER" "$DATA"
+rm -f "$DATA/proj"
+rm -rf "$ESCAPE"
 
 # allow-root: validated and written on the host; no container runs for it.
 mkdir -p "$WORK/second project"

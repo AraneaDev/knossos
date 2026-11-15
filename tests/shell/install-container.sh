@@ -256,6 +256,42 @@ reset_docker
 out=$(cid "$HOME" "$HOME/.knossos-test" "$WORK/home-bin" --no-plugin --no-roots); status=$?
 if [ "$status" -eq 0 ] && [ -f "$HOME/.knossos-test/install/install.json" ]; then pass 'run from the home directory, a data directory below it is accepted'; else fail "from home: $status, $out"; fi
 rm -rf "$HOME/.knossos-test"
+# A data directory inside the graph directory of a container install, which
+# every container of that install can write: refused before anything is made,
+# through a link planted there or not, and --force-clean removes nothing
+# where such a link points.
+HELD="$WORK/held graph"
+mkdir -p "$HELD/install/containers" "$WORK/victim/versions/0.9.0" "$WORK/victim/plugin"
+printf '{"mode": "container", "layout": "separate"}\n' > "$HELD/install/install.json"
+printf '{"mode": "native", "version": "0.9.0"}\n' > "$WORK/victim/install.json"
+layout_refused 'a data directory inside the graph directory of a container install' \
+    "--data-dir $HELD/second lies in $HELD, the graph directory of a container install, which its containers can write; pick a --data-dir outside $HELD." \
+    "$WORK" "$HELD/second" "$WORK/held-bin" --no-plugin --no-roots
+ln -s "$WORK/escape target" "$HELD/work"
+layout_refused 'a data directory through a link planted in the graph directory of a container install' \
+    "--data-dir $HELD/work lies in $HELD, the graph directory of a container install" \
+    "$WORK" "$HELD/work" "$WORK/held-bin" --no-plugin --no-roots
+if [ ! -e "$WORK/escape target" ]; then pass 'and nothing is created where that link points'; else fail 'the installer created a directory through a planted link'; fi
+rm -f "$HELD/work"
+ln -s "$WORK/victim" "$HELD/work"
+reset_docker
+out=$(cid "$WORK" "$HELD/work" "$WORK/held-bin" --no-plugin --no-roots --force-clean); status=$?
+if [ "$status" -ne 0 ] && [ -f "$WORK/victim/install.json" ] && [ -d "$WORK/victim/versions/0.9.0" ] && [ -d "$WORK/victim/plugin" ] && [ "$(count_calls run)" -eq 0 ]; then
+    pass '--force-clean through a link planted in a graph directory removes nothing where it points'
+else
+    fail "force-clean through a planted link: $status, $out, $(ls -A "$WORK/victim")"
+fi
+mkdir -p "$HELD/tmp"
+reset_docker
+out=$(cd "$WORK" && TMPDIR="$HELD/tmp" PATH="$BARE" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 \
+    sh "$INSTALL_SH" --mode=container --data-dir="$WORK/held data" --bin-dir="$WORK/held-bin" --version=1.0.0 --no-plugin --no-roots 2>&1 </dev/null); status=$?
+case $out in *"TMPDIR $HELD/tmp lies in $HELD, the graph directory of a container install, which its containers can write; point TMPDIR at a directory outside it."*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ] && [ ! -e "$WORK/held data" ] && [ -z "$(ls -A "$HELD/tmp")" ]; then
+    pass 'a TMPDIR inside the graph directory of a container install is refused before anything is unpacked or run there'
+else
+    fail "TMPDIR in a graph: $status, $out"
+fi
+rm -rf "$HELD" "$WORK/victim" "$WORK/held-bin"
 
 # A data directory that holds a native install is refused, or cleaned of
 # exactly the native entries with --force-clean; the graph and roots stay.
