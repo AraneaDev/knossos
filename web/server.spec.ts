@@ -35,6 +35,8 @@ type Running = Awaited<ReturnType<typeof startServer>>
 let running: Running | null = null
 
 afterEach(async () => {
+  // Start-up writes into the data directory: it is waited for, so nothing lands there once the test has removed it.
+  await running?.ready
   await running?.close()
   running = null
 })
@@ -252,6 +254,7 @@ describe('startServer', () => {
     await expect(startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: first.port })).rejects.toThrow(/EADDRINUSE/)
     const moved = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: first.port, movable: true })
     expect(moved.port).not.toBe(first.port)
+    await moved.ready
     await moved.close()
   })
 

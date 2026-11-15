@@ -1,26 +1,18 @@
-import { execFileSync, spawn } from 'node:child_process'
-import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
-import { markedPluginRoot, scratch } from './fixtures/helpers'
+import { describe, expect, it } from 'vitest'
+import { markedPluginRoot, scratch, spawnFixture } from './fixtures/helpers'
 import { browserCommands, openBrowser } from './browser'
 import { lockFile } from './lock'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const running: ChildProcessWithoutNullStreams[] = []
-
-afterEach(() => {
-  for (const child of running.splice(0)) if (child.exitCode === null) child.kill('SIGKILL')
-})
-
 /** `node web/main.ts` for `dir`, not opening a browser, and its output as it comes. */
 function main(dir: string, env: Record<string, string>, extra: string[] = []) {
-  const child = spawn(process.execPath, [join(HERE, 'main.ts'), dir, '--no-open', ...extra], { env: { ...process.env, ...env } })
-  running.push(child)
+  const child = spawnFixture(process.execPath, [join(HERE, 'main.ts'), dir, '--no-open', ...extra], { env: { ...process.env, ...env } })
   let out = ''
   child.stdout.setEncoding('utf8').on('data', (text: string) => (out += text))
   child.stderr.setEncoding('utf8').on('data', (text: string) => (out += text))

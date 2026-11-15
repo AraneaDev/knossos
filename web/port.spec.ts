@@ -1,11 +1,11 @@
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { scratch as scratchUnder } from './fixtures/helpers'
 import { webPort } from './port'
 import type { PortHub } from './port'
 
-const scratch = () => mkdtempSync(join(tmpdir(), 'knossos-web-port-'))
+const scratch = () => scratchUnder('knossos-web-port-')
 
 /** A hub that only counts what the port tells it. */
 function fakeHub() {

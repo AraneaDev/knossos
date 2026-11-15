@@ -48,6 +48,8 @@ afterEach(async () => {
   vi.restoreAllMocks()
   for (const hosted of started.splice(0)) {
     if (hosted.kind !== 'mine') continue
+    // Start-up writes into the data directory: it is waited for, so nothing lands there once the test has removed it.
+    await hosted.ready
     await hosted.close()
     hosted.release()
   }

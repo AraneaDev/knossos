@@ -1,20 +1,13 @@
-import { spawn } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { lockFile } from '../web/lock'
-import { markedPluginRoot, scratch } from '../web/fixtures/helpers'
+import { markedPluginRoot, scratch, spawnFixture } from '../web/fixtures/helpers'
 import { ENTER, LEAVE } from './terminal'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const running: ChildProcessWithoutNullStreams[] = []
-
-afterEach(() => {
-  for (const child of running.splice(0)) if (child.exitCode === null) child.kill('SIGKILL')
-})
-
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 /** What a spawned process has printed so far, and ways to wait on it. */
@@ -38,8 +31,7 @@ function tui(dir: string, env: Record<string, string>, via: 'node' | 'php' = 'no
   // `php` goes through bin/knossos, which runs node as a child in its own process group, as an installed `knossos` does.
   const entry = via === 'php' ? ['php', join(HERE, '../bin/knossos'), dir, ...more] : [process.execPath, join(HERE, 'main.ts'), dir, ...more]
   // A session of its own with no shell in it: the process group is orphaned, as in `exec knossos` or a tmux pane started as the command.
-  const child = spawn('python3', ['-c', PTY, 'sh', '-c', 'stty rows 30 cols 130; exec "$@"', 'sh', ...entry], { env: { ...process.env, ...env } })
-  running.push(child)
+  const child = spawnFixture('python3', ['-c', PTY, 'sh', '-c', 'stty rows 30 cols 130; exec "$@"', 'sh', ...entry], { env: { ...process.env, ...env } })
   return { child, ...watch(child) }
 }
 
@@ -49,15 +41,13 @@ const PTY = 'import pty,sys,os; sys.exit(os.waitstatus_to_exitcode(pty.spawn(sys
 /** `knossos <dir> <more>` through bin/knossos as a job of a shell with job control, which runs `then` once the job stops. */
 function job(dir: string, env: Record<string, string>, more: string[], then: string) {
   const line = `stty rows 30 cols 130; set -m; php ${JSON.stringify(join(HERE, '../bin/knossos'))} ${JSON.stringify(dir)} ${more.join(' ')}; ${then}`
-  const child = spawn('python3', ['-c', PTY, 'bash', '--norc', '--noprofile', '-c', line], { env: { ...process.env, ...env } })
-  running.push(child)
+  const child = spawnFixture('python3', ['-c', PTY, 'bash', '--norc', '--noprofile', '-c', line], { env: { ...process.env, ...env } })
   return { child, ...watch(child) }
 }
 
 /** `node web/main.ts <dir> --no-open` with the same environment. */
 function web(dir: string, env: Record<string, string>) {
-  const child = spawn(process.execPath, [join(HERE, '../web/main.ts'), dir, '--no-open'], { env: { ...process.env, ...env } })
-  running.push(child)
+  const child = spawnFixture(process.execPath, [join(HERE, '../web/main.ts'), dir, '--no-open'], { env: { ...process.env, ...env } })
   return { child, ...watch(child) }
 }
 

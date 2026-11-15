@@ -1,11 +1,11 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { scratch } from './fixtures/helpers'
+import { scratch, spawnFixture } from './fixtures/helpers'
 import { addressOf, claim, identity, lockFile } from './lock'
 
 const LOCK = join(dirname(fileURLToPath(import.meta.url)), 'lock.ts')
@@ -43,7 +43,7 @@ vi.mock('node:fs', async importOriginal => {
  */
 function claimer(data: string, root: string, at: number): { kind: Promise<string>; done(): void } {
   const code = `import(${JSON.stringify(LOCK)}).then(async m => { while (Date.now() < ${at}); const c = await m.claim(${JSON.stringify(data)}, ${JSON.stringify(root)}, ${JSON.stringify(TOKEN)}); console.log(c.kind); process.stdin.resume().on('end', () => process.exit(0)) })`
-  const child = spawn(process.execPath, ['-e', code])
+  const child = spawnFixture(process.execPath, ['-e', code])
   let out = ''
   const kind = new Promise<string>(resolve => {
     child.stdout.on('data', (chunk: Buffer) => {
@@ -116,7 +116,7 @@ describe('claim', () => {
     // Another start holds the removal guard for a moment, as it would while deciding whether the lock is stale.
     const guard = `${file}.removing`
     writeFileSync(guard, '1')
-    const remover = spawn('sh', ['-c', `sleep 0.2; rm -f '${guard}'`])
+    const remover = spawnFixture('sh', ['-c', `sleep 0.2; rm -f '${guard}'`])
     const started = Date.now()
     got.record(1234)
     expect(Date.now() - started).toBeGreaterThanOrEqual(150)
