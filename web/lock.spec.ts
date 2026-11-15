@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { RequestListener } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import type { AddressInfo } from 'node:net'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -244,14 +245,16 @@ describe('claim', () => {
     expect(await got.holder()).toBeNull()
     const seen: Seen[] = []
     const pane = await servePane({ seen })
-    const closed = await serve(() => undefined)
-    closed.close()
+    // Kept: one that accepts and drops every connection serves nothing, and no other spec's server can take its port.
+    const closed = createNetServer(socket => socket.destroy())
+    await new Promise<void>(resolve => closed.listen(0, '127.0.0.1', resolve))
+    const closedPort = (closed.address() as AddressInfo).port
     try {
       // Named for a process that is gone: no one else holds it.
       writeFileSync(file, JSON.stringify({ pid: deadPid(), port: pane.port }))
       expect(await got.holder()).toBeNull()
       // Named for a live process that serves nothing at its port (a pid used again): no evidence of another holder.
-      writeFileSync(file, JSON.stringify({ pid: process.ppid, port: closed.port }))
+      writeFileSync(file, JSON.stringify({ pid: process.ppid, port: closedPort }))
       expect(await got.holder()).toBeNull()
       // Named for another live process with a pane server at its port: that one took the project over.
       writeFileSync(file, JSON.stringify({ pid: process.ppid, port: pane.port }))
@@ -271,6 +274,7 @@ describe('claim', () => {
       }
     } finally {
       pane.close()
+      closed.close()
     }
   })
 

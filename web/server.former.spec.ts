@@ -42,7 +42,15 @@ describe('startServer', () => {
       return running
     }
     const at = (port: number, path: string) => fetch(`http://127.0.0.1:${port}${path}`, { redirect: 'manual' })
-    const answers = (port: number) => at(port, '/').then(() => true, () => false)
+    /** Whether this server's directions answer on `port`: any other answer there is another spec's, on a port freed and taken again. */
+    const answers = async (port: number) => {
+      const token = running?.token ?? ''
+      const text = await at(port, `/events?t=${token}&id=x`).then(
+        r => r.text(),
+        () => '',
+      )
+      return text.startsWith('data: {"type":"moved"')
+    }
     const ticks = (n: number) => new Promise(resolve => setTimeout(resolve, 20 * n))
 
     it('takes it once the live, silent holder lets it go, with only directions there, and lets it go with the server', async () => {
