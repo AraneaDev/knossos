@@ -129,7 +129,7 @@ still: here `ResultEnvelope`, used by 89 and using 15.
 
 ## Boundaries
 
-![The Boundaries tab: 34 boundaries, the first five listed with their components and dependencies in and out, what the marked tests boundary depends on and what uses it, and the tests to Query flow drawn with the component pairs behind it](../../images/claude-code/boundaries.png)
+![The Boundaries tab: 33 declared boundaries and 1 inferred, the first five listed with their components and dependencies in and out, what the marked tests boundary depends on and what uses it, and the tests to Query flow drawn with the component pairs behind it](../../images/claude-code/boundaries.png)
 
 **The heat map** shows how much each boundary depends on each other one. Rows
 are where a dependency starts, columns where it lands. The axes are lettered,
