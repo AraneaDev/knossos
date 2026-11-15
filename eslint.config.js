@@ -78,6 +78,7 @@ export default [
                 setTimeout: "readonly",
                 Element: "readonly",
                 HTMLImageElement: "readonly",
+                MutationObserver: "readonly",
             },
         },
     },

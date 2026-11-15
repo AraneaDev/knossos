@@ -3,6 +3,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
 import { REPOSITORY, repositoryLinks } from "./links.mjs";
+import {
+    OG_IMAGE,
+    SITE_NAME,
+    SITE_URL,
+    THEME_COLOR,
+    absoluteUrl,
+    describe,
+    routeOfPage,
+} from "./meta.mjs";
 import { githubSlug } from "./slug.mjs";
 import {
     SCRATCH_DIRECTORIES,
@@ -94,12 +103,90 @@ const resolveFromSite = {
     },
 };
 
+// What Knossos is, in one line: the site's description and the front page's
+// structured data say it the same way.
+const WHAT_IT_IS =
+    "the architecture graph for your code that Claude Code and other MCP clients can read";
+const SITE_DESCRIPTION = `Documentation for Knossos, ${WHAT_IT_IS}.`;
+
+/**
+ * A page's description: its front matter's when it has one, the front page's
+ * from its hero, any other page's from its first paragraph (meta.mjs).
+ */
+function descriptionOf(pageData) {
+    const { frontmatter } = pageData;
+    if (frontmatter.description) {
+        return frontmatter.description;
+    }
+    if (frontmatter.layout === "home" && frontmatter.hero) {
+        return `${frontmatter.hero.text}. ${frontmatter.hero.tagline}`;
+    }
+    const source = fs.readFileSync(
+        path.join(docsDir, pageData.filePath),
+        "utf8",
+    );
+
+    return describe(source) || `${pageData.title}. ${SITE_DESCRIPTION}`;
+}
+
+/** The tags that tell search engines and link previews what a page is. */
+function headOf({ pageData, title, description }) {
+    if (pageData.isNotFound || pageData.relativePath === "404.md") {
+        return [["meta", { name: "robots", content: "noindex" }]];
+    }
+    const url = absoluteUrl(routeOfPage(pageData.relativePath));
+    const image = absoluteUrl(OG_IMAGE.path);
+    const meta = (key, name, content) => ["meta", { [key]: name, content }];
+    const head = [
+        // VitePress writes this tag unescaped when the head has none of its own.
+        meta("name", "description", description),
+        ["link", { rel: "canonical", href: url }],
+        meta("property", "og:type", "website"),
+        meta("property", "og:site_name", SITE_NAME),
+        meta("property", "og:locale", "en_US"),
+        meta("property", "og:title", title),
+        meta("property", "og:description", description),
+        meta("property", "og:url", url),
+        meta("property", "og:image", image),
+        meta("property", "og:image:type", "image/png"),
+        meta("property", "og:image:width", String(OG_IMAGE.width)),
+        meta("property", "og:image:height", String(OG_IMAGE.height)),
+        meta("property", "og:image:alt", OG_IMAGE.alt),
+        meta("name", "twitter:card", "summary_large_image"),
+        meta("name", "twitter:title", title),
+        meta("name", "twitter:description", description),
+        meta("name", "twitter:image", image),
+        meta("name", "twitter:image:alt", OG_IMAGE.alt),
+    ];
+    if (pageData.relativePath === "index.md") {
+        head.push([
+            "script",
+            { type: "application/ld+json" },
+            JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "SoftwareSourceCode",
+                name: SITE_NAME,
+                description: `Knossos is ${WHAT_IT_IS}.`,
+                url: SITE_URL,
+                codeRepository: REPOSITORY,
+                license: "https://spdx.org/licenses/MIT",
+                author: {
+                    "@type": "Person",
+                    name: "Tim Schipper",
+                    url: "https://tim-schipper.nl/en",
+                },
+            }).replace(/</g, "\\u003c"),
+        ]);
+    }
+
+    return head;
+}
+
 // No page has a diagram, so there is no Mermaid plugin: it made every page preload
 // 1.4 MB. To draw one, add vitepress-plugin-mermaid and mermaid@11 and wrap this in withMermaid().
 export default defineConfig({
     title: "Knossos",
-    description:
-        "Documentation for Knossos, the architecture graph for your code that Claude Code and other MCP clients can read.",
+    description: SITE_DESCRIPTION,
     lang: "en-US",
     // GitHub Pages serves a project site under the repository name.
     base: "/knossos/",
@@ -114,11 +201,23 @@ export default defineConfig({
     ignoreDeadLinks: false,
     // Off: a shallow checkout would give every page the date of one commit.
     lastUpdated: false,
-    vite: { plugins: [resolveFromSite] },
+    // The site's own static files (the social card) live beside this config,
+    // not in docs/, so docs/ stays the pages people read on GitHub too.
+    vite: {
+        plugins: [resolveFromSite],
+        publicDir: path.join(repositoryRoot, "website/public"),
+    },
+    sitemap: { hostname: SITE_URL },
+    transformPageData: (pageData) => ({
+        description: descriptionOf(pageData),
+    }),
+    transformHead: headOf,
     // Dark first, as the pane: a reader's own choice in the switch still wins.
     appearance: "dark",
     head: [
         ["meta", { name: "color-scheme", content: "dark light" }],
+        // The theme keeps this in step with the appearance switch.
+        ["meta", { name: "theme-color", content: THEME_COLOR.dark }],
         ["link", { rel: "icon", type: "image/svg+xml", href: favicon }],
     ],
     markdown: {

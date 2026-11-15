@@ -1603,10 +1603,12 @@ js	web/server.spec.ts
 js	web/server.ts
 js	website/.vitepress/config.mjs
 js	website/.vitepress/links.mjs
+js	website/.vitepress/meta.mjs
 js	website/.vitepress/navigation.mjs
 js	website/.vitepress/slug.mjs
 js	website/.vitepress/theme/index.mjs
 js	website/check.mjs
+js	website/og-image.mjs
 js	workers/typescript/bin/worker.js
 js	workers/typescript/src/__tests__/ambient-declarations.test.js
 js	workers/typescript/src/__tests__/angular-inject.test.js
