@@ -20,7 +20,8 @@ import { driftSection, fileDetailArrangement } from './files'
 import { boundaryLabel, FAINT } from './palette'
 import type { Hues } from './palette'
 import { baseName, placeOf } from './paths'
-import { blank, clip, dimRow, rowsHeight, rowWidth, inList } from './rows'
+import { blank, clip, rowsHeight, rowWidth, inList } from './rows'
+import { bodyLine, bodyRow } from './spacing'
 import { numberWidth, tableHead, tableRow, tableSpec, tierOf, withDependents } from './table'
 import { cells, grouped } from './text'
 import type { Loc, Row, Segment } from './types'
@@ -158,21 +159,21 @@ function hubsBlock(input: PaneInput, list: Item[], selected: number, tier: Tier)
     make: (columns, limit, scrolled) => {
       const rows: Row[] = []
       if (input.filtering) {
-        rows.push({ key: 'filter-row', segments: [{ text: '   filter: ', dim: true }, { text: input.filter, field: { id: 'filter', value: input.filter, placeholder: 'part of a name' } }] })
+        rows.push(bodyRow('filter-row', [{ text: 'filter: ', dim: true }, { text: input.filter, field: { id: 'filter', value: input.filter, placeholder: 'part of a name' } }]))
       } else if (input.filter !== '') {
-        rows.push(dimRow('filter-row', `   filter "${input.filter}" · ${list.length} of ${input.items.length}`, columns))
+        rows.push(bodyLine('filter-row', `filter "${input.filter}" · ${list.length} of ${input.items.length}`, columns))
       }
       if (range !== null) {
         // The list holds the most depended on only: the bucket may count many more than it lists.
         const counted = range.components === null ? '' : ` of ${grouped(range.components)}`
-        rows.push(dimRow('degree-row', `   in-degree ${range.to === null ? `${range.from}+` : range.from === range.to ? `${range.from}` : `${range.from}–${range.to}`} · ${list.length} listed${counted}`, columns))
+        rows.push(bodyLine('degree-row', `in-degree ${range.to === null ? `${range.from}+` : range.from === range.to ? `${range.from}` : `${range.from}–${range.to}`} · ${list.length} listed${counted}`, columns))
       }
       // The kinds the rows show join the note where the top edge has room; a note too long is dropped whole.
       const kinds = kindLegend(list.map(i => i.kind))
       const keyed = [note, kinds].filter(s => s !== '').join(' · ')
       const told = cells(`Hubs and hotspots sorted by ${input.sort}`) + cells(keyed) + NOTE_ROOM <= columns ? keyed : note
       const section = (body: Row[]): Section => ({ key: 'hubs', title: 'Hubs and hotspots', subtitle: `sorted by ${input.sort}`, note: noteOf(told), body })
-      if (list.length === 0) return section([...rows, dimRow('hubs-none', input.filter === '' ? (range === null ? '   none' : '   none of the listed hubs is in this range') : `   no hub matches "${input.filter}"`, columns)])
+      if (list.length === 0) return section([...rows, bodyLine('hubs-none', input.filter === '' ? (range === null ? 'none' : 'none of the listed hubs is in this range') : `no hub matches "${input.filter}"`, columns)])
       const spec = componentSpec(list, columns, input.hues, tier)
       const local = selected < list.length ? selected : -1
       const window = windowOf(list.length, limit, local, scrolled)

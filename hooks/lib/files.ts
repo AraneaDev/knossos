@@ -21,7 +21,7 @@ import { numberWidth, tableRow, tableSpec } from './table'
 import { chip } from './chips'
 import { displayName, pathText, plural, wrapWords } from './text'
 import { placeLines } from './detail-head'
-import { labelledRows, wrapValue } from './spacing'
+import { bodyLine, labelledRows, wrapValue } from './spacing'
 import type { Fact } from './spacing'
 import type { Loc, Row, Segment } from './types'
 import type { TableSpec, Tier } from './table'
@@ -145,9 +145,9 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
     items: items.map((d, n) => ({ name: baseName(d.path), boundary: d.boundary, edges: d.edges, press: `row:${offset + n}` })),
   })
   const hood = hoodBlock({ name: baseName(f.path), boundary: f.boundary }, side('Depended on by', deps.count, deps.items, 0), side('Depends on', uses.count, uses.items, deps.items.length), selected, hues, (columns, limit) => [
-    ...(deps.items.length === 0 ? [dimRow('deps-none', '   none: no other file depends on it', columns)] : table('dep', deps.items, 0, columns, limit)),
+    ...(deps.items.length === 0 ? [bodyLine('deps-none', 'none: no other file depends on it', columns)] : table('dep', deps.items, 0, columns, limit)),
     ...notListedRow('deps-more', deps.count, deps.items.length, columns),
-    ...(f.uses === null ? [] : [dimRow('uses-title', `   Depends on · ${plural(uses.count, 'file', 'files')}`, columns), ...table('use', uses.items, deps.items.length, columns, limit), ...notListedRow('uses-more', uses.count, uses.items.length, columns)]),
+    ...(f.uses === null ? [] : [bodyLine('uses-title', `Depends on · ${plural(uses.count, 'file', 'files')}`, columns), ...table('use', uses.items, deps.items.length, columns, limit), ...notListedRow('uses-more', uses.count, uses.items.length, columns)]),
   ])
   // The boundaries a change here reaches, above the drawing.
   const reached: Block = {
@@ -168,7 +168,7 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
     make: (columns, limit, scrolled) => {
       const spec = countedSpec(columns, comps.items.map(c => c.name), [], comps.items.map(c => c.usedBy), tier)
       const rows: Row[] = []
-      if (comps.items.length === 0) rows.push(dimRow('comps-none', '   none', columns))
+      if (comps.items.length === 0) rows.push(bodyLine('comps-none', 'none', columns))
       const max = Math.max(0, ...comps.items.map(c => c.usedBy))
       const listed = windowedTable('comps-window', comps.items, { columns, limit, local: inList(selected - offset, comps.items.length), scrolled, walk: offset }, (shown, start) =>
         shown.map((c, n) => {
