@@ -2,12 +2,13 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { RequestListener } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import type { AddressInfo } from 'node:net'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { HAS_PROC, scratch, spawnFixture } from './fixtures/helpers'
-import { PANE_HEADER, PATIENCE_MS, addressOf, claim, identity, lockFile, pointable } from './lock'
+import { CHALLENGE_HEADER, PANE_HEADER, PATIENCE_MS, PROOF_HEADER, addressOf, claim, identity, lockFile, pointable, proofOf } from './lock'
 import type { Silent } from './lock'
 
 const LOCK = join(dirname(fileURLToPath(import.meta.url)), 'lock.ts')
@@ -32,6 +33,36 @@ async function serve(handler: RequestListener): Promise<{ port: number; close():
   }
 }
 
+/** What a fake listener was sent: each request's path and query, and its headers. */
+type Seen = { url: string; headers: string }
+
+/**
+ * A pane server of the project with `token` (this spec's by default), as a probe meets it: every request without the
+ * token refused with the marker and the proof of its challenge, after `delay` when given. `seen` records what came.
+ */
+async function servePane(o: { delay?: number; token?: string; seen?: Seen[] } = {}): Promise<{ port: number; close(): void }> {
+  let port = 0
+  const server = await serve((req, res) => {
+    o.seen?.push({ url: req.url ?? '', headers: JSON.stringify(req.headers) })
+    const answer = () => {
+      const challenge = req.headers[CHALLENGE_HEADER]
+      const headers: Record<string, string> = { [PANE_HEADER]: '1' }
+      if (typeof challenge === 'string') headers[PROOF_HEADER] = proofOf(o.token ?? TOKEN, challenge, port)
+      res.writeHead(403, headers).end('refused')
+    }
+    if (o.delay === undefined) answer()
+    else setTimeout(answer, o.delay)
+  })
+  port = server.port
+  return server
+}
+
+/** Whether `seen` holds the token anywhere: in a path, a query or a header. */
+const carriesToken = (seen: Seen[]): boolean => seen.some(s => s.url.includes(TOKEN) || s.headers.includes(TOKEN))
+
+/** Set to hide /proc/net/tcp, as a system that cannot say whose a socket is (or another user's, which no spec can make). */
+const hidden = { sockets: false }
+
 /** Whatever runs as the lock's removal guard is taken, once: the moment between a start's read of a lock and its removal. */
 let onGuard: ((lock: string) => void) | null = null
 
@@ -39,6 +70,10 @@ vi.mock('node:fs', async importOriginal => {
   const fs = await importOriginal<typeof import('node:fs')>()
   return {
     ...fs,
+    readFileSync: ((...args: Parameters<typeof fs.readFileSync>) => {
+      if (args[0] === '/proc/net/tcp' && hidden.sockets) throw Object.assign(new Error('no /proc'), { code: 'ENOENT' })
+      return fs.readFileSync(...args)
+    }) as typeof fs.readFileSync,
     writeFileSync: (...args: Parameters<typeof fs.writeFileSync>) => {
       const [path] = args
       if (typeof path === 'string' && path.endsWith('.removing') && onGuard !== null) {
@@ -208,23 +243,38 @@ describe('claim', () => {
     expect(await got.holder()).toBeNull()
     writeFileSync(file, '')
     expect(await got.holder()).toBeNull()
-    const pane = await serve((_req, res) => void res.writeHead(200, { [PANE_HEADER]: '1' }).end('page'))
-    const closed = await serve(() => undefined)
-    closed.close()
+    const seen: Seen[] = []
+    const pane = await servePane({ seen })
+    // Kept: one that accepts and drops every connection serves nothing, and no other spec's server can take its port.
+    const closed = createNetServer(socket => socket.destroy())
+    await new Promise<void>(resolve => closed.listen(0, '127.0.0.1', resolve))
+    const closedPort = (closed.address() as AddressInfo).port
     try {
       // Named for a process that is gone: no one else holds it.
       writeFileSync(file, JSON.stringify({ pid: deadPid(), port: pane.port }))
       expect(await got.holder()).toBeNull()
       // Named for a live process that serves nothing at its port (a pid used again): no evidence of another holder.
-      writeFileSync(file, JSON.stringify({ pid: process.ppid, port: closed.port }))
+      writeFileSync(file, JSON.stringify({ pid: process.ppid, port: closedPort }))
       expect(await got.holder()).toBeNull()
       // Named for another live process with a pane server at its port: that one took the project over.
       writeFileSync(file, JSON.stringify({ pid: process.ppid, port: pane.port }))
       expect(await got.holder()).toBe(pane.port)
+      // Asked without the token, which goes to no port before it is proven.
+      expect(seen.length).toBeGreaterThan(0)
+      expect(carriesToken(seen)).toBe(false)
       // And asking changed nothing.
       expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.ppid, port: pane.port })
+      // A pane server whose proof is made with another token: this project's, its token made anew since.
+      const renewed = await servePane({ token: 'cd'.repeat(24) })
+      try {
+        writeFileSync(file, JSON.stringify({ pid: process.ppid, port: renewed.port }))
+        expect(await got.holder()).toBe(renewed.port)
+      } finally {
+        renewed.close()
+      }
     } finally {
       pane.close()
+      closed.close()
     }
   })
 
@@ -252,17 +302,16 @@ describe('claim', () => {
   it("finds a live server's lock, and its address from the port and the project's token, when a pane server answers there", async () => {
     const data = scratch()
     const root = scratch()
-    const asked: string[] = []
-    const server = await serve((req, res) => {
-      asked.push(req.url ?? '')
-      res.writeHead(200, { [PANE_HEADER]: '1' }).end('page')
-    })
+    const seen: Seen[] = []
+    const server = await servePane({ seen })
     try {
       mkdirSync(join(data, 'web'), { recursive: true })
       // The parent of this process is alive for as long as the spec runs.
       writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
-      expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: addressOf(server.port, TOKEN) })
-      expect(asked).toEqual([`/?t=${TOKEN}`])
+      expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: addressOf(server.port, TOKEN), proven: true })
+      // Asked once, at its root, without the token.
+      expect(seen.map(s => s.url)).toEqual(['/'])
+      expect(carriesToken(seen)).toBe(false)
     } finally {
       server.close()
     }
@@ -273,11 +322,11 @@ describe('claim', () => {
       const data = scratch()
       const root = scratch()
       // Busy, as a pane's own server is right after it started on a loaded machine: it answers, but after the first tries gave up.
-      const server = await serve((_req, res) => void setTimeout(() => res.writeHead(200, { [PANE_HEADER]: '1' }).end('page'), delay))
+      const server = await servePane({ delay })
       try {
         mkdirSync(join(data, 'web'), { recursive: true })
         writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
-        expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: addressOf(server.port, TOKEN) })
+        expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: addressOf(server.port, TOKEN), proven: true })
         expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.ppid, port: server.port })
       } finally {
         server.close()
@@ -288,8 +337,9 @@ describe('claim', () => {
   it('takes over a live holder whose server never answers, once the bounded wait is over, and says once what it waits for', { timeout: 20_000 }, async () => {
     const data = scratch()
     const root = scratch()
-    // Accepts, never answers: a server whose event loop is stuck.
-    const server = await serve(() => undefined)
+    // Accepts, never answers: a server whose event loop is stuck. It records what it was sent.
+    const seen: Seen[] = []
+    const server = await serve(req => void seen.push({ url: req.url ?? '', headers: JSON.stringify(req.headers) }))
     try {
       mkdirSync(join(data, 'web'), { recursive: true })
       writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
@@ -301,6 +351,9 @@ describe('claim', () => {
       expect(told).toEqual([{ pid: process.ppid, stopped: false }])
       // A live holder that stayed silent: the one whose tabs may still come looking on its port.
       if (got.kind === 'mine') expect(got.replaced).toEqual({ pid: process.ppid, port: server.port })
+      // Three tries, none of them with the token.
+      expect(seen).toHaveLength(PATIENCE_MS.length)
+      expect(carriesToken(seen)).toBe(false)
     } finally {
       server.close()
     }
@@ -344,23 +397,44 @@ describe('claim', () => {
     expect([1024, 41231].map(pointable)).toEqual([true, true])
   })
 
-  it('tells a pane server from another program on the port: the marker, or the page of a server from before it', async () => {
-    const cases: [Record<string, string>, string, 'mine' | 'running'][] = [
-      [{}, 'it works', 'mine'],
-      [{}, '<script type="module">await import(`/static/app.mjs${location.search}`)</script>', 'running'],
-      [{ [PANE_HEADER]: '1' }, '', 'running'],
+  it("knows this project's pane server by its proof, and one from before the proof only on a socket that is this user's", async () => {
+    const REFUSAL = 'This address is out of date or incomplete. Open the address knossos web printed in its terminal.\n'
+    // [what answers: status, headers, body], whether /proc can say whose the socket is, and what the claim makes of it.
+    const cases: [[number, Record<string, string>, string], boolean, { kind: 'mine' } | { kind: 'running'; proven: boolean }][] = [
+      // Another program, and an impostor that sends the marker with a proof it cannot make.
+      [[200, {}, 'it works'], true, { kind: 'mine' }],
+      [[403, { [PANE_HEADER]: '1', [PROOF_HEADER]: 'ab'.repeat(32) }, ''], true, { kind: 'mine' }],
+      // A server from 0.49.1 (the marker, no proof) and from 0.49.0 (only its refusal): this user's, or not known to be.
+      [[403, { [PANE_HEADER]: '1' }, REFUSAL], true, { kind: 'running', proven: true }],
+      [[403, {}, REFUSAL], true, { kind: 'running', proven: true }],
+      [[403, { [PANE_HEADER]: '1' }, REFUSAL], false, { kind: 'running', proven: false }],
+      [[403, {}, REFUSAL], false, { kind: 'running', proven: false }],
     ]
-    for (const [headers, body, kind] of cases) {
-      const data = scratch()
-      const root = scratch()
-      const server = await serve((_req, res) => void res.writeHead(200, headers).end(body))
-      try {
-        mkdirSync(join(data, 'web'), { recursive: true })
-        writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
-        expect((await claim(data, root, TOKEN)).kind).toBe(kind)
-      } finally {
-        server.close()
+    try {
+      for (const [[status, headers, body], known, want] of cases) {
+        const data = scratch()
+        const root = scratch()
+        const seen: Seen[] = []
+        const server = await serve((req, res) => {
+          seen.push({ url: req.url ?? '', headers: JSON.stringify(req.headers) })
+          res.writeHead(status, headers).end(body)
+        })
+        hidden.sockets = !known
+        try {
+          mkdirSync(join(data, 'web'), { recursive: true })
+          writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
+          const got = await claim(data, root, TOKEN)
+          expect(got.kind === 'mine' ? { kind: 'mine' } : { kind: 'running', proven: got.proven }).toEqual(want)
+          // One it will not trust is named, for the person to tell whether it is theirs.
+          if (got.kind === 'running' && !got.proven) expect(got.holder).toEqual({ pid: process.ppid, port: server.port })
+          // Whatever answered, it was sent nothing of the token.
+          expect(carriesToken(seen)).toBe(false)
+        } finally {
+          server.close()
+        }
       }
+    } finally {
+      hidden.sockets = false
     }
   })
 
@@ -394,7 +468,8 @@ describe('claim', () => {
   it("takes over a lock whose pid is alive but whose port answers as another project's server: a pid used again after a restart", async () => {
     const data = scratch()
     const root = scratch()
-    const server = await serve((_req, res) => void res.writeHead(403, { [PANE_HEADER]: '1' }).end())
+    // A pane server of another project: its proof is made with its own token, and does not hold for this one.
+    const server = await servePane({ token: 'cd'.repeat(24) })
     try {
       mkdirSync(join(data, 'web'), { recursive: true })
       writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
@@ -424,7 +499,7 @@ describe('claim', () => {
     mkdirSync(join(data, 'web'), { recursive: true })
     const file = lockFile(data, root)
     writeFileSync(file, JSON.stringify({ pid: process.ppid, port: null }))
-    expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: '' })
+    expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: '', proven: true })
     const old = new Date(Date.now() - 60_000)
     utimesSync(file, old, old)
     expect((await claim(data, root, TOKEN)).kind).toBe('mine')

@@ -42,6 +42,8 @@ export type ClientOptions = {
   after(ms: number, fire: () => void): void
   /** The server said the project's pane moved to another server (it stepped down, or this is where it used to be). */
   moved?(): void
+  /** The event stream was lost (it ended, failed or went silent): the host learns before the client opens it again. */
+  disconnected?(): void
 }
 
 /** What the host calls: input as it arrives, the terminal resized, the end, a persistent line to show (null clears it), and a toast that goes by itself. */
@@ -198,6 +200,7 @@ export function startClient(o: ClientOptions): Client {
     after: o.after,
     // A stream that ended, failed or went silent: said on the toast line until the next event arrives.
     lost: () => {
+      o.disconnected?.()
       if (closed) return
       persistent = RECONNECTING
       paint()

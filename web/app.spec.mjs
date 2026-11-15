@@ -1,21 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALIVE_MS as SERVER_ALIVE_MS } from "./server.ts";
+import { proofOf } from "./lock.ts";
 import {
     ALIVE_MS,
     SILENT_MS,
     createPage,
     focusStep,
-    movedTo,
-    pageId,
     pressOfKey,
     pressOrder,
     releasedOn,
     retryDelay,
+    wheelQueue,
+} from "./public/app.mjs";
+import {
+    movedTo,
+    pageId,
+    provenMove,
+    provesPane,
+    sameText,
     swipeRows,
     wheelCell,
-    wheelQueue,
     wheelRows,
-} from "./public/app.mjs";
+} from "./public/dom.mjs";
 
 /** An event stream that does nothing until a spec says so. */
 class FakeSource {
@@ -324,6 +330,150 @@ describe("the event stream", () => {
         expect([0, 1, 2, 3, 4, 10].map(retryDelay)).toEqual([
             500, 1000, 2000, 4000, 5000, 5000,
         ]);
+    });
+});
+
+describe("provenMove", () => {
+    const TOKEN = "ab".repeat(24);
+    /** A server at `port` (proving with `token`), asked at the absolute address the page builds for it. */
+    const at = (port, token) => async (url, init) => {
+        expect(url).toBe(`http://127.0.0.1:${port}/`);
+        const challenge = init.headers["x-knossos-challenge"];
+        return new Response("refused", {
+            status: 403,
+            headers: { "x-knossos-proof": proofOf(token, challenge, port) },
+        });
+    };
+    const subtle = globalThis.crypto.subtle;
+    const page = "http://127.0.0.1:40000/?t=" + TOKEN + "#pane";
+
+    it("proves the server it moves to, across origins and without the token, before the page goes there", async () => {
+        expect(
+            await provenMove(41234, page, TOKEN, at(41234, TOKEN), subtle),
+        ).toEqual({
+            to: `http://127.0.0.1:41234/?t=${TOKEN}#pane`,
+            proven: true,
+        });
+    });
+
+    it("names one that does not prove itself, or cannot be asked, and does not count it as proven", async () => {
+        expect(
+            (
+                await provenMove(
+                    41234,
+                    page,
+                    TOKEN,
+                    at(41234, "cd".repeat(24)),
+                    subtle,
+                )
+            ).proven,
+        ).toBe(false);
+        const refusing = async () => {
+            throw new TypeError("network");
+        };
+        expect(
+            (await provenMove(41234, page, TOKEN, refusing, subtle)).proven,
+        ).toBe(false);
+        expect(
+            await provenMove(0, page, TOKEN, at(41234, TOKEN), subtle),
+        ).toBeNull();
+    });
+});
+
+describe("sameText", () => {
+    it("says whether two texts are the same, length and every character", () => {
+        expect(sameText("ab12", "ab12")).toBe(true);
+        expect(sameText("ab12", "ab13")).toBe(false);
+        expect(sameText("ab12", "ab1")).toBe(false);
+        expect(sameText("", "")).toBe(true);
+    });
+});
+
+describe("provesPane", () => {
+    /** A server at `port` answering a challenge as the pane of the project with `token` would, as `kind`. */
+    const answering =
+        (token, port, kind = "pane") =>
+        async (url, init) => {
+            expect(url).toBe("/");
+            const challenge = init.headers["x-knossos-challenge"];
+            expect(challenge).toMatch(/^[0-9a-f]{32}$/);
+            return new Response("refused", {
+                status: 403,
+                headers: {
+                    "x-knossos-proof": proofOf(token, challenge, port, kind),
+                },
+            });
+        };
+    const TOKEN = "ab".repeat(24);
+
+    it("takes a server whose answer proves it holds the token, on this very port, as the pane or its directions", async () => {
+        const subtle = globalThis.crypto.subtle;
+        expect(
+            await provesPane(answering(TOKEN, 41231), subtle, TOKEN, 41231),
+        ).toBe(true);
+        expect(
+            await provesPane(
+                answering(TOKEN, 41231, "directions"),
+                subtle,
+                TOKEN,
+                41231,
+            ),
+        ).toBe(true);
+        // Another project's, an answer made for another port (one passed on from elsewhere), or none at all.
+        expect(
+            await provesPane(
+                answering("cd".repeat(24), 41231),
+                subtle,
+                TOKEN,
+                41231,
+            ),
+        ).toBe(false);
+        expect(
+            await provesPane(answering(TOKEN, 41232), subtle, TOKEN, 41231),
+        ).toBe(false);
+        expect(
+            await provesPane(
+                async () => new Response("", { status: 403 }),
+                subtle,
+                TOKEN,
+                41231,
+            ),
+        ).toBe(false);
+    });
+
+    it("sends the token nowhere until the server proved itself, and tries again later when it cannot (a page that loads after a move too)", async () => {
+        vi.useFakeTimers();
+        const fetch = vi.fn(async () => ({ ok: true }));
+        let proven = false;
+        const p = createPage({
+            EventSource: FakeSource,
+            fetch,
+            token: "tok",
+            id: "a",
+            size: () => ({ cols: 80, rows: 24 }),
+            theme: () => "dark",
+            draw: () => undefined,
+            prove: async () => proven,
+            on: {},
+        });
+        p.connect();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(FakeSource.opened).toHaveLength(0);
+        await expect(p.post({ kind: "press", press: "x" })).rejects.toThrow(
+            /not proven/,
+        );
+        expect(fetch).not.toHaveBeenCalled();
+        proven = true;
+        await vi.advanceTimersByTimeAsync(500);
+        expect(FakeSource.opened).toHaveLength(1);
+        await p.post({ kind: "press", press: "x" });
+        expect(fetch).toHaveBeenCalledTimes(1);
+        // Lost: nothing more with the token until the next proof.
+        FakeSource.opened[0].fail();
+        await expect(p.post({ kind: "press", press: "y" })).rejects.toThrow(
+            /not proven/,
+        );
+        p.stop();
     });
 });
 

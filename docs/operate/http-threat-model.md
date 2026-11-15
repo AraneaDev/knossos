@@ -109,6 +109,74 @@ token in a URL. For non-loopback or multi-user access, put a TLS/OAuth-capable
 gateway in front, restrict the upstream network, and keep exact Host/Origin
 values rather than broad wildcards.
 
+## Web pane token
+
+`knossos web` and the terminal pane serve one project's pane on `127.0.0.1`.
+Their address carries a random token, and every request without it is refused.
+The token is what lets a request read the pane and act on the project. It is
+kept in the data directory, readable by you alone, and no probe or reconnect
+sends it to a port that has not proven it is this project's server.
+
+A probe asks without the token, with a fresh random challenge. Probes run when
+a start finds the project's lock, when a server checks whether another took
+the lock over, when a server looks at the port of a holder it replaced, and
+when the terminal pane or a browser page is about to open an event stream. The
+project's server answers on its refusal with an HMAC of the challenge and the
+port, keyed with the token. Only a process that knows the token can make that
+answer, a fresh challenge cannot be answered from an old one, and the port in
+the answer stops a listener elsewhere from passing the challenge on to the
+real server and handing its answer back. The terminal pane and the page send
+the token in an event stream only after the answer holds, prove the server
+again before every new stream, and send their input only while a proven stream
+holds. A page that is told the pane moved to another port proves that port
+across origins before it goes there. Only a page on `127.0.0.1` or `localhost`
+may ask across origins.
+
+Another user on the same machine can:
+
+- connect to a pane server's port and be refused, as any request without the
+  token is;
+- listen on a port the pane used once its server is gone, and receive the
+  probes: a challenge, never the token;
+- see that a pane server listens on a port, from the marker header it sends;
+- name their process in the lock's place only by a process id used again, and
+  then a pane names that process, its port and the lock file instead of
+  attaching to it.
+
+They cannot get the token from a probe, a reconnect or a new start, and cannot
+pass a probe by sending the marker, by replaying an answer, or by relaying the
+challenge to the real server.
+
+The known limits:
+
+- The address you open or reload, and the files the page loads with it, go
+  where the address points, with no proof first: the page's code comes from
+  whoever answers there.
+- A page that moves to a server that proved itself sends the token once more,
+  in the address of that page load. After a takeover from a
+  pane that was suspended or stuck, the server that took over listens on the
+  old port with directions once that port is free. A reload of the old address
+  then reaches it, and its redirect to its own address carries the token as
+  the reload did. Either page proves
+  its server before it opens its stream.
+- A browser without WebCrypto cannot check the proof. It connects without it,
+  as before the proof, and follows a move to another port unproven. Current browsers provide it on `127.0.0.1`.
+- The proof is made on one connection and the token sent on the next. A
+  server that ends in the milliseconds between, with another user's process
+  binding its port in that moment, would receive the token. The same holds
+  between the `/proc/net/tcp` check below and the request after it.
+
+Out of scope: anyone who can read or change traffic on loopback, which needs
+root on this machine.
+
+A server from Knossos 0.49.1 or before cannot answer the challenge. A new pane
+or start still knows it (by the marker on its refusal, or by the refusal
+itself) without sending it the token, and uses it only when `/proc/net/tcp`
+shows its listening socket is yours, which another user cannot fake. Where the
+system cannot show that, the new pane does not attach to it. It names the
+process and port in the lock and the lock file, and says to stop the process
+if it is yours, or to remove the lock file if it is not.
+
 ## Git subprocesses
 
 Every query that reads a project's git state runs `git` inside the scanned

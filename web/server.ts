@@ -38,7 +38,7 @@ import { reset } from '../hooks/mod/state'
 import { followHead } from '../hooks/mod/watcher'
 import { Hub } from './hub'
 import type { PageEvent, Size } from './hub'
-import { PANE_HEADER, addressOf, alive, probe } from './lock'
+import { CHALLENGE_HEADER, PANE_HEADER, PROOF_HEADER, addressOf, alive, probe, proofOf } from './lock'
 import type { Replaced } from './lock'
 import { webPort } from './port'
 
@@ -98,6 +98,11 @@ const themeOf = (value: unknown): WebTheme => (value === 'light' ? 'light' : 'da
 /** A page's size in cells, kept to what the layout can draw. */
 const sizeOf = (cols: unknown, rows: unknown): Size => ({ columns: clamp(Number(cols), 20, 500, 100), rows: clamp(Number(rows), 5, 300, 40) })
 const clamp = (n: number, low: number, high: number, otherwise: number) => (Number.isFinite(n) ? Math.min(high, Math.max(low, Math.round(n))) : otherwise)
+
+/** `origin` when it is a page on this machine's loopback (`http://127.0.0.1:<port>` or `http://localhost:<port>`), else null. */
+function loopbackOrigin(origin: string | undefined): string | null {
+  return typeof origin === 'string' && /^http:\/\/(?:127\.0\.0\.1|localhost):\d{1,5}$/.test(origin) ? origin : null
+}
 
 /** Whether `given` is the token, compared in constant time. */
 function tokenMatches(given: string | null | undefined, token: string): boolean {
@@ -318,6 +323,9 @@ export async function startServer(o: {
     const write = (text: string) => void (res.writableEnded || res.destroyed || res.write(text))
     const send = (event: PageEvent) => write(`data: ${JSON.stringify(event)}\n\n`)
     // An event, not a comment: a page sees only events, and takes a stream that stays silent for a while as lost.
+    // The first goes at once, so a page knows from its first moment that this server sends them: a stream whose
+    // server is suspended in its first seconds is noticed too.
+    send({ type: 'alive' })
     const alive = setInterval(() => send({ type: 'alive' }), o.aliveMs ?? ALIVE_MS)
     res.on('close', () => {
       clearInterval(alive)
@@ -335,7 +343,7 @@ export async function startServer(o: {
     res.setHeader('referrer-policy', 'no-referrer')
     // What tells a probe that a pane server answers here, and not another program on a port used again.
     res.setHeader(PANE_HEADER, '1')
-    if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
+    if (!tokenMatches(tokenOf(req, url), token)) return void refuse(req, res, port, 'pane')
     if (req.method === 'GET' && url.pathname === '/') return void file(res, 'index.html')
     if (req.method === 'GET' && url.pathname === '/manifest.webmanifest') {
       return void res.writeHead(200, { 'content-type': 'application/manifest+json', 'cache-control': 'no-store' }).end(manifestOf(origin, token))
@@ -417,7 +425,9 @@ export async function startServer(o: {
       })
     if (!(await accepts())) return false
     if (!alive(former.pid)) return true
-    if ((await probe(addressOf(former.port, token), 1_000)) !== 'other') return false
+    // Another project's pane server there holds it as surely as any other program.
+    const answer = await probe(former.port, token, 1_000)
+    if (answer !== 'other' && answer !== 'foreign') return false
     // An answer that is not a pane's, or a connection cut while the holder let its port go: only the first is
     // another program's, and it still accepts.
     return accepts()
@@ -430,11 +440,35 @@ export async function startServer(o: {
   function directions(req: IncomingMessage, res: ServerResponse): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     res.setHeader('referrer-policy', 'no-referrer')
-    if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
+    if (!tokenMatches(tokenOf(req, url), token)) return void refuse(req, res, o.former!.port, 'directions')
     if (url.pathname === '/events') {
       return void res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' }).end(`data: ${JSON.stringify({ type: 'moved', port })}\n\n`)
     }
     res.writeHead(307, { location: `http://127.0.0.1:${port}${url.pathname}${url.search}`, 'cache-control': 'no-store' }).end()
+  }
+
+  /**
+   * The answer to a request without the token: refused, with the proof of a probe's challenge when it brings one
+   * (see `proofOf`), for the port it reached. A probe never sends the token; this is how it knows a pane server of
+   * this project, and nothing in the answer tells anyone the token.
+   */
+  function refuse(req: IncomingMessage, res: ServerResponse, on: number, kind: 'pane' | 'directions'): void {
+    // A page of this pane on another port (one about to move here) may ask the challenge across origins; a page of
+    // any other site may not, and learns nothing, not even that a pane server listens here.
+    const asker = loopbackOrigin(req.headers.origin)
+    if (asker !== null) {
+      res.setHeader('access-control-allow-origin', asker)
+      res.setHeader('access-control-expose-headers', PROOF_HEADER)
+      res.setHeader('vary', 'origin')
+      if (req.method === 'OPTIONS') {
+        res.setHeader('access-control-allow-headers', CHALLENGE_HEADER)
+        res.setHeader('access-control-allow-methods', 'GET')
+        return void res.writeHead(204).end()
+      }
+    }
+    const challenge = req.headers[CHALLENGE_HEADER]
+    if (typeof challenge === 'string' && /^[0-9a-f]{16,128}$/.test(challenge)) res.setHeader(PROOF_HEADER, proofOf(token, challenge, on, kind))
+    res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
   }
 
   /** Stops the server; asked again (a step-down, then the host's own stop), it is the same stop. */

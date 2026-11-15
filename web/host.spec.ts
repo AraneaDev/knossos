@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fixturePluginRoot, HAS_PROC, markedPluginRoot, scratch } from './fixtures/helpers'
-import { hostProject } from './host'
+import { hostProject, unprovenText } from './host'
 import { addressOf, claim as realClaim, identity as realIdentity, lockFile } from './lock'
 
 // A page that connects makes the server read the checkout's commit; here that read fails, which the server logs.
@@ -67,6 +67,15 @@ const hostFor = async (root: string, dataDir: string, pluginDir: string, log?: (
   started.push(hosted)
   return hosted
 }
+
+describe('unprovenText', () => {
+  it('names the process and port in the lock, and the lock file whose removal starts afresh', () => {
+    const text = unprovenText({ pid: 4242, port: 41231 }, '/home/you/.knossos/web/abc.json')
+    expect(text).toContain('process 4242 on port 41231')
+    expect(text).toContain('If it is yours, stop it.')
+    expect(text).toContain('remove /home/you/.knossos/web/abc.json')
+  })
+})
 
 describe('hostProject', () => {
   it('frees the lock when remembering the port fails', async () => {
@@ -151,7 +160,7 @@ describe('hostProject', () => {
     // A lock held by another live process (this one's parent), whose server answers: a lock of this process's own is never respected.
     writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: first.port }))
     const second = await hostFor(root, data, plugin)
-    expect(second).toEqual({ kind: 'running', url: first.url })
+    expect(second).toEqual({ kind: 'running', url: first.url, proven: true })
   })
 
   it('sends the server log to the given writer, never stderr', async () => {

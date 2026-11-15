@@ -1,8 +1,9 @@
 /**
- * What the page's view does to its document: the size of a character cell,
- * the element of a press or field, and the patching of a container's rows.
- * Only a browser loads this module; the pane's logic stays in app.mjs, which
- * the terminal client shares.
+ * What only the browser's view uses: the size of a character cell, the element
+ * of a press or field, the patching of a container's rows, the page's id, the
+ * wheel's and a finger's rows, where a moved pane goes, and the proof a server
+ * gives that it is this project's pane. Only a browser loads this module; the
+ * pane's logic stays in app.mjs, which the terminal client shares.
  */
 
 /** One character cell of the page's grid, in pixels. */
@@ -92,4 +93,153 @@ export function patcher(container, patchPlan) {
         while (container.children.length > drawn.length)
             container.lastElementChild.remove();
     };
+}
+
+/** The key the page's id is kept under, for a reload to keep it. */
+const ID_KEY = "knossos-page-id";
+
+/**
+ * The page's id: the one kept in `storage` when the page was reloaded, else
+ * a new one, kept. A duplicated tab copies the store but arrives by no
+ * reload, so two tabs never share an id.
+ */
+export function pageId(storage, navigation, random) {
+    const kept = navigation === "reload" ? storage?.getItem(ID_KEY) : null;
+    if (kept) return kept;
+    const id = random();
+    storage?.setItem(ID_KEY, id);
+    return id;
+}
+
+/** A wheel event as whole rows (`by`), lines as they are and pixels by the cell's height; what is left over is carried to the next. */
+export function wheelRows(carry, event, cellHeight) {
+    if (event.deltaMode !== 0)
+        return { by: Math.trunc(event.deltaY), carry: 0 };
+    const pixels = carry + event.deltaY;
+    const by = Math.trunc(pixels / cellHeight);
+    return { by, carry: pixels - by * cellHeight };
+}
+
+/** A finger's drag from `fromY` to `toY` as whole rows, as {@link wheelRows} turns pixels: a finger moving up scrolls down. */
+export const swipeRows = (carry, fromY, toY, cellHeight) =>
+    wheelRows(carry, { deltaMode: 0, deltaY: fromY - toY }, cellHeight);
+
+/**
+ * The cell a pointer at (`x`, `y`) is over in the body whose box is `box`,
+ * scrolled `scrolled` pixels (a pinned body scrolls inside its box, whose top
+ * stays where it is).
+ */
+export const wheelCell = (x, y, box, cell, scrolled) => ({
+    row: Math.floor((y - box.top + scrolled) / cell.height),
+    column: Math.floor((x - box.left) / cell.width),
+});
+
+/**
+ * Where a page at `href` goes when its server says the project's pane moved to
+ * `port`: the same address on that port, its token and view kept, so nothing
+ * the page did not already have is put in it. Null for a port that is not one.
+ */
+export function movedTo(port, href) {
+    if (!Number.isInteger(port) || port <= 0 || port >= 65536) return null;
+    const url = new URL(href);
+    url.port = String(port);
+    return url.href;
+}
+
+/**
+ * Where a page at `href` goes when its server says the pane moved to `port`,
+ * and whether the server there proved itself to the page first (see
+ * {@link provesPane}): asked across origins, without the token, before the
+ * page sends it there in its address. Null for a port that is not one; a
+ * server that cannot be asked counts as not proven.
+ */
+export async function provenMove(port, href, token, fetchIt, subtle) {
+    const to = movedTo(port, href);
+    if (to === null) return null;
+    const there = (url, init) => fetchIt(new URL(url, to).href, init);
+    const proven = await provesPane(there, subtle, token, port).catch(
+        () => false,
+    );
+    return { to, proven };
+}
+
+/**
+ * Follows the pane to `port`, once the server there proved itself to this
+ * page: the page says where it went on a line in `toasts` that stays, in case
+ * the browser does not follow (an installed app keeps to its origin). One that
+ * does not prove itself is named, and not gone to.
+ */
+export async function follow(port, token, toasts) {
+    const move = await provenMove(
+        port,
+        location.href,
+        token,
+        (url, init) => fetch(url, init),
+        globalThis.crypto?.subtle,
+    );
+    if (move === null) return;
+    toasts.append(
+        Object.assign(document.createElement("div"), {
+            className: "toast",
+            textContent: move.proven
+                ? `This pane moved to ${move.to}`
+                : `This pane moved to ${move.to}, which does not answer as this project's pane`,
+        }),
+    );
+    if (move.proven) location.replace(move.to);
+}
+
+/**
+ * Whether `a` and `b` are the same text, looked at whole whatever they hold:
+ * how long it takes says nothing of where they differ, as a comparison of a
+ * secret must not.
+ */
+export function sameText(a, b) {
+    if (a.length !== b.length) return false;
+    let differ = 0;
+    for (let i = 0; i < a.length; i++)
+        differ |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    return differ === 0;
+}
+
+/**
+ * Whether the server at the page's own address proves it is this project's
+ * pane, asked without the token (see `proofOf` in web/lock.ts): a fresh
+ * challenge, answered with an HMAC keyed with the token over it and the port.
+ * The pane's own port and the one it gives directions on both count. A
+ * browser without WebCrypto (only one that does not count 127.0.0.1 as a
+ * secure place) cannot tell, and is let through as before the proof.
+ */
+export async function provesPane(fetchIt, subtle, token, port) {
+    if (subtle === undefined) return true;
+    const challenge = [...crypto.getRandomValues(new Uint8Array(16))]
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    const res = await fetchIt("/", {
+        headers: { "x-knossos-challenge": challenge },
+        cache: "no-store",
+    });
+    await res.body?.cancel?.().catch?.(() => undefined);
+    const given = res.headers.get("x-knossos-proof");
+    if (given === null) return false;
+    const encoder = new TextEncoder();
+    const key = await subtle.importKey(
+        "raw",
+        encoder.encode(token),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+    );
+    for (const kind of ["pane", "directions"]) {
+        const signed = await subtle.sign(
+            "HMAC",
+            key,
+            encoder.encode(`knossos-${kind}:${challenge}:${port}`),
+        );
+        const want = [...new Uint8Array(signed)]
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+        if (sameText(want, given)) return true;
+    }
+    return false;
 }

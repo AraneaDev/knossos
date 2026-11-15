@@ -6,7 +6,7 @@
  * routes the server's log lines through `log`.
  */
 import { claim, identity } from './lock'
-import type { Silent } from './lock'
+import type { Replaced, Silent } from './lock'
 import { startServer } from './server'
 
 /** Why `error` happened, as text. */
@@ -19,7 +19,8 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
  */
 export type Hosted =
   | { kind: 'mine'; url: string; token: string; port: number; kept: number | null; ready: Promise<void>; stepped: Promise<void>; close(): Promise<void>; release(): void }
-  | { kind: 'running'; url: string }
+  | { kind: 'running'; url: string; proven: true }
+  | { kind: 'running'; url: string; proven: false; holder: Replaced }
 
 /**
  * The server of the project at `root`: started here on the kept port (a
@@ -46,7 +47,7 @@ export async function hostProject(o: {
   } catch (error) {
     throw new Error(`could not take the project's lock: ${messageOf(error)}`, { cause: error })
   }
-  if (lock.kind === 'running') return { kind: 'running', url: lock.url }
+  if (lock.kind === 'running') return lock.proven ? { kind: 'running', url: lock.url, proven: true } : { kind: 'running', url: lock.url, proven: false, holder: lock.holder }
 
   let server: Awaited<ReturnType<typeof startServer>>
   try {
@@ -89,4 +90,14 @@ export async function hostProject(o: {
 export function silentText(holder: Silent): string {
   if (holder.stopped) return `Knossos in another terminal (pid ${holder.pid}) is suspended. Resume it there with fg, or wait a few seconds and this one takes over.`
   return `The Knossos server of pid ${holder.pid} does not answer. Waiting a few seconds, then this one takes over.`
+}
+
+/**
+ * What a start says of the lock's holder it will not send the token to: an older Knossos server that cannot be shown
+ * to be the person's, or a program that poses as one on a pid used again. What it needs to go on is named: the
+ * process and port in the lock, and the lock file, whose removal lets Knossos start afresh when that process is not
+ * theirs.
+ */
+export function unprovenText(holder: Replaced, lock: string): string {
+  return `The lock of this project names process ${holder.pid} on port ${holder.port}, which answers as an older Knossos server and cannot be shown to be yours, so it is sent nothing. If it is yours, stop it. If it is not, remove ${lock} and start again.`
 }

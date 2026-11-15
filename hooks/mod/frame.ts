@@ -30,7 +30,9 @@ export async function failedWhy(io: Port): Promise<string | null> {
 export async function paneSource(io: Port, columns: number, terminal: boolean): Promise<PaneSource> {
   mod.pane.text = null
   mod.pane.emptyShown = false
-  if (mod.session.disabled) return { kind: 'off' }
+  // Off (no knossos binary) closes Claude Code's pane. A page of the web host has no pane to close: it says why,
+  // however late it connects.
+  if (mod.session.disabled) return mod.session.host === 'web' ? { kind: 'empty', rows: emptyRows('no-binary', null, columns, 'web') } : { kind: 'off' }
   const d = await io.state.dashboard.read()
   const v = await io.state.view.read()
   // Whether the pane is wide enough for the detail beside the tab: the lookup it needs runs from the next press or tick.

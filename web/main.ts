@@ -55,7 +55,8 @@ const pluginRoot = process.env.KNOSSOS_WEB_PLUGIN_ROOT || CHECKOUT
 if (!process.env.KNOSSOS_BIN && existsSync(join(CHECKOUT, 'bin/knossos'))) process.env.KNOSSOS_BIN = join(CHECKOUT, 'bin/knossos')
 const editor = asked.editor ?? (process.env.KNOSSOS_EDITOR || null)
 
-const { hostProject, silentText } = await import('./host')
+const { hostProject, silentText, unprovenText } = await import('./host')
+const { lockFile } = await import('./lock')
 const { openBrowser } = await import('./browser')
 const { stopWatcher } = await import('../hooks/mod/state')
 const { ending } = await import('./life')
@@ -89,6 +90,11 @@ try {
   hosted = await hostProject({ root, dataDir, pluginRoot, editor, port: asked.port, silent: holder => void process.stdout.write(`${silentText(holder)}\n`) })
 } catch (error) {
   fail(messageOf(error))
+}
+// An older server that cannot be shown to be this user's is not sent the token: its address is not opened, nor printed.
+if (hosted.kind === 'running' && !hosted.proven) {
+  process.stderr.write(`knossos web: ${unprovenText(hosted.holder, lockFile(dataDir, root))}\n`)
+  process.exit(1)
 }
 if (hosted.kind === 'running') {
   process.stdout.write(`Knossos web pane for ${root} is already running: ${hosted.url}\n`)

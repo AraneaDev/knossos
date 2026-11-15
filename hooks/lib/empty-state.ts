@@ -73,10 +73,11 @@ export const SCAN_PROMPT = 'Scan this project with Knossos (scan_project), then 
 /**
  * Why the pane has no figures to draw: the first load is still on its way,
  * a load is on its way again after one that failed, the last load came back
- * silent or as an error, or knossos answered that it has never scanned this
- * project. Only the last is a reason to scan.
+ * silent or as an error, knossos answered that it has never scanned this
+ * project, or there is no knossos binary to ask (the web host's pane says
+ * so; Claude Code's closes). Only `unscanned` is a reason to scan.
  */
-export type NoGraph = 'loading' | 'retrying' | 'unreadable' | 'unscanned'
+export type NoGraph = 'loading' | 'retrying' | 'unreadable' | 'unscanned' | 'no-binary'
 
 /**
  * Which {@link NoGraph} state a dashboard that is not `ok` (or none yet) is
@@ -97,6 +98,7 @@ const NO_GRAPH: Record<NoGraph, { head: string; why: string; busy?: true }> = {
   retrying: { head: 'Reading the graph…', why: 'Knossos did not answer the last read; asking again.', busy: true },
   unreadable: { head: 'Could not read the graph', why: 'Knossos did not answer, or answered with an error; the pane asks again shortly.' },
   unscanned: { head: 'No architecture graph yet', why: 'Knossos has not scanned this project, so there is nothing to draw.' },
+  'no-binary': { head: 'Knossos is not installed', why: 'No knossos binary was found, so there is no graph to read. Install Knossos, then start the pane again.' },
 }
 
 /**
