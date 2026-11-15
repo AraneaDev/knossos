@@ -536,6 +536,17 @@ else
     fail "failed update: $status, $out, $(cat "$DATA2/install/install.json")"
 fi
 
+# A plugin step that fails half way, after it wrote part of the plugin, puts
+# the plugin back too: the hooks never run against an older core.
+cp "$LIB" "$WORK/lib.before"
+out=$(FAKE_IMAGE_VERSION=1.1.0 FAKE_PLUGIN_FAILS=late kn self-update --version=1.1.0); status=$?
+case $out in *'could not write its plugin'*'previous state was restored'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && cmp -s "$WORK/lib.before" "$LIB" && cmp -s "$WORK/record.before" "$DATA2/install/install.json"; then
+    pass 'a plugin step that fails half way puts the plugin back as it was'
+else
+    fail "half-written plugin: $status, $out, lib.sh $(cat "$LIB")"
+fi
+
 # An image that is not the version asked for changes nothing.
 out=$(FAKE_IMAGE_VERSION=9.9.9 kn self-update --version=1.1.0); status=$?
 if [ "$status" -ne 0 ] && cmp -s "$WORK/record.before" "$DATA2/install/install.json"; then pass 'an image of the wrong version is refused before anything changes'; else fail "wrong version: $status, $out"; fi
@@ -611,6 +622,202 @@ else
 fi
 out=$(FAKE_IMAGE_VERSION=$CUR kn version); status=$?
 if [ "$status" -eq 0 ] && [ "$out" = "Knossos $CUR" ]; then pass 'after the repair the launcher runs again'; else fail "after repair: $status, $out"; fi
+
+# ---- an update leaves no container of the old image, and no markers ------------------------
+
+# A call that read the old install.json starts a container of the old image
+# right after the update's first stop: the stop after the switch ends it.
+FAKE_IMAGE_VERSION=$CUR kn version >/dev/null
+OLD_CALL="$FAKE_DOCKER_STATE/containers/knossos-aaaaaaaaaaaa"
+INSTALL_LABEL=$(printf '%s' "$DATA2/install" | sha256sum | cut -c 1-12)
+printf "printf 'running\\\\n' > '%s'\nprintf 'io.knossos.install=%s\\\\nio.knossos.root=000000000000\\\\n' > '%s.labels'\n" \
+    "$OLD_CALL" "$INSTALL_LABEL" "$OLD_CALL" > "$FAKE_DOCKER_STATE/after-stop"
+: > "$REL/knossos-1.3.0-linux-x86_64.tar.gz"
+out=$(FAKE_IMAGE_VERSION=1.3.0 kn self-update --version=1.3.0); status=$?
+if [ "$status" -eq 0 ] && [ ! -e "$FAKE_DOCKER_STATE/after-stop" ] && [ "$(running)" -eq 0 ]; then
+    pass 'a container a call started during the update, from the old install.json, is stopped by the update too'
+else
+    fail "old-image container after update: $status, $(running) running, $out"
+fi
+if [ -z "$(find "$DATA2/install/containers" -name 'knossos-*' 2>/dev/null)" ]; then pass 'the update removes the markers of the containers it stopped'; else fail "markers after update: $(ls "$DATA2/install/containers")"; fi
+rm -f "$FAKE_DOCKER_STATE/after-stop"
+
+# ---- a data directory that holds things of yours ------------------------------------------
+
+# A container install hands every container its data directory read-write.
+CODE="$WORK/code"
+mkdir -p "$CODE/repo2/.git/hooks"
+foreign_refused() {
+    what=$1
+    shift
+    reset_docker
+    out=$("$@"); status=$?
+    case $out in *"the data directory $CODE holds repo2, which is not something Knossos puts in a data directory, and in container mode every container would be able to write all of it; choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR). Nothing was changed."*) said=yes ;; *) said=no ;; esac
+    if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(count_calls run)" -eq 0 ] \
+        && [ "$(ls -A "$CODE")" = repo2 ] && [ ! -e "$WORK/code bin" ]; then
+        pass "$what is refused, and nothing is pulled, run or created"
+    else
+        fail "$what: $status, $out, $(ls -A "$CODE"), $(calls)"
+    fi
+}
+foreign_refused 'a --data-dir that holds a folder of yours' cid "$WORK/elsewhere" "$CODE" "$WORK/code bin" --no-plugin --no-roots
+foreign_refused 'a --data-dir that holds a folder of yours, dry run' cid "$WORK/elsewhere" "$CODE" "$WORK/code bin" --no-plugin --no-roots --dry-run
+# shellcheck disable=SC2016 # the sh -c program expands its own arguments
+foreign_refused 'a KNOSSOS_DATA_DIR that holds a folder of yours' \
+    sh -c 'cd "$1" && PATH="$2" KNOSSOS_IMAGE_REPOSITORY="$3" FAKE_IMAGE_VERSION=1.0.0 KNOSSOS_DATA_DIR="$4" sh "$5" --mode=container --bin-dir="$6" --version=1.0.0 --no-plugin --no-roots 2>&1 </dev/null' \
+    _ "$WORK/elsewhere" "$BARE" "$REPO" "$CODE" "$INSTALL_SH" "$WORK/code bin"
+# Beside a native install, with --force-clean: refused before anything is removed.
+mkdir -p "$CODE/versions/1.0.0"
+printf '{"mode": "native"}\n' > "$CODE/install.json"
+reset_docker
+out=$(cid "$WORK/elsewhere" "$CODE" "$WORK/code bin" --no-plugin --no-roots --force-clean); status=$?
+case $out in *"the data directory $CODE holds repo2, which is not something Knossos puts in a data directory"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ -f "$CODE/install.json" ] && [ -d "$CODE/versions/1.0.0" ] && [ "$(count_calls pull)" -eq 0 ]; then
+    pass 'a folder of yours beside a native install is refused before --force-clean removes anything'
+else
+    fail "foreign entry beside a native install: $status, $out, $(ls -A "$CODE")"
+fi
+rm -rf "${CODE:?}/versions" "${CODE:?}/install.json"
+# The data directory a native install's graph left behind: only what Knossos put there.
+KNOWN="$WORK/known data"
+mkdir -p "$KNOWN/backups" "$KNOWN/watch"
+for entry in knossos.sqlite knossos.sqlite-wal knossos.sqlite-shm scan-failures.jsonl roots.json mcp-serve.log pane-autostart.json; do : > "$KNOWN/$entry"; done
+reset_docker
+out=$(cid "$WORK/elsewhere" "$KNOWN" "$WORK/known bin" --no-plugin --no-roots); status=$?
+if [ "$status" -eq 0 ] && [ -f "$KNOWN/install/install.json" ]; then pass 'a --data-dir holding only what Knossos puts there is taken'; else fail "known entries: $status, $out"; fi
+# Reinstalling over a container install: what its containers wrote is theirs.
+mkdir -p "$KNOWN/written by a container"
+reset_docker
+out=$(cid "$WORK/elsewhere" "$KNOWN" "$WORK/known bin" --no-plugin --no-roots); status=$?
+if [ "$status" -eq 0 ]; then pass 'a reinstall into a container install is not refused for what its containers wrote'; else fail "reinstall: $status, $out"; fi
+# A fresh install leaves no marker behind: the check through the launcher stops its container.
+if [ -z "$(find "$KNOWN/install/containers" -name 'knossos-*' 2>/dev/null)" ]; then pass "the installer's own check leaves no marker in the install directory"; else fail "probe marker left: $(ls "$KNOWN/install/containers")"; fi
+rm -rf "${CODE:?}" "${KNOWN:?}" "${WORK:?}/known bin"
+
+# The lists the installer checks against are the launcher's, word for word.
+entries_of() { awk '/^GRAPH_ENTRIES=/ { on = 1 } on { print } on && /^foreign_entry\(\) \{/ { last = 1 } last && /^}$/ { exit }' "$1"; }
+if [ -n "$(entries_of "$ROOT/tools/launcher/knossos")" ] && [ "$(entries_of "$ROOT/tools/launcher/knossos")" = "$(entries_of "$INSTALL_SH")" ]; then
+    pass 'install.sh and the launcher carry the same lists of what a graph directory may hold'
+else
+    fail 'the graph entry lists in install.sh and the launcher differ'
+fi
+
+# ---- native mode is chosen only on a host that passes doctor ---------------------------------
+
+# Stand-ins answering as a host with PHP 8.3, Node 24, Python 3.11 and git
+# would; STUB_PHP_LACKS names the extensions php says are not loaded.
+STUB="$WORK/stub runtimes"
+mkdir -p "$STUB"
+cat > "$STUB/php" <<'PHP'
+#!/bin/sh
+case "$*" in
+    *extension_loaded*) printf '%s' "${STUB_PHP_LACKS:-}" ;;
+    *PHP_VERSION_ID*) exit 0 ;;
+    *) echo 8.3.0 ;;
+esac
+PHP
+printf '#!/bin/sh\necho v24.0.0\n' > "$STUB/node"
+printf '#!/bin/sh\necho Python 3.12.0\n' > "$STUB/python3"
+printf '#!/bin/sh\necho git version 2.45.0\n' > "$STUB/git"
+chmod +x "$STUB/php" "$STUB/node" "$STUB/python3" "$STUB/git"
+ln -s "$(command -v tar)" "$STUB/tar"
+NOGIT="$WORK/stub without git"
+mkdir -p "$NOGIT"
+for tool in php node python3 tar; do ln -s "$STUB/$tool" "$NOGIT/$tool"; done
+NODOCKER_BARE="$WORK/bare without docker"
+mkdir -p "$NODOCKER_BARE"
+for tool in "$BARE"/*; do
+    [ "${tool##*/}" != docker ] || continue
+    if [ -L "$tool" ]; then ln -s "$(readlink "$tool")" "$NODOCKER_BARE/${tool##*/}"; else ln -s "$tool" "$NODOCKER_BARE/${tool##*/}"; fi
+done
+# detect PATH DIR ARGS: install.sh on that PATH into DIR, with no release to download.
+detect() {
+    front=$1 dir=$2
+    shift 2
+    (cd "$WORK/elsewhere" && PATH="$front" KNOSSOS_RELEASE_BASE="$WORK/no releases" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 \
+        sh "$INSTALL_SH" --data-dir="$dir/data dir" --bin-dir="$dir/bin dir" --version=1.0.0 --no-plugin --no-roots "$@" 2>&1 </dev/null)
+}
+reset_docker
+out=$(STUB_PHP_LACKS='mbstring pdo_sqlite ' detect "$STUB:$BARE" "$WORK/no mbstring"); status=$?
+case $out in *'This host cannot run Knossos natively. Missing:'*'  - the PHP extension(s) mbstring, pdo_sqlite (not loaded by php)'*'Using container mode: docker is available.'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(field "$WORK/no mbstring/data dir/install/install.json" mode)" = container ]; then
+    pass 'a PHP without mbstring and pdo_sqlite is named, and container mode is used when Docker answers'
+else
+    fail "missing extensions with docker: $status, $out"
+fi
+reset_docker
+out=$(detect "$NOGIT:$BARE" "$WORK/no git"); status=$?
+case $out in *'  - Git (git not found)'*'Using container mode: docker is available.'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a host without git is not given native mode'; else fail "no git: $status, $out"; fi
+reset_docker
+out=$(STUB_PHP_LACKS='pdo_sqlite ' detect "$STUB:$NODOCKER_BARE" "$WORK/no runtime"); status=$?
+case $out in *'  - the PHP extension(s) pdo_sqlite (not loaded by php)'*'error: install what is listed above and run the installer again, or install Docker or Podman (with its daemon running) and re-run it with --mode=container'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/no runtime" ]; then
+    pass 'without Docker or Podman it stops before writing anything, names what is missing and both ways out'
+else
+    fail "missing extension, no docker: $status, $out"
+fi
+reset_docker
+out=$(STUB_PHP_LACKS='mbstring ' detect "$STUB:$BARE" "$WORK/forced native" --mode=native); status=$?
+case $out in *'  - the PHP extension(s) mbstring (not loaded by php)'*'error: install what is listed above and run the installer again, or re-run it with --mode=container: docker is available'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/forced native" ] && [ "$(count_calls pull)" -eq 0 ]; then
+    pass '--mode=native on such a host stops the same way, and points at --mode=container'
+else
+    fail "forced native: $status, $out"
+fi
+reset_docker
+out=$(detect "$STUB:$BARE" "$WORK/all there" --dry-run); status=$?
+case $out in *'mode:       native'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a host with everything doctor checks gets native mode'; else fail "all there: $status, $out"; fi
+rm -rf "${WORK:?}/no mbstring" "${WORK:?}/no git" "${WORK:?}/all there"
+
+# ---- a root container mode never mounts is not granted -------------------------------------
+
+GRANT_DIR="$WORK/grant from the home directory"
+reset_docker
+out=$(cd "$WORK/elsewhere" && KNOSSOS_ALLOW_ROOT="$HOME" PATH="$BARE" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 \
+    sh "$INSTALL_SH" --mode=container --data-dir="$GRANT_DIR/data dir" --bin-dir="$GRANT_DIR/bin dir" --version=1.0.0 --no-plugin 2>&1 </dev/null); status=$?
+case $out in *"no project root granted: $HOME is /, your home directory or a directory above it, which container mode never mounts; grant a project inside it with knossos allow-root <project> --execute"*) said=yes ;; *) said=no ;; esac
+case $out in *'could not add'*) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(tr -d ' \n' < "$GRANT_DIR/data dir/install/roots.json")" = '{"roots":[]}' ]; then
+    pass 'the home directory as the root to grant is skipped with the reason, and no command that would fail is suggested'
+else
+    fail "home as root: $status, $out"
+fi
+rm -rf "${GRANT_DIR:?}"
+
+# ---- a record swapped for a FIFO after it was checked never hangs the installer --------------
+
+SWAP_BIN="$WORK/swap bin"
+mkdir -p "$SWAP_BIN"
+REAL_FIND=$(command -v find)
+REAL_MKFIFO=$(command -v mkfifo)
+cat > "$SWAP_BIN/find" <<SWAP
+#!/bin/sh
+"$REAL_FIND" "\$@"
+status=\$?
+for argument in "\$@"; do
+    if [ "\$argument" = "\${SWAP_FIFO:-}" ] && [ -f "\$argument" ] && [ ! -L "\$argument" ]; then rm -f "\$argument"; "$REAL_MKFIFO" "\$argument"; fi
+done
+exit \$status
+SWAP
+chmod +x "$SWAP_BIN/find"
+OTHER_INSTALL="$WORK/other installation"
+mkdir -p "$OTHER_INSTALL/install/containers"
+printf '{"mode": "container", "layout": "separate"}\n' > "$OTHER_INSTALL/install/install.json"
+TIMEOUT=$(command -v timeout)
+reset_docker
+out=$(cd "$WORK/elsewhere" && PATH="$SWAP_BIN:$BARE" SWAP_FIFO="$OTHER_INSTALL/install/install.json" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 \
+    "$TIMEOUT" 20 sh "$INSTALL_SH" --mode=container --data-dir="$OTHER_INSTALL/graph" --bin-dir="$WORK/swap bin dir" --version=1.0.0 --no-plugin --no-roots --dry-run 2>&1 </dev/null); status=$?
+if [ "$status" -ne 124 ] && [ -p "$OTHER_INSTALL/install/install.json" ]; then
+    pass 'an install.json swapped for a FIFO between its check and its read does not hang the installer'
+else
+    fail "swapped record: $status, $out"
+    (printf '' > "$OTHER_INSTALL/install/install.json") 2>/dev/null &
+    sleep 1
+    kill "$!" 2>/dev/null
+fi
+rm -rf "${OTHER_INSTALL:?}"
 
 # A lookup that never returns, cut off as the session hook's timeout cuts it
 # off: the attempt is already recorded, so the next session does not retry.

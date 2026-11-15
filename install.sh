@@ -5,8 +5,10 @@
 #              [--bin-dir=DIR] [--no-plugin] [--no-roots] [--dry-run]
 #              [--force-clean]
 #
-# Native mode needs PHP 8.3+, Node 24+ and Python 3.11+ on the host. It
-# downloads the release tarball for this platform, checks it against the
+# Native mode needs PHP 8.3+ with the json, mbstring, pdo and pdo_sqlite
+# extensions, Node 24+, Python 3.11+, git, tar and sha256sum or shasum on the
+# host: what the release's `knossos doctor` checks, and what this script
+# unpacks and checks a release with. It downloads the release tarball for this platform, checks it against the
 # release's SHA256SUMS, unpacks it under <data dir>/versions/<version>, points
 # <data dir>/current at it and writes one launcher, <bin dir>/knossos, that the
 # MCP registration and the plugin's hooks call.
@@ -15,15 +17,18 @@
 # the release image (ghcr.io/araneadev/knossos:<version>), checks that it
 # starts and passes doctor, and writes install.json naming the image by digest
 # and the same launcher, which then runs each command in a container per
-# project. The plugin's files come out of the image. Without --mode, native
-# mode is chosen when the host has the runtimes, else container mode when a
-# container runtime answers.
+# project. The plugin's files come out of the image. The data directory must
+# be empty, new, or hold only what Knossos puts there, since every container
+# can write it. Without --mode, native mode is chosen when the host has all
+# of the above, else container mode when a container runtime answers.
 #
 # --no-plugin skips both the plugin and the MCP registration, in either mode.
 #
 # Environment:
-#   KNOSSOS_DATA_DIR      install directory, which also holds the graph, when
-#                         --data-dir is not given              (default: ~/.knossos)
+#   KNOSSOS_DATA_DIR      the data directory, when --data-dir is not given: the
+#                         install directory and the graph in native mode, the
+#                         graph with the install directory <data dir>/install in
+#                         container mode                        (default: ~/.knossos)
 #   KNOSSOS_ROOTS_FILE    the roots file, when --data-dir is not given
 #                         (default: <data dir>/roots.json)
 #   KNOSSOS_BIN_DIR       where the launcher goes               (default: ~/.local/bin)
@@ -558,11 +563,19 @@ other_mode_entries() {
 # "container" and "layout": "separate". A repository that merely has those
 # names is not one. Only that install.json is read, and only once the layout
 # is there.
+#
+# The file is opened without blocking where dd can (GNU and BusyBox dd take
+# iflag=nonblock), so one swapped for a FIFO after the check reads as empty
+# instead of hanging the installer; elsewhere it is opened as before.
 is_container_graph() {
     record="${1%/}/install/install.json"
     [ ! -L "${1%/}/install" ] && [ -d "${1%/}/install/containers" ] && [ ! -L "$record" ] && [ -f "$record" ] || return 1
     [ -n "$(find "$record" -prune -type f -size -65537c 2>/dev/null)" ] || return 1
-    text=$(dd bs=65536 count=1 < "$record" 2>/dev/null | tr -d ' \t\r\n') || return 1
+    if dd if=/dev/null iflag=nonblock count=0 2>/dev/null; then
+        text=$(dd if="$record" iflag=nonblock bs=65536 count=1 2>/dev/null | tr -d ' \t\r\n') || return 1
+    else
+        text=$(dd bs=65536 count=1 < "$record" 2>/dev/null | tr -d ' \t\r\n') || return 1
+    fi
     case $text in *'"mode":"container"'*) ;; *) return 1 ;; esac
     case $text in *'"layout":"separate"'*) return 0 ;; esac
     return 1
@@ -654,6 +667,108 @@ refuse_other_mode() {
         rm -rf -- "${DATA_DIR:?}/$entry" || die "could not remove $DATA_DIR/$entry"
         log "removed $DATA_DIR/$entry (--force-clean)"
     done
+}
+
+# What a data directory may hold before a container install takes it as its
+# graph directory, which every container gets read-write: nothing, or only
+# what Knossos itself puts in one. A folder holding anything of yours (a
+# folder of repositories, say) would hand every scanned project write access
+# to it, git hooks included. The two lists and the two functions after them
+# are the launcher's (tools/launcher/knossos, "what a graph directory may
+# hold"), word for word, which says where each entry comes from;
+# tests/shell/install-container.sh compares them.
+# shellcheck disable=SC2016 # the lists are data, never expanded
+GRAPH_ENTRIES='
+knossos.sqlite
+knossos.sqlite-wal
+knossos.sqlite-shm
+knossos.sqlite-journal
+knossos.sqlite.migrate.lock
+scan-failures.jsonl
+scan-failures.jsonl.lock
+scan-failures.jsonl.*.tmp
+watch
+backups
+roots.json
+roots.json.lock
+.roots.json.*.tmp
+enrichers.json
+.enrichers.json.*.tmp
+pane-autostart.json
+.pane-autostart.json.*.tmp
+mcp-serve.log
+install
+.knossos-files.*
+'
+NATIVE_ENTRIES='
+install.json
+install.json.tmp.*
+versions
+current
+current.tmp.*
+previous-version
+previous-version.tmp.*
+plugin
+update-check.json
+update-check.json.tmp.*
+self-update.lock
+self-update.tmp
+'
+
+# entry_kind NAME: `graph` or `native` for a name on one of the lists above,
+# nothing for any other.
+entry_kind() {
+    for kind in graph native; do
+        if [ "$kind" = graph ]; then list=$GRAPH_ENTRIES; else list=$NATIVE_ENTRIES; fi
+        while IFS= read -r pattern; do
+            [ -n "$pattern" ] || continue
+            # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
+            case $1 in $pattern) printf '%s' "$kind"; return 0 ;; esac
+        done <<LIST
+$list
+LIST
+    done
+}
+
+# foreign_entry DIR [native-ok]: the first entry directly in DIR that is not
+# on GRAPH_ENTRIES, as `native NAME` when it is on NATIVE_ENTRIES and `other
+# NAME` otherwise; nothing when there is none. With `native-ok`, entries on
+# NATIVE_ENTRIES are passed over, so only an `other` one is reported. A name
+# holding a newline is never one Knossos makes.
+foreign_entry() {
+    find "$1/." ! -name . -prune -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r found; do
+        case $found in
+            "${1%/}/./"*) name=${found#"${1%/}/./"} ;;
+            *)
+                printf 'other %s' 'an entry whose name holds a newline'
+                break
+                ;;
+        esac
+        case $(entry_kind "$name") in
+            graph) ;;
+            native)
+                [ "${2-}" != native-ok ] || continue
+                printf 'native %s' "$name"
+                break
+                ;;
+            *) printf 'other %s' "$name"; break ;;
+        esac
+    done
+}
+
+# refuse_foreign_entries DIR: refuse a container install into DIR when DIR
+# holds an entry that is on neither list. A native install's entries are left
+# to refuse_other_mode, which names them all and offers --force-clean. The
+# graph directory of a container install is not checked again: every one of
+# its containers can write it already, and reinstalling or updating there
+# changes nothing about that.
+refuse_foreign_entries() {
+    [ -d "$1" ] || return 0
+    if is_container_graph "$1"; then return 0; fi
+    foreign=$(foreign_entry "$1" native-ok)
+    case $foreign in
+        other\ *) die "the data directory $1 holds ${foreign#other }, which is not something Knossos puts in a data directory, and in container mode every container would be able to write all of it; choose an empty directory with --data-dir (or KNOSSOS_DATA_DIR). Nothing was changed." ;;
+    esac
 }
 
 # physical_of PATH: the physical form of a path that may not exist yet: its
@@ -750,6 +865,8 @@ install_container() {
         log "launcher:   $LAUNCHER"
         if [ -n "$ROOT_TO_GRANT" ]; then
             log "grants:     $ROOT_TO_GRANT"
+        elif [ -n "$ROOT_SKIPPED" ]; then
+            log "grants:     no project root ($ROOT_SKIPPED is never mounted in container mode)"
         else
             log 'grants:     no project root'
         fi
@@ -808,6 +925,7 @@ install_container() {
     # Again on the directory as created, should a link have moved it.
     refuse_writable_layout
     refuse_in_graph "$DATA_DIR" --data-dir "pick a --data-dir outside {graph}." itself
+    refuse_foreign_entries "$DATA_DIR"
     CINSTALL="$DATA_DIR/install"
     # The allow-list of a container install is the host's, in the install
     # directory, where no container can write it: the launcher chooses a
@@ -833,7 +951,7 @@ install_container() {
     if [ "$PLUGIN" = 1 ]; then set -- "$@" --plugin; fi
     # The helper puts back what it changed when one of its own steps fails.
     if ! digest=$(sh "$TMP/container-update" "$@" </dev/null); then
-        die 'the install did not complete (see above); the previous state was restored'
+        die 'the install did not complete; the message above says what was put back'
     fi
     CONTAINER_SWITCHED=1
     if [ "$ROOTS_FILE" = "$CINSTALL/roots.json" ] && [ ! -e "$ROOTS_FILE" ]; then
@@ -867,6 +985,8 @@ install_container() {
             printf '%s\n' "$granted" | sed 's/^/  /' >&2
             warn "could not add $ROOT_TO_GRANT to the roots file; run: knossos allow-root \"$ROOT_TO_GRANT\" --execute"
         fi
+    elif [ -n "$ROOT_SKIPPED" ]; then
+        log "no project root granted: $ROOT_SKIPPED is /, your home directory or a directory above it, which container mode never mounts; grant a project inside it with knossos allow-root <project> --execute"
     elif [ "$ROOTS" = 1 ] && [ -z "${KNOSSOS_ALLOW_ROOT:-}" ]; then
         log "no project root granted: the working directory is / or your home directory; add one with knossos allow-root <path> --execute"
     fi
@@ -962,7 +1082,11 @@ main() {
 
     # ---- detect ------------------------------------------------------------
 
-    # What is wrong with each runtime, by version and not just by presence.
+    # What native mode lacks on this host: each runtime by version and not
+    # just by presence, and everything else the release's `knossos doctor`
+    # fails without (the PHP extensions it checks, and git), plus the tools
+    # this script unpacks and checks a release with. A host that would fail
+    # doctor is never chosen for native mode.
     missing=''
     add_missing() { missing="$missing
   - $1"; }
@@ -971,6 +1095,15 @@ main() {
         add_missing 'PHP 8.3 or newer (php not found)'
     elif ! php -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);' >/dev/null 2>&1 </dev/null; then
         add_missing "PHP 8.3 or newer (found $(php -r 'echo PHP_VERSION;' 2>/dev/null </dev/null))"
+    else
+        # The extensions DoctorService checks, by the name extension_loaded() takes.
+        # shellcheck disable=SC2016 # the $-prefixed names in this php -r program are PHP variables.
+        if ! lacking=$(php -r 'foreach (["json", "mbstring", "pdo", "pdo_sqlite"] as $e) { if (!extension_loaded($e)) { echo $e, " "; } }' 2>/dev/null </dev/null); then
+            add_missing 'the PHP extensions json, mbstring, pdo and pdo_sqlite (php could not be asked which are loaded)'
+        elif [ -n "$lacking" ]; then
+            lacking=$(printf '%s' "${lacking% }" | sed 's/ /, /g')
+            add_missing "the PHP extension(s) $lacking (not loaded by php)"
+        fi
     fi
     if ! command -v node >/dev/null 2>&1; then
         add_missing 'Node 24 or newer (node not found)'
@@ -981,6 +1114,15 @@ main() {
         add_missing 'Python 3.11 or newer (python3 not found)'
     elif ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1 </dev/null; then
         add_missing "Python 3.11 or newer (found $(python3 --version 2>&1 </dev/null))"
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        add_missing 'Git (git not found)'
+    elif ! git --version >/dev/null 2>&1 </dev/null; then
+        add_missing 'Git (git --version failed)'
+    fi
+    command -v tar >/dev/null 2>&1 || add_missing 'tar, to unpack the release (tar not found)'
+    if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+        add_missing 'sha256sum or shasum, to check the download (neither found)'
     fi
 
     # A container runtime counts only when its daemon answers: a docker binary
@@ -997,14 +1139,24 @@ main() {
     done
     no_container_runtime() {
         if [ -n "$stopped_runtime" ]; then
+            if [ -n "$missing" ] && [ "$MODE" != container ]; then
+                die "$stopped_runtime is installed, but its daemon is not running ($stopped_runtime info failed): start it and run the installer again, or install what is listed above"
+            fi
             die "$stopped_runtime is installed, but its daemon is not running ($stopped_runtime info failed): start it and run the installer again"
         fi
         die "$1"
     }
 
+    # The launcher names each container by a SHA-256, in either mode.
+    no_checksum_tool() {
+        if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+            die 'container mode needs sha256sum or shasum on the host, and neither was found; install one (coreutils or perl) and run the installer again'
+        fi
+    }
     case $MODE in
         container)
             [ -n "$container_runtime" ] || no_container_runtime 'container mode needs Docker or Podman, with its daemon running; neither was found'
+            no_checksum_tool
             ;;
         native | auto)
             if [ -n "$missing" ]; then
@@ -1013,10 +1165,14 @@ main() {
                     printf '%s\n' "$missing"
                 } >&2
                 if [ "$MODE" = native ]; then
-                    die 'install the runtimes listed above and run the installer again'
+                    if [ -n "$container_runtime" ]; then
+                        die "install what is listed above and run the installer again, or re-run it with --mode=container: $container_runtime is available"
+                    fi
+                    die 'install what is listed above and run the installer again, or install Docker or Podman and re-run it with --mode=container'
                 fi
                 [ -n "$container_runtime" ] \
-                    || no_container_runtime 'install the runtimes listed above (or Docker or Podman, with its daemon running) and run the installer again'
+                    || no_container_runtime 'install what is listed above and run the installer again, or install Docker or Podman (with its daemon running) and re-run it with --mode=container'
+                no_checksum_tool
                 say "Using container mode: $container_runtime is available."
                 MODE=container
             else
@@ -1064,6 +1220,19 @@ main() {
         ROOTS_FILE=$KNOSSOS_ROOTS_FILE
     fi
     ROOT_TO_GRANT=$(choose_root)
+    # Container mode never mounts /, the home directory or a directory above
+    # it, so granting one would only be refused, and so would the command a
+    # refusal suggests. It is skipped, and the end of the run says why.
+    ROOT_SKIPPED=''
+    if [ "$MODE" = container ] && [ -n "$ROOT_TO_GRANT" ] && [ -d "$ROOT_TO_GRANT" ]; then
+        granted=$(CDPATH='' cd -P -- "$ROOT_TO_GRANT" 2>/dev/null && pwd -P) || granted=''
+        home_real=''
+        if [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then home_real=$(CDPATH='' cd -P -- "$HOME" 2>/dev/null && pwd -P) || home_real=''; fi
+        if [ "$granted" = / ] || { [ -n "$home_real" ] && [ -n "$granted" ] && within "$home_real" "$granted"; }; then
+            ROOT_SKIPPED=$ROOT_TO_GRANT
+            ROOT_TO_GRANT=''
+        fi
+    fi
     # Every child from here on (the launcher, the release, the plugin step)
     # sees this installation's directories, never what the caller exported.
     # KNOSSOS_INSTALL_DIR is the launcher's test override and must not steer
@@ -1075,6 +1244,7 @@ main() {
     LAUNCHER="$BIN_DIR/knossos"
 
     refuse_nested_graph
+    if [ "$MODE" = container ]; then refuse_foreign_entries "$DATA_DIR"; fi
     refuse_other_mode
     if [ "$MODE" = container ]; then
         install_container
