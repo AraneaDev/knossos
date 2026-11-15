@@ -169,7 +169,7 @@ final class DoctorServiceTest extends KnossosTestCase
         $this->assertContains('data.writable', $names);
     }
 
-    // ----- PHP version + extension checks (always-OK on test env) -----
+    // ----- PHP version check (the extension checks: DoctorExtensionChecksTest) -----
 
     public function testRunPhpVersionCheckIsOkWithVersionIdBelow80500(): void
     {
@@ -181,54 +181,6 @@ final class DoctorServiceTest extends KnossosTestCase
 
         assertSame('ok', $check['status']);
         assertSame(PHP_VERSION, $check['detail']);
-    }
-
-    public function testRunPhpExtensionJsonCheckIsOkWhenExtensionLoaded(): void
-    {
-        assertSame(true, extension_loaded('json'), 'json extension is required for the rest of the suite');
-
-        $service = new DoctorService($this->pdo, $this->installationRoot, ':memory:');
-
-        $check = $this->findCheck($service->run(), 'php.extension.json');
-
-        assertSame('ok', $check['status']);
-        assertSame('loaded', $check['detail']);
-    }
-
-    public function testRunPhpExtensionPdoCheckIsOkWhenExtensionLoaded(): void
-    {
-        assertSame(true, extension_loaded('pdo'), 'pdo extension is required for the rest of the suite');
-
-        $service = new DoctorService($this->pdo, $this->installationRoot, ':memory:');
-
-        $check = $this->findCheck($service->run(), 'php.extension.pdo');
-
-        assertSame('ok', $check['status']);
-        assertSame('loaded', $check['detail']);
-    }
-
-    public function testRunPhpExtensionPdoSqliteCheckIsOkWhenExtensionLoaded(): void
-    {
-        assertSame(true, extension_loaded('pdo_sqlite'), 'pdo_sqlite extension is required for the rest of the suite');
-
-        $service = new DoctorService($this->pdo, $this->installationRoot, ':memory:');
-
-        $check = $this->findCheck($service->run(), 'php.extension.pdo_sqlite');
-
-        assertSame('ok', $check['status']);
-        assertSame('loaded', $check['detail']);
-    }
-
-    public function testRunPhpExtensionTokenizerCheckIsOkWhenExtensionLoaded(): void
-    {
-        assertSame(true, extension_loaded('tokenizer'), 'tokenizer extension is required for the PHP worker');
-
-        $service = new DoctorService($this->pdo, $this->installationRoot, ':memory:');
-
-        $check = $this->findCheck($service->run(), 'php.extension.tokenizer');
-
-        assertSame('ok', $check['status']);
-        assertSame('loaded', $check['detail']);
     }
 
     // ----- sqlite.* checks -----
