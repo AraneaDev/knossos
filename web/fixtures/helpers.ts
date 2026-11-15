@@ -3,9 +3,9 @@
  * fixture one, the fixture dashboard for a project, and a frame read as text.
  */
 import { spawn } from 'node:child_process'
-import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process'
+import type { ChildProcess, ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,48 +15,58 @@ import type { Frame } from '../hub'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-/** What a spec made that outlives it unless removed: scratch directories, and the tags of the process trees it started. */
-type Leftovers = { dirs: string[]; tags: string[] }
+/** What a spec made that outlives it unless removed: scratch directories, the processes it spawned, and the tags of their trees. */
+type Leftovers = { dirs: string[]; children: ChildProcess[]; tags: string[] }
 /** What was made outside a test (a describe body, a module): removed when the file's tests are done. */
-const unowned: Leftovers = { dirs: [], tags: [] }
+const unowned: Leftovers = { dirs: [], children: [], tags: [] }
 
 /** The environment variable every process a spec starts carries, and hands on to everything it starts in turn. */
 const TAG = 'KNOSSOS_SPEC_PROCESS'
 
-/** The pids of the processes whose environment holds one of `tags`: read from /proc, so a child orphaned by a killed parent is found too. */
-function tagged(tags: string[]): number[] {
-  const marks = tags.map(tag => `${TAG}=${tag}\0`)
-  let pids: string[]
+/** Whether this system lists its processes in /proc, where a process's environment can be read: Linux, as CI is. */
+export const HAS_PROC = existsSync('/proc/self/environ')
+
+/** Whether process `pid` started with one of `marks` in its environment. */
+function carries(pid: number, marks: string[]): boolean {
   try {
-    pids = readdirSync('/proc').filter(name => /^\d+$/.test(name))
+    const environ = readFileSync(`/proc/${pid}/environ`, 'latin1')
+    return marks.some(mark => environ.includes(mark))
   } catch {
-    // No /proc: only the spawned processes themselves are ended, by `spawnFixture`'s own kill.
-    return []
+    return false
   }
-  return pids.map(Number).filter(pid => {
-    try {
-      const environ = readFileSync(`/proc/${pid}/environ`, 'latin1')
-      return marks.some(mark => environ.includes(mark))
-    } catch {
-      return false
-    }
-  })
 }
 
-/** Ends every process tagged with one of `tags`, waiting a moment for them to go, then removes `dirs`. */
-function clear(left: Leftovers): void {
-  const tags = left.tags.splice(0)
-  for (let round = 0; round < 50 && tags.length > 0; round++) {
-    const pids = tagged(tags)
-    if (pids.length === 0) break
-    for (const pid of pids) {
-      try {
-        process.kill(pid, 'SIGKILL')
-      } catch {
-        // Gone already.
-      }
+/**
+ * Kills every process tagged with one of `tags`, read from /proc, so a child orphaned by a killed parent is found
+ * too. Each is read again right before its kill: a process that ended since the listing may have lent its pid to
+ * another by then, and that one is left alone. True when one was found.
+ */
+function killTagged(tags: string[]): boolean {
+  const marks = tags.map(tag => `${TAG}=${tag}\0`)
+  const pids = readdirSync('/proc')
+    .filter(name => /^\d+$/.test(name))
+    .map(Number)
+    .filter(pid => carries(pid, marks))
+  for (const pid of pids) {
+    if (!carries(pid, marks)) continue
+    try {
+      process.kill(pid, 'SIGKILL')
+    } catch {
+      // Gone already.
     }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+  }
+  return pids.length > 0
+}
+
+/**
+ * Ends what `left` holds, then removes its directories: every tagged process where /proc can tell them, and the
+ * spawned processes themselves everywhere (without /proc, what they started in turn is not reached).
+ */
+function clear(left: Leftovers): void {
+  for (const child of left.children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+  const tags = left.tags.splice(0)
+  if (HAS_PROC) {
+    for (let round = 0; round < 50 && tags.length > 0 && killTagged(tags); round++) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
   }
   for (const dir of left.dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5 })
 }
@@ -65,7 +75,7 @@ afterAll(() => clear(unowned))
 
 /** The leftovers of the test that runs now, cleared when it ends however it ends (passed, failed or timed out); the file's when none runs. */
 function leftovers(): Leftovers {
-  const own: Leftovers = { dirs: [], tags: [] }
+  const own: Leftovers = { dirs: [], children: [], tags: [] }
   try {
     onTestFinished(() => clear(own))
     return own
@@ -88,13 +98,9 @@ export const scratch = (prefix = 'knossos-web-'): string => {
 export function spawnFixture(command: string, args: string[], options: SpawnOptionsWithoutStdio = {}): ChildProcessWithoutNullStreams {
   const tag = randomUUID()
   const child = spawn(command, args, { ...options, env: { ...(options.env ?? process.env), [TAG]: tag } })
-  leftovers().tags.push(tag)
-  try {
-    // Without /proc the tag finds nothing: the process itself is still ended.
-    onTestFinished(() => void (child.exitCode === null && child.signalCode === null && child.kill('SIGKILL')))
-  } catch {
-    // Started outside a test: found by its tag when the file's tests are done.
-  }
+  const left = leftovers()
+  left.tags.push(tag)
+  left.children.push(child)
   return child
 }
 

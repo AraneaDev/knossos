@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fixturePluginRoot, markedPluginRoot, scratch } from './fixtures/helpers'
+import { fixturePluginRoot, HAS_PROC, markedPluginRoot, scratch } from './fixtures/helpers'
 import { hostProject } from './host'
 import { addressOf, claim as realClaim, identity as realIdentity, lockFile } from './lock'
 
@@ -93,7 +93,8 @@ describe('hostProject', () => {
     expect(existsSync(lockFile(data, root))).toBe(false)
   })
 
-  it('starts no watcher for a server it stopped because the lock was lost', async () => {
+  // The watcher is looked for in /proc; a system without one cannot say, so the test does not run there.
+  it.skipIf(!HAS_PROC)('starts no watcher for a server it stopped because the lock was lost', async () => {
     const root = scratch()
     const data = scratch()
     const mark = String(70_000 + Math.floor(Math.random() * 9_999))
