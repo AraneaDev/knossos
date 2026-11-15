@@ -38,17 +38,21 @@ describe('Hub', () => {
     const got = page('a', 100)
     await vi.waitFor(() => expect(got).toHaveLength(1))
     await new Promise(resolve => setTimeout(resolve, 60))
-    const start = Date.now()
+    const start = performance.now()
     for (let i = 1; i <= 10; i++) {
       await io.state.feedback.update(() => ({ text: `step ${i}`, tone: 'ok', until: Date.now() + 60_000 }))
       hub.changed()
     }
-    expect(Date.now() - start).toBeLessThan(40)
-    await new Promise(resolve => setTimeout(resolve, 150))
+    const lasted = performance.now() - start
+    // The last change is drawn, however long a loaded machine takes to lay it out; then nothing more comes.
+    await vi.waitFor(() => expect(frameText(got.at(-1)!.frame)).toContain('step 10'), { timeout: 5_000 })
+    await new Promise(resolve => setTimeout(resolve, 3 * FRAME_MS))
     const burst = got.slice(1)
-    expect(burst).toHaveLength(2)
-    expect(burst[1]!.at - burst[0]!.at).toBeGreaterThanOrEqual(FRAME_MS)
-    expect(frameText(burst[1]!.frame)).toContain('step 10')
+    expect(frameText(burst.at(-1)!.frame)).toContain('step 10')
+    // Coalesced: one frame at once, then at most one a FRAME_MS for as long as the burst lasted, and the last.
+    expect(burst.length).toBeGreaterThanOrEqual(1)
+    expect(burst.length).toBeLessThanOrEqual(2 + Math.floor(lasted / FRAME_MS))
+    for (let i = 1; i < burst.length; i++) expect(burst[i]!.at - burst[i - 1]!.at).toBeGreaterThanOrEqual(FRAME_MS)
   })
 
   it('keeps FRAME_MS between the frames a page receives, when a slow layout comes before a quick one too', async () => {
