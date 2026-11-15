@@ -20,13 +20,12 @@ import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, STATUS_COLOURS }
 import { DIAGRAM_MIN, neighbourhood } from './diagram'
 import type { Neighbour } from './diagram'
 import type { Hues } from './palette'
-import { absolute, placeOf } from './paths'
+import { absolute, placeOf, placeText } from './paths'
 import { button, dimRow, inList, notListedRow, segmentsWidth, tintedRow } from './rows'
-import { MARK, numberWidth, tableHead, tableRow, tableSpec } from './table'
+import { MARK, numberWidth, tableHead, tableRow, tableSpec, withDependents } from './table'
 import { chip, SWATCH } from './chips'
-import { cells, displayName, fit, fitStart, grouped, shortName, spaces, wrapWords } from './text'
+import { cells, displayName, fit, grouped, placeLeast, placeSegments, shortName, spaces, wrapWords } from './text'
 import { unreadablePolicies, unreadableText } from './policies'
-import { opensFile } from './editor'
 import type { Loc, Row, Segment } from './types'
 import type { Tier } from './table'
 import { CERTAINTY, REACH, SEVERITY, kindLegend, kindMark, legend, mark } from './marks'
@@ -183,7 +182,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
               source: { name: shortName(v.source), canonical: v.source, boundary: v.source_boundary, loc: locIn(root, v.path, v.line) },
               target: shortName(v.target),
               targetBoundary: v.target_boundary,
-              place: placeOf(v.path, v.line),
+              place: placeText(v.path, v.line),
             })),
           },
     diagnostics:
@@ -203,7 +202,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
         name: displayName(c),
         canonical: c.canonical_name,
         boundary: c.boundary,
-        place: placeOf(c.path, c.line),
+        place: placeText(c.path, c.line),
         loc: locIn(root, c.path, c.line),
         testOnly: c.reachability === 'test_only',
         certainty: c.confidence,
@@ -301,8 +300,11 @@ export function detailList(detail: DetailInput): Openable[] {
 
 /** An issue row's columns: its main text, then the boundary, then the place. */
 export type EntrySpec = { main: number; boundary: number; place: number }
-/** One issue row: `need` is how wide its main text is uncut, `marks` the cells of it its marks take; `loc` makes its place a link. */
-export type Entry = { selected?: boolean; mark?: Segment; need: number; marks?: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; loc?: Loc | null }
+/**
+ * One issue row: `need` is how wide its main text is uncut, `marks` the cells of it its marks take; `loc` makes its
+ * place a link, and `whole` asks the place's share for its whole path, not only its file name (its folders tell it apart).
+ */
+export type Entry = { selected?: boolean; mark?: Segment; need: number; marks?: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; whole?: true; loc?: Loc | null }
 
 /**
  * Fits issue rows to `columns`, packed to the left like a table: the main
@@ -312,7 +314,9 @@ export type Entry = { selected?: boolean; mark?: Segment; need: number; marks?: 
  * {@link MAIN_MIN}.
  */
 export function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): EntrySpec {
-  const placeNeed = Math.min(Math.max(PLACE_MIN, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
+  // A place needs its file name and line; more of its path, up to its share, only from width the rest leaves over.
+  const placeWhole = Math.min(Math.max(PLACE_MIN, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
+  const placeNeed = Math.min(placeWhole, Math.max(0, ...entries.map(e => (e.whole === true ? cells(e.place) : placeLeast(e.place)))))
   // A boundary is a chip: its swatch and a space before its label.
   const longest = Math.max(0, ...entries.map(e => cells(boundaryLabel(e.boundary ?? null, hues))))
   const boundaryNeed = longest === 0 ? 0 : Math.min(12, longest) + 2
@@ -323,7 +327,7 @@ export function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUE
     const room = columns - MARK - (boundary > 0 ? boundary + 1 : 0) - (place > 0 ? place + 1 : 0)
     // A place is cut from its front, so it gives up cells, down to its own least, before anything goes whole.
     if (room < least && place > 0 && place - (least - room) >= PLACE_MIN) return attempt(boundary, place - (least - room))
-    return room >= least ? { main: Math.min(room, mainNeed), boundary, place } : null
+    return room >= least ? { main: Math.min(room, mainNeed), boundary, place: place > 0 ? Math.min(placeWhole, place + room - Math.min(room, mainNeed)) : 0 } : null
   }
   return attempt(boundaryNeed, placeNeed) ?? attempt(0, placeNeed) ?? attempt(0, 0) ?? { main: Math.max(1, columns - MARK), boundary: 0, place: 0 }
 }
@@ -344,7 +348,7 @@ export function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Ro
     segments.push({ text: ' ' }, ...chipped, { text: spaces(spec.boundary - segmentsWidth(chipped)) })
   }
   // Places are left-aligned: a column of file names reads down its left edge.
-  if (spec.place > 0) segments.push({ text: ' ' }, opensFile(fitStart(e.place, spec.place), e.loc ?? null, { dim: true }))
+  if (spec.place > 0) segments.push({ text: ' ' }, ...placeSegments(e.place, spec.place, e.loc ?? null))
   const kept = segments.filter(s => s.text !== '')
   return tintedRow(key, kept, e.selected === true)
 }
@@ -418,6 +422,7 @@ function diagnosticEntries(items: DiagnosticLine[], offset: number, selected: nu
     selected: offset + i === selected,
     mark: mark(x.severity === 'error' ? SEVERITY.error : x.severity === 'warning' ? SEVERITY.warn : SEVERITY.note),
     place: x.where,
+    whole: true,
     loc: x.loc,
     need: cells(x.text),
     main: width => [button(`row:${offset + i}`, fit(x.text, width))],
@@ -425,17 +430,18 @@ function diagnosticEntries(items: DiagnosticLine[], offset: number, selected: nu
 }
 
 /**
- * Each dead-code candidate as an entry, the first `offset` into the walk. Two marks before the name, the card's note
- * their legend: how sure the scan is, ● probable or a dim ○ possible (something no scan sees may reach it), then what
- * reaches it, ◆ tests only in the warning colour (finished work no product path runs) or a dim ∅ nothing at all. Where
- * even the marks would squeeze the names below {@link MAIN_MIN} they go from every row at once, so they never show on
- * some rows and not others.
+ * Each dead-code candidate as an entry, the first `offset` into the walk. Its marks, the card's note their legend: how
+ * sure the scan is in the gutter, where every issue's mark stands (● probable or a dim ○ possible: something no scan
+ * sees may reach it), then what reaches it, ◐ tests only in the warning colour (finished work no product path runs) or
+ * a dim ∅ nothing at all, and its kind. Where those would squeeze the names below {@link MAIN_MIN} they go from every
+ * row at once, so they never show on some rows and not others.
  */
 function deadEntries(items: DeadLine[], offset: number, selected: number): Entry[] {
-  const MARKS = 6
+  const MARKS = 4
   const longestName = Math.max(1, ...items.map(c => cells(c.name)))
   return items.map((c, i) => ({
     selected: offset + i === selected,
+    mark: mark(c.certainty === 'probable' ? CERTAINTY.probable : CERTAINTY.possible),
     boundary: c.boundary,
     place: c.place,
     loc: c.loc ?? null,
@@ -443,9 +449,8 @@ function deadEntries(items: DeadLine[], offset: number, selected: number): Entry
     main: width => {
       // Too narrow only when the names would be squeezed below their least, or below the longest when all are short.
       if (width - MARKS < Math.min(MAIN_MIN, longestName)) return [button(`row:${offset + i}`, fit(c.name, width))]
-      const certainty = mark(c.certainty === 'probable' ? CERTAINTY.probable : CERTAINTY.possible, ' ')
       const reach = mark(c.testOnly ? REACH.testsOnly : REACH.unused, ' ')
-      return [certainty, reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
+      return [reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
     },
   }))
 }
@@ -520,8 +525,8 @@ function hotBlock(list: IssuesInput['hotspots'], selected: number, part: IssuesW
       const max = Math.max(0, ...list.map(f => f.score))
       const { rows, window } = windowedTable('hot-window', list, { columns, limit, local: localTo(part, selected), scrolled, walk: part.offset }, (shown, start) => {
         // The bar draws the score (lines times dependents); the two figures it is made of stand beside it.
-        const spec = tableSpec(columns, shown.map(f => f.path), [], [numberWidth('lines', shown.map(f => f.lines), tier), numberWidth('deps', shown.map(f => f.dependents), tier)], 56, { tier })
-        const head: Row[] = list.length === 0 ? [] : [tableHead('hot-cols', spec, { name: 'file', boundary: '', numbers: ['lines', 'deps'] })]
+        const { title, spec } = withDependents(t => tableSpec(columns, shown.map(f => f.path), [], [numberWidth('lines', shown.map(f => f.lines), tier), numberWidth(t, shown.map(f => f.dependents), tier)], 56, { tier }), tier)
+        const head: Row[] = list.length === 0 ? [] : [tableHead('hot-cols', spec, { name: 'file', boundary: '', numbers: ['lines', title] })]
         return [
           ...head,
           ...shown.map((f, n) => {

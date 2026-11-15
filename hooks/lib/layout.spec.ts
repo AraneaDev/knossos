@@ -348,7 +348,7 @@ describe('paneRows', () => {
     // Six flat snapshots: no sparkline in the tiles, and the rows lie flat, saying nothing moved.
     const flat = paneRows(input(), 60, 80)
     expect(flat.filter(r => r.key.startsWith('tiles-line')).map(plainText).join('')).not.toMatch(/[▁-█]/)
-    expect(plainText(row(flat, 'health-0')!)).toMatch(/^cycles +▁+ +2 +no change$/)
+    expect(plainText(row(flat, 'health-0')!)).toMatch(/^ {3}cycles +▁+ +2 +no change$/)
     const few = dash({ trend: [1, 2, 3, 4].map((c, i) => ({ snapshot_id: `s${i}`, cycles: c, max_degree: 100 + i })) })
     expect(textOf(paneRows(input({}, few), 60, 80))).not.toContain('Health over time')
     const moving = dash({ trend: [1, 2, 2, 3, 2].map((c, i) => ({ snapshot_id: `s${i}`, cycles: c, max_degree: 100 + i })) })
@@ -356,8 +356,8 @@ describe('paneRows', () => {
     expect(textOf(rows)).toContain('2 cycles ▁▅▅█▅')
     expect(plainText(row(rows, 'health-head')!)).toMatch(/^Health over time +5 snapshots$/)
     // Each figure its own row on the same axis, the newest value after it; an older knossos sends no dead code or diagnostics.
-    expect(plainText(row(rows, 'health-0')!)).toMatch(/^cycles +[▁-█]+ +2 +1–3 *$/)
-    expect(plainText(row(rows, 'health-1')!)).toMatch(/^max degree +[▁-█]+ +104 +100–104 *$/)
+    expect(plainText(row(rows, 'health-0')!)).toMatch(/^ {3}cycles +[▁-█]+ +2 +1–3 *$/)
+    expect(plainText(row(rows, 'health-1')!)).toMatch(/^ {3}max degree +[▁-█]+ +104 +100–104 *$/)
     expect(row(rows, 'health-2')).toBeUndefined()
     expect(plainText(row(rows, 'health-axis')!)).toMatch(/^ +oldest─+newest$/)
   })
@@ -710,15 +710,15 @@ describe('the issues tab', () => {
   it('lists violations, diagnostics, dead code, the complexity hotspots and the files over budget, each with its place', () => {
     const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
     expect(text).toMatch(/Policy violations +✗ 7/)
-    expect(text).toMatch(/ArchitectureQueryService::fileMetr… → ■ FactCollector ■ core +ArchitectureQueryService\.php:191/)
+    expect(text).toContain('›✗ ArchitectureQueryService::fileMetr… → ■ FactCollector ■ core ArchitectureQueryService.php:191')
     expect(text).toContain('+6 more')
     expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
     expect(text).toMatch(/scanner\.ts:14$/m)
     // The note is the legend for the two marks before each name.
     expect(text).toMatch(/Dead code +55 · ● 12 probable · ◐ 9 tests only · first 2/)
-    // How sure the scan is (● probable, ○ possible) and what reaches it (◐ tests only, ∅ nothing), before the name.
-    expect(text).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
+    // How sure the scan is (● probable, ○ possible) in the gutter, where every issue's mark stands, then what reaches it (◐ tests only, ∅ nothing).
+    expect(text).toContain('\n ○ ∅ m FactCollector::beforeTraverse ■ php-worker …rs/php/src/FactCollector.php:108\n')
     expect(text).toMatch(/● ◐ f helper/)
     expect(text).not.toContain('◇')
     expect(text).toMatch(/Complexity hotspots +lines × dependents/)
@@ -739,11 +739,9 @@ describe('the issues tab', () => {
   })
   it('gives way in order: names are cut, then the boundary goes, then the place', () => {
     const dead = (columns: number) => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), 'dead-0')!)
-    expect(dead(90)).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
-    expect(dead(70)).toMatch(/^ +○ ∅ m FactCollector::/)
-    // Two marks cost four cells, so they stay even where the boundary and the place have gone.
-    expect(dead(30)).toMatch(/^ +○ ∅ m FactCollector::/)
-    expect([dead(60), dead(50)]).toEqual([expect.stringMatching(/^ +○ ∅ m FactCollector::… ■ php-worker …tCollector\.php:108$/), expect.stringMatching(/^ +○ ∅ m FactCollector::before… …llector\.php:108$/)])
+    // A place takes the width the name leaves, cut from its front; the certainty in the gutter and two marks of four cells stay where the boundary and the place have gone.
+    const at = { 110: 'beforeTraverse ■ php-worker workers/php/src/FactCollector.php:108', 100: 'beforeTraverse ■ php-worker …rs/php/src/FactCollector.php:108', 90: 'beforeTraverse ■ php-worker …php/src/FactCollector.php:108', 70: 'beforeTrav… ■ php-worker FactCollector.php:108', 60: 'b… ■ php-worker …ctCollector.php:108', 50: 'beforeTr… …llector.php:108', 30: 'befor…' }
+    for (const [columns, said] of Object.entries(at)) expect(dead(Number(columns))).toBe(` ○ ∅ m FactCollector::${said}`)
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)
     expect(dead(30)).not.toContain('.php')
@@ -1054,7 +1052,7 @@ describe('tables packed to the left', () => {
       const issues = paneRows(fullInput({ tab: 'issues' }), columns)
       if (columns >= 60) expect(plainText(row(hubs, 'hub-1')!), `hubs ${columns}`).toMatch(/ArchitectureQueryService ■ core +━/)
       // Wide, dead code is half the pane: its longest name is cut before its boundary goes.
-      if (columns >= 90 && columns <= 130) expect(plainText(row(issues, 'dead-0')!), `dead ${columns}`).toMatch(/FactCollector::beforeTraverse ■ php-worker +FactCollector\.php:108$/)
+      if (columns >= 90 && columns <= 130) expect(plainText(row(issues, 'dead-0')!), `dead ${columns}`).toMatch(/FactCollector::beforeTraverse ■ php-worker (…|workers\/)[a-z/]*FactCollector\.php:108$/)
       for (const r of [...hubs, ...issues]) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
     }
   })
@@ -1069,7 +1067,8 @@ describe('tables packed to the left', () => {
     const rows = paneRows(fullInput({ tab: 'issues' }), 90)
     const place = row(rows, 'dead-0')!.segments.find(seg => seg.press?.id.startsWith('file:'))
     expect(place?.press).toMatchObject({ id: 'file:/work/Knossos-MCP/workers/php/src/FactCollector.php' })
-    expect(place?.dim).toBe(true)
+    expect([place?.text, place?.dim]).toEqual(['FactCollector.php:108', undefined]) // the one form of a place: the folder dim, the file and line bright, the file opens it
+    expect(row(rows, 'dead-0')!.segments.find(seg => seg.text === '…php/src/')?.dim).toBe(true)
     expect(rows.some(r => r.segments.some(seg => 'link' in seg))).toBe(false)
     // A hotspot or a file over budget is a row: it opens as the file's detail, and `e` opens it at its longest function.
     expect(row(rows, 'hot-0')!.segments.find(seg => seg.press)?.press).toEqual({ id: 'row:5', label: 'workers/typescript/src/scanner.js' })
@@ -1690,7 +1689,7 @@ describe('the pane at every width and height, with a large project', () => {
   it('adds the dependent files and the file to a wide table, and caps its bar', () => {
     const rows = paneRows(at({ tab: 'hubs' }), 200, 40)
     expect(plainText(row(rows, 'hub-head')!)).toMatch(/in +out +cross +files +where$/)
-    expect(plainText(row(rows, 'hub-0')!)).toMatch(/ 500 +0 +0 +80 Hub0\.php:10$/)
+    expect(plainText(row(rows, 'hub-0')!)).toMatch(/ 500 +0 +0 +80 src\/Hub0\.php:10$/)
     const bar = row(rows, 'hub-0')!.segments.filter(s => /^[━╸·]+$/.test(s.text)).reduce((n, s) => n + [...s.text].length, 0)
     expect(bar).toBeLessThanOrEqual(30)
     // Medium has no room for them: the in, out and cross stay, the file where it fits.
@@ -1699,7 +1698,7 @@ describe('the pane at every width and height, with a large project', () => {
 
   it('lists the files most depended on beside the hubs, walked after them, opening as files', () => {
     const rows = paneRows(at({ tab: 'hubs' }), 200, 40)
-    expect(rows.some(r => r.key.endsWith('|files-head'))).toBe(true)
+    expect([rows.some(r => r.key.endsWith('|files-head')), plainText(row(rows, 'files-cols')!), plainText(row(paneRows(at({ tab: 'hubs' }), 140, 40), 'files-cols')!)]).toEqual([true, `   file${' '.repeat(50)}dependents`, `   file${' '.repeat(41)}deps`]) // the column's one name, its short form where the word would cut the paths
     const list = listFor(at({ tab: 'hubs' }))
     expect(list).toHaveLength(50 + 50)
     expect(list[50]).toMatchObject({ canonical: 'src/Deep/Area0/File0.php', file: true })

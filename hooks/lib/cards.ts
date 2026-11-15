@@ -30,7 +30,7 @@ import { CARD_ICON } from './marks'
 /**
  * One card: its title (and a dim subtitle beside it), a note against the
  * right edge, and its rows. A `bare` section is drawn without a card: its
- * rows alone (the stat tiles, which draw their own frames). `glyph` is the
+ * rows alone on the margin (the stat tiles, which draw their own frames). `glyph` is the
  * small mark before the title, when not the one its kind has ({@link GLYPHS}).
  * A section with no rows and an `empty` word collapses to one line: its title
  * and its note (or, without one, that word) set into a rule
@@ -157,9 +157,10 @@ function cardRowsOf(section: Section, width: number, tier: Tier): Row[] {
     const note = section.note !== undefined && section.note.length > 0 ? section.note : [{ text: section.empty, dim: true }]
     return [topRow({ key: section.key, title: section.title, note, ...(section.glyph === undefined ? {} : { glyph: section.glyph }), body: [] }, width, marginOf(tier))]
   }
-  if (section.bare === true) return section.body.map(row => (row.code !== undefined || rowWidth(row) <= width ? row : { ...row, segments: clip(row.segments, width) }))
-  // A blank row under the title, so the title stands apart from what it heads; the body's own blank rows at its ends would double it.
   const margin = marginOf(tier)
+  // On the margin like any card's rows; what it draws is its own frame.
+  if (section.bare === true) return section.body.map(row => (row.code !== undefined ? row : framedRow(row, width, margin)))
+  // A blank row under the title, so the title stands apart from what it heads; the body's own blank rows at its ends would double it.
   const body = trimBlanks(section.body)
   const head = [topRow(section, width, margin), ...(body.length > 0 ? [blankRow(`${section.key}-under`, width)] : [])]
   return [...head, ...body.map(row => (row.code !== undefined ? row : framedRow(row, width, margin)))]

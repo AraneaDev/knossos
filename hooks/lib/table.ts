@@ -22,7 +22,7 @@ import { RANKING, kindMark, mark } from './marks'
 import { opensFile } from './editor'
 import { boundaryStyle, chip } from './chips'
 import { button, segmentsWidth, tintedRow } from './rows'
-import { cells, compact, fit, fitStart, grouped, padEnd, padStart, pathParts, spaces } from './text'
+import { cells, compact, fit, grouped, padEnd, padStart, pathParts, placeLeast, placeSegments, spaces } from './text'
 import { GUTTER } from './spacing'
 import type { Loc, Preview, Row, Segment } from './types'
 
@@ -114,6 +114,8 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
   const boundaryLongest = Math.max(0, ...boundaries.map(cells))
   const boundaryNeed = boundaryLongest === 0 ? 0 : Math.min(BOUNDARY_MAX, boundaryLongest) + 2
   const placeNeed = Math.min(PLACE_MAX, Math.max(0, ...(options.places ?? []).map(cells)))
+  // A place is cut from its front: it needs its file name and line whole, and takes more of its path only from width left over.
+  const placeFloor = Math.min(placeNeed, Math.max(0, ...(options.places ?? []).map(placeLeast)))
   // A kind is a two-cell mark before the name (its letter and a space), so a table with kinds always has room for it.
   const kindNeed = (options.kinds ?? []).length > 0 ? KIND_CELLS : 0
   // Beside a file or kind column a name may stop at the typical one's width: the few longest are cut rather than the column lost.
@@ -131,13 +133,18 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
     if ((place > 0 || kind > 0) && name < typical) return null
     return name >= Math.min(NAME_MIN, nameNeed) ? { name, boundary, bar: barWidth, numbers, ...placed } : null
   }
+  const placed = placeFloor > 0 ? attempt(true, true, placeFloor, kindNeed) : null
+  if (placed !== null) return { ...placed, place: Math.min(placeNeed, placeFloor + Math.max(0, columns - specWidth(placed))) }
   return (
-    (placeNeed > 0 ? attempt(true, true, placeNeed, kindNeed) : null) ??
     attempt(true, true, 0, kindNeed) ??
     attempt(false, true, 0, kindNeed) ??
     attempt(false, false, 0) ?? { name: Math.max(1, columns - MARK - numbers.reduce((n, w) => n + 1 + w, 0)), boundary: 0, bar: 0, numbers, ...compacted }
   )
 }
+
+/** The cells a row of `spec` takes: the gutter, the kind, the name, then each column after a space. */
+const specWidth = (spec: TableSpec): number =>
+  MARK + (spec.kind ?? 0) + spec.name + spec.numbers.reduce((n, w) => n + 1 + w, 0) + [spec.boundary, spec.bar, spec.place ?? 0].reduce((n, w) => n + (w > 0 ? 1 + w : 0), 0)
 
 /** The value `at` (0 to 1) of the way up `values` sorted; 1 for none. */
 export function percentile(values: number[], at: number): number {
@@ -220,11 +227,25 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
     const text = ` ${padStart((spec.compact ? compact : grouped)(line.values[i] ?? 0), w)}`
     segments.push(line.sorted === undefined || line.sorted === i ? { text, color: HEADING } : { text, dim: true })
   })
-  // Files are left-aligned and cut from the front: a column of them reads down the file names.
-  if ((spec.place ?? 0) > 0 && (line.place ?? '') !== '') segments.push({ text: ' ' }, opensFile(fitStart(line.place ?? '', spec.place ?? 0), line.placeLoc ?? null, { dim: true }))
+  // Places are left-aligned and cut from the front: a column of them reads down the file names.
+  if ((spec.place ?? 0) > 0 && (line.place ?? '') !== '') segments.push({ text: ' ' }, ...placeSegments(line.place ?? '', spec.place ?? 0, line.placeLoc ?? null))
   const kept = segments.filter(s => s.text !== '')
   if (line.selected) return tintedRow(key, kept, true)
   return tintedRow(key, kept, line.lit === true, { bg: FLASH_BG })
+}
+
+/**
+ * A table with a column counting the files that depend on each row, fitted
+ * by `fit` (the column's title in, the spec out): the one name for it,
+ * `dependents`, from the medium tier on while the names keep the cells the
+ * short form leaves them; else its short form, `deps` (narrow, or a card
+ * half a wide pane).
+ */
+export function withDependents(fit: (title: string) => TableSpec, tier: Tier): { title: string; spec: TableSpec } {
+  const short = { title: 'deps', spec: fit('deps') }
+  if (tier === 'narrow') return short
+  const long = fit('dependents')
+  return long.name >= short.spec.name ? { title: 'dependents', spec: long } : short
 }
 
 /** A number column's width: its title, or its widest figure as the table prints it (`compact` on a narrow pane). */

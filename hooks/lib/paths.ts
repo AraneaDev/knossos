@@ -25,6 +25,12 @@ export function placeOf(path: string | null, line: number | null): string {
   return line === null ? baseName(path) : `${baseName(path)}:${line}`
 }
 
+/** A file and line as the pane's one form of a place says it: the path from the project root, then the line (see `placeSegments` in `text.ts`). */
+export function placeText(path: string | null, line: number | null): string {
+  if (path === null) return ''
+  return line === null ? path : `${path}:${line}`
+}
+
 /** A project-relative path made absolute under `root`; an absolute path is kept. */
 export function absolute(root: string, path: string): string {
   return path.startsWith('/') ? path : `${root.replace(/\/+$/, '')}/${path}`

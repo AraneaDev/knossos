@@ -9,6 +9,7 @@ import { boundariesList, markedCell } from './boundaries'
 import { changesList } from './changes'
 import { driftList, fileDetailList } from './files'
 import { displayName } from './text'
+import { placeText } from './paths'
 import type { Loc } from './types'
 import { overviewList as overviewWalk } from './overview'
 import { branchList } from './branch'
@@ -44,6 +45,7 @@ export function mergeRanked(d: Pick<Dashboard, 'hubs' | 'hotspots'> & Partial<Pi
       files: r.dependent_files ?? null,
       hotspotOnly,
       loc: locIn(d.project_root ?? null, r.path ?? null, r.line ?? null),
+      ...(r.path === undefined || r.path === null ? {} : { place: placeText(r.path, r.line ?? null) }),
       top: r.top_dependents ?? [],
     })
   }

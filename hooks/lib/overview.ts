@@ -41,6 +41,7 @@ import { cells, fit, grouped, padEnd, padStart, plural, spaces, wrapWords } from
 import type { Row, Segment } from './types'
 import type { Openable } from './views'
 import { NOTE, PLACE, REACH, mark } from './marks'
+import { GUTTER } from './spacing'
 import { countsLine } from './notes-view'
 import { baselineWords } from './baseline'
 
@@ -105,8 +106,8 @@ const UNREFERENCED = 'gate unreferenced'
 const HEALTH_LABEL = UNREFERENCED.length
 /** The cells between two columns of a legend. */
 const LEGEND_GAP = 3
-/** Below this many columns a stacked bar's label stands above it rather than beside it. */
-const BESIDE_MIN = 56
+/** Below this many columns of body a stacked bar's label stands above it rather than beside it. */
+const BESIDE_MIN = 53
 
 const LANGUAGES: Record<string, string> = { php: 'PHP', javascript: 'JS', typescript: 'TS', python: 'Python', rust: 'Rust', go: 'Go', ruby: 'Ruby', java: 'Java' }
 
@@ -233,7 +234,8 @@ export function notesLineBlock(data: OverviewData, selected: number, walk: numbe
     key: 'notes',
     make: (columns): Section => {
       const tone = counts.missing > 0 ? mark(NOTE.missing, ' ') : counts.stale > 0 ? mark(NOTE.stale, ' ') : counts.flagged > 0 ? mark(NOTE.flagged, ' ') : { text: '' }
-      const line: Segment[] = [{ text: '  ' }, ...(tone.text === '' ? [] : [tone]), button(`row:${walk}`, countsLine(counts)), { text: '  the Notes tab', dim: true }]
+      // The mark in the gutter after the marker, the line at the body.
+      const line: Segment[] = [tone.text === '' ? { text: '  ' } : tone, button(`row:${walk}`, countsLine(counts)), { text: '  the Notes tab', dim: true }]
       return { key: 'notes', title: 'Notes', body: [walkedRow('notes-line', selected === walk, line, columns)] }
     },
   }
@@ -321,19 +323,20 @@ function legendRows(c: Composition, columns: number, indent: number): Row[] {
 
 /**
  * The composition card: per dimension its name, the stacked bar and the
- * whole (right-aligned), then the legend under the bar. Narrow, the name
- * and the whole stand above a bar as wide as the card.
+ * whole (right-aligned), then the legend under the bar, at the body; the
+ * dimensions one after the other, their names in one column. Narrow, the
+ * name and the whole stand above a bar as wide as the card.
  */
 export function compositionBlock(data: OverviewData): Block | null {
   if (data.composition.length === 0) return null
   return {
     key: 'composition',
-    make: (columns): Section => {
+    make: (card): Section => {
+      const columns = Math.max(1, card - GUTTER)
       const totals = Math.max(...data.composition.map(c => cells(grouped(c.total))))
       const beside = columns >= BESIDE_MIN
       const body: Row[] = []
-      data.composition.forEach((c, n) => {
-        if (n > 0) body.push({ key: `comp-${c.key}-gap`, segments: [{ text: ' ' }] })
+      data.composition.forEach(c => {
         const total: Segment[] = [{ text: padStart(grouped(c.total), totals), color: HEADING }, { text: ` ${c.unit}`, dim: true }]
         const unitWidth = Math.max(...data.composition.map(x => cells(` ${x.unit}`)))
         if (beside) {
@@ -349,7 +352,7 @@ export function compositionBlock(data: OverviewData): Block | null {
           body.push(...legendRows(c, columns, 0))
         }
       })
-      return { key: 'composition', title: 'Composition', body }
+      return { key: 'composition', title: 'Composition', body: atBody(body) }
     },
   }
 }
@@ -399,6 +402,9 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
   }
 }
 
+/** Rows moved in to the body, past the gutter. */
+const atBody = (rows: Row[]): Row[] => rows.map(row => ({ ...row, segments: [{ text: spaces(GUTTER) }, ...row.segments] }))
+
 /** A series as level glyphs, each point `per` cells wide; a flat series lies on the lowest level. */
 function levels(values: number[], per: number): string {
   const min = Math.min(...values)
@@ -431,7 +437,7 @@ export function healthBlock(data: OverviewData): Block | null {
       // A figure that never moved says so instead of a range of one value.
       const ranges = series.map(s => (Math.min(...s.values) === Math.max(...s.values) ? 'no change' : `${grouped(Math.min(...s.values))}–${grouped(Math.max(...s.values))}`))
       const rangeWidth = Math.max(...ranges.map(cells)) + 2
-      const plotMax = columns - HEALTH_LABEL - 1 - 1 - lastWidth
+      const plotMax = columns - GUTTER - HEALTH_LABEL - 1 - 1 - lastWidth
       // Too narrow to plot: what was not counted is still said, the card never vanishing over it.
       if (plotMax < HEALTH_MIN_POINTS) return data.healthLimit.length === 0 ? null : { key: 'health', title: 'Health over time', body: limitRows(columns) }
       const withRange = plotMax - rangeWidth >= HEALTH_MIN_POINTS * 2
@@ -439,7 +445,7 @@ export function healthBlock(data: OverviewData): Block | null {
       const points = Math.min(series[0]!.values.length, plot)
       const per = Math.max(1, Math.min(POINT_MAX, Math.floor(plot / points)))
       const drawnWidth = points * per
-      const body: Row[] = series.map((s, i) => {
+      const charts: Row[] = series.map((s, i) => {
         const values = s.values.slice(-points)
         const flat = Math.min(...values) === Math.max(...values)
         return {
@@ -457,7 +463,8 @@ export function healthBlock(data: OverviewData): Block | null {
       // The shared time axis: where the oldest and the newest snapshot stand.
       const lead = spaces(HEALTH_LABEL + 1)
       const ends = drawnWidth >= 'oldest'.length + 'newest'.length + 3 ? `oldest${'─'.repeat(drawnWidth - 12)}newest` : '─'.repeat(drawnWidth)
-      body.push({ key: 'health-axis', segments: [{ text: lead }, { text: ends.slice(0, 6), dim: true }, { text: ends.slice(6, ends.length - 6), color: FAINT }, { text: ends.slice(ends.length - 6), dim: true }].filter(s => s.text !== '') })
+      charts.push({ key: 'health-axis', segments: [{ text: lead }, { text: ends.slice(0, 6), dim: true }, { text: ends.slice(6, ends.length - 6), color: FAINT }, { text: ends.slice(ends.length - 6), dim: true }].filter(s => s.text !== '') })
+      const body = atBody(charts)
       // Two counts of unused code stand on one screen: the row says which one it is.
       if (series.some(s => s.label === UNREFERENCED)) body.push({ key: 'health-said', segments: [{ text: fit(`   ${UNREFERENCED}: the quality gate's count, wider than the dead-code list`, columns), dim: true }] })
       body.push(...limitRows(columns))
@@ -487,7 +494,7 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
       const nameCap = Math.max(6, Math.floor((columns - 3 - 3 - countWidth - forbidden - 8) / 2))
       const fromWidth = Math.min(nameCap, Math.max(...flows.map(f => chipWidth(f.from, hues))))
       const toWidth = Math.min(nameCap, Math.max(...flows.map(f => chipWidth(f.to, hues))))
-      const width = columns - 2 - fromWidth - 3 - toWidth - 1 - 1 - countWidth - forbidden
+      const width = columns - GUTTER - fromWidth - 3 - toWidth - 1 - 1 - countWidth - forbidden
       const withBar = width >= 4
       const max = Math.max(0, ...flows.map(f => f.edges))
       const body = flows.map((f, i) => {
@@ -497,8 +504,9 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
         const to = chip(f.to, hues, toWidth, {})
         const pad = (s: Segment[], w: number) => [...s, { text: spaces(w - s.reduce((n, x) => n + cells(x.text), 0)) }]
         const glyphs = withBar ? bar(f.edges, max, data.grow(width)) : ''
+        // After the marker, the rest of the gutter: the source's chip starts the body.
         const segments: Segment[] = [
-          { text: ' ' },
+          { text: spaces(GUTTER - 1) },
           ...pad(from, fromWidth),
           { text: ' → ', dim: true },
           ...pad(to, toWidth),

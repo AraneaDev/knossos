@@ -96,6 +96,31 @@ export function pathSegments(path: string, width: number, loc: Loc | null = null
   return [{ text: dir, dim: true }, opensFile(base, loc, style)].filter(s => s.text !== '')
 }
 
+/**
+ * A place (`path:line`, maybe ` · ` and what recorded it) in `width` cells
+ * as a table or list cell shows one: cut from the front, so the file name
+ * stays (the file name alone when that is all the cells hold); its folder
+ * dim, its file name and line bright (opening the file when `loc` is given),
+ * anything after ` · ` dim.
+ */
+export function placeSegments(place: string, width: number, loc: Loc | null = null): Segment[] {
+  const file = fileOf(place)
+  const text = cells(place) <= width ? place : cells(file) === width ? file : fitStart(place, width)
+  const said = text.indexOf(' · ')
+  const where = said < 0 ? text : text.slice(0, said)
+  const cut = where.lastIndexOf('/') + 1
+  return [{ text: where.slice(0, cut), dim: true }, opensFile(where.slice(cut), loc), { text: said < 0 ? '' : text.slice(said), dim: true }].filter(s => s.text !== '')
+}
+
+/** A place's file name and line, and what follows them. */
+const fileOf = (place: string): string => {
+  const said = place.indexOf(' · ')
+  return place.slice(place.lastIndexOf('/', said < 0 ? undefined : said) + 1)
+}
+
+/** The fewest cells a place keeps its file name and line whole in. */
+export const placeLeast = (place: string): number => cells(fileOf(place).split(' · ')[0]!)
+
 /** A directory (ending in `/`) in at most `room` cells, cut in its middle: by whole folders while they fit, else by characters. */
 function middleCut(dir: string, room: number): string {
   const folders = dir.split('/').filter(f => f !== '')

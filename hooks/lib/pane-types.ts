@@ -36,6 +36,8 @@ export type Item = {
   hotspotOnly: boolean
   /** Where it is declared, so `e` opens its file; null when the dashboard places it nowhere. */
   loc: Loc | null
+  /** Where it is declared as the pane says a place, from the project root (`src/A.php:3`); absent where only `loc` is known. */
+  place?: string
   /** The files that depend on it most, for its hover card. */
   top: string[]
 }

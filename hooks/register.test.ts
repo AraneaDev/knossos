@@ -3179,8 +3179,8 @@ describe('knossos mod', () => {
       // From the medium tier the tiles say the figures, and the languages are chips in the title row.
       const wide = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...PANE_PROPS, bodyColumns: 140, scroll: { offset: 0, bodyRows: 40 } } })
       expect((await wide.findAll({ type: 'Text' })).filter(t => t.props.backgroundColor === 'userMessageBackground').map(t => t.text).slice(0, 2)).toEqual([' PHP ', ' TS '])
-      expect((await wide.find({ key: 'tiles-0-label' }))?.text).toMatch(/components +│ boundaries +│ cycles? +│ .*│ issues +│ drifted +│$/)
-      expect((await wide.find({ key: 'tiles-0-value' }))?.text).toMatch(/1,234 +│ 2 +│ .*│ ✗ 7 +│ 0 +│$/)
+      expect((await wide.find({ key: 'tiles-0-label' }))?.text).toMatch(/components +│ boundaries +│ cycles? +│ .*│ issues +│ drifted +│ *$/)
+      expect((await wide.find({ key: 'tiles-0-value' }))?.text).toMatch(/1,234 +│ 2 +│ .*│ ✗ 7 +│ 0 +│ *$/)
       await wide.unmount()
     }
   })

@@ -202,7 +202,11 @@ describe('the overview cards', () => {
   it('draws each dimension as one stacked bar with its whole beside it and a legend of shares under it', () => {
     const rows = rowsOf(compositionBlock(data)!, 140)
     const bar = rows.find(r => r.key === 'comp-boundaries')!
-    expect(plainText(bar)).toMatch(/^boundaries [█▌]+░+ +9,167 components$/)
+    // At the body, past the gutter.
+    expect(plainText(bar)).toMatch(/^ {3}boundaries [█▌]+░+ +9,167 components$/)
+    // The dimensions one after the other, their names in one column: no blank row between them.
+    expect(rows.slice(2).filter(r => plainText(r).trim() === '')).toEqual([])
+    expect(rows.filter(r => /^comp-[a-z]+$/.test(r.key)).map(r => plainText(r).search(/\S/))).toEqual([3, 3, 3])
     // Two hues side by side keep a sliver of ground: each full-block part ends in a half block.
     expect(bar.segments.filter(s => /^█*▌$/.test(s.text)).length).toBeGreaterThanOrEqual(4)
     const legend = rows.filter(r => r.key.startsWith('comp-boundaries-legend')).map(plainText).join(' ')
@@ -213,7 +217,7 @@ describe('the overview cards', () => {
     expect(rows.flatMap(r => r.segments).find(s => s.text.trim() === 'tests')).toMatchObject({ dim: true })
     // Narrow, the name and the whole stand above a bar as wide as the card.
     const narrow = rowsOf(compositionBlock(data)!, 40)
-    expect(plainText(narrow.find(r => r.key === 'comp-boundaries-head')!)).toMatch(/^boundaries +9,167 components$/)
+    expect(plainText(narrow.find(r => r.key === 'comp-boundaries-head')!)).toMatch(/^ {3}boundaries +9,167 components$/)
     expect(rowWidth(narrow.find(r => r.key === 'comp-boundaries')!)).toBe(40)
   })
 
@@ -278,6 +282,9 @@ describe('the overview cards', () => {
     expect(forbidden.segments.find(s => /^[━╸]+$/.test(s.text))?.color).toBe('error')
     expect(rows.find(r => r.key === 'flow-0')!.segments.find(s => /^[━╸]+$/.test(s.text))?.color).toBe('suggestion')
     expect(rows.find(r => r.key === 'flow-0')!.segments.find(s => s.press)?.press?.id).toBe('row:6')
+    // Every flow starts at the body: its source's chip where a card's body starts, after the marker's gutter.
+    expect(rows.filter(r => /^flow-\d$/.test(r.key)).map(r => plainText(r).slice(0, 5))).toEqual(['   ■ ', '   ■ ', '   ■ '])
+    expect(rowsOf(healthBlock(data)!, 100).filter(r => /^health-(\d|axis)$/.test(r.key)).every(r => /^ {3}\S/.test(plainText(r)) || r.key === 'health-axis')).toBe(true)
     // None to show: one line.
     const none = rowsOf(flowsBlock({ ...data, flows: [] }, hues, -1, 0), 100)
     expect(none).toHaveLength(1)
@@ -333,6 +340,11 @@ describe("the Overview's line about notes", () => {
     expect(list.at(-1)).toMatchObject({ name: 'notes', jump: { tab: 'notes', notesFilter: 'missing' } })
     const staleOnly = { ...dash, notes: { total: 4, missing: 0, stale: 2, flagged: 1 } }
     expect(overviewList(overviewData(staleOnly, huesOf(staleOnly)), changesInput(NO_CHANGES, ROOT)).at(-1)?.jump).toEqual({ tab: 'notes', notesFilter: 'stale' })
+  })
+
+  it('puts its mark in the gutter after the marker and its words at the body, as every card row', () => {
+    expect(drawn(counted)).toContain('\n ▲ 142 notes · 3 missing · 5 stale · 1 flagged  the Notes tab\n')
+    expect(drawn({ ...dash, notes: { total: 4, missing: 0, stale: 0, flagged: 0 } })).toContain('\n   4 notes  the Notes tab\n')
   })
 
   it('says nothing, and walks nothing, without notes or from an older knossos', () => {

@@ -19,8 +19,12 @@ export const plainText = (row: Row): string => {
   // A card's top edge stands on the margin either side: the margin says nothing.
   const top = /^ *(╭─|──) (.*?)( ─╮| ──|─╮|──) *$/.exec(text)
   if (top !== null) return top[2]!.replace(GLYPH, '').replace(/ ─+( |$)/, (run, after: string) => ' '.repeat(run.length - after.length) + after).trimEnd()
-  if (row.inset !== undefined) return text.slice(row.inset).trimEnd()
-  // What draws a frame of its own (the stat tiles' band) still has `│ ` and ` │` to take off.
+  if (row.inset !== undefined) {
+    const body = text.slice(row.inset).trimEnd()
+    // The stat tiles' band draws a frame of its own on the margin: its `│ ` and ` │` say nothing either.
+    return row.key.startsWith('tiles-') && body.startsWith('│ ') && body.endsWith('│') ? body.slice(2, -1).trimEnd() : body
+  }
+  // What draws a frame of its own still has `│ ` and ` │` to take off.
   if (text.startsWith('│ ') && text.endsWith('│')) return text.slice(2, -1).trimEnd()
   // A marked row is tinted to the card's edge: the spaces that carry the tint say nothing.
   return row.tint === undefined ? text : text.trimEnd()

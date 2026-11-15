@@ -21,7 +21,7 @@ import { boundaryLabel, FAINT } from './palette'
 import type { Hues } from './palette'
 import { baseName, placeOf } from './paths'
 import { blank, clip, dimRow, rowsHeight, rowWidth, inList } from './rows'
-import { numberWidth, tableHead, tableRow, tableSpec, tierOf } from './table'
+import { numberWidth, tableHead, tableRow, tableSpec, tierOf, withDependents } from './table'
 import { cells, grouped } from './text'
 import type { Loc, Row, Segment } from './types'
 import type { TableSpec, Tier } from './table'
@@ -85,8 +85,8 @@ const degreeTitles = (withFiles: boolean): string[] => ['in', 'out', 'cross', ..
 /** Whether a table of `items` at `tier` adds the dependent files: wide, and only when the dashboard counts them. */
 const filesColumn = (items: Item[], tier: Tier): boolean => tier === 'wide' && items.some(i => i.files !== null)
 
-/** Where a component is declared, as a table's file column shows it: its file's name and the line. */
-const placeIn = (item: Item): string => (item.loc === null ? '' : placeOf(item.loc.path, item.loc.line))
+/** Where a component is declared, as a table's place column shows it: its path from the project root and the line. */
+const placeIn = (item: Item): string => item.place ?? (item.loc === null ? '' : placeOf(item.loc.path, item.loc.line))
 
 /**
  * How a table of components fits `columns`: without the boundary column when
@@ -193,8 +193,9 @@ function hubsArrangement(input: PaneInput, selected: number, tier: Tier): Arrang
 /**
  * The files most depended on, as a card: each file's path (cut from the
  * front, so its name stays), its boundary, a bar and how many files depend
- * on it; `limit` of them around the marker, each a row it walks from
- * `offset`. Null when the dashboard lists none.
+ * on it under a column head, as the hubs' table beside it has one; `limit`
+ * of them around the marker, each a row it walks from `offset`. Null when
+ * the dashboard lists none.
  */
 function fileHubsBlock(files: FileHub[], selected: number, offset: number, tier: Tier, hues: Hues, note = '', lit: ReadonlySet<string> = new Set()): Block | null {
   if (files.length === 0) return null
@@ -204,16 +205,17 @@ function fileHubsBlock(files: FileHub[], selected: number, offset: number, tier:
     make: (columns, limit, scrolled) => {
       const shared = sharedBoundary(files)
       const labels = shared === null ? files.map(f => boundaryLabel(f.boundary, hues)) : []
-      const spec = tableSpec(columns, files.map(f => f.path), labels, [numberWidth('', files.map(f => f.dependents), tier)], 56, { tier })
+      const { title, spec } = withDependents(t => tableSpec(columns, files.map(f => f.path), labels, [numberWidth(t, files.map(f => f.dependents), tier)], 56, { tier }), tier)
       const max = Math.max(0, ...files.map(f => f.dependents))
-      const { rows, window } = windowedTable('files-window', files, { columns, limit, local: inList(selected - offset, files.length), scrolled, walk: offset }, (shown, start) =>
-        shown.map((f, n) => {
+      const { rows, window } = windowedTable('files-window', files, { columns, limit, local: inList(selected - offset, files.length), scrolled, walk: offset }, (shown, start) => [
+        tableHead('files-cols', spec, { name: 'file', boundary: labels.length > 0 ? 'boundary' : '', numbers: [title] }),
+        ...shown.map((f, n) => {
           const i = start + n
           const preview = previewCard(`card-files-${i}`, { name: baseName(f.path), boundary: f.boundary, figures: fileFigures(f.dependents), top: f.top }, columns, hues)
           return tableRow(`files-${i}`, { name: f.path, boundary: f.boundary, values: [f.dependents], max, path: true, selected: offset + i === selected, press: `row:${offset + i}`, preview, lit: lit.has(`file:${f.path}`) }, spec, hues)
         }),
-      )
-      const said = [shared === null ? '' : `all in ${boundaryLabel(shared, hues)}`, note, 'dependent files'].filter(t => t !== '').join(' · ')
+      ])
+      const said = [shared === null ? '' : `all in ${boundaryLabel(shared, hues)}`, note].filter(t => t !== '').join(' · ')
       return { key: 'files', title: 'Files most depended on', note: noteOf(said), body: rows, window }
     },
   }
@@ -243,7 +245,7 @@ function overviewArrangement(input: PaneInput, selected: number, tier: Tier): Ar
   const quiet = data.flows.length === 0
   const rows: Block[][] = [[sessionCard], present([composition, concentration]), present([health, ...(quiet ? [] : [flows])]), ...(quiet ? [[flows]] : []), present([notes])].filter(line => line.length > 0)
   // A tall pane's spare rows go to the files a change is riskiest in and the files most depended on, rather than to blank space.
-  const extra = present([spotsBlock(input), topFilesBlock(input)])
+  const extra = present([spotsBlock(input, tier), topFilesBlock(input, tier)])
   return { top: tiles, left: [], rows, split: 0.5, order: [...tiles, sessionCard, ...present([composition, concentration, health, flows, notes])], ...(extra.length > 0 ? { extra: [extra] } : {}) }
 }
 
@@ -256,18 +258,20 @@ const SECONDARY_MIN = 3
  * it shows only when the pane has room to spare, and the walk must not
  * depend on the height. Null with nothing to list.
  */
-function fileListBlock(key: string, title: string, note: string, files: { path: string; values: number[]; bar: number; loc: Loc | null }[], titles: string[], tier: Tier, hues: Hues): Block | null {
+function fileListBlock(key: string, title: string, note: string, files: { path: string; values: number[]; bar: number; loc: Loc | null }[], before: string[], tier: Tier, hues: Hues, shown: Tier): Block | null {
   if (files.length === 0) return null
   return {
     key,
     grow: { length: files.length, min: SECONDARY_MIN },
     make: (columns, limit, scrolled) => {
       const max = Math.max(0, ...files.map(f => f.bar))
-      const { rows, window } = windowedTable(`${key}-window`, files, { columns, limit, scrolled }, (shown, start) => {
-        const spec = tableSpec(columns, shown.map(f => f.path), [], titles.map((t, i) => numberWidth(t, shown.map(f => f.values[i] ?? 0), tier)), 56, { tier })
+      const { rows, window } = windowedTable(`${key}-window`, files, { columns, limit, scrolled }, (listed, start) => {
+        // The last column counts the dependents: `deps` where the whole word would cut the paths.
+        const fit = (last: string) => tableSpec(columns, listed.map(f => f.path), [], [...before, last].map((t, i) => numberWidth(t, listed.map(f => f.values[i] ?? 0), tier)), 56, { tier })
+        const { title: last, spec } = withDependents(fit, shown)
         return [
-          tableHead(`${key}-cols`, spec, { name: 'file', boundary: '', numbers: titles }),
-          ...shown.map((f, n) => tableRow(`${key}-${start + n}`, { name: f.path, boundary: null, values: f.values, barValue: f.bar, max, path: true, opens: f.loc }, spec, hues)),
+          tableHead(`${key}-cols`, spec, { name: 'file', boundary: '', numbers: [...before, last] }),
+          ...listed.map((f, n) => tableRow(`${key}-${start + n}`, { name: f.path, boundary: null, values: f.values, barValue: f.bar, max, path: true, opens: f.loc }, spec, hues)),
         ]
       })
       return { key, title, note: noteOf(note), body: rows, window }
@@ -276,12 +280,12 @@ function fileListBlock(key: string, title: string, note: string, files: { path: 
 }
 
 /** The Overview's secondary card of complexity hotspots (as Issues lists them). */
-const spotsBlock = (input: PaneInput): Block | null =>
-  fileListBlock('hotspots', 'Complexity hotspots', 'lines × dependents', input.issues.hotspots.map(f => ({ path: f.path, values: [f.lines, f.dependents], bar: f.score, loc: f.loc })), ['lines', 'deps'], 'medium', input.hues)
+const spotsBlock = (input: PaneInput, tier: Tier): Block | null =>
+  fileListBlock('hotspots', 'Complexity hotspots', 'lines × dependents', input.issues.hotspots.map(f => ({ path: f.path, values: [f.lines, f.dependents], bar: f.score, loc: f.loc })), ['lines'], 'medium', input.hues, tier)
 
 /** The Overview's secondary card of the files most depended on (as Hubs lists them). */
-const topFilesBlock = (input: PaneInput): Block | null =>
-  fileListBlock('files', 'Files most depended on', 'dependent files', input.fileHubs.map(f => ({ path: f.path, values: [f.dependents], bar: f.dependents, loc: f.loc })), ['deps'], 'medium', input.hues)
+const topFilesBlock = (input: PaneInput, tier: Tier): Block | null =>
+  fileListBlock('files', 'Files most depended on', '', input.fileHubs.map(f => ({ path: f.path, values: [f.dependents], bar: f.dependents, loc: f.loc })), [], 'medium', input.hues, tier)
 
 /**
  * The pane laid out: its rows from the header down (`body`) and the footer

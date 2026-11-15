@@ -4,7 +4,7 @@ import { issueGrid } from './views'
 import type { Block, Section } from './cards'
 import { rawText } from './__tests__/plain-text'
 import { button, rowWidth } from './rows'
-import { BAR_SHARE, barRange, percentile, tableSpec, tierOf } from './table'
+import { BAR_SHARE, barRange, percentile, tableSpec, tierOf, withDependents } from './table'
 import { HEADING, TITLE } from './palette'
 import type { Row } from './types'
 import type { Tier } from './table'
@@ -257,6 +257,17 @@ describe('bars', () => {
     const places = ['ArchitectureQueryService.php:22']
     expect(tableSpec(120, ['ArchitectureQueryService'], ['core'], [3, 3, 5], undefined, { tier: 'medium', places }).place).toBe(31)
     expect(tableSpec(60, ['ArchitectureQueryService'], ['core'], [3, 3, 5], undefined, { tier: 'medium', places }).place).toBeUndefined()
+  })
+  it('name a column of dependents one way, its short form only where the whole word would cut the names', () => {
+    const fit = (columns: number) => (title: string) => tableSpec(columns, ['src/Query/Area0/Service0.php'], ['core'], [Math.max(title.length, 2)], 56, { tier: 'wide' })
+    expect([withDependents(fit(100), 'wide').title, withDependents(fit(100), 'medium').title, withDependents(fit(100), 'narrow').title]).toEqual(['dependents', 'dependents', 'deps'])
+    expect(withDependents(fit(50), 'wide')).toEqual({ title: 'deps', spec: fit(50)('deps') })
+  })
+  it('give a place its file name and line whole, and more of its path only from width left over', () => {
+    const places = ['src/Query/ArchitectureQueryService.php:22']
+    const spec = (columns: number) => tableSpec(columns, ['ArchitectureQueryService'], ['core'], [3, 3, 5], undefined, { tier: 'medium', places }).place
+    // Its least is the file and line, from the width they showed at alone; the rest of the path from width left over, up to the column's cap.
+    expect([88, 90, 106, 108, 110, 130].map(spec)).toEqual([undefined, 31, 32, 34, 36, 36])
   })
 })
 
