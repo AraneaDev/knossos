@@ -1364,6 +1364,7 @@ js	hooks/lib/notes-view.spec.ts
 js	hooks/lib/notes-view.ts
 js	hooks/lib/notes.spec.ts
 js	hooks/lib/notes.ts
+js	hooks/lib/overlays-spacing.spec.ts
 js	hooks/lib/overview.spec.ts
 js	hooks/lib/overview.ts
 js	hooks/lib/palette.spec.ts
