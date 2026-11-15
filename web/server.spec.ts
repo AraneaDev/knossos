@@ -329,6 +329,16 @@ describe('startServer', () => {
     await running.close()
   })
 
+  it('sends the first keep-alive the moment a stream opens, not a period later', async () => {
+    const server = await started()
+    const base = server.url.slice(0, server.url.indexOf('?'))
+    const raw = await fetch(`${base}events?t=${server.token}&id=a&cols=100&rows=40`)
+    const reader = raw.body!.getReader()
+    const first = new TextDecoder().decode((await reader.read()).value)
+    await reader.cancel()
+    expect(first.startsWith('data: {"type":"alive"}')).toBe(true)
+  })
+
   it('sends each page a keep-alive event while nothing else happens', async () => {
     running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, aliveMs: 20 })
     await running.ready

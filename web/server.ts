@@ -318,6 +318,9 @@ export async function startServer(o: {
     const write = (text: string) => void (res.writableEnded || res.destroyed || res.write(text))
     const send = (event: PageEvent) => write(`data: ${JSON.stringify(event)}\n\n`)
     // An event, not a comment: a page sees only events, and takes a stream that stays silent for a while as lost.
+    // The first goes at once, so a page knows from its first moment that this server sends them: a stream whose
+    // server is suspended in its first seconds is noticed too.
+    send({ type: 'alive' })
     const alive = setInterval(() => send({ type: 'alive' }), o.aliveMs ?? ALIVE_MS)
     res.on('close', () => {
       clearInterval(alive)
