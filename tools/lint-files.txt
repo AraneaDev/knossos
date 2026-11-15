@@ -1293,6 +1293,7 @@ js	hooks/engine.d.ts
 js	hooks/lib/__tests__/joins.ts
 js	hooks/lib/__tests__/pane.ts
 js	hooks/lib/__tests__/plain-text.ts
+js	hooks/lib/__tests__/ring-fixture.ts
 js	hooks/lib/__tests__/tabs.ts
 js	hooks/lib/activity.spec.ts
 js	hooks/lib/activity.ts
@@ -1375,6 +1376,7 @@ js	hooks/lib/printable.spec.ts
 js	hooks/lib/printable.ts
 js	hooks/lib/raster.spec.ts
 js	hooks/lib/raster.ts
+js	hooks/lib/rings-columns.spec.ts
 js	hooks/lib/rings.spec.ts
 js	hooks/lib/rings.ts
 js	hooks/lib/route.spec.ts
@@ -1440,6 +1442,7 @@ js	hooks/mod/render.band.spec.ts
 js	hooks/mod/render.pane.spec.ts
 js	hooks/mod/render.segments.spec.ts
 js	hooks/mod/render.tsx
+js	hooks/mod/rings.pane.spec.ts
 js	hooks/mod/session-baseline.ts
 js	hooks/mod/session.command.spec.ts
 js	hooks/mod/session.end-session.spec.ts

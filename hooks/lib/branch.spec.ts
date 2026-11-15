@@ -92,7 +92,7 @@ describe('the Branch tab: did it break anything', () => {
     expect(t.indexOf('Greeter0')).toBeLessThan(t.indexOf('A0 → B0'))
     expect(t).toMatch(/Hub0 .*20 → 31 \+11/)
     // Four of the six crossings were not listed: said, not dropped.
-    expect(t).toContain('+4 more cross-boundary dependencies')
+    expect(plainText(rowsOf(answer()).find(r => r.key === 'branch-unlisted-crossing')!)).toBe('   +4 more cross-boundary dependencies')
     const rows = rowsOf(answer(), view({ selected: 6 }))
     const hub = rows.find(r => r.key.split('|').some(k => k === 'finding-6'))!
     expect(hub.segments.find(s => s.press !== undefined)?.press?.id).toBe('row:6')

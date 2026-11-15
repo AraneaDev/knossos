@@ -786,7 +786,7 @@ describe('the issues tab', () => {
   it('says the policies are unreadable, with the reason, when knossos.json could not be read', () => {
     const broken = full({ policy: { status: 'config_invalid', message: 'knossos.json: unexpected token at line 3', total: 0, truncated: false, truncation_reasons: [], items: [] } as unknown as Dashboard['policy'] })
     expect(issuesInput(broken).policy?.unreadable).toBe('knossos.json: unexpected token at line 3')
-    expect(textOf(paneRows(fullInput({ tab: 'issues' }, broken), 90))).toMatch(/Policy violat\S* +policies unreadable: knossos\.json: unexpected token at line 3/)
+    expect(textOf(paneRows(fullInput({ tab: 'issues' }, broken), 90))).toMatch(/Policy violat… +policies unreadable: knossos\.json: unexpected token at line 3\n/)
     // No reason sent: the pane still says why it checked nothing.
     const silent = full({ policy: { status: 'config_invalid', message: 42, total: 0, truncated: false, truncation_reasons: [], items: [] } as unknown as Dashboard['policy'] })
     expect(issuesInput(silent).policy?.unreadable).toBe('knossos.json could not be read')

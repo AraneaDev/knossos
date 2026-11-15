@@ -172,7 +172,7 @@ describe('lists sized to the height', () => {
     const shown = items(rows, 'a').map(r => r.key)
     expect(shown).toContain('a-20')
     // On the narrow margin, then the gutter.
-    expect(rawText(rows.find(r => r.key === 'a-more')!)).toMatch(/^ {4}\d+ above ↑ · \d+ more ↓ *$/)
+    expect(rawText(rows.find(r => r.key === 'a-more')!).trimEnd()).toBe('    15 above ↑ · 9 more ↓')
   })
   it('read the height from the pane, with a default where the surface gives none', () => {
     expect(paneHeight({ bodyRows: 33 })).toBe(33)
