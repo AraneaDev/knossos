@@ -123,7 +123,13 @@ describe('a file detail', () => {
     const text = textOf(rows)
     const raw = rows.map(rawText).join('\n')
     expect(plainText(row(rows, 'detail-head')!)).toMatch(/^Router\.php +■ Http$/)
-    expect(plainText(row(rows, 'detail-place')!)).toBe('src/Http/Router.php · PHP · 240 lines')
+    // Its facts under labels, one a row, their values in one column, with no blank row between them.
+    const head = rows.slice(rows.findIndex(r => r.key === 'detail-place'), rows.findIndex(r => r.key === 'detail-size') + 1)
+    expect(head.map(r => [r.key, plainText(r)])).toEqual([
+      ['detail-place', '   where      src/Http/Router.php'],
+      ['detail-language', '   language   PHP'],
+      ['detail-size', '   size       240 lines'],
+    ])
     // The file's own detail: its path is where the person already is, so it opens nothing.
     expect(row(rows, 'detail-place')!.segments.some(s => s.press !== undefined || 'link' in s)).toBe(false)
     expect(text).toMatch(/Dependencies · used by 14 · uses 1 +edges/)
@@ -142,6 +148,9 @@ describe('a file detail', () => {
     expect(plainText(row(narrow, 'dep-0')!)).toMatch(/^› {2}…?[a-zA-Z/]*Kernel\.php +■ Core +━+ +6$/)
     expect(plainText(row(narrow, 'deps-more')!)).toBe('   +12 more')
     expect(plainText(row(narrow, 'use-0')!)).toMatch(/Container\.php +■ Core/)
+    // The two lists of one kind run on: no blank row between the first and the second's heading.
+    const more = narrow.findIndex(r => r.key === 'deps-more')
+    expect(narrow.slice(more + 1, more + 3).map(r => [r.key, plainText(r)])).toEqual([['uses-title', '   Depends on · 1 file'], ['use-0', plainText(row(narrow, 'use-0')!)]])
   })
 
   it('walks the dependents, then what it depends on (each a file), then the components, by the indexes their presses carry', () => {

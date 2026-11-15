@@ -52,7 +52,7 @@ export function detailHead(c: DetailHead, hues: Hues): Block {
  * file bright, while it fits; else broken after a `/`, the folders dim and
  * the last line's file bright. The file is what opens it.
  */
-function placeLines(place: string, width: number, loc: Loc | null): Segment[][] {
+export function placeLines(place: string, width: number, loc: Loc | null): Segment[][] {
   if (cells(place) <= width) return [pathSegments(place, width, loc)]
   const lines = wrapValue(place, width)
   return lines.map((line, i) => {

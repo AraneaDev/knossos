@@ -164,7 +164,8 @@ describe('notes on a component detail', () => {
     paneLayout(pane(null, view(), n), 100, 80).footer.flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [`${s.press.id}${s.press.hotkey === undefined ? '' : `=${s.press.hotkey}`}`])))
 
   it('offers m to add one in the footer, where it is never scrolled away, and says there is none yet', () => {
-    expect(said(null)).toMatch(/Notes\n *\n {3}No notes on StableId yet\./)
+    // No blank row inside the card: the line that says there is none, then the way to add one.
+    expect(said(null)).toMatch(/Notes\n *\n {3}No notes on StableId yet\.\n {3}add a note\n/)
     expect(footerPresses(null)).toContain('note=m')
     // The card's own button is a click under a key of its own (two Buttons may not share one), not a second m.
     expect(presses(null)).toContain('note-card')
@@ -190,7 +191,7 @@ describe('notes on a component detail', () => {
     expect([...presses(note({ phase: 'confirming' })), ...footerPresses(note({ phase: 'confirming' }))]).not.toContain('note=m')
     expect(footerSaid(note({ phase: 'saving' }))).toContain('recording…')
     // A failure is said in the card, and m is offered again.
-    expect(said(note({ phase: 'failed', reason: 'kind must be one of: note.' }))).toContain('✗ knossos did not record it: kind must be one of: note.')
+    expect(said(note({ phase: 'failed', reason: 'kind must be one of: note.' }))).toContain('\n   No notes on StableId yet.\n   ✗ knossos did not record it: kind must be one of: note.\n   add a note\n')
     expect(footerPresses(note({ phase: 'failed' }))).toContain('note=m')
     // Every footer row fits, however narrow.
     for (const columns of [40, 60, 100, 200]) for (const r of footer(note({ phase: 'confirming', previous: 'x'.repeat(300) }), columns)) expect(rowWidth(r), `${columns}`).toBeLessThanOrEqual(columns)

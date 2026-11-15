@@ -1352,6 +1352,7 @@ js	hooks/lib/marks.spec.ts
 js	hooks/lib/marks.ts
 js	hooks/lib/motion.spec.ts
 js	hooks/lib/motion.ts
+js	hooks/lib/notes-card.ts
 js	hooks/lib/notes-tree.spec.ts
 js	hooks/lib/notes-tree.ts
 js	hooks/lib/notes-view.spec.ts

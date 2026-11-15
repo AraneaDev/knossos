@@ -503,9 +503,10 @@ function stacked(centre: DiagramNode, usedBy: Neighbour[], uses: Neighbour[], wi
   const rx = spine + ew
   const cw = Math.min(width, boxWidth(Math.min(LABEL_MAX, cells(centre.label))))
   const cx = Math.max(0, Math.min(width - cw, spine - Math.floor(cw / 2)))
-  const upper = usedBy.length === 0 ? 1 : columnHeight(usedBy.length) + 1
+  // A side with nothing on it is one line of text against the centre box, with no blank row between: it says, it draws nothing.
+  const upper = usedBy.length === 0 ? 0 : columnHeight(usedBy.length) + 1
   const cy = upper + 1
-  const lower = uses.length === 0 ? 2 : 1 + columnHeight(uses.length)
+  const lower = uses.length === 0 ? 1 : 1 + columnHeight(uses.length)
   const height = cy + 3 + lower
   const c = canvas(Math.max(1, width), height)
   const spineAt = Math.min(Math.max(cx + 1, spine), cx + cw - 2)
@@ -521,7 +522,7 @@ function stacked(centre: DiagramNode, usedBy: Neighbour[], uses: Neighbour[], wi
     })
     line(c, [[spineAt, 1], [spineAt, cy - 1]], usedBy.some(nb => nb.node.selected) ? { color: ACCENT } : { color: FAINT }, true)
   }
-  if (uses.length === 0) write(c, Math.max(0, spineAt - Math.floor(cells(empty.uses) / 2)), cy + 4, [{ text: fit(empty.uses, width), dim: true }])
+  if (uses.length === 0) write(c, Math.max(0, spineAt - Math.floor(cells(empty.uses) / 2)), cy + 3, [{ text: fit(empty.uses, width), dim: true }])
   else {
     const ys = uses.map((_, i) => cy + 4 + i * (3 + NEIGHBOUR_GAP))
     line(c, [[spineAt, cy + 2], [spineAt, ys[ys.length - 1]! + 1]], uses.some(nb => nb.node.selected) ? { color: ACCENT } : { color: FAINT })

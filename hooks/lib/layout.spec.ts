@@ -964,7 +964,7 @@ describe('the detail view', () => {
     // Nineteen use it and two are listed: the rest as one box.
     expect(raw).toContain('│ +17 more')
     expect(plainText(row(rows, 'hood-head')!)).toMatch(/^Dependencies · used by 19 · uses 2 +edges$/)
-    expect(textOf(rows)).toMatch(/Notes\n *\n {3}note: Read-only: it never scans\./)
+    expect(textOf(rows)).toMatch(/Notes\n *\n {3}note {3}Read-only: it never scans\.\n {3}change the note\n/) // a labelled fact, then the way to change it, no blank row between
   })
   it("marks an agent's note apart from the person's, the person's first", () => {
     const answer = detailAnswer({
@@ -973,19 +973,19 @@ describe('the detail view', () => {
         { kind: 'note', value: 'Reached from the dashboard tab only.', author: 'model' },
       ],
     })
-    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n *\n {3}note: Read-only: it never scans\.\n {3}note \(agent\): Reached from the dashboard tab only\./)
+    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n *\n {3}note {3}Read-only: it never scans\.\n {3}note {3}\(agent\) Reached from the dashboard tab only\.\n/)
   })
   it("keeps a note's line breaks and spacing, so a short ASCII sketch survives", () => {
     const answer = detailAnswer({
       annotations: [{ kind: 'note', value: 'Store::commit\n  |-> History::record\n  `-> emit(change)', author: 'model' }],
     })
-    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/note \(agent\): Store::commit\n {5}\|-> History::record\n {5}`-> emit\(change\)/)
+    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/\n {3}note {3}\(agent\) Store::commit\n {12}\|-> History::record\n {12}`-> emit\(change\)\n/)
   })
   it('spells a tab in a note as spaces, so a tab-indented line stays within the pane', () => {
     const answer = detailAnswer({ annotations: [{ kind: 'note', value: 'Store::commit\n\t|-> History::record', author: 'model' }] })
     const rows = paneRows(detailPane(answer), 60)
     widthsFit(rows, 60)
-    expect(textOf(rows)).toMatch(/\n {7}\|-> History::record/)
+    expect(textOf(rows)).toMatch(/\n {14}\|-> History::record/)
   })
   it("presses its '+N more' box onto the nearest neighbour it hides, below the window or above it", () => {
     const items = Array.from({ length: 30 }, (_, i) => ({ name: `user${i}`, canonical_name: `App\\User${i}`, kind: 'class', boundary: 'core', edges: 1 }))

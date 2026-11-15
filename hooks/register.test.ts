@@ -2897,7 +2897,7 @@ describe('knossos mod', () => {
       const centre = lines.findIndex(l => l.includes('Router ├'))
       expect(lines[centre]).toMatch(/►│ Router ├/)
       expect(lines.join('\n')).toMatch(/─ 4 ─/)
-      expect((await wide.find({ key: 'detail' }))?.text).toContain('note: The one way in.')
+      expect((await wide.find({ key: 'detail' }))?.text).toContain('note   The one way in.')
       // The tab strip gives way to the detail; back is a key and a click.
       expect(await wide.find({ key: 'tab:hubs' })).toBeUndefined()
       expect((await wide.find({ key: 'back' }))?.props.hotkey).toBe('b')

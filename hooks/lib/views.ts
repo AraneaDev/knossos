@@ -21,7 +21,7 @@ import { DIAGRAM_MIN, neighbourhood } from './diagram'
 import type { Neighbour } from './diagram'
 import type { Hues } from './palette'
 import { absolute, placeOf } from './paths'
-import { blank, button, dimRow, inList, notListedRow, segmentsWidth, tintedRow } from './rows'
+import { button, dimRow, inList, notListedRow, segmentsWidth, tintedRow } from './rows'
 import { MARK, numberWidth, tableHead, tableRow, tableSpec } from './table'
 import { chip, SWATCH } from './chips'
 import { cells, displayName, fit, fitStart, grouped, shortName, spaces, wrapWords } from './text'
@@ -31,6 +31,7 @@ import type { Loc, Row, Segment } from './types'
 import type { Tier } from './table'
 import { CERTAINTY, REACH, SEVERITY, kindLegend, kindMark, legend, mark } from './marks'
 import { busy } from './motion'
+import { notesBlock } from './notes-card'
 
 /**
  * A row the marker can walk to: `name` to show, `canonical` to look it up by,
@@ -638,7 +639,6 @@ export function detailArrangement(detail: DetailInput, tier: Tier, hues: Hues = 
     hues,
     (columns, limit) => [
       ...sideSection('used', c.usedBy, 0, columns, limit, tier, hues, selected).body.map(r => ({ ...r, key: `hood-${r.key}` })),
-      blank('hood-sides-gap'),
       { key: 'hood-uses-title', segments: [{ text: `   ${c.uses.title} · ${c.uses.count}`, dim: true }] },
       ...sideSection('uses', c.uses, c.usedBy.items.length, columns, limit, tier, hues, selected).body.map(r => ({ ...r, key: `hood-${r.key}` })),
     ],
@@ -646,70 +646,6 @@ export function detailArrangement(detail: DetailInput, tier: Tier, hues: Hues = 
   const rings: Block[] = detail.rings === undefined || detail.rings === null ? [] : [ringsBlock(detail.rings, selected, c.usedBy.items.length + c.uses.items.length, hues)]
   const notes: Block[] = c.annotations.length === 0 && detail.notable !== true ? [] : [notesBlock(c.name, c.annotations, detail.note ?? null, detail.notable === true)]
   return { top: [head], left: [hood], bottom: [...rings, ...notes, ...diff] }
-}
-
-/**
- * The component's notes as a card: each annotation by its kind, and, on a
- * component's own detail, the way to add one (`m`) and where that stands:
- * the field to type it in, knossos checking it, the question before it is
- * recorded (`y` records, `n` drops it; what it replaces said), recording,
- * or why knossos refused it. Nothing is written until the person says yes.
- */
-function notesBlock(name: string, annotations: { kind: string; value: string; author?: string }[], note: NoteInput | null, notable: boolean): Block {
-  return {
-    key: 'notes',
-    make: columns => {
-      const width = Math.max(1, columns - MARK)
-      const body: Row[] = annotations.flatMap((a, i) => {
-        // Each line of the note on its own, so a short ASCII sketch keeps its shape: a line that fits stays as written,
-        // spacing and all; only a longer one is wrapped.
-        const [first = '', ...rest] = a.value.split('\n')
-        const lines = [
-          ...wrapWords(`${a.kind.replace(/_/g, ' ')}${a.author === 'model' ? ' (agent)' : ''}: ${first}`, width),
-          ...rest.flatMap(line => {
-            // A tab would count as one cell and draw as several: spelled as spaces, the line measures as it draws.
-            const kept = line.replace(/\t/g, '    ').replace(/\s+$/, '')
-            return kept === '' ? [] : cells(kept) <= width ? [kept] : wrapWords(kept, width)
-          }),
-        ]
-        return lines.map((line, j) => ({ key: `note-${i}-${j}`, segments: [{ text: spaces(MARK) }, { text: line }] }))
-      })
-      if (annotations.length === 0) body.push(dimRow('note-none', `   No notes on ${name} yet.`, columns))
-      if (!notable) return { key: 'notes', title: 'Notes', body }
-      const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, columns - MARK)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: spaces(MARK) }, { text: line, ...style }] }))
-      if (note === null || note.phase === 'failed') {
-        if (note !== null) body.push(blank('note-gap'), ...said('note-failed', `${SEVERITY.error.glyph} knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
-        // The person's own note: an agent's beside it is not theirs to change here.
-        const own = annotations.some(a => a.kind === 'note' && a.author !== 'model')
-        body.push(blank('note-keys-gap'), { key: 'note-keys', segments: [{ text: spaces(MARK) }, button('note-card', own ? 'change the note' : 'add a note', undefined, { dim: true })] })
-      }
-      // A note under way is taken in the footer (noteFooterRows), where a long detail cannot scroll it away.
-      return { key: 'notes', title: 'Notes', body }
-    },
-  }
-}
-
-/**
- * A note under way on the component `name`, as the footer draws it: the
- * field while it is typed, a line while knossos checks or records it, and
- * the question with its answers before it is recorded. `width` is the
- * footer's inner width. The answers' keys are left to a question that holds
- * y and n meanwhile (`keys` false).
- */
-export function noteFooterRows(name: string, note: NoteInput, width: number): Row[] {
-  const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, width)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: line, ...style }] }))
-  if (note.phase === 'editing') {
-    return [
-      { key: 'note-field', segments: [{ text: 'note: ', dim: true }, { text: note.value, field: { id: 'note', value: note.value, placeholder: `what to remember about ${name}` } }] },
-      ...said('note-field-keys', 'Enter checks it with knossos; nothing is written yet.', { dim: true }),
-    ]
-  }
-  if (note.phase === 'previewing' || note.phase === 'saving') return said('note-busy', busy(note.phase === 'saving' ? 'recording…' : 'checking with knossos…'), { dim: true })
-  const replaces = note.previous === null ? '' : ` It replaces: "${note.previous}"`
-  return [
-    ...said('note-ask', `Record this note on ${name}? "${note.value}"${replaces}`, { color: ACCENT }),
-    { key: 'note-answers', segments: [button('note-yes', 'record', note.keys ? 'y' : undefined, { dim: false }), { text: '   ' }, button('note-no', 'cancel', note.keys ? 'n' : undefined, { dim: true })] },
-  ]
 }
 
 /** One neighbour as the neighbourhood draws it: its name, boundary, edge count and the press that opens it. */

@@ -19,7 +19,10 @@ import { baseName } from './paths'
 import { blank, dimRow, inList, notListedRow } from './rows'
 import { numberWidth, tableRow, tableSpec } from './table'
 import { chip } from './chips'
-import { cells, displayName, pathSegments, pathText, plural, wrapWords } from './text'
+import { displayName, pathText, plural, wrapWords } from './text'
+import { placeLines } from './detail-head'
+import { labelledRows, wrapValue } from './spacing'
+import type { Fact } from './spacing'
 import type { Loc, Row, Segment } from './types'
 import type { TableSpec, Tier } from './table'
 import { hoodBlock, locIn } from './views'
@@ -113,17 +116,14 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
     return { left: [head, ...diff] }
   }
   const own: Segment[] = chip(f.boundary, hues)
-  const facts = [f.language.toUpperCase(), ...(f.lines === null ? [] : [plural(f.lines, 'line', 'lines')])].filter(s => s !== '').join(' · ')
-  const tail = facts === '' ? '' : ` · ${facts}`
-  const head: Block = {
-    key: 'detail',
-    make: columns => ({
-      key: 'detail',
-      title: baseName(f.path),
-      note: own,
-      body: [{ key: 'detail-place', segments: [...pathSegments(f.path, Math.max(1, columns - cells(tail))), { text: tail, dim: true }].filter(s => s.text !== '') }],
-    }),
-  }
+  // Its facts under labels, as a component's head card has them: where it is (the page is the file, so it opens nothing), its language, its size.
+  const said = (text: string): Fact['lines'] => width => wrapValue(text, width).map(line => [{ text: line, dim: true }])
+  const facts: Fact[] = [
+    { key: 'detail-place', label: 'where', lines: width => placeLines(f.path, width, null) },
+    ...(f.language === '' ? [] : [{ key: 'detail-language', label: 'language', lines: said(f.language.toUpperCase()) }]),
+    ...(f.lines === null ? [] : [{ key: 'detail-size', label: 'size', lines: said(plural(f.lines, 'line', 'lines')) }]),
+  ]
+  const head: Block = { key: 'detail', make: columns => ({ key: 'detail', title: baseName(f.path), note: own, body: labelledRows(facts, columns) }) }
 
   // Who depends on it (what a change here reaches) and what it depends on, drawn round it.
   const deps = f.dependents
@@ -147,7 +147,7 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
   const hood = hoodBlock({ name: baseName(f.path), boundary: f.boundary }, side('Depended on by', deps.count, deps.items, 0), side('Depends on', uses.count, uses.items, deps.items.length), selected, hues, (columns, limit) => [
     ...(deps.items.length === 0 ? [dimRow('deps-none', '   none: no other file depends on it', columns)] : table('dep', deps.items, 0, columns, limit)),
     ...notListedRow('deps-more', deps.count, deps.items.length, columns),
-    ...(f.uses === null ? [] : [blank('uses-gap'), dimRow('uses-title', `   Depends on · ${plural(uses.count, 'file', 'files')}`, columns), ...table('use', uses.items, deps.items.length, columns, limit), ...notListedRow('uses-more', uses.count, uses.items.length, columns)]),
+    ...(f.uses === null ? [] : [dimRow('uses-title', `   Depends on · ${plural(uses.count, 'file', 'files')}`, columns), ...table('use', uses.items, deps.items.length, columns, limit), ...notListedRow('uses-more', uses.count, uses.items.length, columns)]),
   ])
   // The boundaries a change here reaches, above the drawing.
   const reached: Block = {
