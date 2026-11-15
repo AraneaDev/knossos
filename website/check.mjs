@@ -9,6 +9,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { REPOSITORY, repositoryLink } from "./.vitepress/links.mjs";
+import {
+    OG_IMAGE,
+    SITE_URL,
+    absoluteUrl,
+    describe,
+} from "./.vitepress/meta.mjs";
 import { githubSlug } from "./.vitepress/slug.mjs";
 import {
     allPages,
@@ -255,18 +261,25 @@ if (searchIndex.length === 0) {
     fail("no local search index in assets/chunks");
 }
 
-// 5. Nothing is loaded from anywhere but the site itself.
+// 5. Nothing is loaded from anywhere but the site itself. A canonical or
+// alternate link names an address; it loads nothing.
+const siteOrigin = new URL(SITE_URL).origin;
 for (const file of files) {
-    const external = [
-        ...fs
-            .readFileSync(file, "utf8")
-            .matchAll(
-                /<(?:script|link|img|iframe)\s[^>]*?(?:src|href)="((?:https?:)?\/\/[^"]+)"/g,
-            ),
-    ]
-        .map((match) => match[1])
-        .filter((url) => !/^https:\/\/github\.com\//.test(url));
-    for (const url of external) {
+    for (const tag of fs
+        .readFileSync(file, "utf8")
+        .matchAll(/<(?:script|link|img|iframe)\s[^>]*>/g)) {
+        const url = /\s(?:src|href)="((?:https?:)?\/\/[^"]+)"/.exec(
+            tag[0],
+        )?.[1];
+        if (
+            url === undefined ||
+            /^https:\/\/github\.com\//.test(url) ||
+            new URL(url, SITE_URL).origin === siteOrigin ||
+            (/^<link\s/.test(tag[0]) &&
+                /\srel="(?:canonical|alternate)"/.test(tag[0]))
+        ) {
+            continue;
+        }
         fail(`${path.relative(dist, file)} loads ${url}`);
     }
 }
@@ -295,10 +308,162 @@ for (const [text, slug] of [
     }
 }
 
+// 7. Every page names its own address once as canonical, describes itself, and
+// points link previews at a social card the build carries at the stated size.
+const unescape = (value) =>
+    value
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+const metaOf = (built, key, name) =>
+    [
+        ...built.matchAll(
+            new RegExp(`<meta ${key}="${name}" content="([^"]*)">`, "g"),
+        ),
+    ].map((match) => unescape(match[1]));
+/** The width and height a PNG's header gives, or null for anything else. */
+function pngSize(file) {
+    const bytes = fs.readFileSync(file);
+    if (bytes.toString("latin1", 1, 4) !== "PNG") {
+        return null;
+    }
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+const sitemapFile = path.join(dist, "sitemap.xml");
+const sitemap = fs.existsSync(sitemapFile)
+    ? new Set(
+          [
+              ...fs
+                  .readFileSync(sitemapFile, "utf8")
+                  .matchAll(/<loc>([^<]+)<\/loc>/g),
+          ].map((match) => unescape(match[1])),
+      )
+    : new Set();
+if (sitemap.size === 0) {
+    fail("no sitemap.xml with page addresses in the build");
+}
+const cards = new Map(); // og:image -> its size in the build, checked once
+let described = 0;
+for (const file of files) {
+    const relative = path.relative(dist, file).split(path.sep).join("/");
+    if (relative === "404.html") {
+        continue;
+    }
+    const built = fs.readFileSync(file, "utf8");
+    const address = absoluteUrl(
+        relative.replace(/(^|\/)index\.html$/, "$1").replace(/\.html$/, ""),
+    );
+    const canonical = [
+        ...built.matchAll(/<link rel="canonical" href="([^"]*)">/g),
+    ].map((match) => unescape(match[1]));
+    if (canonical.length !== 1 || canonical[0] !== address) {
+        fail(
+            `${relative}: wants one canonical URL, ${address}; has ${canonical.length === 0 ? "none" : canonical.join(", ")}`,
+        );
+    }
+    if (!sitemap.has(address)) {
+        fail(`${relative}: ${address} is not in sitemap.xml`);
+    }
+    if (metaOf(built, "property", "og:url")[0] !== address) {
+        fail(`${relative}: og:url is not ${address}`);
+    }
+    const descriptions = metaOf(built, "name", "description");
+    if (descriptions.length !== 1 || descriptions[0].trim() === "") {
+        fail(
+            `${relative}: wants one non-empty description, has ${JSON.stringify(descriptions)}`,
+        );
+    } else {
+        described += 1;
+    }
+    const image = metaOf(built, "property", "og:image");
+    const width = Number(metaOf(built, "property", "og:image:width")[0]);
+    const height = Number(metaOf(built, "property", "og:image:height")[0]);
+    if (image.length !== 1 || !image[0].startsWith(SITE_URL)) {
+        fail(
+            `${relative}: wants one og:image on ${SITE_URL}, has ${JSON.stringify(image)}`,
+        );
+        continue;
+    }
+    if (!metaOf(built, "property", "og:image:alt")[0]) {
+        fail(`${relative}: og:image has no alt text`);
+    }
+    if (!cards.has(image[0])) {
+        const inBuild = path.join(
+            dist,
+            decodeURIComponent(image[0].slice(SITE_URL.length)),
+        );
+        cards.set(
+            image[0],
+            fs.existsSync(inBuild) ? pngSize(inBuild) : undefined,
+        );
+    }
+    const size = cards.get(image[0]);
+    if (size === undefined) {
+        fail(`${relative}: og:image ${image[0]} is not in the build`);
+    } else if (
+        size === null ||
+        size.width !== width ||
+        size.height !== height
+    ) {
+        fail(
+            `${relative}: og:image ${image[0]} is ${size === null ? "not a PNG" : `${size.width}x${size.height}`}, the page says ${width}x${height}`,
+        );
+    }
+}
+if (!cards.has(absoluteUrl(OG_IMAGE.path))) {
+    fail(`no page points at the social card ${OG_IMAGE.path}`);
+}
+
+// 8. Descriptions come from a page's lead, cut at a sentence within 160 characters.
+for (const [source, description] of [
+    [
+        "# T\n\nThe **pane** opens with [`/knossos`](a.md). It shows the graph.\n",
+        "The pane opens with /knossos. It shows the graph.",
+    ],
+    [
+        "# T\n\nStatus: Accepted\n\n## Context\n\nRun it with:\n\n```sh\nx\n```\n\nThe graph is local.\n",
+        "The graph is local.",
+    ],
+    [
+        "# T\n\nOne line sums up the turn:\n\n```text\nx\n```\n",
+        "One line sums up the turn.",
+    ],
+    [
+        `# T\n\nA first sentence that is long enough to stand alone. A second sentence that ${"runs on and on, ".repeat(10)}to its end.\n`,
+        "A first sentence that is long enough to stand alone.",
+    ],
+    [
+        `# T\n\nYou have it. A second sentence that ${"runs on and on, ".repeat(10)}to its end.\n`,
+        "You have it. A second sentence that runs on and on, runs on and on, runs on and on, runs on and on, runs on and on, runs on and on, runs on and on, runs on…",
+    ],
+    [
+        "# T\n\nThis file is generated from the source.\n\n## `tool`\n\nAn entry.\n",
+        "",
+    ],
+]) {
+    if (describe(source) !== description) {
+        fail(
+            `describe(${JSON.stringify(source)}) is ${JSON.stringify(describe(source))}, expected ${JSON.stringify(description)}`,
+        );
+    }
+}
+for (const page of pages) {
+    const description = describe(
+        fs.readFileSync(path.join(docsDir, page), "utf8"),
+    );
+    if (description.length > 160) {
+        fail(
+            `${page}: the derived description runs to ${description.length} characters`,
+        );
+    }
+}
+
 if (failures.length > 0) {
     console.error(failures.join("\n"));
     process.exit(1);
 }
 console.log(
-    `site check: ${html.size} pages, ${leaving} links to GitHub at ${ref}, ${internal} internal links (${anchors} with an anchor, ${indexes} to a directory index), search index present; ref ${ref} ${asked === undefined ? "(read from the build)" : "(KNOSSOS_DOCS_REF)"}`,
+    `site check: ${html.size} pages, ${leaving} links to GitHub at ${ref}, ${internal} internal links (${anchors} with an anchor, ${indexes} to a directory index), ${described} pages described, search index present; ref ${ref} ${asked === undefined ? "(read from the build)" : "(KNOSSOS_DOCS_REF)"}`,
 );

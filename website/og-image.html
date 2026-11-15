@@ -1,0 +1,186 @@
+<!doctype html>
+<!--
+    The site's social card: what a chat or a feed shows for a link to the site.
+    og-image.mjs fills in the sigil and the screenshot and renders this page to
+    public/og-image.png at 1200x630. Edit here, then run `npm run og-image`.
+-->
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Knossos social card</title>
+        <style>
+            :root {
+                --chrome: #08090b;
+                --edge: #33424b;
+                --accent: #3bff9e;
+                --violet: #7a5cff;
+                --text: #edf3f6;
+                --muted: #8b96a6;
+                --terminal: #1e1e1e;
+                --mono:
+                    ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo,
+                    Consolas, monospace;
+                --sans:
+                    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+                    "Helvetica Neue", Arial, sans-serif;
+            }
+
+            * {
+                box-sizing: border-box;
+                margin: 0;
+            }
+
+            html,
+            body {
+                width: 1200px;
+                height: 630px;
+                overflow: hidden;
+                background: var(--chrome);
+            }
+
+            .card {
+                position: relative;
+                width: 1200px;
+                height: 630px;
+                overflow: hidden;
+                background:
+                    radial-gradient(
+                        560px 420px at 860px 330px,
+                        rgba(59, 255, 158, 0.1),
+                        transparent 70%
+                    ),
+                    radial-gradient(
+                        420px 320px at 120px 600px,
+                        rgba(122, 92, 255, 0.12),
+                        transparent 70%
+                    ),
+                    var(--chrome);
+            }
+
+            /* The site's 40px grid, fading out towards the text. */
+            .grid {
+                position: absolute;
+                inset: 0;
+                background-image:
+                    linear-gradient(
+                        rgba(51, 66, 75, 0.45) 1px,
+                        transparent 1px
+                    ),
+                    linear-gradient(
+                        90deg,
+                        rgba(51, 66, 75, 0.45) 1px,
+                        transparent 1px
+                    );
+                background-size: 40px 40px;
+                background-position: -1px -1px;
+                mask-image: linear-gradient(
+                    90deg,
+                    rgba(0, 0, 0, 0.25) 0%,
+                    rgba(0, 0, 0, 0.6) 45%,
+                    #000 100%
+                );
+            }
+
+            .copy {
+                position: absolute;
+                left: 72px;
+                top: 50%;
+                width: 470px;
+                transform: translateY(-50%);
+            }
+
+            .name {
+                display: flex;
+                align-items: center;
+                gap: 20px;
+                font-family: var(--mono);
+                font-size: 60px;
+                font-weight: 700;
+                letter-spacing: -0.02em;
+                color: var(--text);
+            }
+
+            .name svg {
+                width: 76px;
+                height: 76px;
+                flex: none;
+            }
+
+            .rule {
+                width: 64px;
+                height: 4px;
+                margin: 36px 0 30px;
+                background: linear-gradient(
+                    90deg,
+                    var(--accent) 0 70%,
+                    var(--violet) 70% 100%
+                );
+            }
+
+            .tagline {
+                font-family: var(--sans);
+                font-size: 50px;
+                font-weight: 700;
+                line-height: 1.12;
+                letter-spacing: -0.015em;
+                color: var(--text);
+            }
+
+            .sub {
+                margin-top: 24px;
+                font-family: var(--sans);
+                font-size: 27px;
+                line-height: 1.38;
+                color: var(--muted);
+            }
+
+            /* The pane, cropped from the screenshot of it beside a session. */
+            /* Height and top come from og-image.mjs, which centres it. */
+            .pane {
+                position: absolute;
+                left: 584px;
+                width: 548px;
+                overflow: hidden;
+                border: 1px solid var(--edge);
+                border-radius: 12px;
+                background: var(--terminal);
+                box-shadow:
+                    0 0 0 6px rgba(8, 9, 11, 0.6),
+                    0 24px 60px rgba(0, 0, 0, 0.55),
+                    0 0 80px rgba(59, 255, 158, 0.08);
+            }
+
+            /* The window onto the screenshot, inside the frame's margin. */
+            .pane .view {
+                position: absolute;
+                inset: 14px;
+                overflow: hidden;
+            }
+
+            .pane img {
+                position: absolute;
+                /* Set by og-image.mjs from the crop it is given. */
+                left: var(--crop-left);
+                top: var(--crop-top);
+                width: var(--crop-width);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <div class="grid"></div>
+            <div class="copy">
+                <div class="name"><!-- sigil -->Knossos</div>
+                <div class="rule"></div>
+                <h1 class="tagline">The labyrinth mapped once</h1>
+                <p class="sub">
+                    On screen beside Claude Code, and in the notes your agent
+                    reads while it works.
+                </p>
+            </div>
+            <div class="pane">
+                <div class="view"><img src="{{screenshot}}" alt="" /></div>
+            </div>
+        </div>
+    </body>
+</html>

@@ -1,10 +1,12 @@
 // The site's theme: VitePress's default theme, dressed as the web pane.
 //
 // The look lives in style.css, set through VitePress's own CSS variables. This
-// module adds one behaviour: a press on a screenshot opens it over the page as
+// module adds two behaviours: a press on a screenshot opens it over the page as
 // wide as the window, and a second press shows it at the size it was captured,
-// since a pane shot at column width is too small to read.
+// since a pane shot at column width is too small to read; and the browser's
+// chrome colour (theme-color) follows the appearance switch.
 import DefaultTheme from "vitepress/theme-without-fonts";
+import { THEME_COLOR } from "../meta.mjs";
 import "./style.css";
 
 const VIEWER_ID = "knossos-viewer";
@@ -118,6 +120,25 @@ function listen() {
     });
 }
 
+/** Keep theme-color on the page's background as the appearance switches. */
+function followAppearance() {
+    const root = document.documentElement;
+    const sync = () => {
+        const meta = document.querySelector('meta[name="theme-color"]');
+        meta?.setAttribute(
+            "content",
+            root.classList.contains("dark")
+                ? THEME_COLOR.dark
+                : THEME_COLOR.light,
+        );
+    };
+    new MutationObserver(sync).observe(root, {
+        attributes: true,
+        attributeFilter: ["class"],
+    });
+    sync();
+}
+
 export default {
     extends: DefaultTheme,
     enhanceApp({ router }) {
@@ -125,6 +146,7 @@ export default {
             return;
         }
         listen();
+        followAppearance();
         const previous = router.onAfterRouteChange;
         router.onAfterRouteChange = async (to) => {
             await previous?.(to);
