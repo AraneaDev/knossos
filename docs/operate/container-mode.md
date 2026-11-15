@@ -5,28 +5,51 @@ PHP, Node and Python, and what can a container reach? This page covers the
 installer's container mode. To run the image yourself with `docker run`, see
 [Running in Docker](container.md).
 
-## What it is for
+## Experimental
 
-The [installer](../get-started/installation.md#install-from-a-release) picks
-container mode when the host lacks the native runtimes and a container runtime
-answers. You can also ask for it with `--mode=container`. It needs Docker or
-Podman with its daemon running, `curl`, `sh`, and `sha256sum` or `shasum`. It
-needs no PHP, Node or Python on the host.
+Container mode is experimental, and the installer uses it only when you ask
+for it with `--mode=container`. Its isolation was reviewed and is covered by
+the test suites, and attack runs with a real container runtime held on earlier
+versions of the installer. They have not been repeated on the final layout,
+where the install directory lies outside the data directory, nor on Podman or
+macOS.
 
-You install the same way and use the same `knossos` command, the same MCP
-registration and the same plugin. The difference is where the code runs:
-inside a container of the release image, `ghcr.io/araneadev/knossos:<version>`,
-which the installer pulls, checks (it must start and pass `doctor`), and
-records in `install.json` by digest.
+- **Tested:** the shell test suites, against a fake container runtime; normal
+  use with real Docker on Linux.
+- **Not repeated on the final layout:** the attack runs against a real
+  container runtime.
+- **Untested:** Podman, macOS and Docker Desktop, and a real update between two
+  published images.
 
-Not tested yet: macOS (Docker Desktop) and Podman. The launcher is written for
-both, and every check was run against Docker on Linux only. Two things are
+The launcher is written for Podman and Docker Desktop too. Two things are
 untried there and are where to look first if calls are refused. The launcher
 compares each mount source that `docker inspect` reports with the physical
 path it asked for, and a runtime that reports a bind source in its own form
 would make every call fail with `does not have the mounts that were checked`.
 And a path holding a double quote is passed to `--mount` as a quoted CSV
 field, which only Docker has read so far.
+
+## What it is for
+
+Container mode runs Knossos on a host that has Docker or Podman but not the
+runtimes [native mode](../get-started/installation.md#install-from-a-release)
+needs. You opt in with `--mode=container`:
+
+```sh
+curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install.sh | sh -s -- --mode=container
+```
+
+It needs Docker or Podman with its daemon running, `curl`, `sh`, and
+`sha256sum` or `shasum`. It needs no PHP, Node or Python on the host. The
+installer says at the start of the run that container mode is experimental.
+Once you have a container install, running the installer again without
+`--mode` keeps container mode, so you opt in once.
+
+You install the same way and use the same `knossos` command, the same MCP
+registration and the same plugin. The difference is where the code runs:
+inside a container of the release image, `ghcr.io/araneadev/knossos:<version>`,
+which the installer pulls, checks (it must start and pass `doctor`), and
+records in `install.json` by digest.
 
 ## How a call works
 

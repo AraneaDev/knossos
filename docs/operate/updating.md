@@ -51,7 +51,9 @@ the code they started with, and so does a running session.
 
 ### In container mode
 
-The update is carried out by the launcher on the host, never inside a
+Container mode is [experimental](container-mode.md#experimental), and a real
+update between two published images has not been tried yet. The update is
+carried out by the launcher on the host, never inside a
 container, because code in a container cannot replace its own image. It pulls
 `ghcr.io/araneadev/knossos:<version>`, checks that the image starts and passes
 `doctor`, and records it in `install.json` by digest. Then it stops the running

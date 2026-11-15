@@ -35,8 +35,8 @@ Nothing in the scan installs dependencies, imports a module or boots a framework
 > **Status:** pre-release. Knossos is not published to Packagist. Each release publishes
 > tarballs on [GitHub](https://github.com/AraneaDev/knossos/releases) and a container image on
 > `ghcr.io/araneadev/knossos`, tagged with the version and never `latest`. The
-> [installer](#installation) picks between them; installing from a checkout is for developing
-> Knossos. Image names such as `knossos:dev` are built locally by you.
+> [installer](#installation) installs the tarball natively, and the image only with
+> `--mode=container`; installing from a checkout is for developing Knossos. Image names such as `knossos:dev` are built locally by you.
 
 ---
 
@@ -89,10 +89,12 @@ curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install
 Run it from the project you want to scan first. It downloads the latest release, checks it
 against the release's `SHA256SUMS`, writes a `knossos` launcher to `~/.local/bin`, allows the
 current project, installs the Claude Code plugin and registers the MCP server. It runs Knossos
-natively when the host has PHP 8.3 or newer with the mbstring, PDO, PDO SQLite and tokenizer extensions,
-Node 24 or newer, Python 3.11 or newer, Git, `tar` and `sha256sum` or `shasum`, and in a container
-when it has Docker or Podman instead. [Installation](docs/get-started/installation.md)
-covers what it decides and how to override it, and
+natively, which needs PHP 8.3 or newer with the mbstring, PDO, PDO SQLite and tokenizer extensions,
+Node 24 or newer, Python 3.11 or newer, Git, `tar` and `sha256sum` or `shasum`. When something is
+missing, it stops before it writes anything, lists what is missing, and names the two ways out:
+install it, or run the installer with `--mode=container`, which is experimental and needs Docker
+or Podman. [Installation](docs/get-started/installation.md) covers what it checks and how to
+choose a mode, and
 [Updating](docs/operate/updating.md) covers `knossos self-update`.
 
 Start a new session. The brief appears at its start, and `/knossos` opens the pane.
@@ -127,8 +129,8 @@ knossos install-agent-plugin --data-dir="$HOME/.knossos" --execute
 - **Codex or another MCP client**: [Codex and other MCP clients](docs/agents/clients.md). The
   native pane and the messages are Claude Code hooks; every other client gets the MCP tools
   and can use the [web client](#web-client) to browse the graph.
-- **No PHP on the host**: the installer uses container mode, which keeps what the host trusts in
-  `~/.local/share/knossos` and the graph in `~/.knossos`; see
+- **No PHP on the host**: `--mode=container` installs the experimental container mode, which
+  keeps what the host trusts in `~/.local/share/knossos` and the graph in `~/.knossos`; see
   [Container mode](docs/operate/container-mode.md). To run the image by hand instead, see
   [Running Knossos in Docker](docs/operate/container.md).
 - **When it does not start**: [installation pitfalls](docs/get-started/installation.md#installation-pitfalls),

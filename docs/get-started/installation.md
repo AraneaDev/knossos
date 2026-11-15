@@ -15,36 +15,50 @@ cd /absolute/path/to/your-project
 curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install.sh | sh
 ```
 
-It needs `curl` and `sh`, and one of two things on the host:
+It needs `curl` and `sh`, and installs in one of two modes:
 
-- **Native mode**: PHP 8.3 or newer with the JSON, mbstring, PDO, PDO SQLite
-  and tokenizer extensions (the PHP worker parses with tokenizer), Node 24 or newer, Python 3.11 or newer and Git, which is
-  what `knossos doctor` checks, and `tar` and `sha256sum` or `shasum` to unpack
-  and check the release. The release runs on the host. Release tarballs exist
-  for Linux and macOS, on x86_64 and arm64.
-- **Container mode**: Docker or Podman with its daemon running. The release
-  runs in a container, one per project, and the host needs none of the
-  runtimes above. See [container mode](../operate/container-mode.md).
+- **Native mode**, the default: PHP 8.3 or newer with the JSON, mbstring, PDO,
+  PDO SQLite and tokenizer extensions (the PHP worker parses with tokenizer),
+  Node 24 or newer, Python 3.11 or newer and Git, which is what
+  `knossos doctor` checks, and `tar` and `sha256sum` or `shasum` to unpack and
+  check the release. The release runs on the host. Release tarballs exist for
+  Linux and macOS, on x86_64 and arm64.
+- **Container mode**, experimental and only with `--mode=container`: Docker or
+  Podman with its daemon running. The release runs in a container, one per
+  project, and the host needs none of the runtimes above. See
+  [container mode](../operate/container-mode.md), which also says what has and
+  has not been tested.
 
 ### What the installer decides
 
 Without `--mode`, it uses native mode when everything native mode needs is
 there: each runtime at its minimum version, the PHP extensions, Git, `tar` and
 a checksum tool. A host that would fail `knossos doctor` never gets native
-mode. When something is missing and `docker` or `podman` answers `info`, it
-uses container mode. Docker is tried before Podman. It prints what is missing
-and says it is using container mode:
+mode. When something is missing, it stops before it writes anything, lists
+what is missing, names the two ways out, and says whether a container runtime
+answers on this host (Docker is asked before Podman):
 
 ```text
 This host cannot run Knossos natively. Missing:
   - the PHP extension(s) mbstring, pdo_sqlite (not loaded by php)
-Using container mode: docker is available.
+Nothing was installed. Two ways out:
+  - install what is listed above and run the installer again
+  - run the installer with --mode=container, which is experimental and needs
+    Docker or Podman with its daemon running; see
+    https://araneadev.github.io/knossos/operate/container-mode
+error: native mode cannot run on this host. docker answers here, so --mode=container can run now.
 ```
 
-When something is missing and no container runtime answers, it stops before
-it writes anything, names each missing item, and says what you can do:
-install them, or install Docker or Podman and run it again with
-`--mode=container`. `--mode=native` on such a host stops the same way.
+When no runtime answers, the last line says so instead, and when Docker or
+Podman is installed but its daemon is not running, it says to start it first.
+The installer never switches to container mode by itself, whether or not a
+runtime answers. `--mode=native` on such a host stops the same way.
+
+`--mode=container` starts by saying that container mode is experimental, with
+a link to that page, and so does `--dry-run` with it. Once you have a container
+install, running the installer again without `--mode` (to repair it, or to
+install another version) finds that install in the install directory and keeps
+container mode, so you opt in once.
 
 Pass options after `sh -s --`, or download the script and run it:
 
@@ -52,17 +66,17 @@ Pass options after `sh -s --`, or download the script and run it:
 curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install.sh | sh -s -- --mode=container --dry-run
 ```
 
-| Option                     | Meaning                                                                                                                                                                      |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--mode=native\|container` | Skip the detection. A forced mode that the host cannot run stops with the reason.                                                                                            |
-| `--version=V`              | Install this release instead of the latest.                                                                                                                                  |
-| `--data-dir=DIR`           | The data directory. Default `~/.knossos`. See [what it writes](#what-it-writes) for what goes where in each mode.                                                            |
-| `--install-dir=DIR`        | Container mode: the install directory. Default `$XDG_DATA_HOME/knossos`, else `~/.local/share/knossos`. Run the installer again with the same one to repair an installation. |
-| `--bin-dir=DIR`            | Where the `knossos` launcher goes. Default `~/.local/bin`.                                                                                                                   |
-| `--no-plugin`              | Skip the Claude Code plugin and the MCP registration.                                                                                                                        |
-| `--no-roots`               | Do not allow the current directory.                                                                                                                                          |
-| `--dry-run`                | Say what would happen and change nothing.                                                                                                                                    |
-| `--force-clean`            | Remove the entries of the other mode that stand in the way (see [the pitfalls](#installation-pitfalls)). Never the graph itself.                                             |
+| Option                     | Meaning                                                                                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--mode=native\|container` | Choose the mode. Native is the default; container mode is experimental and used only when you ask for it, or when you reinstall a container install. A mode the host cannot run stops with the reason. |
+| `--version=V`              | Install this release instead of the latest.                                                                                                                                                            |
+| `--data-dir=DIR`           | The data directory. Default `~/.knossos`. See [what it writes](#what-it-writes) for what goes where in each mode.                                                                                      |
+| `--install-dir=DIR`        | Container mode: the install directory. Default `$XDG_DATA_HOME/knossos`, else `~/.local/share/knossos`. Run the installer again with the same one to repair an installation.                           |
+| `--bin-dir=DIR`            | Where the `knossos` launcher goes. Default `~/.local/bin`.                                                                                                                                             |
+| `--no-plugin`              | Skip the Claude Code plugin and the MCP registration.                                                                                                                                                  |
+| `--no-roots`               | Do not allow the current directory.                                                                                                                                                                    |
+| `--dry-run`                | Say what would happen and change nothing.                                                                                                                                                              |
+| `--force-clean`            | Remove the entries of the other mode that stand in the way (see [the pitfalls](#installation-pitfalls)). Never the graph itself.                                                                       |
 
 The environment variables of the installer:
 
@@ -340,29 +354,30 @@ for any other stdio client are on [Codex and other MCP clients](../agents/client
 Each of these stops the installer before it changes anything. Messages begin
 with `error:`.
 
-| Message                                                                                                                                        | Cause and what to do                                                                                                                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `install what is listed above and run the installer again, or install Docker or Podman ...`                                                    | Native mode lacks something (a runtime, a PHP extension, Git, `tar` or a checksum tool), and no container runtime answers. Install what the list names, or install Docker or Podman and use `--mode=container`. |
-| `install what is listed above and run the installer again, or re-run it with --mode=container: docker is available`                            | You passed `--mode=native` on a host that lacks something native mode needs. Install it, or use `--mode=container`.                                                                                             |
-| `the data directory <dir> holds <entry>, which is not something Knossos puts in a data directory, ...`                                         | Container mode gives every container the data directory read-write, so it must not hold anything of yours. Move the entry out, or choose an empty directory with `--data-dir` or `KNOSSOS_DATA_DIR`.            |
-| `the install directory <dir> is your home directory or contains it, ...`, `... is or contains the bin directory ...`                           | Every container is given the install directory read-only. Choose a directory of its own with `--install-dir`, or leave the default.                                                                             |
-| `the install directory <dir> lies in the data directory <dir>, ...`, `... lies in <dir>, which holds a Knossos graph ...`                      | A container can write a data directory, and the install directory holds what the host runs. Choose an install directory outside every data directory.                                                           |
-| `the install directory <dir> lies in <mount>, which the running Knossos container <name> can write; ...`                                       | A running container, of any installation, has that directory read-write. Choose an install directory outside it.                                                                                                |
-| `the install directory <dir> holds <entry>, which is not something Knossos keeps there, ...`                                                   | The directory is not empty and is not an install directory. Choose an empty or new one with `--install-dir`.                                                                                                    |
-| `docker is installed, but its daemon is not running (docker info failed): start it and run the installer again`                                | The binary exists and the daemon does not answer. Start the daemon.                                                                                                                                             |
-| `container mode needs Docker or Podman, with its daemon running; neither was found`                                                            | You passed `--mode=container` on a host without either.                                                                                                                                                         |
-| `<dir> holds a native install (...); remove those entries or pick another --data-dir, or re-run with --force-clean ...`                        | You are installing container mode over a native install in the same data directory, or the reverse. The message lists the entries. Pick another `--data-dir`, or `--force-clean` removes exactly those entries. |
-| `checksum mismatch for <file> (expected ..., got ...); nothing was changed`                                                                    | The download does not match `SHA256SUMS`. Run the installer again. If it repeats, do not install that file.                                                                                                     |
-| `knossos doctor failed on the new release; the previous release, if any, is untouched`                                                         | The release does not run on this host. The output above the message says why.                                                                                                                                   |
-| `could not pull <image>; nothing was changed`                                                                                                  | Container mode could not fetch the image. Check the network and that the version exists.                                                                                                                        |
-| `<path> is a directory; move it away and run the installer again`                                                                              | The launcher's path is taken by a directory. Move it, or pass another `--bin-dir`.                                                                                                                              |
-| `the directory of the knossos launcher <dir> lies inside the Knossos data directory ...` (container mode)                                      | A container can write the data directory, so the launcher may not live in it. Pass `--bin-dir` outside it.                                                                                                      |
-| `<dir> contains the Knossos data directory ...`, `... the Knossos install directory ...`, or `... the directory of the knossos launcher ...`   | The project you ran the installer in contains one of them. Run it from another directory, or move `--data-dir`, `--install-dir` or `--bin-dir` out of the project.                                              |
-| `--force-clean removes entries only in a data directory named by its physical path, ...` (container mode)                                      | The data directory goes through a symbolic link, which a container could have planted. Check it is the directory you mean and pass its physical path.                                                           |
-| `<dir> is the graph directory of the container install in <install dir>, ...` (native mode)                                                    | A native install would run what that installation's containers could plant there. Remove that container install first, or pick another `--data-dir`.                                                            |
-| `--install-dir is for container mode; ...`                                                                                                     | A native install keeps its release in the data directory. Leave `--install-dir` out.                                                                                                                            |
-| `HOME is not set; pass --data-dir`                                                                                                             | `HOME` is unset. Pass `--data-dir`, `--bin-dir` and, in container mode, `--install-dir`.                                                                                                                        |
-| `the data and bin directories must not contain a newline or another control character`, or the same for the install directory (container mode) | Rename the directory.                                                                                                                                                                                           |
+| Message                                                                                                                                        | Cause and what to do                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `native mode cannot run on this host. docker answers here, so --mode=container can run now.`                                                   | Native mode lacks something (a runtime, a PHP extension, Git, `tar` or a checksum tool), listed above the message, and a container runtime answers. Install what the list names, or use `--mode=container`, which is experimental. |
+| `native mode cannot run on this host. Neither Docker nor Podman answers here, ...`                                                             | Native mode lacks something, and no container runtime answers. Install what the list names, or install Docker or Podman, start its daemon and use `--mode=container`.                                                              |
+| `native mode cannot run on this host. docker is installed, but its daemon is not running ...`                                                  | Native mode lacks something, and the container runtime does not answer. Install what the list names, or start the daemon and use `--mode=container`.                                                                               |
+| `the data directory <dir> holds <entry>, which is not something Knossos puts in a data directory, ...`                                         | Container mode gives every container the data directory read-write, so it must not hold anything of yours. Move the entry out, or choose an empty directory with `--data-dir` or `KNOSSOS_DATA_DIR`.                               |
+| `the install directory <dir> is your home directory or contains it, ...`, `... is or contains the bin directory ...`                           | Every container is given the install directory read-only. Choose a directory of its own with `--install-dir`, or leave the default.                                                                                                |
+| `the install directory <dir> lies in the data directory <dir>, ...`, `... lies in <dir>, which holds a Knossos graph ...`                      | A container can write a data directory, and the install directory holds what the host runs. Choose an install directory outside every data directory.                                                                              |
+| `the install directory <dir> lies in <mount>, which the running Knossos container <name> can write; ...`                                       | A running container, of any installation, has that directory read-write. Choose an install directory outside it.                                                                                                                   |
+| `the install directory <dir> holds <entry>, which is not something Knossos keeps there, ...`                                                   | The directory is not empty and is not an install directory. Choose an empty or new one with `--install-dir`.                                                                                                                       |
+| `docker is installed, but its daemon is not running (docker info failed): start it and run the installer again`                                | The binary exists and the daemon does not answer. Start the daemon.                                                                                                                                                                |
+| `container mode needs Docker or Podman, with its daemon running; neither was found`                                                            | You passed `--mode=container` on a host without either.                                                                                                                                                                            |
+| `<dir> holds a native install (...); remove those entries or pick another --data-dir, or re-run with --force-clean ...`                        | You are installing container mode over a native install in the same data directory, or the reverse. The message lists the entries. Pick another `--data-dir`, or `--force-clean` removes exactly those entries.                    |
+| `checksum mismatch for <file> (expected ..., got ...); nothing was changed`                                                                    | The download does not match `SHA256SUMS`. Run the installer again. If it repeats, do not install that file.                                                                                                                        |
+| `knossos doctor failed on the new release; the previous release, if any, is untouched`                                                         | The release does not run on this host. The output above the message says why.                                                                                                                                                      |
+| `could not pull <image>; nothing was changed`                                                                                                  | Container mode could not fetch the image. Check the network and that the version exists.                                                                                                                                           |
+| `<path> is a directory; move it away and run the installer again`                                                                              | The launcher's path is taken by a directory. Move it, or pass another `--bin-dir`.                                                                                                                                                 |
+| `the directory of the knossos launcher <dir> lies inside the Knossos data directory ...` (container mode)                                      | A container can write the data directory, so the launcher may not live in it. Pass `--bin-dir` outside it.                                                                                                                         |
+| `<dir> contains the Knossos data directory ...`, `... the Knossos install directory ...`, or `... the directory of the knossos launcher ...`   | The project you ran the installer in contains one of them. Run it from another directory, or move `--data-dir`, `--install-dir` or `--bin-dir` out of the project.                                                                 |
+| `--force-clean removes entries only in a data directory named by its physical path, ...` (container mode)                                      | The data directory goes through a symbolic link, which a container could have planted. Check it is the directory you mean and pass its physical path.                                                                              |
+| `<dir> is the graph directory of the container install in <install dir>, ...` (native mode)                                                    | A native install would run what that installation's containers could plant there. Remove that container install first, or pick another `--data-dir`.                                                                               |
+| `--install-dir is for container mode; ...`                                                                                                     | A native install keeps its release in the data directory. Leave `--install-dir` out.                                                                                                                                               |
+| `HOME is not set; pass --data-dir`                                                                                                             | `HOME` is unset. Pass `--data-dir`, `--bin-dir` and, in container mode, `--install-dir`.                                                                                                                                           |
+| `the data and bin directories must not contain a newline or another control character`, or the same for the install directory (container mode) | Rename the directory.                                                                                                                                                                                                              |
 
 `--dry-run` shows the mode, the version, the directories and what would be
 granted, and changes nothing.
