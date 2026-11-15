@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.49.2](https://github.com/AraneaDev/knossos/compare/v0.49.1...v0.49.2) (2026-11-15)
+
+
+### Fixes
+
+* send the pane's token only to a server that proved it is this project's ([#513](https://github.com/AraneaDev/knossos/issues/513)) ([4f417e3](https://github.com/AraneaDev/knossos/commit/4f417e38d6409da9c87c3c4c26e9598d86008591))
+* take the terminal's background when it answers late, and shoot the last three screenshots again ([#517](https://github.com/AraneaDev/knossos/issues/517)) ([916ded7](https://github.com/AraneaDev/knossos/commit/916ded77389e60ced223bee1ddf98fcf9a70e776))
+
 ## [0.49.1](https://github.com/AraneaDev/knossos/compare/v0.49.0...v0.49.1) (2026-11-15)
 
 
