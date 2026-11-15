@@ -325,11 +325,7 @@ KNOSSOS_DATA_DIR="${KNOSSOS_DATA_DIR:-$(dirname -- "$INSTALL_DIR")}"
 # and the file there is never read. A caller's KNOSSOS_ROOTS_FILE anywhere
 # else is checked below.
 ROOTS_GIVEN=${KNOSSOS_ROOTS_FILE:-}
-ROOTS_MAPPED=''
-case $ROOTS_GIVEN in
-    '') ;;
-    "$(dirname -- "$INSTALL_DIR")/roots.json" | "${KNOSSOS_DATA_DIR%/}/roots.json") ROOTS_MAPPED=$ROOTS_GIVEN; ROOTS_GIVEN='' ;;
-esac
+case $ROOTS_GIVEN in '' | "$(dirname -- "$INSTALL_DIR")/roots.json" | "${KNOSSOS_DATA_DIR%/}/roots.json") ROOTS_GIVEN='' ;; esac
 KNOSSOS_ROOTS_FILE=${ROOTS_GIVEN:-$INSTALL_DIR/roots.json}
 export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
 
@@ -626,7 +622,31 @@ DATA_REAL=$made
 INSTALL_PARENT=$(dirname -- "$INSTALL_REAL")
 ROOTS_DIR_REAL=$INSTALL_REAL
 ROOTS_FILE_REAL="$INSTALL_REAL/roots.json"
+GRAPH_ROOTS_REFUSED="unset it to use the list the installer keeps in $INSTALL_REAL/roots.json, or point it at a file outside every directory a container can write."
 if [ -n "$ROOTS_GIVEN" ]; then
+    # Refused before anything is created for it: under the graph directory,
+    # make_dir's mkdir -p would follow links a container planted there.
+    # Each component is resolved in turn, so a link is never followed out of
+    # the graph directory once the walk has entered it.
+    case $ROOTS_GIVEN in /*) ;; *) die "KNOSSOS_ROOTS_FILE must be an absolute path in container mode, got $ROOTS_GIVEN" ;; esac
+    walked=/
+    saved_ifs=$IFS
+    IFS=/
+    for component in $(dirname -- "$ROOTS_GIVEN"); do
+        IFS=$saved_ifs
+        [ -n "$component" ] || continue
+        # Inside the graph directory, the one way on is into the install directory.
+        if inside "$walked" "$DATA_REAL" && ! inside "$walked" "$INSTALL_REAL" && [ "${walked%/}/$component" != "$INSTALL_REAL" ]; then
+            die "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN) lies in the graph directory $DATA_REAL, which a container can write; $GRAPH_ROOTS_REFUSED"
+        fi
+        next=$(physical "${walked%/}/$component")
+        [ -n "$next" ] || break
+        walked=$next
+    done
+    IFS=$saved_ifs
+    if inside "$walked" "$DATA_REAL" && ! inside "$walked" "$INSTALL_REAL"; then
+        die "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN) lies in the graph directory $DATA_REAL, which a container can write; $GRAPH_ROOTS_REFUSED"
+    fi
     make_dir "$(dirname -- "$ROOTS_GIVEN")" KNOSSOS_ROOTS_FILE
     ROOTS_DIR_REAL=$made
     ROOTS_FILE_REAL="${ROOTS_DIR_REAL%/}/${ROOTS_GIVEN##*/}"
@@ -637,7 +657,7 @@ if [ -n "$ROOTS_GIVEN" ]; then
         # In the install directory: the host's own, read-only to every container.
         :
     elif inside "$ROOTS_FILE_REAL" "$DATA_REAL"; then
-        die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies in the graph directory $DATA_REAL, which a container can write; unset it to use the list the installer keeps in $INSTALL_REAL/roots.json, or point it at a file outside every directory a container can write."
+        die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies in the graph directory $DATA_REAL, which a container can write; $GRAPH_ROOTS_REFUSED"
     fi
 fi
 KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL
@@ -930,35 +950,11 @@ enricher_run() {
     exit "$status"
 }
 
-# The caller named the graph's roots.json, which stands for the host's list:
-# should that file still list roots the host's list lacks (a list kept there
-# by hand, or by an older install), say once that they are ignored and how
-# to add them. Not for what the plugin's hooks and the MCP server run, which
-# say nothing on stderr. Only a plain, small file is read: every container
-# can write it, and a FIFO there must not hang the call.
-HOOK_COMMANDS=' serve session-brief record-scan-failure rescan watch turn-brief dashboard component-detail file-detail file-context graph-search branch-diff churn blast-radius path-between annotate notes note-adopt note-move note-check note-confirm notes-export notes-import allow-root claim autostart session-changes session-head session-diff boundary-couplings '
-case $HOOK_COMMANDS in *" ${1-} "*) ROOTS_MAPPED='' ;; esac
-if [ -n "$ROOTS_MAPPED" ] && [ -f "$ROOTS_MAPPED" ] && [ ! -L "$ROOTS_MAPPED" ] \
-    && [ -n "$(find "$ROOTS_MAPPED" -prune -type f -size -1048576c 2>/dev/null)" ]; then
-    ignored=0
-    first=''
-    while IFS= read -r unlisted; do
-        [ -n "$unlisted" ] || continue
-        normalise "$unlisted"
-        unlisted=$normalised
-        listed "$unlisted" && continue
-        ignored=$((ignored + 1))
-        [ -n "$first" ] || first=$unlisted
-    done <<ENTRIES
-$(KNOSSOS_ROOTS_FILE=$ROOTS_MAPPED; roots)
-ENTRIES
-    if [ "$ignored" -gt 0 ]; then
-        printf 'knossos: %s lists %s root(s) that the allow-list of this container install, %s, does not, such as %s; container mode ignores that file, so add each with knossos allow-root <path> --execute.\n' \
-            "$ROOTS_MAPPED" "$ignored" "$ROOTS_FILE_REAL" "$first" >&2
-    fi
-fi
-
 EFFECT='A server configured with that roots file re-reads it per request, so %s with no restart.'
+# Said in text answers only (the pane reads the JSON ones): the host never
+# reads a roots.json in the graph directory, which every container can write,
+# so hand edits there change nothing and cannot even be warned about.
+GRAPH_ROOTS_NOTE="This container install reads only this list; a roots.json in the graph directory $DATA_REAL is ignored, so add roots with knossos allow-root."
 case ${1-} in
     allow-root)
         shift
@@ -990,6 +986,7 @@ case ${1-} in
             else
                 # shellcheck disable=SC2059 # EFFECT is the native message's template
                 printf "Would add %s to %s.\n$EFFECT\nRe-run with --execute to write it.\n" "$path" "$ROOTS_FILE_REAL" 'the addition would take effect'
+                [ "$ROOTS_FILE_REAL" != "$INSTALL_REAL/roots.json" ] || printf '%s\n' "$GRAPH_ROOTS_NOTE"
             fi
             exit 0
         fi
@@ -999,6 +996,7 @@ case ${1-} in
         else
             # shellcheck disable=SC2059 # EFFECT is the native message's template
             printf "Added %s to %s.\n$EFFECT\n" "$path" "$ROOTS_FILE_REAL" 'this takes effect immediately'
+            [ "$ROOTS_FILE_REAL" != "$INSTALL_REAL/roots.json" ] || printf '%s\n' "$GRAPH_ROOTS_NOTE"
         fi
         exit 0
         ;;

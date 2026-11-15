@@ -1103,23 +1103,39 @@ if grep -qF "[-e] [KNOSSOS_ROOTS_FILE=$TRUSTED]" "$FAKE_DOCKER_STATE/calls" && !
 else
     fail "graph roots.json named: $(calls)"
 fi
-# ... and a person who named it is told, once, that its own entries are ignored.
-out=$(cd "$WORK/wide/p1" && KNOSSOS_ROOTS_FILE="$DATA/roots.json" env -u KNOSSOS_DATA_DIR "$LAUNCHER" version 2>&1 >/dev/null </dev/null)
-if [ "$out" = "knossos: $DATA/roots.json lists 1 root(s) that the allow-list of this container install, $TRUSTED, does not, such as $WORK/wide; container mode ignores that file, so add each with knossos allow-root <path> --execute." ]; then
-    pass "naming the graph's roots.json with entries the host's list lacks says they are ignored and how to add them"
-else
-    fail "ignored entries notice: $out"
-fi
-out=$(cd "$WORK/wide/p1" && KNOSSOS_ROOTS_FILE="$DATA/roots.json" env -u KNOSSOS_DATA_DIR "$LAUNCHER" dashboard "$WORK/wide/p1" --json 2>&1 >/dev/null </dev/null)
-if [ -z "$out" ]; then pass 'the notice is never given on what the hooks run, which stay silent on stderr'; else fail "notice on a hook command: $out"; fi
-printf '{"roots": ["%s"]}\n' "$WORK/wide" > "$TRUSTED"
-out=$(cd "$WORK/wide/p1" && KNOSSOS_ROOTS_FILE="$DATA/roots.json" env -u KNOSSOS_DATA_DIR "$LAUNCHER" version 2>&1 >/dev/null </dev/null)
-if [ -z "$out" ]; then pass 'no notice when the host list has every entry'; else fail "notice with nothing ignored: $out"; fi
+# ... and the host never opens that name: a container can swap in a link to a
+# file only you may read, or a FIFO that would hang the call.
+printf 'SECRET-TOKEN\n' > "$HOME/.credential"
+chmod 0600 "$HOME/.credential"
+for planted in link fifo; do
+    rm -f "$DATA/roots.json"
+    if [ "$planted" = link ]; then ln -s "$HOME/.credential" "$DATA/roots.json"; else mkfifo "$DATA/roots.json"; fi
+    for cmd in version find-component; do
+        out=$(cd "$WORK/wide/p1" && KNOSSOS_ROOTS_FILE="$DATA/roots.json" env -u KNOSSOS_DATA_DIR timeout 20 "$LAUNCHER" "$cmd" . x </dev/null 2>&1); status=$?
+        case $out in *SECRET-TOKEN*) leaked=yes ;; *) leaked=no ;; esac
+        if [ "$status" -eq 0 ] && [ "$leaked" = no ]; then
+            pass "a $planted at the graph's roots.json is never read on the host ($cmd): no hang, nothing of it printed"
+        else
+            fail "$planted at graph roots.json ($cmd): $status, $out"
+        fi
+    done
+done
+rm -f "$DATA/roots.json" "$HOME/.credential"
+out=$(cd / && kn allow-root "$WORK/wide/p1" </dev/null 2>&1)
+case $out in *"This container install reads only this list; a roots.json in the graph directory $DATA is ignored, so add roots with knossos allow-root.") said=yes ;; *) said=no ;; esac
+if [ "$said" = yes ]; then pass "allow-root says that a roots.json in the graph directory is ignored"; else fail "allow-root note: $out"; fi
 printf '{"roots": []}\n' > "$TRUSTED"
 rm -f "$DATA/roots.json"
 mkdir -p "$DATA/sub"
 refused "a caller's KNOSSOS_ROOTS_FILE in the graph directory" "KNOSSOS_ROOTS_FILE ($DATA/sub/roots.json) lies in the graph directory $DATA, which a container can write; unset it to use the list the installer keeps in $INSTALL/roots.json, or point it at a file outside every directory a container can write." \
     sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$2/sub/roots.json" env -u KNOSSOS_DATA_DIR "$3" version </dev/null' _ "$PROJECT" "$DATA" "$LAUNCHER"
+# A link a container planted in the graph directory is never followed to create the roots file's directory.
+mkdir -p "$WORK/escaped to"
+ln -s "$WORK/escaped to" "$DATA/escape"
+refused "a caller's KNOSSOS_ROOTS_FILE through a link in the graph directory" "KNOSSOS_ROOTS_FILE ($DATA/escape/new/roots.json) lies in the graph directory $DATA, which a container can write" \
+    sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$2/escape/new/roots.json" env -u KNOSSOS_DATA_DIR "$3" version </dev/null' _ "$PROJECT" "$DATA" "$LAUNCHER"
+if [ ! -e "$WORK/escaped to/new" ]; then pass 'and nothing is created at the end of that link'; else fail 'a directory was created through a link in the graph directory'; fi
+rm -f "$DATA/escape"
 refused "a caller's KNOSSOS_ROOTS_FILE inside the project" "KNOSSOS_ROOTS_FILE ($PROJECT/src/roots.json) lies inside the project root $PROJECT, whose files the scanned project controls" \
     sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$1/src/roots.json" env -u KNOSSOS_DATA_DIR "$2" version </dev/null' _ "$PROJECT" "$LAUNCHER"
 
