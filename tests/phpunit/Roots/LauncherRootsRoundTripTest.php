@@ -112,6 +112,36 @@ final class LauncherRootsRoundTripTest extends KnossosTestCase
         assertSame([$projects . '/kept'], (new AllowedRoots([], $file))->current());
     }
 
+    #[Group('roots')]
+    public function testAHandEditedListGrantsOnlyItsRootsOnBothSides(): void
+    {
+        $projects = $this->work . '/projects';
+        foreach (['one', 'two', 'wide', 'nested', 'listed elsewhere'] as $name) {
+            mkdir($projects . '/' . $name, 0o700, true);
+        }
+        $file = $this->work . '/data/install/roots.json';
+        // Keys a person might add by hand, holding strings that look like roots.
+        file_put_contents($file, json_encode([
+            '_note' => $projects . '/wide',
+            'roots' => [$projects . '/one', 7, null, ['nested' => $projects . '/nested']],
+            'meta' => ['where' => $projects . '/nested', 'also' => [$projects . '/listed elsewhere']],
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        assertSame([$projects . '/one'], (new RootsFile($file))->read());
+        assertSame([$projects . '/one'], $this->launcherReader($file));
+
+        [$status, $output] = $this->launcher(['allow-root', $projects . '/two', '--execute']);
+        assertSame(0, $status, $output);
+        $expected = [$projects . '/one', $projects . '/two'];
+        assertSame($expected, (new RootsFile($file))->read());
+        assertSame($expected, $this->launcherReader($file));
+        assertSame($expected, (new AllowedRoots([], $file))->current());
+
+        // Without a "roots" key the server reads the object's own string values, and so does the launcher.
+        file_put_contents($file, json_encode(['a' => $projects . '/one', 'b' => ['x' => $projects . '/nested']], JSON_UNESCAPED_SLASHES));
+        assertSame([$projects . '/one'], (new RootsFile($file))->read());
+        assertSame([$projects . '/one'], $this->launcherReader($file));
+    }
+
     /**
      * Run the launcher in container mode for this install, with the fake docker first on PATH.
      *

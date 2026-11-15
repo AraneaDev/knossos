@@ -385,47 +385,127 @@ BYTES_AWK='
     }
 '
 
-# The roots the roots file lists, one per line. Both shapes the server reads
-# ({"roots": [...]} and a bare [...]): every string that is not a key. A string
-# with a \u or control escape cannot be compared byte for byte and is left out,
-# which only means that root is not used to widen a mount. A string holding a
-# raw control character or bytes that are not UTF-8 makes the file invalid
-# JSON, which the server reads as no roots at all: then nothing is printed
-# either, and the status is 3, so the list is never rewritten.
+# The roots the roots file lists, one per line, read as the server reads the
+# file (JsonFile::roots, AllowedRoots::parse): the whole file is parsed as
+# JSON, nesting at most 7 deep as json_decode's depth of 8 allows. The list
+# is the string elements of the top-level "roots" value (the last one given,
+# an array or an object's values) or, when there is no "roots" or it is null,
+# of the top-level array or object itself. Every other key, nested values and
+# what is not a string are ignored. A file that is not valid JSON, or whose
+# "roots" or top level is neither an array nor an object, gives no roots, as
+# the server reads it, and the status is 3, so the list is never rewritten.
+# A string with an escape this reader cannot reproduce byte for byte (a
+# control or non-ASCII \u or control escape) is left out, which only means
+# that root is not used to widen a mount; the writer refuses to rewrite such
+# a list.
 roots() {
     [ -r "$KNOSSOS_ROOTS_FILE" ] || return 0
     LC_ALL=C awk "$BYTES_AWK"'
+        function ws() { while (p <= n && index(" \t\r\n", substr(text, p, 1)) > 0) p++ }
+        function fail() { bad = 1; p = n + 1; return 0 }
+        function hex4(at,    h, k, d, v) {
+            h = substr(text, at, 4); v = 0
+            if (length(h) < 4) return -1
+            for (k = 1; k <= 4; k++) {
+                d = index("0123456789abcdef", tolower(substr(h, k, 1)))
+                if (d == 0) return -1
+                v = v * 16 + d - 1
+            }
+            return v
+        }
+        # parse_string: the string at p into str_value; str_skip when it holds
+        # an escape that cannot be reproduced byte for byte.
+        function parse_string(    c, e, v, len, low) {
+            str_value = ""; str_skip = 0; p++
+            while (p <= n) {
+                c = substr(text, p, 1)
+                if (c == "\"") { p++; return 1 }
+                if (c == "\\") {
+                    e = substr(text, p + 1, 1)
+                    if (e == "\"" || e == "\\" || e == "/") { str_value = str_value e; p += 2; continue }
+                    if (e == "b" || e == "f" || e == "n" || e == "r" || e == "t") { str_skip = 1; p += 2; continue }
+                    if (e != "u") return fail()
+                    v = hex4(p + 2)
+                    if (v < 0) return fail()
+                    p += 6
+                    if (v >= 55296 && v <= 56319) {
+                        if (substr(text, p, 2) != "\\u") return fail()
+                        low = hex4(p + 2)
+                        if (low < 56320 || low > 57343) return fail()
+                        p += 6
+                    } else if (v >= 56320 && v <= 57343) return fail()
+                    if (v >= 32 && v < 128) str_value = str_value sprintf("%c", v)
+                    else str_skip = 1
+                    continue
+                }
+                if (ord[c] < 32) return fail()
+                len = utf8_at(text, p)
+                if (len == 0) return fail()
+                str_value = str_value substr(text, p, len); p += len
+            }
+            return fail()
+        }
+        # parse_value DEPTH: the value at p as node id; type[id] is s, a, o or x.
+        function parse_value(depth,    c, id, key, child, rest) {
+            ws()
+            if (p > n) return fail()
+            c = substr(text, p, 1); id = ++nodes
+            if (c == "\"") {
+                if (!parse_string()) return 0
+                type[id] = "s"; sval[id] = str_value; sskip[id] = str_skip
+                return id
+            }
+            if (c == "[" || c == "{") {
+                if (depth >= 7) return fail()
+                type[id] = (c == "[") ? "a" : "o"; p++; ws()
+                if (substr(text, p, 1) == ((c == "[") ? "]" : "}")) { p++; return id }
+                while (!bad) {
+                    key = ""
+                    if (c == "{") {
+                        ws()
+                        if (substr(text, p, 1) != "\"" || !parse_string()) return fail()
+                        # A key with an escape this reader does not decode is never "roots".
+                        key = str_skip ? ("\034" nodes) : str_value
+                        ws()
+                        if (substr(text, p, 1) != ":") return fail()
+                        p++
+                    }
+                    child = parse_value(depth + 1)
+                    if (bad) return 0
+                    if (c == "[") items[id, ++count[id]] = child
+                    else {
+                        # json_decode keeps a repeated key where it first came, with its last value.
+                        if (key == "roots") roots_of[id] = child
+                        if ((id, key) in slot) items[id, slot[id, key]] = child
+                        else { items[id, ++count[id]] = child; slot[id, key] = count[id] }
+                    }
+                    ws(); c2 = substr(text, p, 1); p++
+                    if (c2 == ",") continue
+                    if (c2 == ((c == "[") ? "]" : "}")) return id
+                    return fail()
+                }
+                return 0
+            }
+            rest = substr(text, p)
+            if (substr(rest, 1, 4) == "true" || substr(rest, 1, 4) == "null") { type[id] = (substr(rest, 1, 4) == "null") ? "n" : "x"; p += 4; return id }
+            if (substr(rest, 1, 5) == "false") { type[id] = "x"; p += 5; return id }
+            if (match(rest, /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?/)) { type[id] = "x"; p += RLENGTH; return id }
+            return fail()
+        }
         { text = text $0 "\n" }
         END {
             bytes_init()
-            n = length(text); i = 1; count = 0; broken = 0
-            while (i <= n) {
-                c = substr(text, i, 1)
-                if (c != "\"") { i++; continue }
-                value = ""; skip = 0; i++
-                while (i <= n) {
-                    c = substr(text, i, 1)
-                    if (c == "\\") {
-                        e = substr(text, i + 1, 1)
-                        if (e == "u") { skip = 1; value = value "?" }
-                        else if (e == "n" || e == "t" || e == "r" || e == "b" || e == "f") { skip = 1 }
-                        else { value = value e }
-                        i += 2; continue
-                    }
-                    if (c == "\"") break
-                    if (ord[c] < 32) broken = 1
-                    len = utf8_at(text, i)
-                    if (len == 0) { broken = 1; len = 1 }
-                    value = value substr(text, i, len); i += len
-                }
-                i++
-                j = i
-                while (j <= n && substr(text, j, 1) ~ /[ \t\r\n]/) j++
-                if (substr(text, j, 1) == ":") continue
-                if (!skip && value != "") found[++count] = value
+            n = length(text); p = 1; bad = 0; nodes = 0
+            top = parse_value(0)
+            ws()
+            if (bad || p <= n) exit 3
+            list = top
+            if (type[top] == "o" && (top in roots_of) && type[roots_of[top]] != "n") list = roots_of[top]
+            if (type[list] != "a" && type[list] != "o") exit 3
+            for (k = 1; k <= count[list]; k++) {
+                child = items[list, k]
+                if (type[child] == "s" && !sskip[child] && sval[child] != "") print sval[child]
             }
-            if (broken) exit 3
-            for (k = 1; k <= count; k++) print found[k]
         }
     ' "$KNOSSOS_ROOTS_FILE" 2>/dev/null
 }
@@ -1068,13 +1148,17 @@ case ${1-} in
                 continue
             fi
             [ -n "$action" ] || action=$argument
-            # A word of the command that names a file in the graph directory:
-            # any project's container could replace it before the next scan.
+            # A courtesy for the obvious mistake, not a guarantee: a command
+            # word that is itself an absolute path in the graph directory,
+            # which any project's container could replace before the next
+            # scan. A command can name the graph in many other ways (a shell
+            # script, an --env value, a relative path, an option's value);
+            # an enricher must not read or run anything from there at all.
             case $argument in
                 /*)
                     word=$(located "$argument")
                     if inside "$word" "$DATA_REAL" && ! inside "$word" "$INSTALL_REAL"; then
-                        die "the enricher command names $argument, in the graph directory $DATA_REAL, which every container can write; put it in $ENRICHERS_DIR, which containers only read, and add the enricher again."
+                        die "the enricher command names $argument, in the graph directory $DATA_REAL, which every container can write; put it in $ENRICHERS_DIR, which containers only read, and add the enricher again. This check only catches a path given as a word of its own: an enricher must not read or run anything from the graph directory in any way."
                     fi
                     ;;
             esac

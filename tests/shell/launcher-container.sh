@@ -1082,7 +1082,7 @@ fi
 out_call enricher --json remove tool
 if [ "$status" -eq 0 ] && [ "$(calls)" = "$ENRICHERS_RUN [enricher] [--json] [remove] [tool]" ]; then pass 'enricher remove is the same single run'; else fail "enricher remove: $status, $out, $(calls)"; fi
 out_call enricher add tool -- python3 "$DATA/tool.py"
-case $out in "knossos: the enricher command names $DATA/tool.py, in the graph directory $DATA, which every container can write; put it in $INSTALL/settings, which containers only read, and add the enricher again.") said=yes ;; *) said=no ;; esac
+case $out in "knossos: the enricher command names $DATA/tool.py, in the graph directory $DATA, which every container can write; put it in $INSTALL/settings, which containers only read, and add the enricher again. This check only catches a path given as a word of its own: an enricher must not read or run anything from the graph directory in any way.") said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then pass 'an enricher command in the graph directory is refused, and nothing runs'; else fail "enricher in graph: $status, $out, $(calls)"; fi
 # A list planted in the graph directory, or named by the caller, is not what a scan reads.
 printf '{"enrichers": [{"name": "planted", "command": ["sh", "-c", "id"]}]}\n' > "$DATA/enrichers.json"
@@ -1193,6 +1193,14 @@ case $out in *"the project root $HOME is your home directory, which container mo
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && ! grep -qF "\"$HOME\"" "$TRUSTED"; then pass 'allow-root refuses a root the mount rule refuses'; else fail "allow-root home: $status, $out"; fi
 out=$(cd / && kn allow-root "$WORK/no such project" --execute </dev/null 2>&1); status=$?
 if [ "$status" -eq 2 ] && [ "$out" = "KNOSSOS_INVALID_ARGUMENT: $WORK/no such project is not an existing directory." ]; then pass 'allow-root of a missing folder answers as in native mode'; else fail "allow-root missing: $status, $out"; fi
+# --db in the graph directory is accepted by allow-root and claim, elsewhere refused, on the host.
+out=$(cd / && kn allow-root "$WORK/second project" "--db=$DATA/knossos.sqlite" </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$out" = "$WORK/second project is already present in $TRUSTED. Nothing to do." ]; then pass 'allow-root --db= in the graph directory is answered on the host'; else fail "allow-root --db: $status, $out"; fi
+out=$(cd / && kn claim "$WORK/second project" "--db=$DATA/knossos.sqlite" --json </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$out" = "{\"status\":\"present\",\"root\":\"$WORK/second project\",\"reason\":null}" ]; then pass 'claim --db= in the graph directory is answered on the host'; else fail "claim --db: $status, $out"; fi
+out=$(cd / && kn allow-root "$WORK/second project" "--db=$WORK/outside/x.sqlite" </dev/null 2>&1); status=$?
+case $out in *"--db names $WORK/outside/x.sqlite, outside the graph directory $DATA"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'allow-root --db= outside the graph directory is refused'; else fail "allow-root --db outside: $status, $out"; fi
 
 # A list with an entry this launcher cannot reproduce is never rewritten.
 cp "$TRUSTED" "$WORK/list.escaped"
@@ -1213,6 +1221,16 @@ if [ "$status" -eq 2 ] && [ "$said" = yes ] && cmp -s "$TRUSTED" "$WORK/list.bro
     pass 'a list holding a raw control character is read as no roots, as the server reads it, and never rewritten'
 else
     fail "broken list: $status, $out, $(calls)"
+fi
+cp "$WORK/list.escaped" "$TRUSTED"
+# Only the roots array grants: a note beside it that looks like a path is not a root.
+printf '{"roots": [], "_note": "%s", "meta": {"where": "%s"}}\n' "$WORK/wide" "$WORK/wide" > "$TRUSTED"
+reset_docker
+(cd "$WORK/wide/p1" && kn version </dev/null >/dev/null 2>&1)
+if grep -qF "source=$WORK/wide/p1," "$FAKE_DOCKER_STATE/calls" && ! grep -qF "source=$WORK/wide," "$FAKE_DOCKER_STATE/calls"; then
+    pass 'a string under another key of the allow-list is never taken for a root'
+else
+    fail "note taken for a root: $(calls)"
 fi
 cp "$WORK/list.escaped" "$TRUSTED"
 # A name the list cannot hold is refused before anything is written.
