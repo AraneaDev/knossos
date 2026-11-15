@@ -264,6 +264,28 @@ describe("the event stream", () => {
         expect(lost).toBe(2);
     });
 
+    it("never takes a stream for lost when its server sends no keep-alive events, as one from before them does", () => {
+        vi.useFakeTimers();
+        let lost = 0;
+        const p = createPage({
+            EventSource: FakeSource,
+            fetch: async () => ({ ok: true }),
+            token: "t",
+            id: "a",
+            size: () => ({ cols: 80, rows: 24 }),
+            theme: () => "dark",
+            draw: () => undefined,
+            lost: () => lost++,
+            on: {},
+        });
+        p.connect();
+        FakeSource.opened[0].emit(FRAME);
+        vi.advanceTimersByTime(10 * SILENT_MS);
+        expect(FakeSource.opened[0].closed).toBe(false);
+        expect(lost).toBe(0);
+        p.stop();
+    });
+
     it("counts on the keep-alive the server sends", () => {
         expect(SERVER_ALIVE_MS).toBe(ALIVE_MS);
         expect(SILENT_MS).toBeGreaterThanOrEqual(2 * ALIVE_MS);

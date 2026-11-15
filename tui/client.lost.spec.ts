@@ -44,7 +44,7 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 30))
 
 describe('startClient when the stream is lost', () => {
   it('takes a stream that went silent as lost: it says it is reconnecting and opens it again', async () => {
-    const h = client()
+    const h = client({}, [frame, { type: 'alive' }])
     await settle()
     // The first look finds the frame heard; the next finds nothing since, as when the server was suspended.
     h.last(SILENT_MS).fire()
@@ -56,6 +56,14 @@ describe('startClient when the stream is lost', () => {
     expect(h.opened.count).toBe(2)
     // Open again: the next frame clears the line.
     expect(strip(h.written.at(-1)!)).not.toContain(RECONNECTING)
+  })
+
+  it('never takes a stream for lost when its server sends no keep-alive events, as one from before them does', async () => {
+    const h = client()
+    await settle()
+    for (let i = 0; i < 5; i++) h.last(SILENT_MS).fire()
+    expect(h.text()).not.toContain(RECONNECTING)
+    expect(h.opened.count).toBe(1)
   })
 
   it('tells its host when the server says the pane moved', async () => {

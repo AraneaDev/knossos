@@ -151,13 +151,19 @@ export function movedTo(port, href) {
  * {@link retryDelay} after each loss (the first event back is the current
  * frame, which replaces whatever the page shows), and its inputs, each sent
  * once as it happens and never again. A stream silent for {@link SILENT_MS}
- * is a loss as well, and `lost()`, when given, is told of every loss. A host
+ * is a loss as well, once its server is known to send keep-alives, and
+ * `lost()`, when given, is told of every loss. A host
  * that is not a browser hands it `after(ms, fire)` to wait with.
  */
 export function createPage(o) {
     let attempt = 0;
     /** Whether the host closed the page for good: no stream is opened again, and no silence is looked for. */
     let stopped = false;
+    /**
+     * Whether the page's server has sent a keep-alive event: only then is a silent stream a lost one. A server from
+     * before those events (an update can leave one running) sends a comment no page sees, and is never taken for lost.
+     */
+    let sendsAlive = false;
     // A host without timers of its own to hand (the browser) waits with `setTimeout`.
     const later = o.after ?? ((ms, fire) => setTimeout(fire, ms));
     const page = {
@@ -200,13 +206,15 @@ export function createPage(o) {
             const look = (seen) =>
                 later(SILENT_MS, () => {
                     if (gone || stopped) return;
-                    if (heard === seen) return lose();
+                    if (heard === seen && sendsAlive) return lose();
                     look(heard);
                 });
             source.onmessage = (message) => {
                 heard++;
                 attempt = 0;
-                received(JSON.parse(message.data));
+                const event = JSON.parse(message.data);
+                if (event.type === "alive") sendsAlive = true;
+                received(event);
             };
             source.onerror = lose;
             look(heard);
