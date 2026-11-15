@@ -32,6 +32,26 @@
       "path_prefix": "tests"
     },
     {
+      "name": "mod",
+      "path_prefix": "hooks"
+    },
+    {
+      "name": "mod-types",
+      "path_prefix": "types"
+    },
+    {
+      "name": "web-client",
+      "path_prefix": "web"
+    },
+    {
+      "name": "tui",
+      "path_prefix": "tui"
+    },
+    {
+      "name": "docs-site",
+      "path_prefix": "website"
+    },
+    {
       "name": "ns:Cancellation",
       "path_prefix": "src/Cancellation"
     },
