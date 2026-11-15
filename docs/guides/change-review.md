@@ -117,7 +117,7 @@ In Claude Code you can see this without a call: the pane's Changes tab lists
 every file changed since the session began, with the files that depend on it
 and the tests that reach it.
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 15 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 16 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
 
 Pass explicit paths when a client already has a change set:
 

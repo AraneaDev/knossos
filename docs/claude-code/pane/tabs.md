@@ -234,7 +234,7 @@ longest function.
 
 ## Changes
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 15 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](../../images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 16 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](../../images/claude-code/changes-diff.png)
 
 Changes lists everything that changed in the project since the session began,
 whoever changed it: the session's own turns and subagents, your editor, a

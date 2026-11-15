@@ -174,7 +174,7 @@ Hubs: the most depended-on components, with the marked one's neighbourhood besid
 
 Cycles: each dependency cycle drawn as boxes, from its first member back to the start.
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 15 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](docs/images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 16 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](docs/images/claude-code/changes-diff.png)
 
 Changes: every file changed since the session began, its dependents, the tests that reach it,
 and its diff.
@@ -191,7 +191,7 @@ Notes: every note on the project, yours and the agent's, by where it lives.
 
 The finder: `f`, a few letters of a name, and Enter opens that component.
 
-![After a turn that edited hooks/lib/paths.ts, with the pane closed: the band above the prompt reads knossos, 1 file, 15 dependents, 20 tests, as of 26s ago, with details and hide](docs/images/claude-code/band.png)
+![After a turn that edited hooks/lib/paths.ts, with the pane closed: the band above the prompt reads knossos, 1 file, 16 dependents, 20 tests, as of 22s ago, with details and hide](docs/images/claude-code/band.png)
 
 The band: after a turn that edited files, how far the change reaches, with the pane shut.
 
