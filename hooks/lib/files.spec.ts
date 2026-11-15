@@ -306,6 +306,6 @@ describe('the scope of every count', () => {
     expect(overview).toMatch(/1 file · 41 dependents · 2 tests reach them/)
     const changes = textOf(paneRows(pane({ session, turn: last, view: { tab: 'changes' } }), 90))
     expect(changes).toMatch(/Changes this session +2 turns/)
-    expect(changes).toMatch(/Tests that reach these changes · 2/)
+    expect(changes).toMatch(/Tests that reach these changes +2 · nearest first/)
   })
 })

@@ -106,9 +106,9 @@ describe('the Notes tab', () => {
     const t = text(state(answer({ groups: { ...answer().groups, rest: [file, ...answer().groups.rest] } })), 120, 60)
     expect(t).toMatch(/^ *\? hooks\/lib\/paths\.ts /m)
     expect(t).toMatch(/^ *▾ hooks\/lib\/ +1$/m)
-    // In the tree, after the flag's mark: the file name alone.
-    expect(t).toMatch(/^ ?\?? {6,}paths\.ts +model/m)
-    expect(t).not.toMatch(/^ ?\?? {6,}hooks\/lib\/paths\.ts +model/m)
+    // In the tree, after the flag's mark in the gutter: the file name alone, under its folder's path.
+    expect(t).toMatch(/^ \? {5}paths\.ts +model/m)
+    expect(t).not.toMatch(/^ ?\?? {4,}hooks\/lib\/paths\.ts +model/m)
   })
 
   it('lines its notes up in columns: the author, then the text, at the same place on every row', () => {

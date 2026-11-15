@@ -16,9 +16,11 @@ import type { Arrangement, Block, Section } from './cards'
 import { CARD_ICON, NOTE, SEVERITY, mark } from './marks'
 import { ACCENT, boundaryLabel, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { button, clip, dimRow, segmentsWidth } from './rows'
+import { button, clip, segmentsWidth } from './rows'
 import { chip } from './chips'
-import { cells, fit, grouped, plural, wrapWords } from './text'
+import { cells, fit, grouped, plural, spaces, wrapWords } from './text'
+import { bodyLine, bodyRow, bodyText, labelledRows } from './spacing'
+import type { Fact } from './spacing'
 import type { Row, Segment } from './types'
 import { entryRow, entrySpec } from './views'
 import type { Entry, Openable } from './views'
@@ -119,14 +121,14 @@ function askRows(ask: NotesAsk | null, columns: number): Row[] {
   const label = labelOf(ask.component)
   if (ask.action === 'check') {
     return [
-      { key: 'notes-ask', segments: [{ text: `   Flag the note on ${label} for the model; why (optional): `, color: STATUS_COLOURS.warn }, { text: ask.value ?? '', field: { id: 'notes-reason', value: ask.value ?? '', placeholder: 'Enter flags it' } }] },
-      { key: 'notes-ask-keys', segments: [{ text: '   ' }, button('notes-no', 'no', 'n'), { text: '  Enter flags it', dim: true }] },
+      bodyRow('notes-ask', [{ text: `Flag the note on ${label} for the model; why (optional): `, color: STATUS_COLOURS.warn }, { text: ask.value ?? '', field: { id: 'notes-reason', value: ask.value ?? '', placeholder: 'Enter flags it' } }]),
+      bodyRow('notes-ask-keys', [button('notes-no', 'no', 'n'), { text: '  Enter flags it', dim: true }]),
     ]
   }
   const question = ask.action === 'remove' ? `Remove ${whose(ask.author)} note on ${label}?` : ask.action === 'uncheck' ? `Take back the flag on ${label}?` : `Move the note on ${ask.component} to ${ask.to ?? ''}?`
   return [
-    ...wrapWords(question, Math.max(1, columns - 3)).map((line, i): Row => ({ key: `notes-ask-${i}`, segments: [{ text: `   ${line}`, color: STATUS_COLOURS.warn }] })),
-    { key: 'notes-ask-keys', segments: [{ text: '   ' }, button('notes-yes', 'yes', 'y'), { text: '  ' }, button('notes-no', 'no', 'n')] },
+    ...bodyText('notes-ask', question, columns, { color: STATUS_COLOURS.warn }),
+    bodyRow('notes-ask-keys', [button('notes-yes', 'yes', 'y'), { text: '  ' }, button('notes-no', 'no', 'n')]),
   ]
 }
 
@@ -144,8 +146,8 @@ function importRows(i: NotesImport, columns: number): Row[] {
   const hideYes = nothing || i.running === true
   if (nothing) lines.push('nothing to import')
   return [
-    ...lines.flatMap((line, k) => wrapWords(line, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `notes-import-${k}-${j}`, segments: [{ text: `   ${part}`, color: STATUS_COLOURS.warn }] }))),
-    { key: 'notes-ask-keys', segments: [{ text: '   ' }, ...(hideYes ? [] : [button('notes-yes', 'yes', 'y'), { text: '  ' }]), button('notes-no', 'no', 'n')] },
+    ...lines.flatMap((line, k) => bodyText(`notes-import-${k}`, line, columns, { color: STATUS_COLOURS.warn })),
+    bodyRow('notes-ask-keys', [...(hideYes ? [] : [button('notes-yes', 'yes', 'y'), { text: '  ' }]), button('notes-no', 'no', 'n')]),
   ]
 }
 
@@ -206,29 +208,54 @@ function noteEntry(n: NoteItem, at: number, selected: number, indent: number, te
   }
 }
 
-/** A group's row in the tree: its fold mark, its swatch (a boundary) or its path (a folder), and how many notes it holds. */
-function groupEntry(line: Extract<TreeLine, { kind: 'boundary' | 'folder' }>, at: number, selected: number, hues: Hues): Entry {
-  const fold: Segment = { text: `${line.open ? '▾' : '▸'} `, dim: true }
-  const label: Segment[] =
-    line.kind === 'boundary'
-      ? [fold, ...(line.name === null ? [{ text: '· ', dim: true }, button(`row:${at}`, 'no boundary')] : [...chip(line.name, hues).slice(0, 1), { text: ' ' }, button(`row:${at}`, boundaryLabel(line.name, hues))])]
-      : [{ text: '   ' }, fold, button(`row:${at}`, `${line.path === '' ? '.' : line.path}/`)]
-  return { selected: at === selected, place: '', need: segmentsWidth(label) + 6, main: () => [...label, { text: `  ${grouped(line.count)}`, dim: true }] }
+/** A group's label in the tree: a boundary's swatch and name (its fold in the gutter), or a folder's fold and path, two cells in under the boundary's name. */
+function groupLabel(line: Extract<TreeLine, { kind: 'boundary' | 'folder' }>, at: number, hues: Hues): Segment[] {
+  if (line.kind === 'folder') return [{ text: '  ' }, foldOf(line), { text: ' ' }, button(`row:${at}`, `${line.path === '' ? '.' : line.path}/`)]
+  return line.name === null ? [{ text: '· ', dim: true }, button(`row:${at}`, 'no boundary')] : [...chip(line.name, hues).slice(0, 1), { text: ' ' }, button(`row:${at}`, boundaryLabel(line.name, hues))]
 }
 
-/** The marked note whole, under the tree: where it lives, who wrote it and when, why it needs a look, and its text. */
+/** A group's fold mark: open or closed. */
+const foldOf = (line: { open: boolean }): Segment => ({ text: line.open ? '▾' : '▸', dim: true })
+
+/** A group's row in the tree: its label, then how many notes it holds, right-aligned to end at `countEnd` with every group's; a boundary's fold in the gutter. */
+function groupEntry(line: Extract<TreeLine, { kind: 'boundary' | 'folder' }>, at: number, selected: number, hues: Hues, countEnd: number): Entry {
+  const label = groupLabel(line, at, hues)
+  const count = grouped(line.count)
+  const used = segmentsWidth(label)
+  return { selected: at === selected, ...(line.kind === 'boundary' ? { mark: foldOf(line) } : {}), place: '', need: Math.max(countEnd, used + 2 + cells(count)), main: () => [...label, { text: `${spaces(Math.max(2, countEnd - used - cells(count)))}${count}`, dim: true }] }
+}
+
+/** The marked note whole, under the tree, as labelled facts: where it lives, why it needs a look, and its text by its kind. */
 function detailSection(n: NoteItem, columns: number, hues: Hues): Section {
-  const place: Row = { key: 'notes-detail-place', segments: clip([{ text: '   ' }, { text: n.path ?? 'on a name the graph no longer holds', dim: n.path === null }, ...(n.boundary === null ? [] : [{ text: '  ' }, ...chip(n.boundary, hues)])], columns) }
-  const why: Row[] = [
+  const why = [
     ...(n.missing ? [{ text: n.suggested === null ? 'Its component is gone: o finds where the note goes.' : `Its component is gone. It may have moved to ${n.suggested}: o finds it.`, tone: STATUS_COLOURS.alert }] : []),
     ...(n.stale && n.staleReason !== null ? [{ text: `Stale: ${n.staleReason}.${confirmable(n) ? ' v says it is still true.' : ''}`, tone: STATUS_COLOURS.warn }] : []),
     ...(n.checked ? [{ text: `Flagged for the model${n.checkReason !== null && n.checkReason !== '' ? `: ${n.checkReason}` : '.'}`, tone: STATUS_COLOURS.warn }] : []),
-  ].flatMap((w, i) => wrapWords(w.text, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `notes-detail-why-${i}-${j}`, segments: [{ text: `   ${part}`, color: w.tone }] })))
-  const lines = n.value.split('\n').flatMap((para, i) => (para.trim() === '' ? [''] : wrapWords(para, Math.max(1, columns - 3)).map(part => part)).map((part, j) => ({ part, key: `${i}-${j}` })))
-  const shown = lines.slice(0, DETAIL_LINES)
-  const text: Row[] = shown.map(l => ({ key: `notes-detail-text-${l.key}`, segments: [{ text: `   ${l.part}` }] }))
-  const more = lines.length > shown.length ? [dimRow('notes-detail-more', `   ${plural(lines.length - shown.length, 'more line', 'more lines')}: o opens the component with the note in full`, columns)] : []
-  return { key: 'notes-detail', title: noteName(n), glyph: CARD_ICON.notes, note: noteOf(`${n.author === 'user' ? 'yours' : 'model'} · ${n.date}`), body: [place, ...why, { key: 'notes-detail-gap', segments: [{ text: ' ' }] }, ...text, ...more] }
+  ]
+  const where: Fact = {
+    key: 'notes-detail-place',
+    label: 'where',
+    lines: width => {
+      const own = n.boundary === null ? [] : chip(n.boundary, hues)
+      // A note on no file is where its component's name says; one on a gone name says so.
+      const path: Segment = n.path !== null ? { text: n.path } : { text: n.missing ? 'on a name the graph no longer holds' : n.component, dim: true }
+      // The boundary beside the path while both fit, else on the line under it.
+      return cells(path.text) + 2 + segmentsWidth(own) <= width || own.length === 0 ? [clip([path, ...(own.length === 0 ? [] : [{ text: '  ' }, ...own])], width)] : [clip([path], width), clip(own, width)]
+    },
+  }
+  const status: Fact = { key: 'notes-detail-why', label: 'status', numbered: true, lines: width => why.flatMap(w => wrapWords(w.text, width).map(part => [{ text: part, color: w.tone }])) }
+  const text: Fact = {
+    key: 'notes-detail-text',
+    label: n.kind.replace(/_/g, ' '),
+    numbered: true,
+    lines: width => {
+      const lines = n.value.split('\n').flatMap(para => (para.trim() === '' ? [''] : wrapWords(para, width)))
+      const shown = lines.slice(0, DETAIL_LINES).map((part): Segment[] => [{ text: part }])
+      // Past what the panel shows whole, how many more lines, at the end of the text.
+      return lines.length > DETAIL_LINES ? [...shown, ...wrapWords(`${plural(lines.length - DETAIL_LINES, 'more line', 'more lines')}: o opens the component with the note in full`, width).map((part): Segment[] => [{ text: part, dim: true }])] : shown
+    },
+  }
+  return { key: 'notes-detail', title: noteName(n), glyph: CARD_ICON.notes, note: noteOf(`${n.author === 'user' ? 'yours' : 'model'} · ${n.date}`), body: labelledRows([where, ...(why.length === 0 ? [] : [status]), text], columns) }
 }
 
 /**
@@ -245,26 +272,30 @@ export function notesArrangement(input: NotesInput, selected: number, hues: Hues
     make: (columns, limit, scrolled) => {
       const title = 'Notes'
       if (input.said !== null) {
-        const said = wrapWords(input.said, Math.max(1, columns - 3)).map((line, i): Row => ({ key: `notes-said-${i}`, segments: [{ text: input.warn && i === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', color: STATUS_COLOURS.warn }, { text: line, ...(input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }) }] }))
+        const said = bodyText('notes-said', input.said, columns, input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }, input.warn ? mark(SEVERITY.warn) : undefined)
         return { key: 'notes', title, body: said }
       }
       const head: Row[] = [...(input.importing === null ? askRows(input.ask, columns) : importRows(input.importing, columns))]
-      if (input.filtering) head.push({ key: 'notes-field', segments: [{ text: '   narrow: ', dim: true }, { text: input.text, field: { id: 'notes-filter', value: input.text, placeholder: 'part of a name or a note' } }] })
+      if (input.filtering) head.push(bodyRow('notes-field', [{ text: 'narrow: ', dim: true }, { text: input.text, field: { id: 'notes-filter', value: input.text, placeholder: 'part of a name or a note' } }]))
       const items = notesItems(input)
       const narrowed = [...(input.filter === 'all' ? [] : [`showing ${input.filter}`]), ...(input.text === '' || input.filtering ? [] : [`narrowed to "${input.text}"`])]
-      if (narrowed.length > 0) head.push(dimRow('notes-narrowed', `   ${narrowed.join(' · ')} · ${plural(items.length, 'note', 'notes')}`, columns))
+      if (narrowed.length > 0) head.push(bodyLine('notes-narrowed', `${narrowed.join(' · ')} · ${plural(items.length, 'note', 'notes')}`, columns))
       const note = noteOf(`${countsLine(input.counts)}${input.truncated ? ' · the first 2,000' : ''}`)
       if (items.length === 0) {
-        const empty = input.counts.total === 0 ? "   No notes yet: m on a component's detail writes one, and the model's land here as it records them." : '   No note matches.'
-        return { key: 'notes', title, note, body: [...head, ...wrapWords(empty, Math.max(1, columns)).map((line, i) => dimRow(`notes-none-${i}`, line, columns))] }
+        const empty = input.counts.total === 0 ? "No notes yet: m on a component's detail writes one, and the model's land here as it records them." : 'No note matches.'
+        return { key: 'notes', title, note, body: [...head, ...bodyText('notes-none', empty, columns)] }
       }
       // A note under "Needs you" by its full name; in the tree, under its folder, by what the folder leaves to say.
-      const placed = walk.map(line => (line.kind === 'needs' ? { indent: 0, name: noteName(line.item), item: line.item } : line.kind === 'note' ? { indent: 6, name: nameInFolder(line.item), item: line.item } : null))
+      // In the tree a note stands under its folder's path, or, on no file, under its boundary's name.
+      const placed = walk.map(line => (line.kind === 'needs' ? { indent: 0, name: noteName(line.item), item: line.item } : line.kind === 'note' ? { indent: line.item.path === null ? 2 : 4, name: nameInFolder(line.item), item: line.item } : null))
       const cols = noteColumns(
         placed.filter(p => p !== null),
         columns,
       )
-      const entries: Entry[] = walk.map((line, i) => (line.kind === 'boundary' || line.kind === 'folder' ? groupEntry(line, i, selected, hues) : noteEntry(line.item, i, selected, placed[i]!.indent, input.text, placed[i]!.name, cols)))
+      // Every group's count in one column, at the end of the names' where the labels leave room.
+      const counts = walk.map((line, i) => (line.kind === 'boundary' || line.kind === 'folder' ? segmentsWidth(groupLabel(line, i, hues)) + 2 + cells(grouped(line.count)) : 0))
+      const countEnd = Math.max(cols.name, ...counts)
+      const entries: Entry[] = walk.map((line, i) => (line.kind === 'boundary' || line.kind === 'folder' ? groupEntry(line, i, selected, hues, countEnd) : noteEntry(line.item, i, selected, placed[i]!.indent, input.text, placed[i]!.name, cols)))
       const spec = entrySpec(columns, entries, hues)
       const needs = walk.findIndex(l => l.kind === 'needs')
       const tree = walk.findIndex(l => l.kind !== 'needs')
@@ -272,8 +303,8 @@ export function notesArrangement(input: NotesInput, selected: number, hues: Hues
       const window = windowOf(walk.length, Math.max(1, limit - (needs >= 0 ? 1 : 0) - (needs >= 0 && tree >= 0 ? 1 : 0)), selected, scrolled)
       const body: Row[] = [...head]
       for (let i = window.start; i < window.end; i++) {
-        if (i === Math.max(needs, window.start) && needs >= 0 && walk[i]?.kind === 'needs') body.push(dimRow('notes-needs', '   Needs you', columns))
-        if (i === Math.max(tree, window.start) && needs >= 0 && tree >= 0 && walk[i]?.kind !== 'needs') body.push(dimRow('notes-all', '   Where they live', columns))
+        if (i === Math.max(needs, window.start) && needs >= 0 && walk[i]?.kind === 'needs') body.push(bodyLine('notes-needs', 'Needs you', columns))
+        if (i === Math.max(tree, window.start) && needs >= 0 && tree >= 0 && walk[i]?.kind !== 'needs') body.push(bodyLine('notes-all', 'Where they live', columns))
         body.push(entryRow(`notes-${i}`, entries[i]!, spec, hues))
       }
       body.push(...moreRows('notes-window', window, walk.length, columns, 0))

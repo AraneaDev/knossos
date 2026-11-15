@@ -3108,7 +3108,7 @@ describe('knossos mod', () => {
       await ui.press({ key: 'back' })
       await ui.press({ key: 'row:2' })
       await w.clock.settle()
-      expect(drawn((await ui.find({ key: 'pane' }))?.text ?? '')).toMatch(/src\/Http\/Router\.php +\+30 −2 +12 deps/)
+      expect(drawn((await ui.find({ key: 'pane' }))?.text ?? '')).toMatch(/src\/Http\/Router\.php +\+30 +−2 +12(?![\d,])/)
       await ui.press({ key: 'row:3' })
       await w.clock.settle()
       expect(w.fileRuns().at(-1)?.at(-1)).toBe('src/Http/Router.php')
@@ -3504,10 +3504,10 @@ describe('knossos mod', () => {
       expect(drawn((await ui.find({ key: 'change-0' }))?.text ?? '')).toMatch(/^ ›~ src\/Router\.php +■ Http .*42 *$/)
       expect(drawn((await ui.find({ key: 'change-1' }))?.text ?? '')).toMatch(/^ {2}\+ src\/Kernel\.php +■ Core .*3 *$/)
       // Each test once, at its nearest distance.
-      expect(titled(text)).toMatch(/Tests that reach these changes · 2 +nearest first/)
+      expect(titled(text)).toMatch(/Tests that reach these changes +2 · nearest first/)
       expect(drawn((await ui.find({ key: 'test-0' }))?.text ?? '')).toMatch(/tests\/Core\/KernelTest\.php +1 *$/)
       expect(drawn((await ui.find({ key: 'test-1' }))?.text ?? '')).toMatch(/tests\/Http\/RouterTest\.php +1 *$/)
-      expect(text).toContain("$ vendor/bin/phpunit --filter '(KernelTest|RouterTest)'")
+      expect(text).toMatch(/run {3}vendor\/bin\/phpunit --filter\s+'\(KernelTest\|RouterTest\)'/)
       // `t` copies the test command, as on Overview; `c` copies the marked file, as on every list.
       await ui.press({ key: 'tests' })
       await w.clock.settle()

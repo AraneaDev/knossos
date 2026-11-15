@@ -150,7 +150,7 @@ describe('the Branch tab: what changed', () => {
     ])
     expect(walk[at + 3]?.fold).toBe('branch:http')
     const t = paneLayout(pane(answer({}, 4), view({ folds: ['branch:core'] })), 100, 60).body.map(plainText).join('\n')
-    expect(t).toMatch(/src\/Touched0\.php .*\+12 −0 +40 deps/)
+    expect(t).toMatch(/^ {5}src\/Touched0\.php +\+12 +−0 +40$/m) // its dependents in the reach column, under its boundary's
     expect(t).not.toContain('src/Touched1.php')
   })
 

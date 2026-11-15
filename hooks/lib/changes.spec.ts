@@ -258,8 +258,8 @@ describe('changesRows', () => {
     // A file opens as its detail, by the same index the marker walks; `e` opens it in the editor.
     expect(row(rows, 'change-0')!.segments.find(s => s.press)?.press).toEqual({ id: 'row:0', label: 'src/Router.php' })
     expect(row(rows, 'change-2')!.segments.find(s => s.press)?.press?.id).toBe('row:2')
-    expect(text).toMatch(/Tests that reach these changes · 2 +nearest first/)
-    expect(text).toContain("$ vendor/bin/phpunit --filter '(RouterTest|KernelTest)'")
+    expect(text).toMatch(/Tests that reach these changes +2 · nearest first/)
+    expect(text).toContain("run   vendor/bin/phpunit --filter '(RouterTest|KernelTest)'")
   })
   it('names fewer boundaries on a narrow pane rather than leave the count on a line of its own', () => {
     const many = { ...changesInput(session(), ROOT), boundaries: ['tests', 'core', 'php-worker', 'tooling', 'hooks', 'types'] }
@@ -591,7 +591,7 @@ describe('changed files no test reaches', () => {
       expect(textOf(rows), `${columns}`).toContain('▲ 2 files no test reaches')
     }
     const rows = changesRows(input, 0, 100)
-    expect(plainText(row(rows, 'changes-cols')!)).toMatch(/deps +tests$/)
+    expect(plainText(row(rows, 'changes-cols')!)).toMatch(/dependents +tests$/)
     expect(plainText(row(rows, 'change-1')!)).toMatch(/Kernel\.php .* ▲ none$/)
     expect(row(rows, 'change-1')!.segments.find(s => s.text.includes('▲ none'))?.color).toBe('warning')
     expect(plainText(row(rows, 'change-0')!)).toMatch(/Router\.php .* 3$/)

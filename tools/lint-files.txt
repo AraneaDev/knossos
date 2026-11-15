@@ -1306,10 +1306,12 @@ js	hooks/lib/band.ts
 js	hooks/lib/baseline.ts
 js	hooks/lib/boundaries.spec.ts
 js	hooks/lib/boundaries.ts
+js	hooks/lib/branch-rows.ts
 js	hooks/lib/branch.spec.ts
 js	hooks/lib/branch.ts
 js	hooks/lib/cards.spec.ts
 js	hooks/lib/cards.ts
+js	hooks/lib/changes-branch-notes-spacing.spec.ts
 js	hooks/lib/changes.spec.ts
 js	hooks/lib/changes.ts
 js	hooks/lib/chips.ts
