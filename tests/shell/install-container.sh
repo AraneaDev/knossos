@@ -17,6 +17,11 @@ WORK=$(mktemp -d)
 WORK=$(CDPATH='' cd -P -- "$WORK" && pwd -P)
 trap 'rm -rf "$WORK"' EXIT
 
+# A home directory of the test's own, for the launcher's mount rule.
+HOME="$WORK/home"
+mkdir -p "$HOME"
+export HOME
+
 pass() { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }
 
@@ -102,7 +107,8 @@ else
     fail "containers left: $(running), $(calls)"
 fi
 case $out in *'Knossos 1.0.0 is installed.'*) pass 'it says what it installed' ;; *) fail "output: $out" ;; esac
-got=$(cd "$WORK" && PATH="$BARE" FAKE_IMAGE_VERSION=1.0.0 env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version 2>&1 </dev/null)
+mkdir -p "$WORK/elsewhere"
+got=$(cd "$WORK/elsewhere" && PATH="$BARE" FAKE_IMAGE_VERSION=1.0.0 env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version 2>&1 </dev/null)
 if [ "$got" = 'Knossos 1.0.0' ]; then pass 'the installed launcher answers through a container'; else fail "launcher version said: $got"; fi
 leftovers=$(find "$T1" -name '*.tmp.*' | head -n 3)
 if [ -z "$leftovers" ] && [ ! -e "$DATA/self-update.lock.d" ]; then pass 'no temporary file or lock is left'; else fail "left behind: $leftovers"; fi
@@ -330,6 +336,11 @@ out=$(FAKE_IMAGE_VERSION=1.1.0 FAKE_PLUGIN_FAILS=1 kn self-update --version=1.1.
 case $out in *'could not write its plugin'*'previous state was restored'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ] && cmp -s "$WORK/record.before" "$DATA2/install.json" && cmp -s "$WORK/launcher.before" "$LAUNCHER2"; then
     pass 'a failure after the switch puts install.json and the launcher back'
+    if [ ! -e "$DATA2/self-update.lock.d" ] && [ ! -e "$DATA2/self-update.lock.d.takeover" ]; then
+        pass 'a failed update leaves no lock behind'
+    else
+        fail 'a failed update left its lock'
+    fi
 else
     fail "failed update: $status, $out, $(cat "$DATA2/install.json")"
 fi
@@ -384,6 +395,57 @@ if [ "$status" -ne 0 ] && [ "$said" = yes ] && cmp -s "$WORK/lib.before" "$LIB" 
     pass 'a failed check after the switch restores install.json, the launcher and the plugin'
 else
     fail "probe failure: $status, $out, lib.sh $(cat "$LIB")"
+fi
+
+# Every switch leaves the helper of the image switched to beside install.json.
+if cmp -s "$ROOT/tools/launcher/container-update" "$DATA2/container-update"; then pass 'the update helper is kept beside install.json'; else fail 'no helper copy in the install directory'; fi
+
+# The image the installation runs is pruned: the launcher says so, and
+# self-update fetches it again without needing it.
+CUR=$(field "$DATA2/install.json" version)
+CUR_IMAGE=$(field "$DATA2/install.json" image)
+# As `docker rmi` would: every name of that image goes, its tag included.
+for file in "$FAKE_DOCKER_STATE"/images/*; do
+    if [ "$(cat "$file")" = "$CUR_IMAGE" ]; then rm -f "$file"; fi
+done
+out=$(FAKE_IMAGE_VERSION=$CUR kn version); status=$?
+case $out in *'is gone from this host: run knossos self-update to fetch it again'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'a pruned image is reported with what works'; else fail "pruned image: $status, $out"; fi
+: > "$FAKE_DOCKER_STATE/calls"
+out=$(FAKE_IMAGE_VERSION=$CUR kn self-update --version="$CUR"); status=$?
+if [ "$status" -eq 0 ] && has_call "call [pull] [$REPO:$CUR]" && [ "$(field "$DATA2/install.json" version)" = "$CUR" ]; then
+    pass 'self-update works with the current image gone, and fetches it again'
+else
+    fail "repair: $status, $out, $(calls)"
+fi
+out=$(FAKE_IMAGE_VERSION=$CUR kn version); status=$?
+if [ "$status" -eq 0 ] && [ "$out" = "Knossos $CUR" ]; then pass 'after the repair the launcher runs again'; else fail "after repair: $status, $out"; fi
+
+# A lookup that never returns, cut off as the session hook's timeout cuts it
+# off: the attempt is already recorded, so the next session does not retry.
+SLOW="$WORK/slow curl"
+mkdir -p "$SLOW"
+printf '#!/bin/sh
+exec sleep 30
+' > "$SLOW/curl"
+chmod +x "$SLOW/curl"
+touch -t 202001010000 "$DATA2/update-check.json"
+: > "$WORK/before-check"
+(cd "$PROJECT" && PATH="$SLOW:$BARE" KNOSSOS_RELEASE_BASE=https://mirror.example/releases KNOSSOS_DATA_DIR="$GRAPH" \
+    KNOSSOS_ROOTS_FILE="$GRAPH/roots.json" exec "$LAUNCHER2" self-update --check --quiet </dev/null >/dev/null 2>&1) &
+checker=$!
+sleep 3
+kill -TERM "$checker" 2>/dev/null
+wait "$checker" 2>/dev/null
+if [ -n "$(find "$DATA2/update-check.json" -newer "$WORK/before-check" 2>/dev/null)" ]; then
+    pass 'a lookup that never returns still leaves a recorded attempt'
+else
+    fail "cut-off lookup: $(cat "$DATA2/update-check.json")"
+fi
+if grep -q -- '--max-time 12' "$DATA2/container-update" && grep -q -- '--connect-timeout 5' "$DATA2/container-update"; then
+    pass "the lookup's own limit is shorter than the session hook's 20 s"
+else
+    fail 'the lookup has no limit under the hook timeout'
 fi
 
 if [ "$failures" -ne 0 ]; then

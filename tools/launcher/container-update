@@ -136,10 +136,10 @@ version_gt() {
 # about the user, the host or a project.
 http_get() {
     if command -v curl >/dev/null 2>&1; then
-        curl --fail --silent --show-error --location --max-time 30 \
+        curl --fail --silent --show-error --location --connect-timeout 5 --max-time 12 \
             -H 'User-Agent: knossos-self-update' -H 'Accept: application/vnd.github+json' "$1" </dev/null
     elif command -v wget >/dev/null 2>&1; then
-        wget -q -O - --timeout=30 --user-agent=knossos-self-update --header='Accept: application/vnd.github+json' "$1" </dev/null
+        wget -q -O - --timeout=5 --tries=1 --user-agent=knossos-self-update --header='Accept: application/vnd.github+json' "$1" </dev/null
     else
         echo 'curl or wget is required to look for a newer release' >&2
         return 1
@@ -149,10 +149,10 @@ http_get() {
 # The URL a URL ends up at after its redirects.
 http_final() {
     if command -v curl >/dev/null 2>&1; then
-        curl --fail --silent --show-error --location --max-time 30 --output /dev/null \
+        curl --fail --silent --show-error --location --connect-timeout 5 --max-time 12 --output /dev/null \
             --write-out '%{url_effective}' -H 'User-Agent: knossos-self-update' "$1" </dev/null
     elif command -v wget >/dev/null 2>&1; then
-        final=$(wget --spider -S --max-redirect=5 --timeout=30 --user-agent=knossos-self-update "$1" 2>&1 </dev/null \
+        final=$(wget --spider -S --max-redirect=5 --timeout=5 --tries=1 --user-agent=knossos-self-update "$1" 2>&1 </dev/null \
             | sed -n 's/^ *[Ll]ocation: *//p' | tail -n 1 | tr -d '\r')
         printf '%s' "${final:-$1}"
     else
@@ -309,9 +309,18 @@ plugin_data_dir() {
 switch_to() {
     [ -f "$INSTALL/install.json" ] && cp "$INSTALL/install.json" "$WORKDIR/install.json.prev"
     [ -f "$LAUNCHER" ] && cp "$LAUNCHER" "$WORKDIR/launcher.prev"
+    [ -f "$INSTALL/container-update" ] && cp "$INSTALL/container-update" "$WORKDIR/helper.prev"
     mkdir -p "$BIN_DIR" || die "could not create $BIN_DIR"
     NEW_LAUNCHER="$BIN_DIR/.knossos.tmp.$$"
     render_launcher "$1" "$NEW_LAUNCHER" || { rm -f "$NEW_LAUNCHER"; die "the image $1 has no usable launcher template at $IN_IMAGE/launcher/knossos; nothing was changed"; }
+    # This script, from the image switched to, beside install.json: the
+    # launcher runs it from there, so the next update works even when that
+    # image is gone from the host by then.
+    if ! "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$1" "$IN_IMAGE/tools/launcher/container-update" \
+        > "$INSTALL/container-update.tmp.$$" 2>/dev/null </dev/null || ! sh -n "$INSTALL/container-update.tmp.$$" 2>/dev/null; then
+        rm -f "$NEW_LAUNCHER" "$INSTALL/container-update.tmp.$$"
+        die "the image $1 has no usable update helper at $IN_IMAGE/tools/launcher/container-update; nothing was changed"
+    fi
 
     stop_containers
     if [ -n "$3" ]; then previous=$(json_string "$3"); else previous=null; fi
@@ -327,6 +336,11 @@ switch_to() {
         restore
         die "could not write the launcher $LAUNCHER; the previous state was restored"
     fi
+    # A rename: the copy this run may be executing from stays intact.
+    if ! mv -f "$INSTALL/container-update.tmp.$$" "$INSTALL/container-update"; then
+        restore
+        die "could not write $INSTALL/container-update; the previous state was restored"
+    fi
     if [ -n "$5" ]; then
         if ! output=$(write_plugin "$1" "$5" 2>&1); then
             restore
@@ -336,12 +350,18 @@ The previous state was restored."
     fi
 }
 
-# Put install.json and the launcher back as switch_to found them.
+# Put install.json, the launcher and the helper copy back as switch_to found them.
 restore() {
     stop_containers
     if [ -f "$WORKDIR/install.json.prev" ]; then cp "$WORKDIR/install.json.prev" "$INSTALL/install.json"; else rm -f "$INSTALL/install.json"; fi
     if [ -f "$WORKDIR/launcher.prev" ]; then cp "$WORKDIR/launcher.prev" "$LAUNCHER"; else rm -f "$LAUNCHER"; fi
-    rm -f "$BIN_DIR/.knossos.tmp.$$"
+    # Put back by a rename too, never by writing into a file sh may be reading.
+    if [ -f "$WORKDIR/helper.prev" ]; then
+        cp "$WORKDIR/helper.prev" "$INSTALL/container-update.tmp.$$" && mv -f "$INSTALL/container-update.tmp.$$" "$INSTALL/container-update"
+    else
+        rm -f "$INSTALL/container-update"
+    fi
+    rm -f "$BIN_DIR/.knossos.tmp.$$" "$INSTALL/container-update.tmp.$$"
 }
 
 # Keep exactly one previous image: the one before the previous goes, unless
@@ -352,31 +372,42 @@ prune_image() {
     "$RUNTIME" image rm "$1" >/dev/null 2>&1 || true
 }
 
-# One run at a time: a lock directory holding the owner's process id. One whose
-# owner is gone is taken over.
+# One run at a time: `mkdir` of a lock directory, which is atomic on every
+# POSIX filesystem, holding the owner's process id. A lock whose owner is gone
+# is taken over, and only under a second lock directory (`.takeover`), so two
+# runs that both found the same dead owner cannot both take it: the one that
+# gets the second lock checks the owner again before it removes anything, and
+# the other is refused. The EXIT trap removes the lock this run holds.
 lock() {
     LOCK="$INSTALL/self-update.lock.d"
-    attempt=0
-    while ! mkdir "$LOCK" 2>/dev/null; do
-        owner=$(cat "$LOCK/pid" 2>/dev/null)
-        # Taken over only once, and only from an owner that is gone: a lock
-        # with no id yet is one being taken right now, unless it is old.
-        stale=no
-        if [ -n "$owner" ]; then
-            kill -0 "$owner" 2>/dev/null || stale=yes
-        elif [ -n "$(find "$LOCK" -prune -mmin +1 2>/dev/null)" ]; then
-            stale=yes
+    if mkdir "$LOCK" 2>/dev/null; then
+        printf '%s\n' "$$" > "$LOCK/pid"
+        LOCKED=1
+        return 0
+    fi
+    TAKEOVER="$LOCK.takeover"
+    # A takeover that crashed half-way is old; anything younger is running.
+    if [ -n "$(find "$TAKEOVER" -prune -mmin +1 2>/dev/null)" ]; then rm -rf "$TAKEOVER"; fi
+    mkdir "$TAKEOVER" 2>/dev/null || die 'another knossos self-update is running; try again when it has finished'
+    owner=$(cat "$LOCK/pid" 2>/dev/null)
+    stale=no
+    if [ -n "$owner" ]; then
+        kill -0 "$owner" 2>/dev/null || stale=yes
+    elif [ -d "$LOCK" ] && [ -n "$(find "$LOCK" -prune -mmin +1 2>/dev/null)" ]; then
+        # No id after a minute: a run that died between mkdir and writing it.
+        stale=yes
+    elif [ ! -d "$LOCK" ]; then
+        stale=yes
+    fi
+    if [ "$stale" = yes ]; then
+        rm -rf "$LOCK"
+        if mkdir "$LOCK" 2>/dev/null; then
+            printf '%s\n' "$$" > "$LOCK/pid"
+            LOCKED=1
         fi
-        if [ "$attempt" -ge 1 ] || [ "$stale" = no ]; then
-            die 'another knossos self-update is running; try again when it has finished'
-        fi
-        # Taken over by a rename, which only one of two runs that both saw the
-        # dead owner can win; the other then finds the winner's lock.
-        if mv "$LOCK" "$LOCK.stale.$$" 2>/dev/null; then rm -rf "$LOCK.stale.$$"; fi
-        attempt=$((attempt + 1))
-    done
-    printf '%s\n' "$$" > "$LOCK/pid"
-    LOCKED=1
+    fi
+    rm -rf "$TAKEOVER"
+    [ "${LOCKED:-0}" = 1 ] || die 'another knossos self-update is running; try again when it has finished'
 }
 
 cleanup() {
@@ -483,9 +514,11 @@ fi
 
 if [ "$CHECK" = 1 ]; then
     if [ "$QUIET" = 1 ] && [ "${KNOSSOS_NO_UPDATE_CHECK:-}" = 1 ]; then exit 0; fi
+    # The attempt is recorded before the network is asked: a look that is cut
+    # off (the session hook's own time limit) still counts, so an offline or
+    # slow host does not try again at every session start.
+    record_check ''
     if ! latest=$(latest_version); then
-        # A failed look counts as a look: an offline host must not retry at every session start.
-        record_check ''
         die 'could not look up the latest release'
     fi
     record_check "$latest"
@@ -522,26 +555,41 @@ else
     else
         target=$(latest_version) || die 'could not look up the latest release'
     fi
-    if { [ -z "$VERSION" ] && ! version_gt "$target" "$CURRENT"; } || [ "$target" = "$CURRENT" ]; then
+    # The image the installation runs may have been pruned from the host. Then
+    # the current version is fetched again (the "update" to it repairs the
+    # installation), and a newer one is fetched as usual: neither needs the
+    # missing image, since the launcher, the plugin and this helper all come
+    # from the image switched to.
+    current_present=yes
+    "$RUNTIME" image inspect "$CURRENT_IMAGE" >/dev/null 2>&1 </dev/null || current_present=no
+    if [ "$current_present" = no ] && { [ "$target" = "$CURRENT" ] || { [ -z "$VERSION" ] && ! version_gt "$target" "$CURRENT"; }; }; then
+        new_image=$(fetch_image "$REPOSITORY:$CURRENT" "$CURRENT") || exit 1
+        switch_to "$new_image" "$CURRENT" "$PREVIOUS_IMAGE" "$PREVIOUS_VERSION" "$plugin_dir"
+        status=repaired
+        from=$CURRENT
+        to=$CURRENT
+        text="Fetched the image of Knossos $CURRENT again: $new_image."
+    elif { [ -z "$VERSION" ] && ! version_gt "$target" "$CURRENT"; } || [ "$target" = "$CURRENT" ]; then
         if [ "$JSON" = 1 ]; then
             printf '{"status":"current","from":%s,"to":%s}\n' "$(json_string "$CURRENT")" "$(json_string "$CURRENT")"
         else
             printf 'Knossos %s is already the latest version.\n' "$CURRENT"
         fi
         exit 0
+    else
+        new_image=$(fetch_image "$REPOSITORY:$target" "$target") || exit 1
+        switch_to "$new_image" "$target" "$CURRENT_IMAGE" "$CURRENT" "$plugin_dir"
+        [ -n "$VERSION" ] || record_check "$target"
+        # Exactly one previous image is kept: the one that was previous until now goes.
+        old_previous=$PREVIOUS_IMAGE
+        PREVIOUS_IMAGE=$CURRENT_IMAGE
+        CURRENT_IMAGE=$new_image
+        prune_image "$old_previous"
+        status=updated
+        from=$CURRENT
+        to=$target
+        text="Updated Knossos from $CURRENT to $target."
     fi
-    new_image=$(fetch_image "$REPOSITORY:$target" "$target") || exit 1
-    switch_to "$new_image" "$target" "$CURRENT_IMAGE" "$CURRENT" "$plugin_dir"
-    [ -n "$VERSION" ] || record_check "$target"
-    # Exactly one previous image is kept: the one that was previous until now goes.
-    old_previous=$PREVIOUS_IMAGE
-    PREVIOUS_IMAGE=$CURRENT_IMAGE
-    CURRENT_IMAGE=$new_image
-    prune_image "$old_previous"
-    status=updated
-    from=$CURRENT
-    to=$target
-    text="Updated Knossos from $CURRENT to $target."
 fi
 if [ "$JSON" = 1 ]; then
     printf '{"status":%s,"from":%s,"to":%s,"restart":%s}\n' "$(json_string "$status")" "$(json_string "$from")" "$(json_string "$to")" "$(json_string "$RESTART_NOTE")"

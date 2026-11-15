@@ -499,13 +499,15 @@ run_image() {
 }
 
 # Undo a container install after the helper switched but the launcher did not
-# answer: install.json, the launcher and the plugin as they were.
+# answer: install.json, the launcher, the update helper's copy and the plugin
+# as they were.
 rollback_container_switch() {
     if [ -n "$LAUNCHER" ] && [ -f "$LAUNCHER" ]; then
         (cd "$TMP/probe project" 2>/dev/null && "$LAUNCHER" stop >/dev/null 2>&1 </dev/null) || true
     fi
     if [ -f "$TMP/install.json.prev" ]; then cp "$TMP/install.json.prev" "$DATA_DIR/install.json"; else rm -f "$DATA_DIR/install.json"; fi
     if [ -f "$TMP/launcher.prev" ]; then cp "$TMP/launcher.prev" "$LAUNCHER"; else rm -f "$LAUNCHER"; fi
+    if [ -f "$TMP/helper.prev" ]; then cp "$TMP/helper.prev" "$DATA_DIR/container-update"; else rm -f "$DATA_DIR/container-update"; fi
     if [ "$PLUGIN" = 1 ] && [ -n "$DATA_DIR" ]; then
         rm -rf "$DATA_DIR/plugin"
         if [ -d "$TMP/plugin.prev" ]; then cp -pR "$TMP/plugin.prev" "$DATA_DIR/plugin"; fi
@@ -598,6 +600,7 @@ install_container() {
 
     if [ -f "$DATA_DIR/install.json" ]; then cp "$DATA_DIR/install.json" "$TMP/install.json.prev"; fi
     if [ -f "$LAUNCHER" ]; then cp "$LAUNCHER" "$TMP/launcher.prev"; fi
+    if [ -f "$DATA_DIR/container-update" ]; then cp "$DATA_DIR/container-update" "$TMP/helper.prev"; fi
     if [ "$PLUGIN" = 1 ] && [ -d "$DATA_DIR/plugin" ]; then cp -pR "$DATA_DIR/plugin" "$TMP/plugin.prev"; fi
     note_replaced_launcher
     set -- install "--install-dir=$DATA_DIR" "--bin-dir=$BIN_DIR" "--runtime=$RUNTIME" "--image=$REF" "--version=$VERSION"
