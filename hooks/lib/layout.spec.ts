@@ -953,8 +953,8 @@ describe('the detail view', () => {
   it('heads with name, kind, boundary and place, then draws its neighbourhood round it', () => {
     const rows = paneRows(detailPane(), 140)
     expect(plainText(row(rows, 'detail-head')!)).toMatch(/^DashboardService +class · ■ core$/)
-    expect(plainText(row(rows, 'detail-place')!)).toBe('src/Query/DashboardService.php:28')
-    expect(plainText(row(rows, 'detail-canonical')!)).toBe('Knossos\\Query\\DashboardService')
+    expect(plainText(row(rows, 'detail-place')!)).toBe('   where   src/Query/DashboardService.php:28')
+    expect(plainText(row(rows, 'detail-canonical')!)).toBe('   name    Knossos\\Query\\DashboardService')
     // Drawn round it: what uses it on the left, each with its count on its edge, what it uses on the right.
     const raw = rows.map(rawText).join('\n')
     expect(raw).toContain('│ DashboardServiceTest::testDrift ├')

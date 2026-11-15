@@ -2888,7 +2888,7 @@ describe('knossos mod', () => {
       await wide.press({ key: 'row:0' })
       await w.clock.settle()
       expect(titled((await wide.find({ key: 'detail-head' }))?.text)).toMatch(/^Router +class · ■ Http$/)
-      expect(titled(drawn((await wide.find({ key: 'detail-place' }))?.text ?? ''))).toBe('src/Http/Router.php:3')
+      expect(titled(drawn((await wide.find({ key: 'detail-place' }))?.text ?? ''))).toBe('where src/Http/Router.php:3')
       expect(titled((await wide.find({ key: 'hood-head' }))?.text)).toMatch(/^Dependencies · used by 2 · uses 1 +edges$/)
       // Each neighbour a box whose name opens it, its count on its edge; the centre between them.
       expect((await wide.find({ key: 'rel:0' }))?.props.label).toBe('Kernel')
@@ -5045,10 +5045,10 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await mountPane($, surface, 100)
       const text = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
-      expect(text).toMatch(/1 hop · 2 +─+ ✓ 1 tested · ▲ 1 untested/)
-      expect(text).toMatch(/▲ C Caller {3}C Router/)
-      expect(text).toContain('✓ 1 test file: RouterTest.php')
-      expect(text).toContain('◉ Greeter')
+      expect(text).toMatch(/1 hop +2 +▲ C Caller +✓ 1 tested/)
+      expect(text).toMatch(/C Router +▲ 1 untested/)
+      expect(text).toMatch(/✓ +1 test file {2}RouterTest\.php/)
+      expect(text).not.toContain('◉')
       await ui.unmount()
     }
     // The rings' components follow the detail's own lists: the first is the untested caller.

@@ -71,14 +71,15 @@ export function moreRow(n: number, key: string, width = Number.POSITIVE_INFINITY
   return { key, segments: [{ text: spaces(GUTTER) }, { text: fit(said, Math.max(1, width - GUTTER)), dim: true }] }
 }
 
-/** One labelled fact: its row key, its one-word label, and its value as lines no wider than the width it is given. */
-export type Fact = { key: string; label: string; lines: (width: number) => Segment[][] }
+/** One labelled fact: its row key, its one-word label, and its value as lines no wider than the width it is given; `numbered`, every row keyed `key-N` from 0. */
+export type Fact = { key: string; label: string; lines: (width: number) => Segment[][]; numbered?: true }
 
 /**
  * Facts of different kinds, stacked in `width` with their labels in one dim
  * column and their values in the next, a blank row between two facts. A
  * value wider than its column wraps under its own column, never under the
- * label. The first row of a fact is keyed by it, the rest `key-1` on.
+ * label. The first row of a fact is keyed by it, the rest `key-1` on (all
+ * `key-N` from 0 when it is `numbered`); the blank row before it `key-gap`.
  */
 export function labelledRows(facts: readonly Fact[], width: number): Row[] {
   const column = Math.max(0, ...facts.map(f => cells(f.label))) + LABEL_GAP
@@ -86,7 +87,7 @@ export function labelledRows(facts: readonly Fact[], width: number): Row[] {
   return facts.flatMap((fact, n): Row[] => {
     const lines = fact.lines(room)
     const rows = (lines.length === 0 ? [[]] : lines).map((line, i): Row => ({
-      key: i === 0 ? fact.key : `${fact.key}-${i}`,
+      key: i === 0 && fact.numbered !== true ? fact.key : `${fact.key}-${i}`,
       segments: [{ text: spaces(GUTTER) }, i === 0 ? { text: padEnd(fact.label, column), dim: true } : { text: spaces(column) }, ...line],
     }))
     return n === 0 ? rows : [groupGap(`${fact.key}-gap`), ...rows]
