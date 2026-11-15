@@ -37,6 +37,7 @@ REPOSITORY=${KNOSSOS_IMAGE_REPOSITORY:-ghcr.io/araneadev/knossos}
 IN_IMAGE=/opt/knossos
 RESTART_NOTE='A running Claude Code session keeps the previous release loaded until you restart it.'
 PLACEHOLDER="INSTALL_DIR='__KNOSSOS_INSTALL_DIR__'"
+PIN_PLACEHOLDER="INSTALL_PIN='__KNOSSOS_INSTALL_PIN__'"
 
 QUIET=0
 die() {
@@ -264,17 +265,39 @@ stop_containers() {
 
 # ---- the switch --------------------------------------------------------------------------
 
+# dir_id DIR: "<device>:<inode>" of DIR itself, the launcher's dir_id: GNU
+# and BusyBox stat -c, then BSD stat -f (macOS and the BSDs), then the inode
+# alone from POSIX ls -di.
+dir_id() {
+    id=$(stat -c '%d:%i' -- "$1" 2>/dev/null) || id=''
+    case $id in [0-9]*:[0-9]*) case $id in *[!0-9:]*) ;; *) printf '%s' "$id"; return 0 ;; esac ;; esac
+    id=$(stat -f '%d:%i' -- "$1" 2>/dev/null) || id=''
+    case $id in [0-9]*:[0-9]*) case $id in *[!0-9:]*) ;; *) printf '%s' "$id"; return 0 ;; esac ;; esac
+    id=$(ls -di -- "$1" 2>/dev/null) || id=''
+    id=${id#"${id%%[! ]*}"}
+    id=${id%%[! 0-9]*}
+    id=${id%% *}
+    case $id in '' | *[!0-9]*) return 1 ;; esac
+    printf ':%s' "$id"
+}
+
 # The launcher from an image's template, with the install directory baked in
-# exactly as install.sh and Launcher::render do it.
+# exactly as install.sh and Launcher::render do it, and beside it the device
+# and inode numbers of that directory, which the launcher compares at every
+# call. Nothing here ever recreates the install directory, so an update or a
+# rollback bakes in the same numbers the installer did.
 render_launcher() {
     "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$1" "$IN_IMAGE/launcher/knossos" > "$WORKDIR/template" 2>/dev/null </dev/null \
         || return 1
     quoted=$(printf '%s' "$INSTALL" | sed "s/'/'\\\\''/g")
+    pin=$(dir_id "$INSTALL") || return 1
     baked=0
     while IFS= read -r line || [ -n "$line" ]; do
         if [ "$line" = "$PLACEHOLDER" ]; then
             printf "INSTALL_DIR='%s'\n" "$quoted"
             baked=1
+        elif [ "$line" = "$PIN_PLACEHOLDER" ]; then
+            printf "INSTALL_PIN='%s'\n" "$pin"
         else
             printf '%s\n' "$line"
         fi

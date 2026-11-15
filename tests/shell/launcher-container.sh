@@ -65,9 +65,16 @@ write_record() {
         "$1" "${2:-docker}" "$WORK/bin" > "$INSTALL/install.json"
 }
 write_record "$IMAGE"
+# The device and inode numbers of a directory, as the installer bakes them in.
+pin_of() { stat -c '%d:%i' -- "$1" 2>/dev/null || stat -f '%d:%i' -- "$1"; }
+PIN=$(pin_of "$INSTALL")
+# bake PIN OUT: a launcher for INSTALL with PIN baked in, as install.sh writes it.
+bake() {
+    sed -e "s|__KNOSSOS_INSTALL_DIR__|$INSTALL|" -e "s|^INSTALL_PIN='__KNOSSOS_INSTALL_PIN__'\$|INSTALL_PIN='$1'|" "$TEMPLATE" > "$2"
+    chmod +x "$2"
+}
 LAUNCHER="$WORK/knossos"
-sed "s|__KNOSSOS_INSTALL_DIR__|$INSTALL|" "$TEMPLATE" > "$LAUNCHER"
-chmod +x "$LAUNCHER"
+bake "$PIN" "$LAUNCHER"
 
 PROJECT="$WORK/my project"
 mkdir -p "$PROJECT/src/deep"
@@ -683,6 +690,71 @@ else
     fail "mismatch on reuse: $status, $out, $(calls)"
 fi
 
+# ---- the install directory is the one the installer created ------------------------------
+
+# pin_refused WHAT LAUNCHER [ARGS]: refused in one line naming the install
+# directory, before install.json is read (the record is unreadable on purpose,
+# which would otherwise say "unreadable mode"), and without any runtime call.
+pin_refused() {
+    what=$1 launcher=$2
+    shift 2
+    [ $# -gt 0 ] || set -- version
+    cp "$INSTALL/install.json" "$WORK/record.kept"
+    printf '{"mode": "bogus"}\n' > "$INSTALL/install.json"
+    reset_docker
+    out=$(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$launcher" "$@" </dev/null 2>&1); status=$?
+    cp "$WORK/record.kept" "$INSTALL/install.json"
+    if [ "$status" -eq 1 ] && [ "$out" = "knossos: the install directory $INSTALL is not the one the installer created; re-run the installer." ] \
+        && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then
+        pass "$what is refused before install.json is read"
+    else
+        fail "$what: $status, $out, $(calls)"
+    fi
+}
+dev=${PIN%%:*}
+ino=${PIN#*:}
+bake "$dev:$((ino + 1))" "$WORK/wrong inode"
+pin_refused 'a launcher whose pinned inode differs' "$WORK/wrong inode"
+bake "$((dev + 1)):$ino" "$WORK/wrong device"
+pin_refused 'a launcher whose pinned device differs' "$WORK/wrong device"
+bake ":$((ino + 1))" "$WORK/wrong inode only"
+pin_refused 'a pin of the inode alone that differs' "$WORK/wrong inode only"
+# The attack itself: the directory moved aside and a copy put in its place.
+mv "$INSTALL" "$INSTALL.old"
+cp -pR "$INSTALL.old" "$INSTALL"
+pin_refused 'an install directory replaced by a copy' "$LAUNCHER"
+pin_refused 'stop, with the install directory replaced,' "$LAUNCHER" stop --all
+pin_refused 'self-update, with the install directory replaced,' "$LAUNCHER" self-update --check
+rm -rf "$INSTALL"
+mv "$INSTALL.old" "$INSTALL"
+reset_docker
+out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass 'the original install directory is accepted again'; else fail "after restore: $status, $out"; fi
+bake ":$ino" "$WORK/inode only"
+reset_docker
+out=$(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/inode only" version </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass 'a pin of the inode alone, as ls -di gives it, is accepted when it matches'; else fail "inode-only pin: $status, $out"; fi
+# Without a stat command the inode comes from ls -di.
+NOSTAT="$WORK/no stat"
+mkdir -p "$NOSTAT"
+for tool in env sh awk sed cut sha256sum shasum mkdir dirname id date sort ls cat grep printf; do
+    found=$(command -v "$tool" 2>/dev/null || true)
+    case $found in /*) ln -s "$found" "$NOSTAT/$tool" ;; esac
+done
+ln -s "$FAKE_BIN/docker" "$NOSTAT/docker"
+reset_docker
+out=$(cd "$PROJECT" && PATH="$NOSTAT" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/inode only" version </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass 'without stat, the inode read by ls -di is compared'; else fail "ls -di pin: $status, $out"; fi
+out=$(cd "$PROJECT" && PATH="$NOSTAT" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/wrong inode only" version </dev/null 2>&1); status=$?
+case $out in *'is not the one the installer created'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'without stat, an inode that differs is refused'; else fail "ls -di wrong pin: $status, $out"; fi
+sed "s|__KNOSSOS_INSTALL_DIR__|$INSTALL|" "$TEMPLATE" > "$WORK/no pin"
+chmod +x "$WORK/no pin"
+reset_docker
+out=$(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/no pin" version </dev/null 2>&1); status=$?
+case $out in *'this launcher carries no record of which directory the installer created; re-run the installer'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then pass 'a container launcher without a pin is refused'; else fail "no pin: $status, $out"; fi
+
 # ---- no read-write mount holds a directory the host trusts ------------------------------
 #
 # A container that can write an ancestor of the install directory can rename
@@ -799,7 +871,7 @@ write_record "$IMAGE"
 # PATH, which may hold a real docker this test must not reach.
 NODOCKER="$WORK/no docker"
 mkdir -p "$NODOCKER"
-for tool in env sh awk sed cut sha256sum shasum mkdir dirname id date sort; do
+for tool in env sh awk sed cut sha256sum shasum mkdir dirname id date sort stat ls; do
     found=$(command -v "$tool" 2>/dev/null || true)
     case $found in /*) ln -s "$found" "$NODOCKER/$tool" ;; esac
 done

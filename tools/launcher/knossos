@@ -44,6 +44,9 @@
 #     goes through the same mount rule, and nothing read from it is ever run or
 #     expanded unquoted. At worst it widens the project root to an ancestor of
 #     the working directory below the home directory.
+#   - The installer bakes the device and inode numbers of the install
+#     directory into this file, and every call compares them before it reads
+#     anything there, so a directory put in its place by anyone is refused.
 #   - The image and the runtime come from install.json, which no container can
 #     write. KNOSSOS_* variables and PATH are your own environment.
 
@@ -54,8 +57,56 @@
 set -f
 
 INSTALL_DIR='__KNOSSOS_INSTALL_DIR__'
+# Container mode: the device and inode numbers of the install directory when
+# the installer made it, baked in beside the path. Native mode leaves the
+# placeholder, and then nothing is compared.
+INSTALL_PIN='__KNOSSOS_INSTALL_PIN__'
 
+BAKED_INSTALL_DIR=$INSTALL_DIR
 INSTALL_DIR="${KNOSSOS_INSTALL_DIR:-$INSTALL_DIR}"
+case $INSTALL_PIN in __*__) INSTALL_PIN='' ;; esac
+
+# dir_id DIR: "<device>:<inode>" of DIR itself (a symlink there is not
+# followed), ":<inode>" where only the inode can be read, or nothing.
+dir_id() {
+    # GNU coreutils (Linux) and BusyBox: stat -c.
+    id=$(stat -c '%d:%i' -- "$1" 2>/dev/null) || id=''
+    case $id in [0-9]*:[0-9]*) case $id in *[!0-9:]*) ;; *) printf '%s' "$id"; return 0 ;; esac ;; esac
+    # BSD stat (macOS, FreeBSD, OpenBSD, NetBSD): stat -f, where %d is the
+    # device and %i the inode, as with -c above.
+    id=$(stat -f '%d:%i' -- "$1" 2>/dev/null) || id=''
+    case $id in [0-9]*:[0-9]*) case $id in *[!0-9:]*) ;; *) printf '%s' "$id"; return 0 ;; esac ;; esac
+    # Neither (a system without a stat command): POSIX ls -di gives the inode
+    # alone; the device is left out of the comparison.
+    id=$(ls -di -- "$1" 2>/dev/null) || id=''
+    id=${id#"${id%%[! ]*}"}
+    id=${id%%[! 0-9]*}
+    id=${id%% *}
+    case $id in '' | *[!0-9]*) return 1 ;; esac
+    printf ':%s' "$id"
+}
+
+# The install directory must be the one the installer created, checked before
+# anything in it is read: a directory put in its place, by anyone, is never
+# trusted. Only for the baked-in directory; KNOSSOS_INSTALL_DIR is your own
+# setting, for the installer's check and for tests.
+if [ -n "$INSTALL_PIN" ] && [ "$INSTALL_DIR" = "$BAKED_INSTALL_DIR" ]; then
+    now=$(dir_id "$INSTALL_DIR") || now=''
+    case $now in
+        '') pinned=no ;;
+        :*) if [ "${INSTALL_PIN#*:}" = "${now#:}" ]; then pinned=yes; else pinned=no; fi ;;
+        *)
+            case $INSTALL_PIN in
+                :*) if [ "${INSTALL_PIN#:}" = "${now#*:}" ]; then pinned=yes; else pinned=no; fi ;;
+                *) if [ "$INSTALL_PIN" = "$now" ]; then pinned=yes; else pinned=no; fi ;;
+            esac
+            ;;
+    esac
+    if [ "$pinned" = no ]; then
+        printf 'knossos: the install directory %s is not the one the installer created; re-run the installer.\n' "$INSTALL_DIR" >&2
+        exit 1
+    fi
+fi
 
 # install.json, joined into one line: pretty-printed or not, with or without a
 # space after the colon. A missing file means native. No release writes it as
@@ -202,6 +253,11 @@ physical() { (CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P); }
 untrusted() {
     die "$1; re-run the installer to repair the install directory $INSTALL_DIR."
 }
+# Every container install bakes in the pin checked at the top; a launcher
+# without one was not written by the installer for this directory.
+if [ -z "$INSTALL_PIN" ] && [ "$INSTALL_DIR" = "$BAKED_INSTALL_DIR" ]; then
+    untrusted "this launcher carries no record of which directory the installer created"
+fi
 [ ! -L "$INSTALL_DIR" ] || untrusted "the install directory is a symlink"
 INSTALL_REAL=$(physical "$INSTALL_DIR")
 if [ -z "$INSTALL_REAL" ] || [ "$INSTALL_REAL" != "$INSTALL_DIR" ]; then untrusted "the install directory is not at its own physical path"; fi

@@ -29,7 +29,7 @@ fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }
 # a fake docker and a stub claude, and nothing else: no php, node or python3.
 BARE="$WORK/bare path"
 mkdir -p "$BARE"
-for tool in sh env uname mktemp date cut sed cat rm mkdir mv ln cp dirname sort tail head wc chmod ls find grep tr awk id readlink sha256sum shasum cksum touch sleep kill; do
+for tool in sh env uname mktemp date cut sed cat rm mkdir mv ln cp dirname sort tail head wc chmod ls find grep tr awk id readlink sha256sum shasum cksum touch sleep kill stat; do
     found=$(command -v "$tool" 2>/dev/null || true)
     case $found in /*) ln -s "$found" "$BARE/$tool" ;; esac
 done
@@ -101,6 +101,11 @@ else
 fi
 if grep -qxF "INSTALL_DIR='$DATA/install'" "$LAUNCHER" && [ -x "$LAUNCHER" ]; then pass 'the launcher comes from the image with the install directory baked in'; else fail "launcher: $(grep -n '^INSTALL_DIR=' "$LAUNCHER" 2>&1)"; fi
 if [ ! -e "$DATA/versions" ] && [ ! -e "$DATA/current" ]; then pass 'container mode has no versions/ and no current'; else fail 'versions/ or current exists'; fi
+# pin_of DIR: the device and inode numbers of DIR; baked_pin LAUNCHER: the pin a launcher carries.
+pin_of() { stat -c '%d:%i' -- "$1" 2>/dev/null || stat -f '%d:%i' -- "$1"; }
+baked_pin() { sed -n "s/^INSTALL_PIN='\(.*\)'\$/\1/p" "$1"; }
+PIN1=$(pin_of "$DATA/install")
+if [ -n "$PIN1" ] && [ "$(baked_pin "$LAUNCHER")" = "$PIN1" ]; then pass 'the launcher carries the device and inode numbers of the install directory'; else fail "pin: $(grep -n '^INSTALL_PIN=' "$LAUNCHER")"; fi
 # The layout: the graph in the data dir, the host state in <data dir>/install,
 # with plugin/ and containers/ as real directories made before any container.
 if [ -d "$DATA/install" ] && [ ! -L "$DATA/install" ] && [ -d "$DATA/install/plugin" ] && [ ! -L "$DATA/install/plugin" ] \
@@ -134,6 +139,7 @@ if [ "$status" -eq 0 ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(field "$DATA/i
 else
     fail "second run: status $status, $out, $(calls)"
 fi
+if [ "$(pin_of "$DATA/install")" = "$PIN1" ] && [ "$(baked_pin "$LAUNCHER")" = "$PIN1" ]; then pass 'a second run keeps the install directory and its pin'; else fail 'a second run changed the install directory or its pin'; fi
 
 # ---- symlinks planted where the installer will write ------------------------------------
 
@@ -339,6 +345,7 @@ kn() {
 # The plugin was pointed at a graph directory by hand; updates keep it.
 sed "s|^KNOSSOS_INSTALLED_DATA_DIR=.*|KNOSSOS_INSTALLED_DATA_DIR='$GRAPH'|" "$LIB" > "$WORK/lib.sh" && cp "$WORK/lib.sh" "$LIB"
 
+PIN2=$(pin_of "$DATA2/install")
 out=$(FAKE_IMAGE_VERSION=1.0.0 kn self-update --check); status=$?
 if [ "$status" -eq 0 ] && [ "$out" = 'Knossos 1.0.0 is the latest version.' ]; then pass '--check with nothing newer exits 0'; else fail "--check, nothing newer: $status, $out"; fi
 if grep -q '"latest": "1.0.0"' "$DATA2/install/update-check.json" 2>/dev/null && [ ! -e "$GRAPH/update-check.json" ]; then
@@ -402,6 +409,11 @@ if ! grep '^call \[run\]' "$FAKE_DOCKER_STATE/calls" | grep -qv -e '\[--network\
 
 out=$(FAKE_IMAGE_VERSION=1.1.0 kn self-update); status=$?
 if [ "$status" -eq 0 ] && [ "$out" = 'Knossos 1.1.0 is already the latest version.' ]; then pass 'a second self-update says it is already the latest'; else fail "second update: $status, $out"; fi
+if [ "$(pin_of "$DATA2/install")" = "$PIN2" ] && [ "$(baked_pin "$LAUNCHER2")" = "$PIN2" ]; then
+    pass 'self-update never replaces the install directory, and the launcher it rewrites keeps the pin'
+else
+    fail "pin after update: dir $(pin_of "$DATA2/install"), launcher $(baked_pin "$LAUNCHER2"), installed $PIN2"
+fi
 
 out=$(kn self-update --rollback); status=$?
 case $out in *'Rolled back from 1.1.0 to 1.0.0.'*) said=yes ;; *) said=no ;; esac
@@ -410,6 +422,14 @@ if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(field "$DATA2/install/instal
     pass '--rollback returns to the previous digest, plugin included'
 else
     fail "rollback: $status, $out, $(cat "$DATA2/install/install.json")"
+fi
+if [ "$(pin_of "$DATA2/install")" = "$PIN2" ] && [ "$(baked_pin "$LAUNCHER2")" = "$PIN2" ]; then pass '--rollback keeps the install directory and its pin'; else fail 'rollback changed the install directory or its pin'; fi
+# shellcheck disable=SC2016 # the pattern matches the helper's own "$INSTALL", unexpanded
+REMOVES_INSTALL='(rm -rf|mv -f|rmdir)[^|;]*"\$INSTALL"( |$|;)'
+if ! grep -nE "$REMOVES_INSTALL" "$ROOT/tools/launcher/container-update" >/dev/null; then
+    pass 'the update helper has no command that removes or moves the install directory itself'
+else
+    fail "the helper can remove or move the install directory: $(grep -nE "$REMOVES_INSTALL" "$ROOT/tools/launcher/container-update")"
 fi
 
 # A plugin step that fails puts install.json and the launcher back.
