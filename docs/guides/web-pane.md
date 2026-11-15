@@ -99,7 +99,7 @@ A server that finds another holding the project closes: its terminal says so,
 Another server took over the pane for /home/you/code/shop; this one stops.
 ```
 
-and the terminal panes attached to it reconnect to the other server. A
+and a browser tab on it moves to the other server's address by itself. A
 server that stops on a failure of its own still ends its watcher and removes
 its lock. A second Ctrl-C while it stops makes it stop at once.
 

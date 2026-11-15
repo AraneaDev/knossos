@@ -284,7 +284,7 @@ describe('startServer', () => {
     expect(lines.findIndex(l => l.startsWith('dashboard'))).toBeLessThan(lines.findIndex(l => l.startsWith('claim --execute')))
   })
 
-  it('closes itself once another server took the lock over, and ends its pages for them to reconnect', async () => {
+  it('tells its pages where the project went, then closes itself, once another server took the lock over', async () => {
     let holder: number | null = null
     let asked = 0
     running = await startServer({
@@ -318,9 +318,10 @@ describe('startServer', () => {
     expect((await get(running.url)).status).toBe(200)
     holder = 41234
     await running.stepped
-    // The stream ended with the close.
+    // The stream carried the other's port before it ended, and nothing of the token.
     await read
-    expect(text).toContain('data: ')
+    const events = text.split('\n\n').filter(block => block.startsWith('data: ')).map(block => JSON.parse(block.slice(6)) as { type: string; port?: number })
+    expect(events.at(-1)).toEqual({ type: 'moved', port: 41234 })
     await expect(fetch(running.url)).rejects.toThrow()
     // Its host's own stop afterwards is the same stop, not a second one that fails.
     await running.close()

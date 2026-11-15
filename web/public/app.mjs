@@ -126,6 +126,18 @@ export function wheelQueue(send, onUnscrolled) {
 }
 
 /**
+ * Where a page at `href` goes when its server says the project's pane moved to
+ * `port`: the same address on that port, its token and view kept, so nothing
+ * the page did not already have is put in it. Null for a port that is not one.
+ */
+export function movedTo(port, href) {
+    if (!Number.isInteger(port) || port <= 0 || port >= 65536) return null;
+    const url = new URL(href);
+    url.port = String(port);
+    return url.href;
+}
+
+/**
  * One page's connection to the pane: the event stream, opened again with
  * {@link retryDelay} after each loss (the first event back is the current
  * frame, which replaces whatever the page shows), and its inputs, each sent
@@ -216,13 +228,14 @@ export function createPage(o) {
 }
 
 /**
- * What a view is handed: the page's token, the drawing module, and the rule
- * Claude Code places a card with.
+ * What a view is handed: the page's token, the drawing module, the rule
+ * Claude Code places a card with, and what the view does to its document.
  *
  * @typedef {object} ViewOptions
  * @property {string} token
  * @property {typeof import("./draw.mjs")} draw
  * @property {Function} cardPlace
+ * @property {typeof import("./dom.mjs")} dom
  */
 
 /** The views the hash names, by name: each draws into the page's one view container. */
@@ -269,99 +282,11 @@ export async function start() {
     const draw = await import(`./draw.mjs${query}`);
     // The server makes this one from the hooks module's own file: the rule Claude Code places a card with.
     const { cardPlace } = await import(`./place.mjs${query}`);
+    const dom = await import(`./dom.mjs${query}`);
     await stylesheet;
     const name = location.hash.replace(/^#\/?/, "");
     const view = VIEWS[name] ?? VIEWS.pane;
-    view(document.getElementById("view"), { token, draw, cardPlace });
-}
-
-/** One character cell of the page's grid, in pixels. */
-function cellOf(container) {
-    const probe = Object.assign(document.createElement("span"), {
-        className: "probe",
-        textContent: "M".repeat(10),
-    });
-    container.append(probe);
-    const box = probe.getBoundingClientRect();
-    probe.remove();
-    return { width: box.width / 10 || 8, height: box.height || 16 };
-}
-
-/** The element of the page keyed `key`, a press or a field. */
-const keyed = (root, key) =>
-    key === null || key === undefined
-        ? null
-        : root.querySelector(
-              `[data-press="${CSS.escape(key)}"], [data-field="${CSS.escape(key)}"]`,
-          );
-
-/**
- * Makes `container`'s children the `entries` (keyed HTML), drawing anew only
- * those that changed since the last call (see `patchPlan`). A row that holds
- * the focused field is changed around it, never replaced: the field keeps
- * its node, so its value, its caret and the focus stay as the person left
- * them, whatever a frame drawn before their last keystroke says.
- */
-function patcher(container, patchPlan) {
-    let drawn = [];
-    const make = (html) => {
-        const holder = document.createElement("template");
-        holder.innerHTML = html;
-        return holder.content.firstElementChild;
-    };
-    /** `node` changed to `html` around `input`, which stays where it is; null when the new row has no field of its own. */
-    const around = (node, html, input) => {
-        const fresh = make(html);
-        const twin = fresh.querySelector(
-            `[data-field="${CSS.escape(input.dataset.field)}"]`,
-        );
-        if (twin === null || input.parentElement !== node) return null;
-        for (const child of [...node.childNodes])
-            if (child !== input) child.remove();
-        const kids = [...fresh.childNodes];
-        const at = kids.indexOf(twin);
-        input.before(...kids.slice(0, at));
-        input.after(...kids.slice(at + 1));
-        for (const { name, value } of twin.attributes)
-            if (name !== "value" && input.getAttribute(name) !== value)
-                input.setAttribute(name, value);
-        return node;
-    };
-    return (entries) => {
-        const nodes = new Map(drawn.map((e) => [e.key, e.node]));
-        const active = document.activeElement;
-        const field =
-            active instanceof HTMLInputElement && container.contains(active)
-                ? active
-                : null;
-        // The rows gone go first, so none stands between two that stay and makes one of them move.
-        const kept = new Set(entries.map((e) => e.key));
-        for (const e of drawn) if (!kept.has(e.key)) e.node.remove();
-        drawn = patchPlan(drawn, entries).map((step, i) => {
-            let node = nodes.get(step.key);
-            if (!step.reuse) {
-                const old = node;
-                node =
-                    (old !== undefined &&
-                        field !== null &&
-                        old.contains(field) &&
-                        around(old, step.html, field)) ||
-                    make(step.html);
-                // In the old one's place: the rows after it stay where they are, and are not moved (a move would blur a field).
-                if (
-                    old !== undefined &&
-                    old !== node &&
-                    old.parentNode === container
-                )
-                    old.replaceWith(node);
-            }
-            const here = container.children[i];
-            if (here !== node) container.insertBefore(node, here ?? null);
-            return { key: step.key, html: step.html, node };
-        });
-        while (container.children.length > drawn.length)
-            container.lastElementChild.remove();
-    };
+    view(document.getElementById("view"), { token, draw, cardPlace, dom });
 }
 
 /**
@@ -370,7 +295,8 @@ function patcher(container, patchPlan) {
  * @param {HTMLElement} root
  * @param {ViewOptions} options
  */
-function paneView(root, { token, draw: drawn, cardPlace }) {
+function paneView(root, { token, draw: drawn, cardPlace, dom }) {
+    const { cellOf, keyed, patcher } = dom;
     const light = matchMedia("(prefers-color-scheme: light)");
     const theme = () => (light.matches ? "light" : "dark");
     root.innerHTML =
@@ -423,6 +349,19 @@ function paneView(root, { token, draw: drawn, cardPlace }) {
             focus: (e) => keyed(root, e.key)?.focus(),
             scroll: (e) =>
                 keyed(root, e.key)?.scrollIntoView({ block: "nearest" }),
+            // The server stepped down for another that took the project over: the page goes there, and says where
+            // it went on a line that stays, in case the browser does not follow (an installed app keeps to its origin).
+            moved: (e) => {
+                const to = movedTo(e.port, location.href);
+                if (to === null) return;
+                toasts.append(
+                    Object.assign(document.createElement("div"), {
+                        className: "toast",
+                        textContent: `This pane moved to ${to}`,
+                    }),
+                );
+                location.replace(to);
+            },
         },
     });
 

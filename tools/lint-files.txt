@@ -1589,6 +1589,7 @@ js	web/parity.spec.mjs
 js	web/port.spec.ts
 js	web/port.ts
 js	web/public/app.mjs
+js	web/public/dom.mjs
 js	web/public/draw.mjs
 js	web/server.spec.ts
 js	web/server.ts

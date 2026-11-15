@@ -155,7 +155,7 @@ export async function startServer(o: {
   log?: (text: string) => void
   /**
    * The port of another pane server that took the project's lock over, or null while the lock is this one's;
-   * asked on the head poll's tick. Once it names one, the server closes itself.
+   * asked on the head poll's tick. Once it names one, the server tells its pages where it went and closes itself.
    */
   holder?: () => Promise<number | null>
 }): Promise<{ url: string; token: string; port: number; ready: Promise<void>; stepped: Promise<void>; close(): Promise<void> }> {
@@ -179,8 +179,9 @@ export async function startServer(o: {
   const act = handlersOf(io)
   const ready = startUp(io, 'deliberate').catch((error: unknown) => io.ui.log(`knossos web: start-up failed: ${messageOf(error)}`))
   /**
-   * Settles once the server closed itself because another took the project's lock. A terminal pane, whose host
-   * learns of it here, takes the project's usual take-over path to the lock's server.
+   * Settles once the server closed itself because another took the project's lock. Its pages were told the other's
+   * port first: a browser page moves there, and a terminal pane, whose host learns of it here, takes the project's
+   * usual take-over path to the lock's server.
    */
   let stepDown = () => undefined as void
   const stepped = new Promise<void>(resolve => (stepDown = resolve))
@@ -198,6 +199,7 @@ export async function startServer(o: {
       .then(port => {
         if (port === null || closing !== null) return
         clearInterval(headPoll)
+        hub.send({ type: 'moved', port })
         // Its start-up is let finish first, or it would go on after the close and start a watcher for a server that no longer runs;
         // that wait has no bound of its own, as each step of the start-up is a wrapper call with its own timeout.
         // Input a page posts meanwhile reaches this server and is lost, as in any take-over: a page does not send it twice.
