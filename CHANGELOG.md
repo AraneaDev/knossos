@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.49.1](https://github.com/AraneaDev/knossos/compare/v0.49.0...v0.49.1) (2026-11-15)
+
+
+### Fixes
+
+* keep two panes of one project on one server when theirs dies ([#508](https://github.com/AraneaDev/knossos/issues/508)) ([b6c6c00](https://github.com/AraneaDev/knossos/commit/b6c6c009868749f2c961bf0151a2b81c9e50147d))
+* let a pane or tab that was away find its project's server again ([#510](https://github.com/AraneaDev/knossos/issues/510)) ([236c07a](https://github.com/AraneaDev/knossos/commit/236c07a2dc6202e5a0c8c9690478db2de20dda93))
+
 ## [0.49.0](https://github.com/AraneaDev/knossos/compare/v0.48.0...v0.49.0) (2026-11-15)
 
 
