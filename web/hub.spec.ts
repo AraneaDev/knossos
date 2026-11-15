@@ -92,6 +92,15 @@ describe('Hub', () => {
     }
   })
 
+  it('tells a page that connects once the mod is off for want of a knossos binary why there is no graph', async () => {
+    const { page } = await loaded()
+    // Off, as the wrapper's no-binary turns it: Claude Code's pane closes, a page of the web host has nothing to close.
+    mod.session.disabled = true
+    const got = page('late', 100)
+    await vi.waitFor(() => expect(got).toHaveLength(1))
+    expect(frameText(got[0]!.frame)).toContain('Knossos is not installed')
+  })
+
   it('lays each page out at its own size, one state', async () => {
     const { io, page } = await loaded()
     const narrow = page('narrow', 60)
