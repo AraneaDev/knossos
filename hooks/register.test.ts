@@ -5045,10 +5045,10 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await mountPane($, surface, 100)
       const text = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
-      expect(text).toMatch(/1 hop +2 +▲ C Caller +✓ 1 tested/)
-      expect(text).toMatch(/C Router +▲ 1 untested/)
-      expect(text).toMatch(/✓ +1 test file {2}RouterTest\.php/)
-      expect(text).not.toContain('◉')
+      expect(text).toMatch(/1 hop · 2 +─+ ✓ 1 tested · ▲ 1 untested/)
+      expect(text).toMatch(/▲ C Caller {4}C Router/)
+      expect(text).toContain('✓ 1 test file  RouterTest.php')
+      expect(text).toContain('◉ Greeter')
       await ui.unmount()
     }
     // The rings' components follow the detail's own lists: the first is the untested caller.

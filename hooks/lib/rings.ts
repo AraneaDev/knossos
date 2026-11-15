@@ -4,38 +4,34 @@
  * ring with how many of its components a test reaches and the test files
  * that do.
  *
- * Pure. Drawn as rows lined up in columns, the nearest ring first, a blank
- * row between two rings:
- *
- *     1 hop      4    ▲ C Near0                       ✓ 3 tested
- *                       C Near1           ■ edge      ▲ 1 untested
- *                     ✓   2 test files  NearTest.php
- *
- * The ring's distance and count stand in the left column on its first row,
- * how it stands (all tested, or how many are and are not) at the right
- * end; between them its components one a line, their marks in one column
- * (`▲` for the untested, in the warning colour, then the kind), their names
- * in the next, and a boundary named only where it is not the component's
- * own; then `+N more` for what the ring does not show, and the test files
- * that reach it last. The head card already names the component itself,
- * so the rings do not draw it again. Every named component is a row the
- * marker walks and `o` opens; a ring shows as many as the pane's height
- * gives it, the rest one `+N more` that walks to the next of them. Below
- * {@link RINGS_MIN} columns each ring's distance, count and standing share
- * one row, its components under it.
+ * Pure. Drawn as concentric frames, the furthest ring outermost and the
+ * component in the middle (`◉ name ■ boundary`), so the eye reads outward
+ * from what changes to what it reaches. Each ring's frame carries its hop,
+ * its count and how it stands; inside it, one cell in from either side and
+ * before the next ring in, its components in columns of one width (the
+ * untested mark `▲` in the warning colour, then the kind letter, then the
+ * name, then a boundary named only where it is not the component's own, each
+ * in line down its column), `+N more` in the last cell for what it does not
+ * show, and last the test files that reach it. Every frame row of a ring is
+ * exactly as wide as its top edge, so every box closes at one column, and
+ * the frames grow fainter outwards. Every named component is a press the
+ * marker walks and `o` opens; the marked one is tinted where it stands, and
+ * a ring's cells follow the marker when it walks past what they show. Below
+ * {@link RINGS_MIN} columns the rings are drawn as plain lists, their
+ * components in the same columns.
  */
 import type { BlastRadius, RingsState } from '../../types'
 import { noteOf, windowOf } from './cards'
 import type { Block } from './cards'
-import { ACCENT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
+import { FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
 import type { Hues } from './palette'
 import { absolute, baseName } from './paths'
 import { button, clip, dimRow, inList, segmentsWidth } from './rows'
 import { chip } from './chips'
-import { GUTTER, groupGap } from './spacing'
-import { cells, displayName, fit, grouped, padEnd, padStart, plural, spaces, wrapWords } from './text'
+import { GUTTER } from './spacing'
+import { cells, displayName, fit, grouped, plural, spaces, wrapWords } from './text'
 import type { Loc, Row, Segment } from './types'
-import { REACH, kindMark, mark } from './marks'
+import { PLACE, REACH, kindMark, mark } from './marks'
 import { busy } from './motion'
 
 /** One component a ring names: what it shows, what it opens, and whether a test reaches it. */
@@ -53,20 +49,8 @@ export type Ring = { label: string; count: number; tested: number; probable?: nu
  */
 export type RingsInput = { loading: boolean; said: string | null; centre: { name: string; boundary: string | null } | null; rings: Ring[]; truncated: boolean; testsPartial?: boolean }
 
-/** The narrowest the rings are drawn in their columns; narrower, each ring's figures share its first row. */
+/** The narrowest the rings are drawn as frames: each ring takes four columns of the width. */
 export const RINGS_MIN = 44
-
-/** The fewest components a ring lists however short the pane: the rest are its `+N more`. */
-export const RING_MIN = 3
-
-/** The cells between the columns: the ring's figures and its marks, its names and their boundaries, the rest and its standing. */
-const GAP = 3
-
-/** The cells before a component's name: the marker, the untested mark and the kind, a space between. */
-const LEAD = 6
-
-/** The cells a name keeps whole in the columns: past it a long name may be cut, short of it the rings take the narrow form. */
-const NAME_KEEP = 24
 
 /** The ring's name by its hop: the last one gathers everything further. */
 const ringLabel = (hop: number): string => (hop >= 3 ? '3+ hops' : hop === 1 ? '1 hop' : `${hop} hops`)
@@ -100,166 +84,199 @@ export const ringsList = (input: RingsInput | null | undefined): { name: string;
 /** A member's own name, what follows `::` or the last `\` or `.` of its full one. */
 const memberName = (full: string): string => full.split(/::|\\|(?<=\w)\.(?=\w)/).at(-1) ?? full
 
-/** How a ring stands, one part a row: all tested, or how many are tested and how many are not; or none. */
-function standing(ring: Ring): Segment[][] {
-  if (ring.count === 0) return [[{ text: 'none', dim: true }]]
+/** How a ring stands, as the legend of its marks: all tested, or how many are tested and how many are not; or none. */
+function standing(ring: Ring): Segment[] {
+  if (ring.count === 0) return [{ text: 'none', dim: true }]
   const untested = ring.count - ring.tested
-  if (untested === 0) return [[mark(REACH.tested, ' all tested')]]
-  const untestedPart = [mark(REACH.untested, ` ${grouped(untested)} ${REACH.untested.legend}`)]
-  return ring.tested === 0 ? [untestedPart] : [[mark(REACH.tested, ` ${grouped(ring.tested)} ${REACH.tested.legend}`)], untestedPart]
+  if (untested === 0) return [mark(REACH.tested, ' all tested')]
+  const untestedPart = mark(REACH.untested, ` ${grouped(untested)} ${REACH.untested.legend}`)
+  return ring.tested === 0 ? [untestedPart] : [mark(REACH.tested, ` ${grouped(ring.tested)} ${REACH.tested.legend}`), { text: ' · ', dim: true }, untestedPart]
 }
 
-/** A ring's count with how many of them only probably depend on the component, when any do. */
-const probableOf = (ring: Ring): string => ((ring.probable ?? 0) > 0 ? ` (${grouped(ring.probable ?? 0)} probable)` : '')
+/** A ring's count as its title says it: how many, and how many of them only probably depend on the component. */
+const countOf = (ring: Ring): string => `${grouped(ring.count)}${(ring.probable ?? 0) > 0 ? ` (${grouped(ring.probable ?? 0)} probable)` : ''}`
 
-/** One ring laid out: where its walk starts, the members it shows, and its `+N more` with the walk index that press moves to. */
-type Laid = { ring: Ring; index: number; offset: number; start: number; shown: RingMember[]; more: number; next: number | null }
+/** The rows of cells a ring shows its components in at most, as on the rings before their columns: the last cell `+N more` when some do not show. */
+export const MEMBER_ROWS = 3
 
-/** Each ring's members shown at most `limit` at a time, round the marker when it is on one of them. */
-function laidOut(rings: readonly Ring[], offset: number, limit: number, selected: number): Laid[] {
-  let at = offset
-  return rings.map((ring, index) => {
-    const listed = ring.members.length
-    // A last one is shown rather than counted: its `+1 more` would take the row it needs.
-    const room = listed === limit + 1 && ring.count === listed ? listed : Math.max(1, limit)
-    const window = windowOf(listed, room, inList(selected - at, listed))
-    const next = window.end < listed ? at + window.end : window.start > 0 ? at + window.start - 1 : null
-    const laid = { ring, index, offset: at, start: window.start, shown: ring.members.slice(window.start, window.end), more: ring.count - (window.end - window.start), next }
-    at += listed
-    return laid
+/** The cells between two columns of a ring. */
+const CELL_GAP = 2
+
+/** The cells before a component's name in its cell: the untested mark, a space, the kind letter and its space. */
+const LEAD = 4
+
+/** The fewest cells a name keeps before its member and its boundary give way. */
+const NAME_LEAST = 8
+
+/** A ring's components as lines of cells `room` wide (see the module docblock); `at` is the walk's index of its first. */
+function memberGrid(ring: Ring, at: number, room: number, selected: number, hues: Hues, home: string | null): Segment[][] {
+  const members = ring.members
+  if (members.length === 0 && ring.count === 0) return []
+  const chips = members.map(m => (m.boundary === home ? [] : chip(m.boundary, hues)))
+  const viaOf = (m: RingMember): string => (m.via === undefined || m.via === null ? '' : ` via ${m.via}`)
+  // One width for every cell of the ring, from all it lists, so the columns hold still while the marker walks them.
+  const chipWidth = Math.max(0, ...chips.map(segmentsWidth))
+  const longest = Math.max(0, ...members.map(m => cells(m.name) + cells(viaOf(m))))
+  const need = Math.max(cells(`+${grouped(ring.count)} more`), LEAD + longest + (chipWidth > 0 ? 1 + chipWidth : 0))
+  const width = Math.max(1, Math.min(room, need))
+  const per = Math.max(1, Math.floor((room + CELL_GAP) / (width + CELL_GAP)))
+  const slots = per * MEMBER_ROWS
+  // All of them when they fit with the count of those knossos did not list; else the cells less one, and `+N more` in it.
+  const all = members.length <= slots && (ring.count === members.length || members.length < slots)
+  const window = windowOf(members.length, all ? members.length : Math.max(1, slots - 1), inList(selected - at, members.length))
+  const shown = members.slice(window.start, window.end)
+  // The boundaries in a column of their own at the cell's end, while the names keep their least beside it.
+  const nameRoom = width - LEAD
+  const withChips = chipWidth > 0 && nameRoom - 1 - chipWidth >= Math.min(longest, NAME_LEAST)
+  const nameColumn = withChips ? nameRoom - 1 - chipWidth : nameRoom
+  const pieces: Segment[][] = shown.map((m, j) => {
+    const index = at + window.start + j
+    const own = withChips ? chips[window.start + j]! : []
+    // The member it is reached through goes before the name is cut below its least.
+    const via = cells(viaOf(m)) > 0 && nameColumn - cells(viaOf(m)) >= Math.min(cells(m.name), NAME_LEAST) ? viaOf(m) : ''
+    const name = fit(m.name, Math.max(1, nameColumn - cells(via)))
+    const pressed: Segment = { ...button(`rel:${index}`, name), ...(index === selected ? { bg: SELECTED_BG, bold: true } : {}) }
+    const named = cells(name) + cells(via)
+    const cell: Segment[] = [m.tested ? { text: ' ' } : mark(REACH.untested), { text: ' ' }, kindMark(m.kind), pressed, ...(via === '' ? [] : [{ text: via, dim: true }]), ...(own.length === 0 ? [] : [{ text: spaces(nameColumn - named + 1) }, ...own])]
+    return clip(cell, width)
   })
+  const more = ring.count - shown.length
+  if (more > 0) {
+    const next = window.end < members.length ? at + window.end : window.start > 0 ? at + window.start - 1 : null
+    const text = fit(`+${grouped(more)} more`, width)
+    pieces.push([next === null ? { text, dim: true } : button(`more:${next}`, text, undefined, { dim: true })])
+  }
+  const lines: Segment[][] = []
+  pieces.forEach((piece, i) => {
+    if (i % per === 0) lines.push([])
+    const line = lines[lines.length - 1]!
+    if (i % per > 0) line.push({ text: spaces(CELL_GAP + width - segmentsWidth(pieces[i - 1]!)) })
+    line.push(...piece)
+  })
+  return lines
 }
 
-/** A member's lead: the marker when marked, the untested mark, the kind. {@link LEAD} cells. */
-const lead = (m: RingMember, marked: boolean): Segment[] => [{ text: marked ? '›' : ' ', color: ACCENT, bold: true }, { text: ' ' }, m.tested ? { text: ' ' } : mark(REACH.untested), { text: ' ' }, kindMark(m.kind)]
-
-/** A member's name, a press that opens it (the marked one tinted), and the member it is reached through, in `width` cells. */
-function named(m: RingMember, index: number, selected: number, width: number): Segment[] {
-  const via = m.via === undefined || m.via === null ? '' : ` via ${m.via}`
-  const name = fit(m.name, Math.max(4, width - cells(via)))
-  const pressed: Segment = { ...button(`rel:${index}`, name), ...(index === selected ? { bg: SELECTED_BG, bold: true } : {}) }
-  return [pressed, ...(via === '' ? [] : [{ text: fit(via, Math.max(0, width - cells(name))), dim: true }])]
-}
-
-/** The `+N more` under a ring's members: a press to the next one hidden where there is one, else text. */
-function moreOf(laid: Laid): Segment[] {
-  if (laid.more <= 0) return []
-  const text = `+${grouped(laid.more)} more`
-  return [laid.next === null ? { text, dim: true } : button(`more:${laid.next}`, text, undefined, { dim: true })]
-}
-
-/** The test files that reach a ring, their count and as many names as fit `width` (from the mark's column), then how many more. */
-function testsOf(ring: Ring, width: number): Segment[] {
+/** The test files that reach a ring, by file name, as many as fit one line `width` wide, then how many more. */
+function testsLine(ring: Ring, width: number): Segment[] {
   if (ring.count === 0) return []
-  if (ring.tests.count === 0) return [mark(REACH.untested, `${spaces(LEAD - 3)}no test file reaches it`)]
-  const lead = plural(ring.tests.count, 'test file', 'test files')
+  if (ring.tests.count === 0) return [mark(REACH.untested, fit(' no test file reaches it', Math.max(0, width - 1)))]
+  const lead = `${REACH.tested.glyph} ${plural(ring.tests.count, 'test file', 'test files')}`
   const said = (shown: string[]): string => {
     const rest = ring.tests.count - shown.length
     return shown.length === 0 ? lead : `${lead}  ${shown.join(', ')}${rest > 0 ? ` +${rest}` : ''}`
   }
   let shown: string[] = []
   for (const name of ring.tests.paths.map(baseName)) {
-    if (cells(said([...shown, name])) > width - (LEAD - 2)) break
+    if (cells(said([...shown, name])) > width) break
     shown = [...shown, name]
   }
-  return [{ text: `${REACH.tested.glyph}${spaces(LEAD - 3)}${fit(said(shown), Math.max(1, width - (LEAD - 2)))}`, dim: true }]
+  return [{ text: fit(said(shown), width), dim: true }]
 }
 
-/** `content` with `part` set against the right end of `columns`, at `at`; cut to the columns. */
-function withStanding(key: string, content: Segment[], part: Segment[] | undefined, at: number, columns: number): Row {
-  const used = segmentsWidth(content)
-  const segments = part === undefined ? content : [...content, { text: spaces(Math.max(1, at - used)) }, ...part]
-  return { key, segments: clip(segments, columns) }
-}
+/** A ring's frame colour: the nearest in a text tone, the further ones faint. */
+const frameColour = (index: number): string => (index === 0 ? SECONDARY : FAINT)
+
+/** Each ring's walk index: where its first component stands in the walk, from `offset`. */
+const offsetsOf = (rings: readonly Ring[], offset: number): number[] => rings.map((_, i) => offset + rings.slice(0, i).reduce((sum, r) => sum + r.members.length, 0))
 
 /**
- * The rings in `columns` (the card's inner width): see the module docblock.
- * `offset` is the walk's index of the first component they name, `limit`
- * the most a ring lists.
+ * The rings as nested frames in `columns`: the furthest ring outermost,
+ * each frame two cells in from the one around it on either side, its title
+ * in its top edge, its components and tests before the next frame, the
+ * component itself in the middle. Every row is `columns` wide.
  */
-export function ringRows(input: RingsInput, columns: number, selected: number, offset: number, hues: Hues = NO_HUES, limit = Number.POSITIVE_INFINITY): Row[] {
-  const laid = laidOut(input.rings, offset, limit, selected)
+export function ringRows(input: RingsInput, columns: number, selected: number, offset: number, hues: Hues = NO_HUES): Row[] {
+  const rings = input.rings
+  const n = rings.length
+  const offsets = offsetsOf(rings, offset)
   const home = input.centre?.boundary ?? null
-  const labelWidth = Math.max(0, ...laid.map(l => cells(l.ring.label)))
-  const countWidth = Math.max(0, ...laid.map(l => cells(grouped(l.ring.count))))
-  const left = labelWidth + 2 + countWidth + Math.max(0, ...laid.map(l => cells(probableOf(l.ring))))
-  const standWidth = Math.max(0, ...laid.flatMap(l => standing(l.ring).map(segmentsWidth)))
-  const room = columns - GUTTER - left - 1 - LEAD - GAP - standWidth
-  const members = laid.flatMap(l => l.shown)
-  const need = Math.max(4, ...members.map(m => cells(m.name) + (m.via === undefined || m.via === null ? 0 : cells(` via ${m.via}`))))
-  // Names cut short say less than the columns line up: the rings take the narrow form instead.
-  if (columns < RINGS_MIN || room < Math.min(need, NAME_KEEP)) return ringLists(laid, columns, selected, hues, home)
-  const chips = new Map(members.map(m => [m, m.boundary === home ? [] : chip(m.boundary, hues)]))
-  const chipWidth = Math.max(0, ...[...chips.values()].map(segmentsWidth))
-  // Boundaries give way before names do.
-  const withChips = chipWidth > 0 && room - chipWidth - 2 >= Math.min(need, NAME_KEEP)
-  const nameWidth = Math.min(need, withChips ? room - chipWidth - 2 : room)
-  const inset = spaces(GUTTER + left + 1)
-  // The standing a column past the names and their boundaries: read across from them, never past the edge.
-  const at = Math.min(columns - standWidth, inset.length + LEAD + nameWidth + (withChips ? 2 + chipWidth : 0) + GAP)
-  return laid.flatMap((l): Row[] => {
-    const figures: Segment[] = [{ text: spaces(GUTTER) }, { text: padEnd(l.ring.label, labelWidth), bold: true, color: l.index === 0 ? HEADING : SECONDARY }, { text: `  ${padStart(grouped(l.ring.count), countWidth)}`, color: HEADING }, { text: padEnd(probableOf(l.ring), left - labelWidth - 2 - countWidth), dim: true }, { text: ' ' }]
-    const content: { key: string; segments: Segment[] }[] = l.shown.map((m, j) => {
-      const index = l.offset + l.start + j
-      const name = named(m, index, selected, nameWidth)
-      const own = withChips ? chips.get(m) ?? [] : []
-      return { key: `ring-${l.index}-member-${l.start + j}`, segments: [...lead(m, index === selected), ...name, ...(own.length === 0 ? [] : [{ text: spaces(nameWidth - segmentsWidth(name) + 2) }, ...own])] }
-    })
-    const more = moreOf(l)
-    if (more.length > 0) content.push({ key: `ring-${l.index}-more`, segments: [{ text: spaces(2) }, ...more] })
-    const parts = standing(l.ring)
-    // The tests line runs to the edge unless a standing shares its row.
-    const tests = testsOf(l.ring, (content.length < parts.length ? at - GAP : columns) - inset.length - 2)
-    if (tests.length > 0) content.push({ key: `ring-${l.index}-tests`, segments: [{ text: spaces(2) }, ...tests] })
-    const rows = Array.from({ length: Math.max(1, content.length, parts.length) }, (_, k): Row => {
-      const own = content[k]
-      const key = k === 0 ? `ring-${l.index}-head` : (own?.key ?? `ring-${l.index}-standing-${k}`)
-      return withStanding(key, [...(k === 0 ? figures : [{ text: inset }]), ...(own?.segments ?? [])], parts[k], at, columns)
-    })
-    return l.index === 0 ? rows : [groupGap(`ring-${l.index}-gap`), ...rows]
-  })
+  const rows: Row[] = []
+  // The left and the right sides of the `depth` outermost frames, outermost at the edges.
+  const sides = (depth: number): { left: Segment[]; right: Segment[] } => {
+    const left: Segment[] = []
+    const right: Segment[] = []
+    for (let d = 0; d < depth; d++) {
+      const colour = frameColour(n - 1 - d)
+      left.push({ text: '│ ', color: colour })
+      right.unshift({ text: ' │', color: colour })
+    }
+    return { left, right }
+  }
+  // A line inside `depth` frames: their left sides, the content cut to the room, padding, their right sides.
+  const inside = (key: string, depth: number, content: Segment[]): Row => {
+    const { left, right } = sides(depth)
+    const room = Math.max(0, columns - 4 * depth)
+    const fitted = clip(content, room)
+    return { key, segments: [...left, ...fitted, { text: spaces(room - segmentsWidth(fitted)) }, ...right] }
+  }
+  for (let d = 0; d < n; d++) {
+    const index = n - 1 - d
+    const ring = rings[index]!
+    const width = columns - 4 * d
+    const colour = frameColour(index)
+    const title: Segment[] = [{ text: ring.label, bold: true, color: index === 0 ? HEADING : SECONDARY }, { text: ` · ${countOf(ring)}`, color: HEADING }]
+    const state = standing(ring)
+    const fill = width - 8 - segmentsWidth(title) - segmentsWidth(state)
+    const top: Segment[] = [{ text: '╭─ ', color: colour }, ...title, { text: ` ${'─'.repeat(Math.max(1, fill))} `, color: colour }, ...state, { text: ' ─╮', color: colour }]
+    const { left, right } = sides(d)
+    // Too narrow for both in the edge: the hop and count stay in it, and how the ring stands is its first line inside.
+    const bare = width - 5 - segmentsWidth(title)
+    const edge: Segment[] = fill >= 1 ? top : bare >= 1 ? [{ text: '╭─ ', color: colour }, ...title, { text: ` ${'─'.repeat(bare)}╮`, color: colour }] : [{ text: `╭${'─'.repeat(Math.max(0, width - 2))}╮`, color: colour }]
+    rows.push({ key: `ring-${index}-top`, segments: [...left, ...edge, ...right] })
+    const room = width - 4
+    if (fill < 1) rows.push(inside(`ring-${index}-standing`, d + 1, state))
+    memberGrid(ring, offsets[index]!, room, selected, hues, home).forEach((line, i) => rows.push(inside(`ring-${index}-names-${i}`, d + 1, line)))
+    const tests = testsLine(ring, room)
+    if (tests.length > 0) rows.push(inside(`ring-${index}-tests`, d + 1, tests))
+  }
+  const centre = input.centre
+  if (centre !== null) {
+    const room = columns - 4 * n
+    const own = chip(centre.boundary, hues)
+    const label: Segment[] = [mark(PLACE.centre, ' '), { text: fit(centre.name, Math.max(4, room - segmentsWidth(own) - 4)), bold: true, color: HEADING }, ...(own.length > 0 ? [{ text: ' ' }, ...own] : [])]
+    const pad = Math.max(0, Math.floor((room - segmentsWidth(label)) / 2))
+    rows.push(inside('ring-centre', n, [{ text: spaces(pad) }, ...label]))
+  }
+  for (let d = n - 1; d >= 0; d--) {
+    const { left, right } = sides(d)
+    rows.push({ key: `ring-${n - 1 - d}-end`, segments: [...left, { text: `╰${'─'.repeat(Math.max(0, columns - 4 * d - 2))}╯`, color: frameColour(n - 1 - d) }, ...right] })
+  }
+  return rows
 }
 
-/** The rings for a pane too narrow for their columns: each ring's distance, count and standing on one row, its components under it. */
-function ringLists(laid: Laid[], columns: number, selected: number, hues: Hues, home: string | null): Row[] {
+/** The rings as plain lists, for a pane too narrow for frames: each ring's figures and standing, its components in columns under them, its tests. */
+function ringLists(input: RingsInput, columns: number, selected: number, offset: number, hues: Hues): Row[] {
+  const offsets = offsetsOf(input.rings, offset)
   const body = spaces(GUTTER)
-  const room = Math.max(1, columns - GUTTER - LEAD)
-  return laid.flatMap((l): Row[] => {
-    const head: Segment[] = [{ text: body }, { text: l.ring.label, bold: true, color: HEADING }, { text: ` · ${grouped(l.ring.count)}${probableOf(l.ring)}`, dim: true }]
-    const stands = standing(l.ring).flatMap((part, i) => (i === 0 ? part : [{ text: ' · ', dim: true }, ...part]))
+  const room = Math.max(1, columns - GUTTER - 2)
+  return input.rings.flatMap((ring, index): Row[] => {
+    const head: Segment[] = [{ text: body }, { text: ring.label, bold: true, color: HEADING }, { text: ` · ${countOf(ring)}`, dim: true }]
+    const state = standing(ring)
     // How the ring stands beside its figures while both fit, else on a row of its own under them.
-    const beside = segmentsWidth(head) + 2 + segmentsWidth(stands) <= columns
-    const rows: Row[] = beside ? [{ key: `ring-${l.index}-head`, segments: [...head, { text: '  ' }, ...stands] }] : [{ key: `ring-${l.index}-head`, segments: clip(head, columns) }, { key: `ring-${l.index}-standing`, segments: clip([{ text: `${body}  ` }, ...stands], columns) }]
-    l.shown.forEach((m, j) => {
-      const index = l.offset + l.start + j
-      const own = m.boundary === home ? [] : chip(m.boundary, hues)
-      const name = named(m, index, selected, own.length > 0 && room > 24 ? room - segmentsWidth(own) - 1 : room)
-      rows.push({ key: `ring-${l.index}-member-${l.start + j}`, segments: clip([{ text: body }, ...lead(m, index === selected), ...name, ...(own.length > 0 && room > 24 ? [{ text: ' ' }, ...own] : [])], columns) })
-    })
-    const more = moreOf(l)
-    if (more.length > 0) rows.push({ key: `ring-${l.index}-more`, segments: [{ text: `${body}  ` }, ...more] })
-    const tests = testsOf(l.ring, Math.max(1, columns - GUTTER - 2))
-    if (tests.length > 0) rows.push({ key: `ring-${l.index}-tests`, segments: clip([{ text: `${body}  ` }, ...tests], columns) })
-    return l.index === 0 ? rows : [groupGap(`ring-${l.index}-gap`), ...rows]
+    const beside = segmentsWidth(head) + 2 + segmentsWidth(state) <= columns
+    const rows: Row[] = beside ? [{ key: `ring-${index}-head`, segments: [...head, { text: '  ' }, ...state] }] : [{ key: `ring-${index}-head`, segments: clip(head, columns) }, { key: `ring-${index}-standing`, segments: clip([{ text: `${body}  ` }, ...state], columns) }]
+    memberGrid(ring, offsets[index]!, room, selected, hues, input.centre?.boundary ?? null).forEach((line, i) => rows.push({ key: `ring-${index}-names-${i}`, segments: [{ text: `${body}  ` }, ...line] }))
+    const tests = testsLine(ring, room)
+    if (tests.length > 0) rows.push({ key: `ring-${index}-tests`, segments: [{ text: `${body}  ` }, ...tests] })
+    return rows
   })
 }
 
 /**
  * The blast radius as a detail card: the rings (`offset` is the walk's
- * index of the first component they name, each ring as long as the pane's
- * height lets it be), or what to say while they load or when there are none.
+ * index of the first component they name), or what to say while they load
+ * or when there are none. Its title says how many depend on it at the
+ * right end, as every card's count.
  */
 export function ringsBlock(input: RingsInput, selected: number, offset: number, hues: Hues = NO_HUES): Block {
   const total = input.rings.reduce((sum, r) => sum + r.count, 0)
-  const longest = Math.max(0, ...input.rings.map(r => r.members.length))
   return {
     key: 'rings',
-    ...(input.said === null && longest > 0 ? { grow: { length: longest, min: Math.min(RING_MIN, longest) } } : {}),
-    make: (columns, limit) => {
+    make: columns => {
       const note = noteOf(input.said !== null ? '' : `${grouped(total)}${input.truncated ? '+' : ''} dependents, tests apart${input.testsPartial === true ? ', tests partly searched' : ''}`)
       if (input.said !== null) return { key: 'rings', title: 'Blast radius', note, body: wrapWords(input.said, Math.max(1, columns - GUTTER)).map((line, i) => dimRow(`rings-said-${i}`, `${spaces(GUTTER)}${line}`, columns)) }
       if (total === 0) return { key: 'rings', title: 'Blast radius', note, body: [dimRow('rings-none', `${spaces(GUTTER)}Nothing depends on it: a change here reaches no other component.`, columns)] }
-      const body = ringRows(input, columns, selected, offset, hues, longest === 0 ? Number.POSITIVE_INFINITY : Math.max(Math.min(RING_MIN, longest), limit))
+      const body = columns >= RINGS_MIN ? ringRows(input, columns, selected, offset, hues) : ringLists(input, columns, selected, offset, hues)
       return { key: 'rings', title: 'Blast radius', ...(input.loading ? { subtitle: busy('reading…') } : {}), note, body }
     },
   }
