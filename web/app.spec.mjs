@@ -16,6 +16,7 @@ import {
     movedTo,
     pageId,
     provesPane,
+    sameText,
     swipeRows,
     wheelCell,
     wheelRows,
@@ -328,6 +329,15 @@ describe("the event stream", () => {
         expect([0, 1, 2, 3, 4, 10].map(retryDelay)).toEqual([
             500, 1000, 2000, 4000, 5000, 5000,
         ]);
+    });
+});
+
+describe("sameText", () => {
+    it("says whether two texts are the same, length and every character", () => {
+        expect(sameText("ab12", "ab12")).toBe(true);
+        expect(sameText("ab12", "ab13")).toBe(false);
+        expect(sameText("ab12", "ab1")).toBe(false);
+        expect(sameText("", "")).toBe(true);
     });
 });
 

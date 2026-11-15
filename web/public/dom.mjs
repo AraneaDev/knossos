@@ -147,6 +147,19 @@ export function movedTo(port, href) {
 }
 
 /**
+ * Whether `a` and `b` are the same text, looked at whole whatever they hold:
+ * how long it takes says nothing of where they differ, as a comparison of a
+ * secret must not.
+ */
+export function sameText(a, b) {
+    if (a.length !== b.length) return false;
+    let differ = 0;
+    for (let i = 0; i < a.length; i++)
+        differ |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    return differ === 0;
+}
+
+/**
  * Whether the server at the page's own address proves it is this project's
  * pane, asked without the token (see `proofOf` in web/lock.ts): a fresh
  * challenge, answered with an HMAC keyed with the token over it and the port.
@@ -183,7 +196,7 @@ export async function provesPane(fetchIt, subtle, token, port) {
         const want = [...new Uint8Array(signed)]
             .map((b) => b.toString(16).padStart(2, "0"))
             .join("");
-        if (want === given) return true;
+        if (sameText(want, given)) return true;
     }
     return false;
 }
