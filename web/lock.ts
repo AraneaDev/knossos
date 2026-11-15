@@ -182,11 +182,12 @@ export function ownListener(port: number): boolean | null {
  * there may be anyone's. `pane` is a pane server of this project, proven by its answer to a fresh challenge (see
  * {@link proofOf}). `old` is a pane server from before that proof (one from 0.49.1 sends {@link PANE_HEADER}, one
  * from before that only its refusal), which a newer pane may meet during an update: counted as `pane` when the
- * socket is shown to be this user's, and left `old`, unproven, where it cannot be. `other` is anything else, a
- * refusal of the connection included, and `silent` an answer that did not come in time (a busy server, and a
- * stopped or stuck one too).
+ * socket is shown to be this user's, and left `old`, unproven, where it cannot be. `foreign` is a pane server whose
+ * proof is made with another token: another project's, or this project's after its token was made anew. `other` is
+ * anything else, a refusal of the connection included, and `silent` an answer that did not come in time (a busy
+ * server, and a stopped or stuck one too).
  */
-export async function probe(port: number, token: string, ms: number): Promise<'pane' | 'old' | 'other' | 'silent'> {
+export async function probe(port: number, token: string, ms: number): Promise<'pane' | 'old' | 'foreign' | 'other' | 'silent'> {
   const challenge = randomBytes(16).toString('hex')
   try {
     const res = await fetch(`http://127.0.0.1:${port}/`, { headers: { [CHALLENGE_HEADER]: challenge }, signal: AbortSignal.timeout(ms) })
@@ -197,6 +198,7 @@ export async function probe(port: number, token: string, ms: number): Promise<'p
     const old = !proven && given === null && (marked || (res.status === 403 && (await begins(res.body, OLD_REFUSAL))))
     await res.body?.cancel().catch(() => undefined)
     if (proven) return 'pane'
+    if (given !== null && res.headers.has(PANE_HEADER)) return 'foreign'
     if (!old) return 'other'
     return ownListener(port) === true ? 'pane' : 'old'
   } catch (error) {
@@ -227,6 +229,8 @@ function stopped(pid: number): boolean {
 async function serves(port: number, token: string, pid: number, silent?: (holder: Silent) => void): Promise<'pane' | 'old' | 'other' | 'silent'> {
   for (const [i, ms] of PATIENCE_MS.entries()) {
     const answer = await probe(port, token, ms)
+    // Another token's pane server holds no lock of this project's: one this project made with its old token is stale.
+    if (answer === 'foreign') return 'other'
     if (answer !== 'silent') return answer
     if (i === 0) silent?.({ pid, stopped: stopped(pid) })
   }
@@ -387,11 +391,16 @@ export async function claim(dataDir: string, root: string, token: string, silent
         },
         // Only positive evidence counts: the lock names another live process and a pane server answers at its port.
         // A lock that is missing or does not read (in the middle of a write), names a dead process, or names a live
-        // one that serves nothing there (a pid used again) is no sign of another holder.
+        // one that serves nothing there (a pid used again) is no sign of another holder. One that answers with
+        // another token's proof is this project's server after its token was made anew (this lock is the project's
+        // own, and the person's alone): this server's clients cannot reach it with that token any more, and it gives
+        // way. A pid used again by another project's server could make it give way once; its panes then find this
+        // project's server again through the lock.
         holder: async () => {
           const now = held(file)
           if (now === null || now.pid === process.pid || !alive(now.pid) || !isPort(now.port)) return null
-          return (await probe(now.port, token, HOLDER_PROBE_MS)) === 'pane' ? now.port : null
+          const answer = await probe(now.port, token, HOLDER_PROBE_MS)
+          return answer === 'pane' || answer === 'foreign' ? now.port : null
         },
       }
     } catch (error) {

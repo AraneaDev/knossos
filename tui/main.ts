@@ -302,6 +302,7 @@ try {
   if (started.kind === 'running' && !started.proven) throw new Error(unprovenText(started.holder, lockFile(dataDir, root)))
   const first = started.url
   let current = first
+  /** The token the client was started with: what it puts in what it sends, and what `reach` changes when the project's is new. */
   const token = new URL(first).searchParams.get('t') ?? ''
   /** The origin last proven to be this project's pane, while a stream to it holds: nothing with the token goes anywhere else. */
   let trusted: string | null = null
@@ -318,8 +319,11 @@ try {
       if (hosted !== null) current = hosted.url
     }
     const target = origin(current)
+    // The project's token now, from the lock's address: made anew (its identity file was remade), it replaces the one
+    // the client was started with in all it sends, as the server that holds the project knows only the new one.
+    const now = new URL(current).searchParams.get('t') ?? token
     if (events && trusted !== target) {
-      if ((await probe(Number(new URL(current).port), token, PROVE_MS)) !== 'pane') {
+      if ((await probe(Number(new URL(current).port), now, PROVE_MS)) !== 'pane') {
         lost = true
         throw new Error(`no pane server of this project answers at ${target}`)
       }
@@ -327,8 +331,16 @@ try {
     }
     // An input while no stream holds waits for none: it is dropped, as one sent to a server that is gone would be.
     if (!events && trusted !== target) throw new Error('not connected to the pane server')
+    let sent = origin(first) === target ? url : url.replace(origin(first), target)
+    let asked = init
+    if (now !== token) {
+      sent = sent.replace(`t=${token}`, `t=${now}`)
+      const headers = new Headers(init?.headers)
+      if (headers.has('x-knossos-token')) headers.set('x-knossos-token', now)
+      asked = { ...init, headers }
+    }
     try {
-      return await fetch(origin(first) === target ? url : url.replace(origin(first), target), init)
+      return await fetch(sent, asked)
     } catch (error) {
       if (events) {
         lost = true

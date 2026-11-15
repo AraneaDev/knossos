@@ -261,6 +261,14 @@ describe('claim', () => {
       expect(carriesToken(seen)).toBe(false)
       // And asking changed nothing.
       expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.ppid, port: pane.port })
+      // A pane server whose proof is made with another token: this project's, its token made anew since.
+      const renewed = await servePane({ token: 'cd'.repeat(24) })
+      try {
+        writeFileSync(file, JSON.stringify({ pid: process.ppid, port: renewed.port }))
+        expect(await got.holder()).toBe(renewed.port)
+      } finally {
+        renewed.close()
+      }
     } finally {
       pane.close()
     }

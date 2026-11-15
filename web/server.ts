@@ -420,7 +420,9 @@ export async function startServer(o: {
       })
     if (!(await accepts())) return false
     if (!alive(former.pid)) return true
-    if ((await probe(former.port, token, 1_000)) !== 'other') return false
+    // Another project's pane server there holds it as surely as any other program.
+    const answer = await probe(former.port, token, 1_000)
+    if (answer !== 'other' && answer !== 'foreign') return false
     // An answer that is not a pane's, or a connection cut while the holder let its port go: only the first is
     // another program's, and it still accepts.
     return accepts()
