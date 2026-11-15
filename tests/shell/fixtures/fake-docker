@@ -83,6 +83,7 @@ case $command in
         labels=''
         detached=0
         entrypoint=''
+        never=0
         while [ $# -gt 0 ]; do
             case $1 in
                 -d) detached=1 ;;
@@ -92,7 +93,8 @@ case $command in
 "; shift ;;
                 --entrypoint) entrypoint=$2; shift ;;
                 --network | --user | -e | --mount | -v | -w) shift ;;
-                --userns=* | --network=* | --user=*) ;;
+                --pull=never) never=1 ;;
+                --userns=* | --network=* | --user=* | --pull=*) ;;
                 -*) echo "fake-docker: unknown run option $1" >&2; exit 2 ;;
                 *) break ;;
             esac
@@ -100,6 +102,11 @@ case $command in
         done
         image=$1
         shift
+        # --pull=never: an image that is not here is an error, never a download.
+        if [ "$never" = 1 ] && [ ! -f "$(image_file "$image")" ] && [ -z "${FAKE_ANY_IMAGE:-}" ]; then
+            echo "docker: Error response from daemon: No such image: $image" >&2
+            exit 125
+        fi
         if [ "$detached" = 1 ]; then
             if [ -e "$STATE/race" ]; then
                 rm -f "$STATE/race"

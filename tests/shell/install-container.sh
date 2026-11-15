@@ -126,7 +126,7 @@ DATA2="$T2/data dir"
 LAUNCHER2="$T2/bin dir/knossos"
 DIGEST2=$(field "$DATA2/install.json" image)
 if [ "$status" -eq 0 ]; then pass 'a full install with the plugin step exits 0'; else fail "plugin install: $status, $out"; fi
-if has_call "call [run] [--rm] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-check] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json] [--mount] [type=bind,source=$DATA2,target=$DATA2] [--entrypoint] [/opt/knossos/bin/knossos] [$DIGEST2] [install-agent-plugin] [--execute] [--no-register] [--plugin-dir=$DATA2/plugin] [--bin=$LAUNCHER2] [--data-dir=$DATA2]"; then
+if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-check] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json] [--mount] [type=bind,source=$DATA2,target=$DATA2] [--entrypoint] [/opt/knossos/bin/knossos] [$DIGEST2] [install-agent-plugin] [--execute] [--no-register] [--plugin-dir=$DATA2/plugin] [--bin=$LAUNCHER2] [--data-dir=$DATA2]"; then
     pass "the plugin is written by the image's install-agent-plugin, as this user, with the install directory mounted at its own path"
 else
     fail "plugin run: $(grep install-agent-plugin "$FAKE_DOCKER_STATE/calls")"
@@ -298,7 +298,7 @@ if grep -qxF "FROM_IMAGE='$NEW_DIGEST'" "$LIB" && grep -qxF "KNOSSOS_INSTALLED_D
 else
     fail "plugin after update: $(cat "$LIB")"
 fi
-if [ "$(cat "$LAUNCHER2")" = "$launcher_before" ] && has_call "call [run] [--rm] [--network] [none] [--entrypoint] [cat] [$NEW_DIGEST] [/opt/knossos/launcher/knossos]"; then
+if [ "$(cat "$LAUNCHER2")" = "$launcher_before" ] && has_call "call [run] [--rm] [--pull=never] [--network] [none] [--entrypoint] [cat] [$NEW_DIGEST] [/opt/knossos/launcher/knossos]"; then
     pass 'the launcher is rewritten from the new image'
 else
     fail "launcher after update: $(calls)"

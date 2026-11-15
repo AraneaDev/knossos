@@ -215,7 +215,7 @@ record_check() {
 run_image() {
     image=$1
     shift
-    "$RUNTIME" run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
         --entrypoint "$IN_IMAGE/bin/knossos" "$image" "$@" </dev/null
 }
@@ -268,7 +268,7 @@ stop_containers() {
 # The launcher from an image's template, with the install directory baked in
 # exactly as install.sh and Launcher::render do it.
 render_launcher() {
-    "$RUNTIME" run --rm --network none --entrypoint cat "$1" "$IN_IMAGE/launcher/knossos" > "$WORKDIR/template" 2>/dev/null </dev/null \
+    "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$1" "$IN_IMAGE/launcher/knossos" > "$WORKDIR/template" 2>/dev/null </dev/null \
         || return 1
     quoted=$(printf '%s' "$INSTALL" | sed "s/'/'\\\\''/g")
     baked=0
@@ -289,7 +289,7 @@ render_launcher() {
 # No claude command runs: the plugin directory is the one Claude Code
 # registered, so the registration stays valid.
 write_plugin() {
-    "$RUNTIME" run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
         --mount "type=bind,source=$INSTALL,target=$INSTALL" \
         --entrypoint "$IN_IMAGE/bin/knossos" "$1" \
@@ -370,7 +370,9 @@ lock() {
         if [ "$attempt" -ge 1 ] || [ "$stale" = no ]; then
             die 'another knossos self-update is running; try again when it has finished'
         fi
-        rm -rf "$LOCK"
+        # Taken over by a rename, which only one of two runs that both saw the
+        # dead owner can win; the other then finds the winner's lock.
+        if mv "$LOCK" "$LOCK.stale.$$" 2>/dev/null; then rm -rf "$LOCK.stale.$$"; fi
         attempt=$((attempt + 1))
     done
     printf '%s\n' "$$" > "$LOCK/pid"
@@ -378,12 +380,22 @@ lock() {
 }
 
 cleanup() {
-    rm -rf "$WORKDIR"
+    [ -z "$WORKDIR" ] || rm -rf "$WORKDIR"
+    # The temporary copy of this script the launcher made, once it is done.
+    if [ -n "${KNOSSOS_UPDATE_HELPER:-}" ] && [ "$KNOSSOS_UPDATE_HELPER" = "$0" ]; then rm -f "$0"; fi
     if [ "${LOCKED:-0}" = 1 ]; then rm -rf "$LOCK"; fi
-    rm -f "$BIN_DIR/.knossos.tmp.$$" "$INSTALL/install.json.tmp.$$" 2>/dev/null
+    [ -z "$BIN_DIR" ] || rm -f "$BIN_DIR/.knossos.tmp.$$"
+    [ -z "$INSTALL" ] || rm -f "$INSTALL/install.json.tmp.$$"
 }
 
 # ---- arguments -------------------------------------------------------------------------------
+
+# From the first line on, so even a refused argument removes the launcher's copy of this script.
+WORKDIR=''
+BIN_DIR=''
+INSTALL=''
+trap cleanup EXIT
+trap 'exit 1' INT TERM HUP
 
 ACTION=${1-}
 [ $# -gt 0 ] && shift
@@ -417,8 +429,6 @@ case $INSTALL in /*) INSTALL=${INSTALL%/} ;; *) die '--install-dir must name an 
 [ -n "$INSTALL" ] || INSTALL=/
 
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/knossos-container-update.XXXXXX") || die 'could not create a temporary directory'
-trap cleanup EXIT
-trap 'exit 1' INT TERM HUP
 
 case $ACTION in
     install)
