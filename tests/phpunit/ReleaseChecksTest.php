@@ -24,7 +24,7 @@ final class ReleaseChecksTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = sys_get_temp_dir() . '/knossos-release-checks-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-release-checks');
         mkdir($this->directory, 0o700, true);
     }
 

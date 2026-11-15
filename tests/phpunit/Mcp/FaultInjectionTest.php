@@ -15,18 +15,14 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PDOException;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class FaultInjectionTest extends KnossosTestCase
 {
     #[Group('fault-injection')]
     public function testStorageLocksDiskLimitsAndCorruptCachesRecoverWithoutPublishingPartialState(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-fault-storage-');
-        $cacheDatabase = tempnam(sys_get_temp_dir(), 'knossos-fault-cache-');
-        if ($path === false || $cacheDatabase === false) {
-            throw new RuntimeException('Unable to allocate fault-injection databases.');
-        }
+        $path = self::scratchFile('knossos-fault-storage');
+        $cacheDatabase = self::scratchFile('knossos-fault-cache');
         try {
             $writer = SqliteConnection::open($path);
             $writer->exec('CREATE TABLE fault_payloads (id INTEGER PRIMARY KEY, payload BLOB NOT NULL)');
@@ -71,10 +67,7 @@ final class FaultInjectionTest extends KnossosTestCase
         if (PHP_OS_FAMILY !== 'Linux' || !function_exists('posix_kill')) {
             return;
         }
-        $pidFile = tempnam(sys_get_temp_dir(), 'knossos-child-pid-');
-        if ($pidFile === false) {
-            throw new RuntimeException('Unable to allocate child PID fixture.');
-        }
+        $pidFile = self::scratchFile('knossos-child-pid');
         try {
             $client = new ProcessScannerClient(
                 [PHP_BINARY, self::repositoryRoot() . '/tests/Fixtures/workers/fake-worker.php', 'child_scan', $pidFile],

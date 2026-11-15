@@ -33,7 +33,7 @@ final class AnnotationModuleStalenessTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-module-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-module');
         mkdir($this->root, 0o777, true);
         $this->pdo = $this->freshTestDatabase();
     }

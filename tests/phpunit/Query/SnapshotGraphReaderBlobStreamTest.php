@@ -224,7 +224,7 @@ final class SnapshotGraphReaderBlobStreamTest extends KnossosTestCase
     {
         [$pdo, , $scan] = $this->archivedStore();
         $expected = (new SnapshotGraphReader($pdo, blobReads: false))->archivedById($scan);
-        $missing = sys_get_temp_dir() . '/knossos-no-such-dir-' . bin2hex(random_bytes(4)) . '/payload';
+        $missing = self::scratchPath('knossos-no-such-dir') . '/payload';
         // fopen() on a missing path raises a real E_WARNING and returns false.
         $pdo->opener = static fn(): mixed => fopen($missing, 'r');
         $raised = [];

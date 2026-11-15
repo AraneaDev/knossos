@@ -13,11 +13,10 @@ use PDO;
 use PDOException;
 use PDOStatement;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
 #[Group('scan-locks')]
-final class ProjectWriterLockTest extends TestCase
+final class ProjectWriterLockTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private function createSchema(): PDO
     {
@@ -454,7 +453,7 @@ final class ProjectWriterLockTest extends TestCase
 
     public function testAcquireOnGenuinelyLockedDatabaseThrowsScanBusy(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-lock-') ?: sys_get_temp_dir() . '/knossos-lock-' . bin2hex(random_bytes(6));
+        $path = self::scratchFile('knossos-lock') ?: self::scratchPath('knossos-lock');
         try {
             $holder = new PDO('sqlite:' . $path);
             $holder->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);

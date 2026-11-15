@@ -10,7 +10,6 @@ use Knossos\Store\SqliteConnection;
 use PDO;
 use PDOException;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
 /**
@@ -20,16 +19,16 @@ use RuntimeException;
  * to roll back, and the directory and file guards.
  */
 #[Group('migration-runner')]
-final class MigrationRunnerRaceTest extends TestCase
+final class MigrationRunnerRaceTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private string $tempDir;
     private string $tempSqlite;
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-migrations-race-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-migrations-race');
         mkdir($this->tempDir, 0777, true);
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-race-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig-race') . '.sqlite';
     }
 
     protected function tearDown(): void

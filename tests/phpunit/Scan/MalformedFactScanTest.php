@@ -29,12 +29,12 @@ final class MalformedFactScanTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-malformed-fact-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-malformed-fact');
         mkdir($this->root . '/src', 0o777, true);
         file_put_contents($this->root . '/src/Good.php', "<?php\nfinal class Good {}\n");
         file_put_contents($this->root . '/src/Bad.php', "<?php\nfinal class Bad {}\n");
-        $this->record = (string) tempnam(sys_get_temp_dir(), 'knossos-malformed-record-');
-        $this->installation = sys_get_temp_dir() . '/knossos-stale-malformed-install-' . bin2hex(random_bytes(6));
+        $this->record = (string) self::scratchFile('knossos-malformed-record');
+        $this->installation = self::scratchPath('knossos-stale-malformed-install');
         mkdir($this->installation . '/workers/php/bin', 0o777, true);
         file_put_contents($this->installation . '/workers/php/bin/worker', sprintf(
             "<?php\n\$argv = [__FILE__, 'per_file_malformed_bad', %s, '0', %s];\nrequire %s;\n",

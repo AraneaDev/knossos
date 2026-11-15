@@ -16,9 +16,9 @@ final class IncrementalLanguageTest extends KnossosTestCase
     #[Group('incremental-language')]
     public function testLongLivedScansReuseTypescriptProgramsAndInvalidateOnlyAffectedAnalyzers(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-incremental-' . bin2hex(random_bytes(6));
-        $database = tempnam(sys_get_temp_dir(), 'knossos-language-cache-');
-        if ($database === false || !mkdir($root . '/src', 0700, true)) {
+        $root = self::scratchPath('knossos-incremental');
+        $database = self::scratchFile('knossos-language-cache');
+        if (!mkdir($root . '/src', 0700, true)) {
             throw new RuntimeException('Unable to create language cache fixture.');
         }
         $composer = ['name' => 'fixture/mixed-cache', 'require' => ['laravel/framework' => '^12.0'], 'autoload' => ['psr-4' => ['Fixture\\' => 'src/']]];

@@ -35,7 +35,7 @@ final class RustReadAttributionTest extends KnossosTestCase
         if (!is_file(self::rustWorkerBinary())) {
             self::markTestSkipped('The Rust worker binary is not built.');
         }
-        $this->root = sys_get_temp_dir() . '/knossos-stale-rust-reads-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-rust-reads');
         mkdir($this->root, 0o777, true);
     }
 

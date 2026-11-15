@@ -8,12 +8,11 @@ use Knossos\Store\MigrationRunner;
 use Knossos\Store\ScanBusyException;
 use Knossos\Store\SqliteConnection;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Throwable;
 
 #[Group('migration-runner')]
-final class MigrationRunnerTest extends TestCase
+final class MigrationRunnerTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private string $tempDir;
     private string $tempSqlite;
@@ -41,7 +40,7 @@ final class MigrationRunnerTest extends TestCase
 
     private function freshEnvironment(): array
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-migrations-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-migrations');
         mkdir($this->tempDir, 0777, true);
 
         // Two minimal synthetic migrations that exercise the runner's logic
@@ -49,7 +48,7 @@ final class MigrationRunnerTest extends TestCase
         file_put_contents($this->tempDir . '/001_create_a.sql', 'CREATE TABLE a (id INTEGER PRIMARY KEY);');
         file_put_contents($this->tempDir . '/002_create_b.sql', 'CREATE TABLE b (id INTEGER PRIMARY KEY);');
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         return [$pdo, $this->tempDir];
@@ -111,10 +110,10 @@ final class MigrationRunnerTest extends TestCase
 
     public function testMigrateThrowsWhenMigrationDirectoryDoesNotExist(): void
     {
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
-        $target = sys_get_temp_dir() . '/knossos-does-not-exist-' . uniqid('', true);
+        $target = self::scratchPath('knossos-does-not-exist');
 
         $error = captureThrows(
             static fn() => (new MigrationRunner($pdo, $target))->migrate(),
@@ -126,14 +125,14 @@ final class MigrationRunnerTest extends TestCase
 
     public function testMigrateRollsBackAndRethrowsWhenSqlFails(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-migrations-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-migrations');
         mkdir($this->tempDir, 0777, true);
 
         // First migration is valid; second has invalid SQL to force a throw.
         file_put_contents($this->tempDir . '/001_create_a.sql', 'CREATE TABLE a (id INTEGER PRIMARY KEY);');
         file_put_contents($this->tempDir . '/002_bad.sql', 'THIS IS NOT VALID SQL');
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         // The driver-level invalid-SQL error is rethrown intact by the runner
@@ -157,7 +156,7 @@ final class MigrationRunnerTest extends TestCase
 
     public function testNoTransactionMarkerRunsMigrationOutsideRunnerTransaction(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-migrations-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-migrations');
         mkdir($this->tempDir, 0777, true);
 
         // PRAGMA foreign_keys is a silent no-op inside a transaction, so a
@@ -185,7 +184,7 @@ final class MigrationRunnerTest extends TestCase
             PRAGMA foreign_keys = ON;
             SQL);
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         (new MigrationRunner($pdo, $this->tempDir))->migrate();
@@ -199,7 +198,7 @@ final class MigrationRunnerTest extends TestCase
 
     public function testNoTransactionMarkerFailureDoesNotRecordVersion(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-migrations-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-migrations');
         mkdir($this->tempDir, 0777, true);
 
         file_put_contents($this->tempDir . '/001_bad.sql', <<<'SQL'
@@ -210,7 +209,7 @@ final class MigrationRunnerTest extends TestCase
             COMMIT;
             SQL);
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         $caught = null;
@@ -227,7 +226,7 @@ final class MigrationRunnerTest extends TestCase
 
     public function testNoTransactionMarkerFailureRestoresForeignKeyEnforcement(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-migrations-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-migrations');
         mkdir($this->tempDir, 0777, true);
 
         // Fails after disabling foreign keys and before re-enabling them; the
@@ -241,7 +240,7 @@ final class MigrationRunnerTest extends TestCase
             PRAGMA foreign_keys = ON;
             SQL);
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         $caught = null;
@@ -262,7 +261,7 @@ final class MigrationRunnerTest extends TestCase
 
     public function testNoTransactionMigrationRecordsVersionInsideItsOwnOpenTransaction(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-migrations-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-migrations');
         mkdir($this->tempDir, 0777, true);
 
         // A no-transaction migration may leave its final transaction open for
@@ -276,7 +275,7 @@ final class MigrationRunnerTest extends TestCase
             CREATE TABLE thing (id INTEGER PRIMARY KEY);
             SQL);
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         (new MigrationRunner($pdo, $this->tempDir))->migrate();
@@ -304,11 +303,11 @@ final class MigrationRunnerTest extends TestCase
 
     public function testMigrateReturnsEmptyForEmptyMigrationDirectory(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-migrations-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-migrations');
         mkdir($this->tempDir, 0777, true);
         // No .sql files in the directory
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         $applied = (new MigrationRunner($pdo, $this->tempDir))->migrate();
@@ -328,7 +327,7 @@ final class MigrationRunnerTest extends TestCase
             $this->markTestSkipped('Cannot test unreadable file when running as root.');
         }
 
-        $this->tempDir = sys_get_temp_dir() . '/knossos-migrations-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-migrations');
         mkdir($this->tempDir, 0777, true);
 
         // Create a migration file with mode 0000 to make it unreadable
@@ -336,7 +335,7 @@ final class MigrationRunnerTest extends TestCase
         file_put_contents($file, 'CREATE TABLE x (id INTEGER PRIMARY KEY);');
         chmod($file, 0000);
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         $error = captureThrows(
@@ -356,14 +355,14 @@ final class MigrationRunnerTest extends TestCase
             $this->markTestSkipped('Cannot test an unreadable directory when running as root.');
         }
 
-        $this->tempDir = sys_get_temp_dir() . '/knossos-glob-fail-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-glob-fail');
         mkdir($this->tempDir, 0777, true);
         file_put_contents($this->tempDir . '/001_test.sql', 'CREATE TABLE test (id INTEGER PRIMARY KEY);');
 
         // Remove read permission so glob fails
         chmod($this->tempDir, 0000);
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-mig') . '.sqlite';
         $pdo = SqliteConnection::open($this->tempSqlite);
 
         $error = captureThrows(

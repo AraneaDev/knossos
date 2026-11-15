@@ -23,7 +23,7 @@ final class IncrementalWriteTest extends KnossosTestCase
     #[Group('reconciliation')]
     public function testEditingOneFileWritesRowsInProportionToTheChangeNotTheProject(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-incremental-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-incremental');
         if (!mkdir($root . '/src', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
         }
@@ -81,7 +81,7 @@ final class IncrementalWriteTest extends KnossosTestCase
         // them, which is what "the files of the active scan" is asked by. The
         // large tables stay on the scan that wrote them, and scan cleanup has
         // to keep every scan one of their rows still names.
-        $root = sys_get_temp_dir() . '/knossos-incremental-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-incremental');
         if (!mkdir($root . '/src', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
         }

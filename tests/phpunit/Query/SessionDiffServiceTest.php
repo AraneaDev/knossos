@@ -41,7 +41,7 @@ final class SessionDiffServiceTest extends KnossosTestCase
     /** A temp directory removeTempTree() accepts. */
     private function directory(): string
     {
-        $dir = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $dir = self::scratchPath('knossos-stale');
         mkdir($dir, 0o700, true);
         $this->trees[] = $dir;
         return (string) realpath($dir);

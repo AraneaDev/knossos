@@ -46,7 +46,7 @@ final class SessionBriefGatesRenderTest extends KnossosTestCase
     #[Group('query')]
     public function testAnUnreadableConfigurationGivesNoGates(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root);
         try {
             file_put_contents($root . '/knossos.json', '{ not json');
@@ -60,7 +60,7 @@ final class SessionBriefGatesRenderTest extends KnossosTestCase
     #[Group('query')]
     public function testScriptsFromThePackageManifestsAreFoundWhenNothingIsDeclared(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root);
         try {
             file_put_contents($root . '/package.json', '{"scripts":{"test":"x","lint":"y"}}');
@@ -87,7 +87,7 @@ final class SessionBriefGatesRenderTest extends KnossosTestCase
     #[Group('query')]
     public function testAnAllowedButUnscannedFolderShowsItsGates(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root);
         try {
             file_put_contents($root . '/knossos.json', '{"version":1,"gates":[{"name":"cs","command":"fix"}]}');

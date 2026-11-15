@@ -35,7 +35,7 @@ final class BundleRedactionLeakTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-redaction-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-redaction');
         $files = [
             'knossos.json' => '{"version":1,"boundaries":[{"name":"Payroll Area","path_prefix":"src/secret/"}],'
                 . '"policies":[{"id":"payroll-isolation","from_boundary":"Payroll Area","deny_targets":["@unassigned"]}]}',
@@ -66,8 +66,7 @@ final class BundleRedactionLeakTest extends KnossosTestCase
             }
             file_put_contents($path, $contents);
         }
-        $database = tempnam(sys_get_temp_dir(), 'knossos-redaction-db-');
-        self::assertIsString($database);
+        $database = self::scratchFile('knossos-redaction-db');
         $this->database = $database;
     }
 

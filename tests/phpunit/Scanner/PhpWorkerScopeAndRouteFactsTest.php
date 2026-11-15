@@ -24,7 +24,7 @@ final class PhpWorkerScopeAndRouteFactsTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-php-worker-facts-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-php-worker-facts');
         mkdir($this->root, 0o777, true);
     }
 

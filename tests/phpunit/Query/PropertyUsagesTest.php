@@ -18,7 +18,7 @@ final class PropertyUsagesTest extends KnossosTestCase
 {
     public function testListUsagesFindsAPropertysReaders(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-property-usages-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-property-usages');
         mkdir($root . '/src', 0o777, true);
         copy(self::repositoryRoot() . '/tests/Fixtures/php-scanner/src/PropertyUse.php', $root . '/src/PropertyUse.php');
 

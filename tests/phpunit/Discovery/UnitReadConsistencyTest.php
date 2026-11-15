@@ -137,7 +137,7 @@ final class UnitReadConsistencyTest extends KnossosTestCase
     /** A project root holding one manifest, which is all these assertions need. */
     private function tempRootWithManifest(): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o777, true);
         // Deliberately not what the reader answers: a test whose disk agrees
         // with the read passes whether or not the two reads were ever unified,

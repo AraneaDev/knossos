@@ -24,7 +24,7 @@ final class ShellScriptNodesTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-shell-nodes-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-shell-nodes');
         $files = [
             'scripts/run.sh' => "#!/bin/sh\nset -e\nphp bin/tool \"\$@\"\n",
             'bin/tool' => "#!/usr/bin/env php\n<?php\n\nfwrite(STDOUT, \"tool\\n\");\n",

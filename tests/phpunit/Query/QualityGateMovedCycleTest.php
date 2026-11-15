@@ -22,7 +22,7 @@ final class QualityGateMovedCycleTest extends KnossosTestCase
     #[Group('query')]
     public function testAMovedRecursionIsNotANewCycleButANewOneIs(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-moved-cycle-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-moved-cycle');
         mkdir($root . '/src/Old', 0777, true);
         file_put_contents($root . '/composer.json', '{"autoload": {"psr-4": {"App\\\\": "src/"}}}');
         file_put_contents($root . '/src/Old/Walk.php', self::walker('App\\Old'));

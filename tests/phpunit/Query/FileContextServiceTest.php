@@ -53,7 +53,7 @@ final class FileContextServiceTest extends KnossosTestCase
     #[Group('query')]
     public function testAFileAManifestRunsSaysWhatEntersIt(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-entered-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-entered');
         foreach ([
             '.forgejo/workflows/release.yml' => "jobs:\n  release:\n    steps:\n      - run: php tools/release.php\n",
             'tools/release.php' => "<?php\nfunction release(): void {}\nrelease();\n",
@@ -79,7 +79,7 @@ final class FileContextServiceTest extends KnossosTestCase
     #[Group('query')]
     public function testAFileWhoseNameReadsAsAGlobHasOnlyItsOwnCommits(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-glob-path-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-glob-path');
         mkdir($root);
         try {
             $git = ['git', '-C', $root, '-c', 'user.name=Knossos Test', '-c', 'user.email=test@example.test', '-c', 'commit.gpgsign=false'];

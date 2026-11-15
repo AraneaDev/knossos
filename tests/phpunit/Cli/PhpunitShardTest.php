@@ -29,7 +29,7 @@ final class PhpunitShardTest extends KnossosTestCase
 
     protected function setUp(): void
     {
-        $this->directory = sys_get_temp_dir() . '/knossos-phpunit-shard-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-phpunit-shard');
         mkdir($this->directory, 0o700, true);
     }
 

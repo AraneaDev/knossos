@@ -21,7 +21,7 @@ final class StartClaimTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tree = (string) realpath(sys_get_temp_dir()) . '/knossos-claim-' . bin2hex(random_bytes(4));
+        $this->tree = self::scratchPath('knossos-claim');
         mkdir($this->tree . '/home', 0o755, true);
     }
 

@@ -15,7 +15,7 @@ final class WorkerSourceHashTest extends KnossosTestCase
 
     protected function setUp(): void
     {
-        $this->root = sys_get_temp_dir() . '/knossos-source-hash-' . uniqid('', true);
+        $this->root = self::scratchPath('knossos-source-hash');
         mkdir($this->root . '/src/nested', 0777, true);
         file_put_contents($this->root . '/Cargo.toml', "[package]\n");
         file_put_contents($this->root . '/src/lib.rs', "pub mod nested;\n");

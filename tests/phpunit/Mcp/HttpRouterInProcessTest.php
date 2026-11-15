@@ -53,10 +53,7 @@ namespace Knossos\Tests\Phpunit\Mcp {
             $this->previousMemoryLimit = ini_get('memory_limit');
             self::$requestHeaders = [];
 
-            $base = tempnam(sys_get_temp_dir(), 'knossos-stale-router-');
-            if ($base === false) {
-                throw new RuntimeException('Unable to allocate a temporary directory.');
-            }
+            $base = self::scratchFile('knossos-stale-router');
             unlink($base);
             if (!mkdir($base, 0700) && !is_dir($base)) {
                 throw new RuntimeException('Unable to create a temporary directory.');

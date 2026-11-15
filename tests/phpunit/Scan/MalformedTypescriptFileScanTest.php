@@ -25,7 +25,7 @@ final class MalformedTypescriptFileScanTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-malformed-ts-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-malformed-ts');
         mkdir($this->root . '/src', 0o777, true);
         file_put_contents($this->root . '/package.json', '{"name":"web"}');
         file_put_contents($this->root . '/src/a.ts', "export function (( {\n");

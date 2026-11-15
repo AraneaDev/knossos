@@ -10,7 +10,6 @@ use Knossos\Discovery\ProjectDiscoverer;
 use Knossos\Discovery\SourceClassifier;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 /**
  * The path classification discovery, the drift oracles and the watcher share,
@@ -18,13 +17,13 @@ use PHPUnit\Framework\TestCase;
  * than surfacing as a file missing from a scan.
  */
 #[Group('discovery')]
-final class SourceClassifierTest extends TestCase
+final class SourceClassifierTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private string $directory;
 
     protected function setUp(): void
     {
-        $this->directory = sys_get_temp_dir() . '/knossos-classifier-' . bin2hex(random_bytes(4));
+        $this->directory = self::scratchPath('knossos-classifier');
         mkdir($this->directory);
     }
 

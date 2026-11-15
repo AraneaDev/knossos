@@ -36,7 +36,7 @@ final class PropertyTest extends KnossosTestCase
     #[Group('property')]
     public function testSeededMalformedConfigurationAndContributionCorporaFailClosed(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-invalid-config-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-invalid-config');
         if (!mkdir($root, 0700)) {
             throw new RuntimeException('Unable to create fuzz configuration fixture.');
         }
@@ -156,7 +156,7 @@ final class PropertyTest extends KnossosTestCase
      */
     private function assertEditSequenceKeepsGraphsEquivalent(int $seed, int $steps, array $languages): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-mixed-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-mixed');
         $this->copyMixedFixture($root, $languages);
         try {
             $incrementalDatabase = $this->freshTestDatabase();

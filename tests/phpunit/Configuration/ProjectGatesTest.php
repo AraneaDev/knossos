@@ -115,7 +115,7 @@ final class ProjectGatesTest extends KnossosTestCase
      */
     private function load(array $configuration): \Knossos\Configuration\ProjectConfiguration
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o755, true);
         file_put_contents($root . '/knossos.json', (string) json_encode(['version' => 1] + $configuration, JSON_THROW_ON_ERROR));
         try {

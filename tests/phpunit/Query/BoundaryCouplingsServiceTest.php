@@ -302,7 +302,7 @@ final class BoundaryCouplingsServiceTest extends KnossosTestCase
                 $out = $service->couplings($root, $from, $to);
                 assertSame(['ok', 0, []], [$out['status'], $out['edges'], $out['couplings']]);
             }
-            $elsewhere = sys_get_temp_dir() . '/knossos-stale-none-' . bin2hex(random_bytes(4));
+            $elsewhere = self::scratchPath('knossos-stale-none');
             $out = $service->couplings($elsewhere, 'Edge', 'Core');
             assertSame(['unscanned', 0, []], [$out['status'], $out['edges'], $out['couplings']]);
         } finally {

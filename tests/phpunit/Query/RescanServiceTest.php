@@ -56,7 +56,7 @@ final class RescanServiceTest extends KnossosTestCase
     /** A temp directory named so removeTempTree() will accept it. */
     private function temporaryDirectory(): string
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory, 0o777, true);
 
         return $directory;
@@ -65,7 +65,7 @@ final class RescanServiceTest extends KnossosTestCase
     /** A copy of the fixture nobody has scanned, and an empty graph database to scan it into. */
     private function unscannedFixture(): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/' . self::FIXTURE, $root);
 
         return [$this->freshTestDatabase(), $root];
@@ -238,7 +238,7 @@ final class RescanServiceTest extends KnossosTestCase
     /** An installation whose PHP worker kills itself, so a scan sees a worker an outside signal ended. */
     private function installationWithKilledWorker(): string
     {
-        $installation = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $installation = self::scratchPath('knossos-stale');
         mkdir($installation . '/workers/php/bin', 0o777, true);
         file_put_contents($installation . '/workers/php/bin/worker', "<?php\nposix_kill(posix_getpid(), SIGKILL);\n");
 

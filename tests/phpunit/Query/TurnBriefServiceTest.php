@@ -285,7 +285,7 @@ final class TurnBriefServiceTest extends KnossosTestCase
     public function testAPathOutsideTheAllowedRootsIsRefusedWithoutScanning(): void
     {
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
-        $data = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $data = self::scratchPath('knossos-stale');
         mkdir($data);
         try {
             putenv('KNOSSOS_ALLOWED_ROOTS=/nonexistent-root');
@@ -311,7 +311,7 @@ final class TurnBriefServiceTest extends KnossosTestCase
     public function testAnAncestorProjectRootOutsideTheAllowedRootsIsRefused(): void
     {
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
-        $data = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $data = self::scratchPath('knossos-stale');
         mkdir($data);
         try {
             $real = (string) realpath($root);
@@ -349,7 +349,7 @@ final class TurnBriefServiceTest extends KnossosTestCase
     public function testAnUnscannedDirectoryIsReportedAndNotScanned(): void
     {
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
-        $other = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $other = self::scratchPath('knossos-stale');
         mkdir($other);
         try {
             $projects = $this->rows($pdo, 'projects');
@@ -628,7 +628,7 @@ final class TurnBriefServiceTest extends KnossosTestCase
     public function testAPathReportedThroughASymlinkIsMadeRelative(): void
     {
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);
-        $links = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $links = self::scratchPath('knossos-stale');
         mkdir($links);
         try {
             symlink((string) realpath($root), $links . '/checkout');

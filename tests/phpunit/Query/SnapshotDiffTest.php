@@ -58,7 +58,7 @@ final class SnapshotDiffTest extends KnossosTestCase
     #[Group('query')]
     public function testACallThatOnlyMovedIsMovedNotRemovedAndAdded(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-diff-moved-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-diff-moved');
         mkdir($root . '/src', 0o700, true);
         $php = static fn(string $body): string => "<?php\n\nnamespace App;\n\n" . $body;
         file_put_contents($root . '/composer.json', "{\"name\": \"demo/diff\", \"autoload\": {\"psr-4\": {\"App\\\\\": \"src/\"}}}\n");

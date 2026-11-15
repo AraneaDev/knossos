@@ -87,7 +87,7 @@ final class FrameworkHookTestReachTest extends KnossosTestCase
 
     public function testAFrameworkHookIsAsTestedAsItsClass(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-hook-reach-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-hook-reach');
         foreach (self::FILES as $relative => $contents) {
             if (!is_dir(dirname($root . '/' . $relative))) {
                 mkdir(dirname($root . '/' . $relative), 0o777, true);

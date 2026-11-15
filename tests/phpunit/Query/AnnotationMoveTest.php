@@ -28,7 +28,7 @@ final class AnnotationMoveTest extends KnossosTestCase
 {
     public function testAMovedComponentsNoteSuggestsItsNewName(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-note-move-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-note-move');
         mkdir($root . '/src/Old', 0o777, true);
         mkdir($root . '/src/New', 0o777, true);
         file_put_contents($root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');
@@ -97,7 +97,7 @@ final class AnnotationMoveTest extends KnossosTestCase
 
     public function testANameNoSnapshotHoldsIsLookedForOnceUntilTheNextScan(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-note-unheld-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-note-unheld');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');
         file_put_contents($root . '/src/Keep.php', "<?php\nnamespace App;\nfinal class Keep {}\n");

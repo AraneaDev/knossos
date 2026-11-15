@@ -22,7 +22,7 @@ final class GateReportTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->file = sys_get_temp_dir() . '/knossos-gate-report-' . bin2hex(random_bytes(6)) . '.json';
+        $this->file = self::scratchPath('knossos-gate-report') . '.json';
     }
 
     protected function tearDown(): void

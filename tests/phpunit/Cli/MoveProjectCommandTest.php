@@ -26,7 +26,7 @@ final class MoveProjectCommandTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->tempDir = self::scratchPath('knossos-stale');
         mkdir($this->tempDir, 0o755, true);
     }
 

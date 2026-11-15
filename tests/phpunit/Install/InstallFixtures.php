@@ -17,7 +17,7 @@ trait InstallFixtures
     protected function setUp(): void
     {
         parent::setUp();
-        $this->work = (string) realpath(sys_get_temp_dir()) . '/knossos-install-test-' . bin2hex(random_bytes(4));
+        $this->work = self::scratchPath('knossos-install-test');
         mkdir($this->work . '/home', 0o755, true);
         // A record without bin_dir falls back to ~/.local/bin: that must never be the real one.
         $this->homeBefore = getenv('HOME');

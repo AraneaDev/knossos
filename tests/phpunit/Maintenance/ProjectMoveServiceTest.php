@@ -72,7 +72,7 @@ final class ProjectMoveServiceTest extends KnossosTestCase
     public function testTheMoveScanRunsTheProjectsEnrichers(): void
     {
         [$pdo, , $newRoot] = $this->movedCheckout();
-        $installation = sys_get_temp_dir() . '/knossos-stale-move-enrichers-' . bin2hex(random_bytes(6));
+        $installation = self::scratchPath('knossos-stale-move-enrichers');
         mkdir($installation);
         try {
             $marker = $installation . '/started';
@@ -197,7 +197,7 @@ final class ProjectMoveServiceTest extends KnossosTestCase
     public function testASourceThatStillExistsIsRefused(): void
     {
         [$pdo, $projectId, $root] = $this->seedProjectWithFiles(['src/a.php']);
-        $other = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $other = self::scratchPath('knossos-stale');
         mkdir($other, 0o700);
         try {
             $error = captureThrows(fn() => $this->service($pdo)->move($projectId, $other, true, $this->scanner($pdo, $other)), InvalidArgumentException::class);
@@ -230,7 +230,7 @@ final class ProjectMoveServiceTest extends KnossosTestCase
     public function testMovingOntoTheSameProjectIsRefused(): void
     {
         $pdo = $this->freshTestDatabase();
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o700);
         try {
             $real = (string) realpath($root);
@@ -250,7 +250,7 @@ final class ProjectMoveServiceTest extends KnossosTestCase
     public function testTheRootsFileIsSwappedOnExecute(): void
     {
         [$pdo, , $newRoot] = $this->movedCheckout();
-        $rootsDirectory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $rootsDirectory = self::scratchPath('knossos-stale');
         mkdir($rootsDirectory, 0o700);
         try {
             $roots = new \Knossos\Roots\RootsFile($rootsDirectory . '/roots.json');
@@ -338,7 +338,7 @@ final class ProjectMoveServiceTest extends KnossosTestCase
     public function testAnOrdinaryMoveIsNotWarnedAbout(): void
     {
         [$pdo, , $newRoot] = $this->movedCheckout();
-        $parent = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $parent = self::scratchPath('knossos-stale');
         mkdir($parent, 0o700);
         try {
             $gone = $parent . '/project';
@@ -383,7 +383,7 @@ final class ProjectMoveServiceTest extends KnossosTestCase
         $pdo = $this->freshTestDatabase();
         $oldId = StableId::project('root:' . self::OLD_ROOT);
         (new SqliteGraphRepository($pdo))->saveProject($oldId, 'project', self::OLD_ROOT);
-        $newRoot = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $newRoot = self::scratchPath('knossos-stale');
         mkdir($newRoot . '/src', 0o700, true);
         file_put_contents($newRoot . '/src/A.php', "<?php\nnamespace App;\nfinal class A {}\n");
 

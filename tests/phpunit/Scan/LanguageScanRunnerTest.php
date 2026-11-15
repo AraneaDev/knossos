@@ -27,11 +27,10 @@ use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Tests\Phpunit\Support\FakeWorker;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
 #[Group('scan-runner')]
-final class LanguageScanRunnerTest extends TestCase
+final class LanguageScanRunnerTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     /** Where the recording worker appends one line per scan request it received. */
     private ?string $recordPath = null;
@@ -216,7 +215,7 @@ final class LanguageScanRunnerTest extends TestCase
      */
     public function testEditingAWorkerFileInvalidatesItsCachedContributions(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/worker', 0o777, true);
         file_put_contents($root . '/worker/analysis.php', "<?php // one\n");
         try {
@@ -228,7 +227,7 @@ final class LanguageScanRunnerTest extends TestCase
                 analysisInputs: ['worker/analysis.php'],
             );
             $pool = $this->createStub(LanguageWorkerPool::class);
-            $pool->method('client')->willReturn($this->fakeWorkerClient());
+            $pool->method('client')->willReturn($this->compliantWorkerClient());
             $runner = new LanguageScanRunner([$descriptor], $pool, new ContributionCacheService(), installationRoot: $root);
             $stored = '0.1.0+' . substr(AnalysisHash::of($root, ['worker/analysis.php']), 0, 16);
             $plan = $this->planWithCachedPhpFile([$this->fileFixture('src/Foo.php', 'php')], $stored);
@@ -509,7 +508,7 @@ final class LanguageScanRunnerTest extends TestCase
      * returns the final ProcessScannerClient, which cannot be doubled, so the
      * surviving language in the degradation test needs a real process.
      */
-    private function fakeWorkerClient(): ProcessScannerClient
+    private function compliantWorkerClient(): ProcessScannerClient
     {
         return new ProcessScannerClient(
             [PHP_BINARY, FakeWorker::path(), 'compliant', FakeWorker::manifestFor($this->descriptorFor('php'))],
@@ -574,7 +573,7 @@ final class LanguageScanRunnerTest extends TestCase
     private function runnerWithFailingTypescript(array $descriptors): LanguageScanRunner
     {
         $pool = $this->createStub(LanguageWorkerPool::class);
-        $client = $this->fakeWorkerClient();
+        $client = $this->compliantWorkerClient();
         $pool->method('client')->willReturnCallback(
             function (LanguageDescriptor $descriptor) use ($client): ProcessScannerClient {
                 if ($descriptor->key === 'typescript') {
@@ -674,10 +673,7 @@ final class LanguageScanRunnerTest extends TestCase
     /** Open the file every worker in this test appends its request sizes to. */
     private function allocateRecordPath(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-scan-batches-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to create the batch record file.');
-        }
+        $path = self::scratchFile('knossos-scan-batches');
         $this->recordPath = $path;
     }
 

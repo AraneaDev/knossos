@@ -8,15 +8,14 @@ use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanner;
 use Knossos\Watch\WatchService;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
 #[Group('watch-service')]
-final class WatchServiceFingerprintOrderingTest extends TestCase
+final class WatchServiceFingerprintOrderingTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     public function testInitialFingerprintIsCapturedBeforeInitialScan(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-watch-order-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-watch-order');
         if (!mkdir($root . '/src', 0o700, true)) {
             throw new RuntimeException('Unable to create watch fixture.');
         }
@@ -88,7 +87,7 @@ final class WatchServiceFingerprintOrderingTest extends TestCase
      */
     public function testAFileCreatedInAnEmptyDirectoryIsSeenOnTheNextPoll(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-watch-order-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-watch-order');
         if (!mkdir($root . '/src/new', 0o700, true) || !mkdir($root . '/src/later', 0o700, true)) {
             throw new RuntimeException('Unable to create watch fixture.');
         }

@@ -6,10 +6,9 @@ namespace Knossos\Tests\Phpunit\Discovery;
 
 use Knossos\Discovery\FileFingerprint;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('file-fingerprint')]
-final class FileFingerprintTest extends TestCase
+final class FileFingerprintTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private string $tempPath;
 
@@ -24,7 +23,7 @@ final class FileFingerprintTest extends TestCase
 
     private function writeTempFile(string $contents): string
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-fingerprint-');
+        $path = self::scratchFile('knossos-fingerprint');
         file_put_contents($path, $contents);
         $this->tempPath = $path;
 
@@ -95,7 +94,7 @@ final class FileFingerprintTest extends TestCase
 
     public function testComputeReturnsNullWhenFileDoesNotExist(): void
     {
-        $missing = sys_get_temp_dir() . '/knossos-fingerprint-missing-' . uniqid('', true) . '.txt';
+        $missing = self::scratchPath('knossos-fingerprint-missing') . '.txt';
 
         $result = FileFingerprint::compute($missing);
 
@@ -209,7 +208,7 @@ final class FileFingerprintTest extends TestCase
             $this->markTestSkipped('The descriptor ownership check requires Linux procfs.');
         }
 
-        $root = sys_get_temp_dir() . '/knossos-fingerprint-fds-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-fingerprint-fds');
         self::assertTrue(mkdir($root, 0o700, true));
         try {
             $before = count(glob('/proc/self/fd/*'));
@@ -274,13 +273,13 @@ final class FileFingerprintTest extends TestCase
      */
     public function testItReturnsNullForAPathItCannotRead(): void
     {
-        assertSame(null, FileFingerprint::contentHashOf(sys_get_temp_dir() . '/knossos-absent-' . bin2hex(random_bytes(6))));
+        assertSame(null, FileFingerprint::contentHashOf(self::scratchPath('knossos-absent')));
     }
 
     /** A FIFO would block the open until a writer appears; a directory yields no bytes. Neither is a file's content. */
     public function testItReturnsNullForAPathThatIsNotARegularFileWithoutBlocking(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory);
         try {
             assertSame(null, FileFingerprint::contentHashOf($directory));
@@ -301,7 +300,7 @@ final class FileFingerprintTest extends TestCase
      */
     public function testComputeReturnsNullForAPathThatIsNotARegularFileWithoutBlocking(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory);
         try {
             assertSame(null, FileFingerprint::compute($directory));

@@ -23,7 +23,7 @@ final class TypescriptPackageNameTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-ts-package-name-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-ts-package-name');
         mkdir($this->root . '/src', 0o777, true);
         if (trim((string) @shell_exec('command -v node 2>/dev/null')) === '') {
             self::markTestSkipped('node is not on PATH.');

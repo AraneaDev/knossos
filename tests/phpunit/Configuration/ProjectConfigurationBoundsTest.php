@@ -173,7 +173,7 @@ final class ProjectConfigurationBoundsTest extends KnossosTestCase
     /** @param array<string, mixed> $configuration */
     private static function writeConfiguration(array $configuration): string
     {
-        $root = sys_get_temp_dir() . '/knossos-config-bounds-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-config-bounds');
         mkdir($root, 0o755, true);
         file_put_contents(
             $root . '/knossos.json',

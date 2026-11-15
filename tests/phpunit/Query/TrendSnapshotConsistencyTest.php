@@ -26,7 +26,7 @@ final class TrendSnapshotConsistencyTest extends KnossosTestCase
     #[Group('query')]
     public function testAScanPublishedMidReadDoesNotLendItsFiguresToTheListedScan(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-trend-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-trend');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root . '/project');
         try {
             $database = $root . '/knossos.sqlite';

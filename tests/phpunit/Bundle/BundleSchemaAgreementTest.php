@@ -12,7 +12,6 @@ use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 /**
  * The published bundle schema and the code must describe the same format.
@@ -54,10 +53,7 @@ final class BundleSchemaAgreementTest extends KnossosTestCase
     public function testABundleTheExporterWritesHasExactlyTheFieldsTheSchemaDeclares(): void
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/configured';
-        $database = tempnam(sys_get_temp_dir(), 'knossos-bundle-schema-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate bundle database.');
-        }
+        $database = self::scratchFile('knossos-bundle-schema');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();

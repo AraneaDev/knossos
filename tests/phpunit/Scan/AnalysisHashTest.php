@@ -18,7 +18,7 @@ final class AnalysisHashTest extends KnossosTestCase
 
     protected function setUp(): void
     {
-        $this->root = sys_get_temp_dir() . '/knossos-analysis-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-analysis');
         mkdir($this->root . '/src/__tests__', 0o777, true);
         mkdir($this->root . '/src/tests', 0o777, true);
         mkdir($this->root . '/src/node_modules/dep', 0o777, true);

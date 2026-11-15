@@ -22,7 +22,7 @@ final class LanguageDescriptorAnalysisInputsTest extends KnossosTestCase
 
     protected function setUp(): void
     {
-        $this->root = sys_get_temp_dir() . '/knossos-stale-analysis-inputs-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-analysis-inputs');
         $this->copyTree(self::repositoryRoot() . '/workers/python/bin', $this->root . '/workers/python/bin');
     }
 

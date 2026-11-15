@@ -8,10 +8,9 @@ use InvalidArgumentException;
 use Knossos\Store\SqliteConnection;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('sqlite-connection')]
-final class SqliteConnectionTest extends TestCase
+final class SqliteConnectionTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private string $tempPath;
 
@@ -26,7 +25,7 @@ final class SqliteConnectionTest extends TestCase
 
     private function tempSqliteFile(): string
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-sqlite-');
+        $path = self::scratchFile('knossos-sqlite');
         $this->tempPath = $path;
 
         return $path;
@@ -83,7 +82,7 @@ final class SqliteConnectionTest extends TestCase
 
     public function testOpenNonExistentDirectoryThrows(): void
     {
-        $missingDir = sys_get_temp_dir() . '/knossos-missing-' . uniqid('', true);
+        $missingDir = self::scratchPath('knossos-missing');
 
         $error = captureThrows(
             static fn() => SqliteConnection::open($missingDir . '/db.sqlite'),

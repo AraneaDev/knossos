@@ -45,7 +45,7 @@ final class GitIgnoreTest extends KnossosTestCase
             self::markTestSkipped('git cannot report ignore status here.');
         }
 
-        $probe = (string) tempnam(sys_get_temp_dir(), 'knossos-git-ignore-probe-');
+        $probe = (string) self::scratchFile('knossos-git-ignore-probe');
         try {
             file_put_contents($probe, <<<'PHP'
                 <?php

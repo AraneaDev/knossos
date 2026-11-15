@@ -9,11 +9,10 @@ use Knossos\Scan\LeftOutFiles;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Scanner\Worker\WorkerException;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 /** What a file left out of the graph keeps: a fact-free contribution, and a cache entry while its bytes hold. */
 #[Group('scan-runner')]
-final class LeftOutFilesTest extends TestCase
+final class LeftOutFilesTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     public function testALeftOutFileKeepsAFactFreeContributionAndACacheEntryUnderTheLeftOutKey(): void
     {
@@ -38,7 +37,7 @@ final class LeftOutFilesTest extends TestCase
 
     public function testAFileWhoseBytesChangedIsLeftOutButNotCached(): void
     {
-        $path = (string) tempnam(sys_get_temp_dir(), 'knossos-left-out-');
+        $path = (string) self::scratchFile('knossos-left-out');
         file_put_contents($path, "changed since discovery\n");
         try {
             $file = self::file('dist/a.js');

@@ -128,7 +128,7 @@ final class AnnotationNotesTest extends KnossosTestCase
         // note records rests on it. Its content hash is read from disk.
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
-        $root = sys_get_temp_dir() . '/knossos-stale-evidence-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-evidence');
         mkdir($root . '/tools', 0o755, true);
         try {
             file_put_contents($root . '/tools/quality', "#!/bin/sh\necho gate\n");
@@ -156,9 +156,9 @@ final class AnnotationNotesTest extends KnossosTestCase
     {
         [$pdo, $repository, $ids] = $this->storeFixture();
         $repository->completeScan($ids['project'], $ids['scan']);
-        $root = sys_get_temp_dir() . '/knossos-stale-evidence-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-evidence');
         mkdir($root, 0o755, true);
-        $outside = tempnam(sys_get_temp_dir(), 'knossos-outside-');
+        $outside = self::scratchFile('knossos-outside');
         try {
             symlink($outside, $root . '/escape');
             mkdir($root . '/folder');

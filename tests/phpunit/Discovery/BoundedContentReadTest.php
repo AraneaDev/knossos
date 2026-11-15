@@ -144,7 +144,7 @@ final class BoundedContentReadTest extends KnossosTestCase
     private function tempRoot(): string
     {
         // The fixture prefix removeTempTree() will consent to delete.
-        $root = sys_get_temp_dir() . '/knossos-stale-bounded-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-bounded');
         mkdir($root, 0o777, true);
 
         return $root;

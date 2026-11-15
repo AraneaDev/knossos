@@ -26,7 +26,7 @@ final class ScanRequestSchemaTest extends KnossosTestCase
     public function testTheCoreRequestForEveryLanguageMatchesTheSchema(): void
     {
         $schema = json_decode((string) file_get_contents(self::repositoryRoot() . '/schemas/scanner/v1/scan-request.schema.json'), true, 512, JSON_THROW_ON_ERROR);
-        $root = sys_get_temp_dir() . '/knossos-stale-request-schema-' . bin2hex(random_bytes(5));
+        $root = self::scratchPath('knossos-stale-request-schema');
         $files = ['src/a.php' => "<?php\n", 'src/b.ts' => "export {};\n", 'src/c.py' => "\n", 'src/lib.rs' => "\n"];
         foreach ($files as $path => $contents) {
             @mkdir(dirname($root . '/' . $path), 0o777, true);
@@ -59,7 +59,7 @@ final class ScanRequestSchemaTest extends KnossosTestCase
     public function testLivewireIsRequestedWhenComposerRequiresIt(): void
     {
         $requestedFrameworks = function (array $require, ?array $knossos = null): array {
-            $root = sys_get_temp_dir() . '/knossos-stale-livewire-request-' . bin2hex(random_bytes(5));
+            $root = self::scratchPath('knossos-stale-livewire-request');
             mkdir($root . '/app/Livewire', 0o777, true);
             file_put_contents($root . '/composer.json', json_encode(['require' => $require], JSON_THROW_ON_ERROR));
             file_put_contents($root . '/app/Livewire/Counter.php', "<?php\n");

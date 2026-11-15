@@ -47,53 +47,19 @@ trait TempTrees
         }
     }
 
+    /**
+     * Removes a tree seedProjectWithFiles() or scanTempFixture() made, before
+     * the test is over; the test's scratch root goes afterwards anyway.
+     */
     public function removeTempTree(string $root): void
     {
-        $prefix = rtrim(sys_get_temp_dir(), '/') . '/knossos-stale-';
-        if (!str_starts_with($root, $prefix)) {
-            throw new \RuntimeException('Refusing to remove an unexpected fixture path.');
-        }
-        $items = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
-        foreach ($items as $item) {
-            // A link to a directory reports isDir() and rmdir() refuses it;
-            // the iterator does not descend into it, so unlinking it removes
-            // the link alone and never what it points at.
-            if ($item->isLink()) {
-                @unlink($item->getPathname());
-            } elseif ($item->isDir()) {
-                @rmdir($item->getPathname());
-            } else {
-                @unlink($item->getPathname());
-            }
-        }
-        @rmdir($root);
+        self::removeOwnTree($root, 'knossos-stale-');
     }
 
+    /** Removes an incremental-scan fixture tree before the test is over. */
     public function removeFixtureTree(string $root): void
     {
-        $prefix = rtrim(sys_get_temp_dir(), '/') . '/knossos-incremental-';
-        if (!str_starts_with($root, $prefix)) {
-            throw new \RuntimeException('Refusing to remove an unexpected fixture path.');
-        }
-        foreach (glob($root . '/src/*') ?: [] as $file) {
-            if (is_file($file)) {
-                unlink($file);
-            }
-        }
-        foreach (glob($root . '/*') ?: [] as $file) {
-            if (is_file($file)) {
-                unlink($file);
-            }
-        }
-        if (is_dir($root . '/src')) {
-            rmdir($root . '/src');
-        }
-        if (is_dir($root)) {
-            rmdir($root);
-        }
+        self::removeOwnTree($root, 'knossos-incremental-');
     }
 
     /** @param non-empty-list<string> $command */
@@ -151,19 +117,23 @@ trait TempTrees
         return [proc_close($process), $buffers[1], $buffers[2]];
     }
 
+    /** Removes a git fixture tree before the test is over. */
     public function removeGitFixture(string $root): void
     {
-        $prefix = rtrim(sys_get_temp_dir(), '/') . '/knossos-git-';
-        if (!str_starts_with($root, $prefix) || !is_dir($root)) {
-            return;
+        self::removeOwnTree($root, 'knossos-git-');
+    }
+
+    /**
+     * Removes $root, which must be a fixture of the kind $prefix names under
+     * the run's temp directory: a path from anywhere else is refused, so a
+     * wrong argument cannot remove something the test did not make.
+     */
+    private static function removeOwnTree(string $root, string $prefix): void
+    {
+        $temp = realpath(sys_get_temp_dir()) ?: sys_get_temp_dir();
+        if (!str_starts_with($root, rtrim($temp, '/') . '/') || !str_starts_with(basename($root), $prefix) || str_contains($root, '/../')) {
+            throw new \RuntimeException('Refusing to remove an unexpected fixture path.');
         }
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
-        foreach ($iterator as $item) {
-            $item->isDir() && !$item->isLink() ? rmdir($item->getPathname()) : unlink($item->getPathname());
-        }
-        rmdir($root);
+        Scratch::remove($root);
     }
 }

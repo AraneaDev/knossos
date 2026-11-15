@@ -14,17 +14,13 @@ use Knossos\Store\SqliteGraphRepository;
 use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class MaintenanceTest extends KnossosTestCase
 {
     #[Group('maintenance')]
     public function testMaintenancePreviewsDestructiveWorkAndProducesRestorableBackups(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-maintenance-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate maintenance database.');
-        }
+        $path = self::scratchFile('knossos-maintenance');
         try {
             $pdo = SqliteConnection::open($path);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();

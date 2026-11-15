@@ -23,7 +23,7 @@ final class RecordScanFailureCommandTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = (string) realpath(sys_get_temp_dir()) . '/knossos-record-failure-' . bin2hex(random_bytes(4));
+        $this->directory = self::scratchPath('knossos-record-failure');
         mkdir($this->directory . '/project', 0o700, true);
     }
 

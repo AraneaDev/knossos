@@ -34,7 +34,7 @@ final class WorkerConstantsTest extends KnossosTestCase
     /** One interpreter dropped from one worker is a stale copy, named, and writing the copies restores it. */
     public function testACopyEditedByHandIsRefusedByName(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-worker-constants-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-worker-constants');
         try {
             foreach (self::COPIED as $path) {
                 $from = self::repositoryRoot() . '/' . $path;
@@ -75,7 +75,7 @@ final class WorkerConstantsTest extends KnossosTestCase
      */
     public function testAPhpWorkerCopiedWithoutTheSourceStillLaunches(): void
     {
-        $installation = sys_get_temp_dir() . '/knossos-stale-worker-only-' . bin2hex(random_bytes(6));
+        $installation = self::scratchPath('knossos-stale-worker-only');
         try {
             $this->copyTree(self::repositoryRoot() . '/workers/php', $installation . '/workers/php');
             self::assertDirectoryDoesNotExist($installation . '/schemas');
@@ -120,7 +120,7 @@ final class WorkerConstantsTest extends KnossosTestCase
     public function testAMalformedBuiltInRuleIsRefused(): void
     {
         $read = new \ReflectionMethod(IgnoreMatcher::class, 'readBuiltIn');
-        $path = (string) tempnam(sys_get_temp_dir(), 'knossos-rules-');
+        $path = (string) self::scratchFile('knossos-rules');
         $rules = self::constants()['built_in_exclusions'];
         self::assertIsArray($rules);
         try {
@@ -145,7 +145,7 @@ final class WorkerConstantsTest extends KnossosTestCase
     /** A value of the wrong type in the source is the tool's own refusal, not a crash. */
     public function testAWrongTypedSourceValueIsRefusedByTheTool(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-worker-constants-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-worker-constants');
         try {
             mkdir($root . '/schemas', 0o700, true);
             $constants = self::constants();

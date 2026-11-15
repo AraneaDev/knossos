@@ -113,7 +113,7 @@ final class BriefCommandTest extends KnossosTestCase
     /** A copy of the fixture scanned into its own on-disk database, with a roots file allowing it. */
     private function scannedFixtureOnDisk(): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
         file_put_contents($root . '/a, b.php', "<?php\n\ndeclare(strict_types=1);\n\nfinal class Comma {}\n");
         mkdir($root . '/.knossos', 0o777, true);
@@ -139,7 +139,7 @@ final class BriefCommandTest extends KnossosTestCase
     /** A temp directory named so removeTempTree() will accept it. */
     private function temporaryDirectory(): string
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory, 0o777, true);
 
         return $directory;

@@ -536,7 +536,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
      */
     private static function scratchCopy(): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-infection-pins-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-infection-pins');
         (new class {
             use Support\TempTrees;
         })->copyTree(self::repositoryRoot() . '/src', $root . '/src');

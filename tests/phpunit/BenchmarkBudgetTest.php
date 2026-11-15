@@ -32,16 +32,9 @@ final class BenchmarkBudgetTest extends KnossosTestCase
     {
         parent::setUp();
         require_once self::guardTool('lib/benchmark-budgets.php');
-        $this->directory = sys_get_temp_dir() . '/knossos-benchmark-budget-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-benchmark-budget');
         mkdir($this->directory . '/data', 0o700, true);
         mkdir($this->directory . '/tmp', 0o700);
-    }
-
-    protected function tearDown(): void
-    {
-        if ($this->directory !== '' && is_dir($this->directory)) {
-            $this->runFixtureCommand(['rm', '-rf', $this->directory]);
-        }
     }
 
     public function testARunWithinItsLimitsPasses(): void

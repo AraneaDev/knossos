@@ -67,7 +67,7 @@ final class DiscoveryTest extends KnossosTestCase
     #[Group('discovery')]
     public function testDiscoveryRejectsRootsAndSymlinksOutsideAllowedScope(): void
     {
-        $base = sys_get_temp_dir() . '/knossos-discovery-' . bin2hex(random_bytes(6));
+        $base = self::scratchPath('knossos-discovery');
         $root = $base . '/project';
         $outside = $base . '/outside.php';
         mkdir($root, 0700, true);

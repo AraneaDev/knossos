@@ -68,7 +68,7 @@ final class PluginCommandTest extends KnossosTestCase
     /** A temporary directory name, in the convention the emit tests use. */
     private function temporaryPath(string $prefix): string
     {
-        return sys_get_temp_dir() . '/' . $prefix . '-' . bin2hex(random_bytes(4));
+        return self::scratchPath($prefix);
     }
 
     #[Group('cli')]
@@ -184,7 +184,7 @@ final class PluginCommandTest extends KnossosTestCase
         // The other half of the same gap. What a caller does next with an
         // emitted plugin is copy, mount or checksum it, so the directory and
         // the files now in it are what the object has to carry.
-        $out = sys_get_temp_dir() . '/knossos-plugin-' . bin2hex(random_bytes(4));
+        $out = self::scratchPath('knossos-plugin');
 
         ob_start();
         $status = (new PluginCommand())->run(
@@ -229,7 +229,7 @@ final class PluginCommandTest extends KnossosTestCase
         (new PluginCommand())->run(
             'install-agent-plugin',
             [],
-            ['out' => [sys_get_temp_dir() . '/knossos-plugin-test']],
+            ['out' => [self::scratchPath('knossos-plugin-test')]],
             $this->context(),
         );
     }
@@ -237,7 +237,7 @@ final class PluginCommandTest extends KnossosTestCase
     #[Group('cli')]
     public function testContainerEmitWritesASelfContainedPluginDirectory(): void
     {
-        $out = sys_get_temp_dir() . '/knossos-plugin-' . bin2hex(random_bytes(4));
+        $out = self::scratchPath('knossos-plugin');
 
         ob_start();
         $status = (new PluginCommand())->run(
@@ -321,7 +321,7 @@ final class PluginCommandTest extends KnossosTestCase
         // A path that already exists as a plain FILE where emit() needs a
         // directory fails deterministically on the first mkdir(), with no
         // root privileges required to trigger it.
-        $out = sys_get_temp_dir() . '/knossos-plugin-blocked-' . bin2hex(random_bytes(4));
+        $out = self::scratchPath('knossos-plugin-blocked');
         file_put_contents($out, 'not a directory');
         $before = filemtime($out);
 
@@ -358,7 +358,7 @@ final class PluginCommandTest extends KnossosTestCase
         // fails on the pre-existing plugin.json directory. This exercises the
         // rollback branch that removes a non-empty set of tracked directories,
         // which the file-blocks-mkdir test above cannot reach.
-        $out = sys_get_temp_dir() . '/knossos-plugin-partial-' . bin2hex(random_bytes(4));
+        $out = self::scratchPath('knossos-plugin-partial');
         mkdir($out . '/.claude-plugin/plugin.json', 0o755, true);
 
         try {
@@ -708,7 +708,7 @@ final class PluginCommandTest extends KnossosTestCase
     #[Group('cli')]
     public function testInstalledHooksFallBackToTheHomeGraphWhenItExists(): void
     {
-        $home = sys_get_temp_dir() . '/knossos-home-' . bin2hex(random_bytes(4));
+        $home = self::scratchPath('knossos-home');
         mkdir($home . '/.knossos', 0o777, true);
         touch($home . '/.knossos/knossos.sqlite');
         $previous = getenv('HOME');
@@ -726,7 +726,7 @@ final class PluginCommandTest extends KnossosTestCase
     #[Group('cli')]
     public function testInstalledSessionBriefLeavesTheDataDirectoryEmptyWithoutAnySource(): void
     {
-        $home = sys_get_temp_dir() . '/knossos-home-' . bin2hex(random_bytes(4));
+        $home = self::scratchPath('knossos-home');
         mkdir($home, 0o777, true);
         $previous = getenv('HOME');
         putenv('HOME=' . $home);
@@ -1613,7 +1613,7 @@ final class PluginCommandTest extends KnossosTestCase
     {
         $previous = getenv('KNOSSOS_DATA_DIR');
         $previousHome = getenv('HOME');
-        $home = sys_get_temp_dir() . '/knossos-home-' . bin2hex(random_bytes(4));
+        $home = self::scratchPath('knossos-home');
         mkdir($home);
         putenv('KNOSSOS_DATA_DIR');
         putenv('HOME=' . $home);

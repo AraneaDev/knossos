@@ -23,7 +23,7 @@ final class RescanFatalTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = (string) realpath(sys_get_temp_dir()) . '/knossos-fatal-' . bin2hex(random_bytes(5));
+        $this->directory = self::scratchPath('knossos-fatal');
         mkdir($this->directory . '/project/src', 0o700, true);
         mkdir($this->directory . '/data', 0o700, true);
     }

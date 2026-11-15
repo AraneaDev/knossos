@@ -35,7 +35,7 @@ final class FileContextPlanTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-file-context-plan-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-file-context-plan');
         mkdir($this->root . '/src', 0o777, true);
         mkdir($this->root . '/tests', 0o777, true);
         file_put_contents($this->root . '/src/Ledger.php', "<?php\nnamespace App;\nfinal class Ledger { public function total(): int { return 1; } }\n");

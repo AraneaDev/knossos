@@ -14,10 +14,9 @@ use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 use Knossos\Store\StableId;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('scan-planner')]
-final class ScanPlannerTest extends TestCase
+final class ScanPlannerTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private function createSchema(): PDO
     {
@@ -86,7 +85,7 @@ final class ScanPlannerTest extends TestCase
 
     public function testPrepareDetectsPythonAndRustFrameworksFromManifests(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-planner-frameworks-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-planner-frameworks');
         mkdir($root, 0700, true);
         try {
             file_put_contents($root . '/pyproject.toml', <<<'TOML'
@@ -117,7 +116,7 @@ TOML);
 
     public function testPrepareAcceptsConfiguredFrameworkHintsWithoutManifestDeps(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-planner-hints-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-planner-hints');
         mkdir($root, 0700, true);
         try {
             file_put_contents($root . '/knossos.json', json_encode([
@@ -142,7 +141,7 @@ TOML);
      */
     public function testPrepareResolvesHtmlScriptsThroughConfiguredWebRoots(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-planner-web-roots-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-planner-web-roots');
         mkdir($root . '/web/public', 0700, true);
         mkdir($root . '/static', 0700, true);
         try {
@@ -447,7 +446,7 @@ TOML);
     public function testPrepareRejectsInvalidMode(): void
     {
         $pdo = $this->createSchema();
-        $dir = sys_get_temp_dir() . '/knossos-planner-mode-' . bin2hex(random_bytes(6));
+        $dir = self::scratchPath('knossos-planner-mode');
         mkdir($dir);
         try {
             $planner = new ScanPlanner($pdo, [sys_get_temp_dir()]);
@@ -472,7 +471,7 @@ TOML);
     public function testPrepareCargoManifestChangesTheRustConfigurationHash(): void
     {
         $pdo = $this->createSchema();
-        $dir = sys_get_temp_dir() . '/knossos-planner-cargo-' . bin2hex(random_bytes(6));
+        $dir = self::scratchPath('knossos-planner-cargo');
         mkdir($dir);
         try {
             $planner = new ScanPlanner($pdo, [sys_get_temp_dir()]);
@@ -500,7 +499,7 @@ TOML);
     public function testPrepareDetectsAFrameworkBehindARenamedCargoDependency(): void
     {
         $pdo = $this->createSchema();
-        $dir = sys_get_temp_dir() . '/knossos-planner-rename-' . bin2hex(random_bytes(6));
+        $dir = self::scratchPath('knossos-planner-rename');
         mkdir($dir);
         try {
             file_put_contents($dir . '/Cargo.toml', <<<'TOML'
@@ -529,7 +528,7 @@ TOML);
     public function testPrepareRequirementsFileChangesThePythonConfigurationHash(): void
     {
         $pdo = $this->createSchema();
-        $dir = sys_get_temp_dir() . '/knossos-planner-requirements-' . bin2hex(random_bytes(6));
+        $dir = self::scratchPath('knossos-planner-requirements');
         mkdir($dir);
         try {
             $planner = new ScanPlanner($pdo, [sys_get_temp_dir()]);
@@ -572,7 +571,7 @@ TOML);
     public function testPrepareRejectsSnapshotRetentionOutOfRange(): void
     {
         $pdo = $this->createSchema();
-        $dir = sys_get_temp_dir() . '/knossos-planner-retention-' . bin2hex(random_bytes(6));
+        $dir = self::scratchPath('knossos-planner-retention');
         mkdir($dir);
         try {
             $planner = new ScanPlanner($pdo, [sys_get_temp_dir()]);

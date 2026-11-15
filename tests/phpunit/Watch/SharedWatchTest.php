@@ -64,8 +64,8 @@ final class SharedWatchTest extends KnossosTestCase
      */
     private function project(): array
     {
-        $data = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $data = self::scratchPath('knossos-stale');
+        $root = self::scratchPath('knossos-stale');
         mkdir($data, 0o700);
         $this->trees[] = $data;
         $this->trees[] = $root;
@@ -149,7 +149,7 @@ final class SharedWatchTest extends KnossosTestCase
     public function testAnUnscannedDirectoryIsRefused(): void
     {
         [$pdo, $database] = $this->project();
-        $other = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $other = self::scratchPath('knossos-stale');
         mkdir($other);
         $this->trees[] = $other;
         $events = $this->watch($pdo, $database, $other, 1);
@@ -229,7 +229,7 @@ final class SharedWatchTest extends KnossosTestCase
     #[Group('watch')]
     public function testALockHeldElsewhereIsRefusedAndItsHolderNamed(): void
     {
-        $dir = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $dir = self::scratchPath('knossos-stale');
         $this->trees[] = $dir;
         $first = WatchLock::acquire($dir, 'project-a');
         assertNotNull($first);
@@ -259,7 +259,7 @@ final class SharedWatchTest extends KnossosTestCase
         if (!is_writable('/dev/full')) {
             self::markTestSkipped('needs /dev/full');
         }
-        $dir = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $dir = self::scratchPath('knossos-stale');
         $this->trees[] = $dir;
         $lock = WatchLock::acquire($dir, 'project-a');
         assertNotNull($lock);
@@ -380,7 +380,7 @@ final class SharedWatchTest extends KnossosTestCase
     #[Group('watch')]
     public function testTheScanLimitFallsBackToTheDefault(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o700);
         $this->trees[] = $root;
         $allowed = AllowedRoots::of([$root]);

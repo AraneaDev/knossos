@@ -33,7 +33,7 @@ final class ProcessScannerTest extends KnossosTestCase
         if (!function_exists('pcntl_signal')) {
             self::markTestSkipped('ext-pcntl is not loaded; the hung scan cannot ignore the request to stop.');
         }
-        $this->pidFile = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6)) . '.pid';
+        $this->pidFile = self::scratchPath('knossos-stale') . '.pid';
     }
 
     protected function tearDown(): void
@@ -68,7 +68,7 @@ final class ProcessScannerTest extends KnossosTestCase
         // scan nothing but argv, so the stand-in writes it to the one path it is sure to receive: the
         // `--db=` value, which this test sets to $this->pidFile and reads back. The same side channel the
         // hung-scan fixture uses for its child's pid.
-        $installation = sys_get_temp_dir() . '/knossos-stale-argv-' . bin2hex(random_bytes(6));
+        $installation = self::scratchPath('knossos-stale-argv');
         mkdir($installation . '/bin', 0o777, true);
         file_put_contents($installation . '/bin/knossos', "<?php\nforeach (\$argv as \$a) { if (str_starts_with(\$a, '--db=')) { file_put_contents(substr(\$a, 5), json_encode(\$argv)); } }\nexit(1);\n");
         try {

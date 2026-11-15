@@ -21,7 +21,7 @@ final class ObjectLiteralCallbackTest extends KnossosTestCase
 {
     public function testACallbackInsideAnOptionsObjectIsOnlyPossiblyDead(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-literal-callback-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-literal-callback');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'package.json' => '{"name":"app","private":true}',

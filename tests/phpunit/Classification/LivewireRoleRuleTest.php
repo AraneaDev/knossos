@@ -205,7 +205,7 @@ final class LivewireRoleRuleTest extends KnossosTestCase
      */
     private function scanCopyOfFixture(?callable $modify = null): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-lw-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-lw');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/laravel13-livewire', $root);
         $this->roots[] = $root;
         if ($modify !== null) {
@@ -221,7 +221,7 @@ final class LivewireRoleRuleTest extends KnossosTestCase
      */
     private function scanTree(array $files): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-lw-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-lw');
         $files['composer.json'] = self::COMPOSER;
         foreach ($files as $path => $content) {
             if (!is_dir(dirname($root . '/' . $path))) {

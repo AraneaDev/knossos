@@ -14,7 +14,7 @@ final class UnsupportedPathScanTest extends KnossosTestCase
     #[Group('scan')]
     public function testScanSkipsAnUnsupportedNameAndIndexesTheRest(): void
     {
-        $root = rtrim(sys_get_temp_dir(), '/') . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o700, true);
         try {
             file_put_contents($root . "/caf\xe9.php", "<?php\nfunction a() {}\n");

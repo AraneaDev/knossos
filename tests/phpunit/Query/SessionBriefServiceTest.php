@@ -36,7 +36,7 @@ final class SessionBriefServiceTest extends KnossosTestCase
         // but the one this call read. It follows the same precedence
         // AllowedRoots uses, so the reported path is the path that decided the
         // verdict rather than a plausible guess about where roots live.
-        $directory = sys_get_temp_dir() . '/knossos-brief-roots-' . bin2hex(random_bytes(4));
+        $directory = self::scratchPath('knossos-brief-roots');
         mkdir($directory, 0o755, true);
         $previous = getenv('KNOSSOS_ROOTS_FILE');
         putenv('KNOSSOS_ROOTS_FILE');
@@ -92,7 +92,7 @@ final class SessionBriefServiceTest extends KnossosTestCase
         // asserted is unchanged and where it is asserted from no longer
         // matters.
         [$pdo] = $this->storeFixture();
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o777, true);
         $absolute = (string) realpath($root);
         $previousDirectory = (string) getcwd();
@@ -637,7 +637,7 @@ final class SessionBriefServiceTest extends KnossosTestCase
      */
     private function rootsFileFixture(?array $rootsFile): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o777, true);
         $dbDir = $root . '/db';
         mkdir($dbDir, 0o777, true);

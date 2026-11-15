@@ -23,7 +23,7 @@ final class AnnotationReferenceTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testAClassNamedInAnAnnotationStringIsReferenced(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-incremental-annotation-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-incremental-annotation');
         if (!mkdir($root . '/src', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
         }

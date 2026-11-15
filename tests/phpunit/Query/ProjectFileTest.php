@@ -14,8 +14,8 @@ final class ProjectFileTest extends KnossosTestCase
     #[Group('query')]
     public function testOnlyARegularFileInsideTheRootCounts(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
-        $outside = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
+        $outside = self::scratchPath('knossos-stale');
         mkdir($root . '/tools', 0o700, true);
         mkdir($outside, 0o700, true);
         try {

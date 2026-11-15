@@ -22,7 +22,7 @@ final class JsTestRunnerTest extends KnossosTestCase
     #[Group('query')]
     public function testTheNearestPackageJsonNamesTheRunner(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         try {
             $this->package($root, '', ['devDependencies' => ['vitest' => '^3']]);
             $this->package($root, 'packages/legacy', ['devDependencies' => ['jest' => '^29']]);
@@ -66,7 +66,7 @@ final class JsTestRunnerTest extends KnossosTestCase
     #[Group('query')]
     public function testNoReadablePackageJsonIsUnknown(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         try {
             mkdir($root . '/broken', 0o777, true);
             file_put_contents($root . '/broken/package.json', '{not json');

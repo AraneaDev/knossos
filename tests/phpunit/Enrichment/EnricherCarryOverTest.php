@@ -39,10 +39,10 @@ final class EnricherCarryOverTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-carry-over-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-carry-over');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/endpoint-routes', $this->root);
         file_put_contents($this->root . '/knossos.json', '{"version": 1, "enrichers": ["fixture"]}');
-        $this->installation = sys_get_temp_dir() . '/knossos-stale-carry-over-install-' . bin2hex(random_bytes(6));
+        $this->installation = self::scratchPath('knossos-stale-carry-over-install');
         mkdir($this->installation, 0o777, true);
         file_put_contents($this->installation . '/enrichers.json', json_encode(['enrichers' => [[
             'name' => 'fixture',

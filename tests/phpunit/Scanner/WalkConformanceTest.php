@@ -32,8 +32,8 @@ final class WalkConformanceTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-walk-' . bin2hex(random_bytes(6));
-        $this->outside = sys_get_temp_dir() . '/knossos-stale-walk-outside-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-walk');
+        $this->outside = self::scratchPath('knossos-stale-walk-outside');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/walk-conformance', $this->root);
         mkdir($this->outside, 0o777, true);
         file_put_contents($this->outside . '/mod.ts', "value = 1\n");

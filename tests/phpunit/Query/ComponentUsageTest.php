@@ -20,7 +20,7 @@ final class ComponentUsageTest extends KnossosTestCase
 {
     public function testWhatComponentsUseIsLiveAndAnOrphanedComponentIsNot(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-components-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-components');
         foreach (['src/components', 'src/lib', 'src/pages', 'src/routes'] as $directory) {
             mkdir($root . '/' . $directory, 0o777, true);
         }
