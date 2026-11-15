@@ -2013,7 +2013,7 @@ finish_output() {
     fi
     take_out_of_reach
     if [ -z "$TAKEN" ]; then
-        refusal="neither the install directory nor the directory around the graph directory $DATA_REAL is on the graph directory's filesystem, so the host cannot take the file out of every container's reach without copying it; $nothing"
+        refusal="neither the install directory $INSTALL_REAL nor the directory around the graph directory $DATA_REAL is on the graph directory's filesystem, so the host cannot take the file out of every container's reach without copying it; $nothing To fix it, put the graph directory on the same filesystem as its parent or as the install directory, by choosing another --data-dir (or KNOSSOS_DATA_DIR)."
         return 1
     fi
     if ! in_scratch mv -f -- output "$TAKEN/output" 2>/dev/null; then

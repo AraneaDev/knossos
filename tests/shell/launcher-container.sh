@@ -988,6 +988,31 @@ done
 FAKE_EXEC_WRITE='brief' out_call export-agent-brief "$PROJECT" "--out=$WORK/outside/taken.md"
 if [ "$status" -eq 0 ] && [ "$(cat "$WORK/outside/taken.md")" = brief ] && [ -z "$(taken_left)" ]; then pass 'a plain output is taken out of reach by a rename and written, and the directory it was taken into is removed'; else fail "taken output: $status, $out"; fi
 rm -f "$WORK/outside/taken.md"
+# With neither the install directory nor the directory around the graph on
+# the graph's filesystem, the output is refused, and the message says what to
+# change. A stat earlier on PATH reports another device for those two (the
+# launcher compares devices through stat, see dir_id), as a separate mount would.
+REAL_STAT=$(command -v stat)
+APART_BIN="$WORK/apart bin"
+mkdir -p "$APART_BIN"
+{
+    printf '#!/bin/sh\n'
+    printf 'for last in "$@"; do :; done\n'
+    printf 'case $last in\n'
+    printf '    %s | %s) id=$(%s "$@") || exit; printf "999999:%%s\\n" "${id#*:}"; exit 0 ;;\n' "'$INSTALL'" "'$(dirname -- "$DATA")'" "'$REAL_STAT'"
+    printf 'esac\n'
+    printf 'exec %s "$@"\n' "'$REAL_STAT'"
+} > "$APART_BIN/stat"
+chmod +x "$APART_BIN/stat"
+reset_docker
+out=$(cd "$PROJECT" && PATH="$APART_BIN:$PATH" FAKE_EXEC_WRITE=brief TMPDIR="$WORK/tmp" kn export-agent-brief "$PROJECT" "--out=$WORK/outside/apart.md" </dev/null 2>&1); status=$?
+expected="knossos: neither the install directory $INSTALL nor the directory around the graph directory $DATA is on the graph directory's filesystem, so the host cannot take the file out of every container's reach without copying it; nothing was written to $WORK/outside/apart.md. To fix it, put the graph directory on the same filesystem as its parent or as the install directory, by choosing another --data-dir (or KNOSSOS_DATA_DIR).
+KNOSSOS_INVALID_ARGUMENT: Unable to write brief to $WORK/outside/apart.md."
+if [ "$status" -eq 2 ] && [ "$out" = "$expected" ] && [ ! -e "$WORK/outside/apart.md" ] && [ -z "$(scratch_left)" ] && [ -z "$(taken_left)" ]; then
+    pass 'an output the host cannot take out of reach without a copy is refused, saying how to fix it'
+else
+    fail "graph on its own filesystem: $status, $out"
+fi
 # A copy of the notes file in the way, left there by a command that said it exported: nothing was written, so it is a failure (M-3).
 printf '{"format":"knossos-notes"}\n' > "$WORK/outside/kept.json"
 FAKE_EXEC_SHAPE=untouched out_call export-notes "$PROJECT" "--file=$WORK/outside/kept.json"
