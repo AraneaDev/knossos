@@ -11,7 +11,7 @@ set -u
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 ROOT="$HERE/../.."
-INSTALL_SH="$ROOT/install.sh"
+INSTALL_SH="${KNOSSOS_TEST_INSTALL:-$ROOT/install.sh}"
 failures=0
 WORK=$(mktemp -d)
 WORK=$(CDPATH='' cd -P -- "$WORK" && pwd -P)
@@ -74,11 +74,16 @@ DATA="$T1/data dir"
 LAUNCHER="$T1/bin dir/knossos"
 if [ "$status" -eq 0 ]; then pass 'a container install without php, node or python3 exits 0'; else fail "fresh install exited $status: $out"; fi
 if has_call "call [pull] [$REPO:1.0.0]"; then pass 'it pulls <repository>:<version>'; else fail "no pull: $(calls)"; fi
-if has_call "call [run] [--rm] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-check] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json] [--entrypoint] [/opt/knossos/bin/knossos] [$REPO:1.0.0] [version]" \
-    && has_call "call [run] [--rm] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-check] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json] [--entrypoint] [/opt/knossos/bin/knossos] [$REPO:1.0.0] [doctor]"; then
+if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-check] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json] [--entrypoint] [/opt/knossos/bin/knossos] [$REPO:1.0.0] [version]" \
+    && has_call "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_DATA_DIR=/tmp/knossos-check] [-e] [KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json] [--entrypoint] [/opt/knossos/bin/knossos] [$REPO:1.0.0] [doctor]"; then
     pass 'the image is asked its version and runs doctor, as this user, without network or mounts'
 else
     fail "image checks: $(calls)"
+fi
+if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--entrypoint] [cat] [$REPO:1.0.0] [/opt/knossos/tools/launcher/container-update]"; then
+    pass 'the install helper is read out of the image without network and without a pull'
+else
+    fail "helper read: $(calls)"
 fi
 DIGEST=$(field "$DATA/install.json" image)
 case $DIGEST in "$REPO@sha256:"*) pass 'install.json names the image by digest' ;; *) fail "image in install.json: $(cat "$DATA/install.json" 2>&1)" ;; esac
@@ -365,6 +370,21 @@ out=$(kn self-update); status=$?
 case $out in *'docker daemon is not running'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'self-update with the daemon down says so'; else fail "daemon down update: $status, $out"; fi
 rm -f "$FAKE_DOCKER_STATE/daemon-down"
+
+# A launcher that does not answer after the switch puts install.json, the
+# launcher and the plugin back as they were.
+printf '# mine\n' >> "$LIB"
+cp "$LIB" "$WORK/lib.before"
+cp "$DATA2/install.json" "$WORK/record.before"
+cp "$LAUNCHER2" "$WORK/launcher.before"
+out=$(FAKE_EXEC_EXIT=3 FIV=1.2.0 ci "$T2" --version=1.2.0 --no-roots); status=$?
+case $out in *'the previous state was restored'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && cmp -s "$WORK/lib.before" "$LIB" && cmp -s "$WORK/record.before" "$DATA2/install.json" \
+    && cmp -s "$WORK/launcher.before" "$LAUNCHER2"; then
+    pass 'a failed check after the switch restores install.json, the launcher and the plugin'
+else
+    fail "probe failure: $status, $out, lib.sh $(cat "$LIB")"
+fi
 
 if [ "$failures" -ne 0 ]; then
     printf '%s failure(s)\n' "$failures"

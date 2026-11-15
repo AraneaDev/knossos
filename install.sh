@@ -493,19 +493,23 @@ version_gt() {
 run_image() {
     image=$1
     shift
-    "$RUNTIME" run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
         --entrypoint /opt/knossos/bin/knossos "$image" "$@" </dev/null
 }
 
 # Undo a container install after the helper switched but the launcher did not
-# answer: install.json and the launcher as they were.
+# answer: install.json, the launcher and the plugin as they were.
 rollback_container_switch() {
     if [ -n "$LAUNCHER" ] && [ -f "$LAUNCHER" ]; then
         (cd "$TMP/probe project" 2>/dev/null && "$LAUNCHER" stop >/dev/null 2>&1 </dev/null) || true
     fi
     if [ -f "$TMP/install.json.prev" ]; then cp "$TMP/install.json.prev" "$DATA_DIR/install.json"; else rm -f "$DATA_DIR/install.json"; fi
     if [ -f "$TMP/launcher.prev" ]; then cp "$TMP/launcher.prev" "$LAUNCHER"; else rm -f "$LAUNCHER"; fi
+    if [ "$PLUGIN" = 1 ] && [ -n "$DATA_DIR" ]; then
+        rm -rf "$DATA_DIR/plugin"
+        if [ -d "$TMP/plugin.prev" ]; then cp -pR "$TMP/plugin.prev" "$DATA_DIR/plugin"; fi
+    fi
 }
 
 # Container mode: pull the release image, check it, and let the helper it
@@ -587,13 +591,14 @@ install_container() {
         cat "$TMP/doctor.out" >&2
         die "knossos doctor failed in $REF; nothing was changed"
     fi
-    if ! "$RUNTIME" run --rm --network none --entrypoint cat "$REF" /opt/knossos/tools/launcher/container-update \
+    if ! "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$REF" /opt/knossos/tools/launcher/container-update \
         > "$TMP/container-update" 2>/dev/null </dev/null || [ ! -s "$TMP/container-update" ]; then
         die "the image $REF has no install helper; it is older than container mode. Nothing was changed"
     fi
 
     if [ -f "$DATA_DIR/install.json" ]; then cp "$DATA_DIR/install.json" "$TMP/install.json.prev"; fi
     if [ -f "$LAUNCHER" ]; then cp "$LAUNCHER" "$TMP/launcher.prev"; fi
+    if [ "$PLUGIN" = 1 ] && [ -d "$DATA_DIR/plugin" ]; then cp -pR "$DATA_DIR/plugin" "$TMP/plugin.prev"; fi
     note_replaced_launcher
     set -- install "--install-dir=$DATA_DIR" "--bin-dir=$BIN_DIR" "--runtime=$RUNTIME" "--image=$REF" "--version=$VERSION"
     if [ "$PLUGIN" = 1 ]; then set -- "$@" --plugin "--data-dir=$DATA_DIR"; fi
