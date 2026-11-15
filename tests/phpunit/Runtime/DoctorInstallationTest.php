@@ -33,8 +33,12 @@ final class DoctorInstallationTest extends KnossosTestCase
         $check = $this->installationCheck($data . '/versions/1.2.3', $data . '/knossos.sqlite');
 
         assertSame('native 1.2.3 at ' . $data . '/versions/1.2.3', $check['detail']);
+        // A container install has no versions/: it names its image and the install directory instead.
         file_put_contents($data . '/install.json', '{"mode": "container", "version": "1.2.3"}');
-        assertSame('container 1.2.3 at ' . $data . '/versions/1.2.3', $this->installationCheck($data . '/versions/1.2.3', $data . '/knossos.sqlite')['detail']);
+        assertSame('container 1.2.3 from an unrecorded image, installed in ' . $data, $this->installationCheck($data . '/versions/1.2.3', $data . '/knossos.sqlite')['detail']);
+        $digest = 'ghcr.io/araneadev/knossos@sha256:' . str_repeat('b', 64);
+        file_put_contents($data . '/install.json', sprintf('{"mode": "container", "version": "1.2.3", "image": "%s"}', $digest));
+        assertSame('container 1.2.3 from ' . $digest . ', installed in ' . $data, $this->installationCheck($data . '/versions/1.2.3', $data . '/knossos.sqlite')['detail']);
     }
 
     /** @return array{name: string, status: string, detail: string} */
