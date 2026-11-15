@@ -378,7 +378,7 @@ refused() {
     out=$("$@" 2>&1); status=$?
     lines=$(printf '%s\n' "$out" | wc -l | tr -d ' ')
     case $out in *"$text"*) said=yes ;; *) said=no ;; esac
-    if [ "$status" -eq 1 ] && [ "$lines" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then
+    if [ "$status" -eq 1 ] && [ "$lines" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ] && [ "$(count_calls exec)" -eq 0 ]; then
         pass "$what is refused, and no container is started"
     else
         fail "$what: status $status, $out, $(calls)"
@@ -682,6 +682,87 @@ if [ "$status" -eq 1 ] && [ "$said" = yes ] && has_call "call [rm] [-f] [$NAME]"
 else
     fail "mismatch on reuse: $status, $out, $(calls)"
 fi
+
+# ---- no read-write mount holds a directory the host trusts ------------------------------
+#
+# A container that can write an ancestor of the install directory can rename
+# it aside and plant one of its own, which the host then trusts; one that can
+# write the launcher's directory can replace the launcher. Each such layout is
+# refused before anything runs.
+
+# nested_install DIR: an install directory at DIR, as install.sh makes it.
+nested_install() {
+    mkdir -p "$1/plugin" "$1/containers"
+    cp "$INSTALL/install.json" "$1/install.json"
+}
+NEST="$WORK/nest"
+nested_install "$NEST/proj/.kn/install"
+refused 'a project root that contains the data directory' "the project root $NEST/proj contains the install directory $NEST/proj/.kn/install, which a container must never be able to write; run knossos from a project that does not contain it, or re-run the installer with --data-dir outside the project." \
+    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$NEST/proj" "$NEST/proj/.kn/install" "$LAUNCHER"
+refused 'a project root that is the data directory' "the project root $NEST/proj/.kn contains the install directory" \
+    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$NEST/proj/.kn" "$NEST/proj/.kn/install" "$LAUNCHER"
+# The graph elsewhere, the install directory still inside the project.
+refused 'a project root that contains the install directory' "the project root $NEST/proj contains the install directory $NEST/proj/.kn/install" \
+    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_DATA_DIR="$3" KNOSSOS_ROOTS_FILE="$3/roots.json" "$4" version </dev/null' _ "$NEST/proj" "$NEST/proj/.kn/install" "$GRAPH" "$LAUNCHER"
+# A graph directory set by hand inside the project.
+mkdir -p "$PROJECT/.graph"
+refused 'a project root that contains the graph directory' "the project root $PROJECT contains the Knossos data directory $PROJECT/.graph" \
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$1/.graph" KNOSSOS_ROOTS_FILE="$1/.graph/roots.json" "$2" version </dev/null' _ "$PROJECT" "$LAUNCHER"
+rm -rf "$PROJECT/.graph"
+# A roots file in a directory around the data directory.
+nested_install "$NEST/outer/data/install"
+refused 'a roots file directory that contains the data directory' "the directory of KNOSSOS_ROOTS_FILE ($NEST/outer) contains the install directory $NEST/outer/data/install, which a container must never be able to write; move the roots file to a directory of its own and point KNOSSOS_ROOTS_FILE at it." \
+    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_ROOTS_FILE="$3/roots.json" env -u KNOSSOS_DATA_DIR "$4" version </dev/null' _ "$PROJECT" "$NEST/outer/data/install" "$NEST/outer" "$LAUNCHER"
+# A graph directory two levels above the install directory.
+refused 'a graph directory that holds the install directory deeper than one level' "KNOSSOS_DATA_DIR ($NEST/outer) contains the install directory $NEST/outer/data/install deeper than one level" \
+    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_DATA_DIR="$3" KNOSSOS_ROOTS_FILE="$3/roots.json" "$4" version </dev/null' _ "$PROJECT" "$NEST/outer/data/install" "$NEST/outer" "$LAUNCHER"
+# The launcher inside the project, and inside the graph directory.
+mkdir -p "$NEST/tools/proj/bin"
+cp "$LAUNCHER" "$NEST/tools/proj/bin/knossos"
+refused "a project root that contains the launcher's directory" "the project root $NEST/tools/proj contains $NEST/tools/proj/bin, the directory of the knossos launcher, which a container must never be able to write; run knossos from a project that does not contain it, or re-run the installer with --bin-dir outside the project." \
+    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$NEST/tools/proj" "$NEST/tools/proj/bin/knossos"
+mkdir -p "$DATA/bin"
+cp "$LAUNCHER" "$DATA/bin/knossos"
+refused "a graph directory that contains the launcher's directory" "KNOSSOS_DATA_DIR ($DATA) contains $DATA/bin, the directory of the knossos launcher" \
+    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$PROJECT" "$DATA/bin/knossos"
+rm -rf "${DATA:?}/bin"
+# The bin directory install.json names counts too, wherever the launcher was run from.
+write_record "$IMAGE"
+sed "s|\"bin_dir\": \"[^\"]*\"|\"bin_dir\": \"$NEST/tools/proj/bin\"|" "$INSTALL/install.json" > "$WORK/record.tmp" && mv "$WORK/record.tmp" "$INSTALL/install.json"
+refused "a project root that contains the bin directory install.json names" "contains $NEST/tools/proj/bin, the directory of the knossos launcher" \
+    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$NEST/tools/proj" "$LAUNCHER"
+write_record "$IMAGE"
+# The same refusal for a container that is already running: it is never reused.
+reset_docker
+out=$(cd "$NEST/proj" && KNOSSOS_INSTALL_DIR="$NEST/proj/.kn/install" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version </dev/null 2>&1); status=$?
+if [ "$status" -eq 1 ] && [ "$(count_calls exec)" -eq 0 ] && [ "$(count_calls container)" -eq 0 ]; then
+    pass 'a refused layout is refused before any container is looked at'
+else
+    fail "refused layout with a running container: $status, $out, $(calls)"
+fi
+
+# Every layout that is accepted mounts the graph directory as its own
+# read-write mount, with the install directory read-only directly below it.
+graph_mounted() {
+    run_line=$(grep '^call \[run\] \[-d\]' "$FAKE_DOCKER_STATE/calls" | tail -n 1)
+    case $run_line in
+        *"[--mount] [type=bind,source=$1,target=$1] "*"[--mount] [type=bind,source=$2,target=$2,readonly] "*) return 0 ;;
+    esac
+    return 1
+}
+mkdir -p "$DATA/projects/inside"
+all_graph=yes
+for layout in default inside-graph roots-apart; do
+    reset_docker
+    case $layout in
+        default) (cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1) ;;
+        inside-graph) (cd "$DATA/projects/inside" && kn version </dev/null >/dev/null 2>&1) ;;
+        roots-apart) (cd "$PROJECT" && KNOSSOS_ROOTS_FILE="$ROOTS" env -u KNOSSOS_DATA_DIR "$LAUNCHER" version </dev/null >/dev/null 2>&1) ;;
+    esac
+    if ! graph_mounted "$DATA" "$INSTALL"; then all_graph=no; printf '  %s: %s\n' "$layout" "$(calls)"; fi
+done
+rm -rf "$DATA/projects"
+if [ "$all_graph" = yes ]; then pass 'the graph directory is always its own read-write mount, the install directory read-only below it'; else fail 'a layout ran without the graph directory as its own mount'; fi
 
 # ---- a root with a colon is never passed as an extra allowed root ------------------------
 

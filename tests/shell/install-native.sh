@@ -613,6 +613,21 @@ case $(tail -n 2 "$INSTALL" | tr '\n' ' ') in
     *) fail "unexpected end of install.sh: $(tail -n 2 "$INSTALL")" ;;
 esac
 
+# ---- native mode keeps the data and bin directories wherever they are -----------
+
+# Container mode refuses a data or bin directory inside the directory the
+# installer runs from (a container could write it); native mode runs nothing
+# in a container and accepts both, as it always has.
+T22="$WORK/inside project"
+mkdir -p "$T22"
+out=$(cd "$T22" && run_install "$T22" --version="$VERSION" --no-roots); status=$?
+got=$("$T22/bin dir/knossos" version 2>&1)
+if [ "$status" -eq 0 ] && [ "$got" = "Knossos $VERSION" ]; then
+    pass 'native mode accepts a data and a bin directory inside the directory the installer runs from'
+else
+    fail "native inside the working directory: status $status, version said $got, output $out"
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '%s failure(s)\n' "$failures"
     exit 1

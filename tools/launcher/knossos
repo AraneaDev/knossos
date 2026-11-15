@@ -24,6 +24,28 @@
 #
 # KNOSSOS_INSTALL_DIR replaces the baked-in install directory. It exists for
 # the installer's own pre-switch check and for tests, not for everyday use.
+#
+# Threat note (container mode). A scanned project is untrusted input, so the
+# code inside a container is treated as hostile. It can write every read-write
+# mount: the project root, the graph directory and the roots file's directory.
+# This launcher runs on the host, as you, so nothing it reads or runs may be
+# something a container could have written:
+#   - The install directory (install.json, plugin/, the update helper, the
+#     update check, the lock, containers/) is mounted read-only, as its own
+#     mount, directly below the root of the graph mount. Neither it nor its
+#     parent can be renamed from inside: both are mount points there.
+#   - No read-write mount may contain or be the graph directory, the install
+#     directory or the directory holding this launcher. Without that rule a
+#     container could rename the parent of the install directory and put a
+#     directory of its own in its place, or replace this file. The launcher
+#     refuses such a layout in one line, and so does the installer.
+#   - The roots file can be written from inside. It is only used to choose the
+#     project root among the ancestors of the working directory, that choice
+#     goes through the same mount rule, and nothing read from it is ever run or
+#     expanded unquoted. At worst it widens the project root to an ancestor of
+#     the working directory below the home directory.
+#   - The image and the runtime come from install.json, which no container can
+#     write. KNOSSOS_* variables and PATH are your own environment.
 
 # No pathname expansion anywhere in this script: it handles paths it did not
 # choose (a project called `notes?` or `Project [old]`, a roots entry written
@@ -193,6 +215,16 @@ if [ ! -d "$INSTALL_DIR/containers" ] || [ ! -d "$INSTALL_DIR/plugin" ]; then un
 # migrated.
 field layout
 [ "$value" = separate ] || untrusted "this container install keeps its record where the graph is, a layout no release wrote"
+
+# The directories holding this launcher, physical: the one it was run from and
+# the one the installer wrote it to. A container that could write either could
+# replace what the host runs next.
+LAUNCHER_DIRS=$(physical "$(dirname -- "$0")")
+field bin_dir
+if [ -n "$value" ]; then
+    bin_real=$(physical "$value")
+    if [ -n "$bin_real" ] && [ "$bin_real" != "$LAUNCHER_DIRS" ]; then LAUNCHER_DIRS="$LAUNCHER_DIRS$NEWLINE$bin_real"; fi
+fi
 
 # The graph defaults to the directory around the install directory, the one
 # the person picked with --data-dir: switching between native and container
@@ -465,12 +497,54 @@ ROOT=${answer%%"$NEWLINE"*}
 LISTED_AS=${answer#*"$NEWLINE"}
 if inside "$HERE" "$ROOT"; then WORKDIR=$HERE; else WORKDIR=$ROOT; fi
 
+# guard_writable PATH KIND: refuse a read-write mount that contains or is a
+# directory the host trusts (see the threat note at the top). The graph
+# directory may be the directory around the install directory, which then is
+# a direct child of that mount's root and cannot be moved aside from inside,
+# but it may not hold it any deeper. The roots file's directory may be the
+# graph directory itself: that is the same mount.
+guard_writable() {
+    if [ "$2" = data ]; then
+        if [ "$1" != "$INSTALL_PARENT" ] && inside "$INSTALL_REAL" "$1"; then
+            die "KNOSSOS_DATA_DIR ($1) contains the install directory $INSTALL_REAL deeper than one level, where a container could move it aside; point KNOSSOS_DATA_DIR at $INSTALL_PARENT or at a directory outside it."
+        fi
+    elif [ "$2" != roots ] || [ "$1" != "$DATA_REAL" ]; then
+        held=''
+        if inside "$INSTALL_REAL" "$1"; then
+            held="the install directory $INSTALL_REAL"
+        elif inside "$DATA_REAL" "$1"; then
+            held="the Knossos data directory $DATA_REAL"
+        fi
+        if [ -n "$held" ]; then
+            case $2 in
+                project) die "the project root $1 contains $held, which a container must never be able to write; run knossos from a project that does not contain it, or re-run the installer with --data-dir outside the project." ;;
+                *) die "the directory of KNOSSOS_ROOTS_FILE ($1) contains $held, which a container must never be able to write; move the roots file to a directory of its own and point KNOSSOS_ROOTS_FILE at it." ;;
+            esac
+        fi
+    fi
+    while IFS= read -r held; do
+        [ -n "$held" ] || continue
+        inside "$held" "$1" || continue
+        case $2 in
+            project) die "the project root $1 contains $held, the directory of the knossos launcher, which a container must never be able to write; run knossos from a project that does not contain it, or re-run the installer with --bin-dir outside the project." ;;
+            data) die "KNOSSOS_DATA_DIR ($1) contains $held, the directory of the knossos launcher, which a container must never be able to write; re-run the installer with --bin-dir outside the data directory." ;;
+            *) die "the directory of KNOSSOS_ROOTS_FILE ($1) contains $held, the directory of the knossos launcher, which a container must never be able to write; move the roots file to a directory of its own and point KNOSSOS_ROOTS_FILE at it." ;;
+        esac
+    done <<HELD
+$LAUNCHER_DIRS
+HELD
+}
+
 # Every directory the container may write, each mounted at its own physical
 # path, and only through add_mount: it applies the mount rule to exactly the
 # path it mounts (no /, no home directory, nothing above it, nothing inside
-# the read-only install directory). One that lies inside another is already
-# visible through it and is not mounted twice. The install directory itself
-# is the one read-only mount, added in start_container.
+# the read-only install directory, and nothing the host trusts, see
+# guard_writable). A project or roots directory that lies inside another mount
+# is already visible through it and is not mounted twice. The graph directory
+# is always its own mount: guard_writable leaves nothing that could contain
+# it. The install directory itself is the one read-only mount, added in
+# start_container.
+INSTALL_PARENT=$(dirname -- "$INSTALL_REAL")
 MOUNTS=''
 add_mount() {
     path=$(physical "$1")
@@ -489,10 +563,16 @@ add_mount() {
     if inside "$path" "$INSTALL_REAL"; then
         die "$path lies inside the install directory $INSTALL_REAL, which a container may only read; point KNOSSOS_DATA_DIR, KNOSSOS_ROOTS_FILE or the project elsewhere."
     fi
+    guard_writable "$path" "$2"
     kept=''
     while IFS= read -r mounted; do
         [ -n "$mounted" ] || continue
-        if inside "$path" "$mounted"; then return 0; fi
+        if inside "$path" "$mounted"; then
+            # Unreachable for the graph directory after guard_writable; never
+            # let it ride on another mount all the same.
+            [ "$2" != data ] || die "the graph directory $path lies inside the mount $mounted; point KNOSSOS_DATA_DIR at a directory of its own."
+            return 0
+        fi
         inside "$mounted" "$path" || kept="$kept$mounted$NEWLINE"
     done <<MOUNTED
 $MOUNTS

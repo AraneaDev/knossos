@@ -514,10 +514,66 @@ rollback_container_switch() {
     fi
 }
 
+# physical_of PATH: the physical form of a path that may not exist yet: its
+# deepest existing ancestor resolved, the rest appended as written. Fails for a
+# missing part spelled `.` or `..`, which mkdir -p would resolve differently.
+physical_of() {
+    p=$1
+    while [ "${#p}" -gt 1 ] && [ "${p%/}" != "$p" ]; do p=${p%/}; done
+    rest=''
+    while [ ! -d "$p" ]; do
+        case ${p##*/} in . | ..) return 1 ;; esac
+        rest="/${p##*/}$rest"
+        p=${p%/*}
+        [ -n "$p" ] || p=/
+    done
+    base=$(CDPATH='' cd -P -- "$p" 2>/dev/null && pwd -P) || return 1
+    base="${base%/}$rest"
+    printf '%s' "${base:-/}"
+}
+
+# within PATH DIR: whether PATH is DIR or lies under it.
+within() {
+    [ "$2" = / ] && return 0
+    case $1 in "$2" | "$2"/*) return 0 ;; esac
+    return 1
+}
+
+# Container mode only. A container can write its project root, and a
+# directory becomes one as soon as knossos runs there. So neither the data
+# directory (which holds the install directory every host call trusts) nor the
+# launcher's directory may lie inside the directory the installer runs from or
+# the root it grants, and the launcher may not lie inside the data directory,
+# which every container can write. The launcher refuses those layouts too, at
+# every call (see the threat note at its top). / and the home directory never
+# become a project root, so a data directory below them is fine.
+refuse_writable_layout() {
+    data=$(physical_of "$DATA_DIR") || die "spell --data-dir without '.' or '..' in a part that does not exist yet: $DATA_DIR"
+    bin=$(physical_of "$BIN_DIR") || die "spell --bin-dir without '.' or '..' in a part that does not exist yet: $BIN_DIR"
+    if within "$bin" "$data"; then
+        die "the directory of the knossos launcher $bin lies inside the Knossos data directory $data, which a container can write; re-run the installer with --bin-dir outside the data directory."
+    fi
+    home=''
+    if [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then home=$(CDPATH='' cd -P -- "$HOME" && pwd -P); fi
+    for project in "$(pwd -P)" "$ROOT_TO_GRANT"; do
+        if [ -z "$project" ] || [ ! -d "$project" ]; then continue; fi
+        project=$(CDPATH='' cd -P -- "$project" && pwd -P) || continue
+        [ "$project" != / ] || continue
+        if [ -n "$home" ] && within "$home" "$project"; then continue; fi
+        if within "$data" "$project"; then
+            die "$project contains the Knossos data directory $data, which a container must never be able to write once $project is a project root; re-run the installer with --data-dir outside the project, or run it from another directory."
+        fi
+        if within "$bin" "$project"; then
+            die "$project contains $bin, the directory of the knossos launcher, which a container must never be able to write once $project is a project root; re-run the installer with --bin-dir outside the project, or run it from another directory."
+        fi
+    done
+}
+
 # Container mode: pull the release image, check it, and let the helper it
 # carries (tools/launcher/container-update, the same one self-update runs)
 # write install.json with the image's digest, the launcher and the plugin.
 install_container() {
+    refuse_writable_layout
     RUNTIME=$container_runtime
     REPOSITORY=${KNOSSOS_IMAGE_REPOSITORY:-ghcr.io/araneadev/knossos}
     if [ -n "${KNOSSOS_IMAGE:-}" ]; then
@@ -607,6 +663,8 @@ install_container() {
     mkdir -p "$DATA_DIR" || die "could not create $DATA_DIR"
     logical_data=$DATA_DIR
     DATA_DIR=$(CDPATH='' cd -P -- "$DATA_DIR" && pwd -P) || die "could not enter $DATA_DIR"
+    # Again on the directory as created, should a link have moved it.
+    refuse_writable_layout
     if [ "$ROOTS_FILE" = "$logical_data/roots.json" ]; then ROOTS_FILE="$DATA_DIR/roots.json"; fi
     KNOSSOS_DATA_DIR=$DATA_DIR
     KNOSSOS_ROOTS_FILE=$ROOTS_FILE

@@ -196,6 +196,56 @@ fi
 
 nothing_at() { [ ! -e "$1/data dir/install/install.json" ] && [ ! -e "$1/bin dir/knossos" ]; }
 
+# A data directory or a launcher where a container could write them. The
+# directory the installer runs from becomes a project root, which a container
+# can write, as soon as knossos runs there.
+# cid DIR DATA BIN ARGS: install.sh in container mode run from DIR.
+cid() {
+    from=$1 data=$2 bin=$3
+    shift 3
+    (cd "$from" && PATH="$BARE" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 \
+        sh "$INSTALL_SH" --mode=container --data-dir="$data" --bin-dir="$bin" --version=1.0.0 "$@" 2>&1 </dev/null)
+}
+# layout_refused WHAT TEXT FROM DATA BIN ARGS: refused in one line, nothing pulled, run or created.
+layout_refused() {
+    what=$1 text=$2
+    shift 2
+    reset_docker
+    out=$(cid "$@"); status=$?
+    case $out in *"$text"*) said=yes ;; *) said=no ;; esac
+    if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(count_calls run)" -eq 0 ] \
+        && [ ! -e "$2" ] && [ ! -e "$3" ]; then
+        pass "$what is refused and nothing is created"
+    else
+        fail "$what: $status, $out, $(calls)"
+    fi
+}
+P2="$WORK/proj2"
+mkdir -p "$P2"
+layout_refused 'a data directory inside the directory the installer runs from' \
+    "$P2 contains the Knossos data directory $P2/.kn, which a container must never be able to write once $P2 is a project root; re-run the installer with --data-dir outside the project, or run it from another directory." \
+    "$P2" "$P2/.kn" "$WORK/p2-bin" --no-plugin --no-roots
+layout_refused 'a data directory inside the directory the installer runs from, dry run' 'contains the Knossos data directory' \
+    "$P2" "$P2/.kn" "$WORK/p2-bin" --no-plugin --no-roots --dry-run
+layout_refused 'a bin directory inside the directory the installer runs from' \
+    "$P2 contains $P2/bin, the directory of the knossos launcher, which a container must never be able to write once $P2 is a project root; re-run the installer with --bin-dir outside the project, or run it from another directory." \
+    "$P2" "$WORK/p2-data" "$P2/bin" --no-plugin --no-roots
+layout_refused 'a bin directory inside the data directory' \
+    "the directory of the knossos launcher $WORK/p2-data/bin lies inside the Knossos data directory $WORK/p2-data, which a container can write; re-run the installer with --bin-dir outside the data directory." \
+    "$WORK" "$WORK/p2-data" "$WORK/p2-data/bin" --no-plugin --no-roots
+# The root the installer grants, from KNOSSOS_ALLOW_ROOT, counts the same.
+mkdir -p "$WORK/granted"
+reset_docker
+out=$(cd "$WORK/elsewhere" && KNOSSOS_ALLOW_ROOT="$WORK/granted" PATH="$BARE" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 \
+    sh "$INSTALL_SH" --mode=container --data-dir="$WORK/granted/.kn" --bin-dir="$WORK/p2-bin" --version=1.0.0 --no-plugin 2>&1 </dev/null); status=$?
+case $out in *"$WORK/granted contains the Knossos data directory"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/granted/.kn" ]; then pass 'a data directory inside KNOSSOS_ALLOW_ROOT is refused'; else fail "inside KNOSSOS_ALLOW_ROOT: $status, $out"; fi
+# Run from the home directory, a data directory below it is the default and fine.
+reset_docker
+out=$(cid "$HOME" "$HOME/.knossos-test" "$WORK/home-bin" --no-plugin --no-roots); status=$?
+if [ "$status" -eq 0 ] && [ -f "$HOME/.knossos-test/install/install.json" ]; then pass 'run from the home directory, a data directory below it is accepted'; else fail "from home: $status, $out"; fi
+rm -rf "$HOME/.knossos-test"
+
 reset_docker
 : > "$FAKE_DOCKER_STATE/daemon-down"
 out=$(ci "$WORK/down" --version=1.0.0 --no-plugin); status=$?
