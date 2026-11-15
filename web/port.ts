@@ -223,7 +223,10 @@ export function webPort(o: { root: string; pluginRoot: string; storeFile: string
           // Gone already.
         }
       }
-      if (interrupted.length > 0) timer(setTimeout(() => interrupted.filter(pid => own.has(pid)).forEach(endGroup), o.endGraceMs ?? END_GRACE_MS), clearTimeout)
+      // Each group is ended by its id, whether its leader is still there or not: a grandchild that ignored the
+      // interrupt outlives the wrapper's shell, and is still in the group. A group whose last member is gone takes
+      // the signal as nothing (ESRCH); its id is not handed out again while any member lives.
+      if (interrupted.length > 0) timer(setTimeout(() => interrupted.forEach(endGroup), o.endGraceMs ?? END_GRACE_MS), clearTimeout)
     },
     clock: {
       now: async () => Date.now(),

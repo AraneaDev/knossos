@@ -51,6 +51,19 @@ describe('webPort', () => {
     await expect(io.process.run(['true'])).rejects.toThrow(/the server stopped/)
   })
 
+  it('kills what is left of an interrupted run after the grace, when its own shell already stopped', async () => {
+    const io = webPort({ root: '/work/app', pluginRoot: '/nowhere', storeFile: join(scratch(), 'store.json'), hub: fakeHub(), endGraceMs: 300 })
+    const pidFile = join(scratch(), 'pid')
+    // The shell stops on the interrupt; what it started ignores it, and lets go of the output, so the run is over.
+    const run = io.process.run(['sh', '-c', `trap 'exit 0' INT; (trap '' INT; exec sleep 30) >/dev/null 2>&1 & echo $! > ${pidFile}; while :; do sleep 0.05; done`])
+    await vi.waitFor(() => expect(readFileSync(pidFile, 'utf8')).toMatch(/^\d+\n$/))
+    const left = Number(readFileSync(pidFile, 'utf8'))
+    io.end()
+    expect((await run).exitCode).toBe(0)
+    expect(() => process.kill(left, 0)).not.toThrow()
+    await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 3_000 })
+  })
+
   it('kills a run that outlives its timeout', async () => {
     const io = portOver(fakeHub())
     const pidFile = join(scratch(), 'pid')
