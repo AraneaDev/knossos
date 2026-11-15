@@ -37,6 +37,8 @@ export type ClientOptions = {
   /** Ctrl-Z: give the terminal back as a stopped job would. */
   suspend(): void
   after(ms: number, fire: () => void): void
+  /** The server said the project's pane moved to another server (it stepped down, or this is where it used to be). */
+  moved?(): void
 }
 
 /** What the host calls: input as it arrives, the terminal resized, the end, a persistent line to show (null clears it), and a toast that goes by itself. */
@@ -50,6 +52,7 @@ type Page = {
   focusedOn(element: string): void
   key(event: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; inField: boolean }): { focus?: string; press?: string } | null
   connect(): void
+  stop(): void
 }
 
 /** The field being edited: its id, its text and the cursor's place in it (a string index). */
@@ -171,8 +174,6 @@ export function startClient(o: ClientOptions): Client {
       inner.onerror = () => {
         streams.delete(inner)
         if (closed) return
-        persistent = RECONNECTING
-        paint()
         handler()
       }
     }
@@ -191,6 +192,12 @@ export function startClient(o: ClientOptions): Client {
     size: () => ({ cols: size().columns, rows: size().rows }),
     theme: () => o.theme,
     after: o.after,
+    // A stream that ended, failed or went silent: said on the toast line until the next event arrives.
+    lost: () => {
+      if (closed) return
+      persistent = RECONNECTING
+      paint()
+    },
     draw: (frame: Frame) => {
       // A field that left the frame is no longer edited.
       if (editing !== null && !fieldsOf(frame).has(editing.id)) editing = null
@@ -202,6 +209,8 @@ export function startClient(o: ClientOptions): Client {
     },
     on: {
       toast: (e: { text: string }) => showToast(e.text),
+      // The host finds the server that holds the project now: through the project's lock, not the port named here.
+      moved: () => o.moved?.(),
       // A terminal cannot tell whether the copy arrived, so the text is shown too, as the page shows it when the copy fails.
       copy: (e: { text: string }) => {
         o.copy(e.text)
@@ -407,6 +416,7 @@ export function startClient(o: ClientOptions): Client {
     },
     close() {
       closed = true
+      page.stop()
       for (const stream of streams) stream.close()
     },
     status(text) {

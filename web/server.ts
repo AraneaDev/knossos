@@ -23,7 +23,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { createServer as createNetServer } from 'node:net'
+import { connect, createServer as createNetServer } from 'node:net'
 import { dirname, extname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -38,13 +38,21 @@ import { reset } from '../hooks/mod/state'
 import { followHead } from '../hooks/mod/watcher'
 import { Hub } from './hub'
 import type { PageEvent, Size } from './hub'
-import { PANE_HEADER, addressOf } from './lock'
+import { PANE_HEADER, addressOf, alive, probe } from './lock'
+import type { Replaced } from './lock'
 import { webPort } from './port'
 
+/** How often each page's stream carries a keep-alive: the page's own ALIVE_MS (web/public/app.mjs), which a page counts on to tell a silent stream. */
+export const ALIVE_MS = 10_000
+/**
+ * How long after the former holder ended its port is still tried for {@link directions}. A tab of it that still
+ * watches comes back at the latest after its silence check (up to 40 s) and one wait of its backoff (5 s at most),
+ * and the server tries the port at its next tick (5 s): 50 s, with room for a loaded machine. A tab that comes back
+ * later than that reloads the address knossos printed.
+ */
+const FORMER_GRACE_MS = 60_000
 /** How often the checkout's commit is read again while a page is connected, beside every word from the watcher. */
 const HEAD_POLL_MS = 5_000
-/** How often an idle event stream says it is still there, so a proxy or a sleeping laptop notices a dead one. */
-const KEEPALIVE_MS = 20_000
 /** The largest input a page sends. */
 const MAX_BODY = 64 * 1024
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public')
@@ -149,6 +157,8 @@ export async function startServer(o: {
   token?: string
   /** The command files open in (see `editorCommand`); VS Code's when null. */
   editor?: string | null
+  /** How often each page's stream carries a keep-alive ({@link ALIVE_MS} by default). */
+  aliveMs?: number
   /** How often the checkout's commit is read while a page is connected ({@link HEAD_POLL_MS} by default). */
   headPollMs?: number
   /** Where the server's log lines go (`console.error` when absent). */
@@ -158,6 +168,14 @@ export async function startServer(o: {
    * asked on the head poll's tick. Once it names one, the server tells its pages where it went and closes itself.
    */
   holder?: () => Promise<number | null>
+  /**
+   * The holder this server's claim replaced while it was alive and silent (see `Claim.replaced`). Once its port is
+   * free the server listens there too, with only directions here: a tab of that server that was away when it
+   * stepped down (asleep, or between tries) finds its way when it comes back. See {@link FORMER_GRACE_MS}.
+   */
+  former?: Replaced | null
+  /** How long after the former holder ended its port is still tried ({@link FORMER_GRACE_MS} by default). */
+  formerGraceMs?: number
 }): Promise<{ url: string; token: string; port: number; ready: Promise<void>; stepped: Promise<void>; close(): Promise<void> }> {
   // Before anything starts: a port it cannot have stops it here, with nothing to undo.
   const wanted = await portFor(o.port ?? 0, o.movable === true)
@@ -187,11 +205,20 @@ export async function startServer(o: {
   const stepped = new Promise<void>(resolve => (stepDown = resolve))
   /** The server's stop once asked for: see {@link close}. */
   let closing: Promise<void> | null = null
+  /** Whether the server listens yet: its port is known from then on. */
+  let listening = false
+  /** What answers on the former port once it has it, whether it is trying for it, and whether it gave up for good. */
+  let pointer: ReturnType<typeof createServer> | null = null
+  let pointing = false
+  let pointDone = false
+  /** When the former holder was first seen gone, by the monotonic clock. */
+  let formerGone: number | null = null
   /** Whether the tick is asking the lock: the ask probes the other server, and a slow one must not pile up asks. */
   let asking = false
   // The poll's tick also asks whether the lock is still this server's: a lock another server holds leaves this one serving no one's project.
   const headPoll = setInterval(() => {
     follow()
+    pointFrom()
     if (o.holder === undefined || asking) return
     asking = true
     void o
@@ -290,7 +317,8 @@ export async function startServer(o: {
     // A frame still being laid out when `close` ended the stream is dropped, not written after the end.
     const write = (text: string) => void (res.writableEnded || res.destroyed || res.write(text))
     const send = (event: PageEvent) => write(`data: ${JSON.stringify(event)}\n\n`)
-    const alive = setInterval(() => write(': alive\n\n'), KEEPALIVE_MS)
+    // An event, not a comment: a page sees only events, and takes a stream that stays silent for a while as lost.
+    const alive = setInterval(() => send({ type: 'alive' }), o.aliveMs ?? ALIVE_MS)
     res.on('close', () => {
       clearInterval(alive)
       streams.delete(res)
@@ -340,16 +368,88 @@ export async function startServer(o: {
   })
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : 0
+  listening = true
   origin = `http://127.0.0.1:${port}`
+
+  /**
+   * Listens on the former holder's port with {@link directions}, once it is free, tried on each tick: while that
+   * holder still runs (stopped, or stepping down, it still holds its port), and for {@link FORMER_GRACE_MS} after
+   * it ended. A port that something else holds is never taken from it: a failed try looks once at what listens
+   * there, and anything but the former holder's own silence or pane ends the trying for good, as does the grace.
+   */
+  function pointFrom(): void {
+    const former = o.former ?? null
+    if (!listening || former === null || former.port === port || pointer !== null || pointing || pointDone || closing !== null) return
+    if (!alive(former.pid)) {
+      formerGone ??= performance.now()
+      if (performance.now() - formerGone > (o.formerGraceMs ?? FORMER_GRACE_MS)) return void (pointDone = true)
+    }
+    pointing = true
+    const there = createServer((req, res) => directions(req, res))
+    there.once('error', () => {
+      void heldBy(former).then(other => {
+        if (other) pointDone = true
+        pointing = false
+      })
+    })
+    there.listen(former.port, '127.0.0.1', () => {
+      pointing = false
+      if (closing !== null) return void there.close()
+      pointer = there
+    })
+  }
+  /**
+   * Whether the former port, which a try could not have, is held by another program: something accepts there, and
+   * it is not the former holder, which has ended, or answers neither in silence (stopped) nor as a pane server.
+   * Nothing accepting is a moment of a port being let go, and is tried again.
+   */
+  async function heldBy(former: Replaced): Promise<boolean> {
+    const accepts = () =>
+      new Promise<boolean>(resolve => {
+        const socket = connect(former.port, '127.0.0.1')
+        socket.setTimeout(1_000, () => socket.destroy())
+        socket.once('connect', () => {
+          socket.destroy()
+          resolve(true)
+        })
+        socket.once('error', () => resolve(false))
+        socket.once('close', () => resolve(false))
+      })
+    if (!(await accepts())) return false
+    if (!alive(former.pid)) return true
+    if ((await probe(addressOf(former.port, token), 1_000)) !== 'other') return false
+    // An answer that is not a pane's, or a connection cut while the holder let its port go: only the first is
+    // another program's, and it still accepts.
+    return accepts()
+  }
+  /**
+   * The former port's only answers, under the same token rule: a page's event stream is told where the pane is
+   * now, as a connected page is when a server steps down, and anything else is sent there. Nothing here says it is
+   * a pane server, so no start takes it for one.
+   */
+  function directions(req: IncomingMessage, res: ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    res.setHeader('referrer-policy', 'no-referrer')
+    if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
+    if (url.pathname === '/events') {
+      return void res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' }).end(`data: ${JSON.stringify({ type: 'moved', port })}\n\n`)
+    }
+    res.writeHead(307, { location: `http://127.0.0.1:${port}${url.pathname}${url.search}`, 'cache-control': 'no-store' }).end()
+  }
 
   /** Stops the server; asked again (a step-down, then the host's own stop), it is the same stop. */
   function close(): Promise<void> {
     closing ??= (async () => {
       clearInterval(headPoll)
+      pointer?.close()
+      pointer?.closeAllConnections()
       stopClocks()
       // A claim of the folder still running would go on to a first scan for a server that is gone.
       endDeliberately()
       await endWatcher(io).catch(() => undefined)
+      // A scan or any other run still under way is interrupted, as Ctrl-C would, and none is started after
+      // (after the watcher's end, which runs a kill of its own).
+      io.end()
       for (const res of streams) res.end()
       await new Promise<void>(resolve => server.close(() => resolve()))
     })()

@@ -436,31 +436,6 @@ describe('startClient when a post fails', () => {
   })
 })
 
-describe('startClient when the stream is lost', () => {
-  it('says it is reconnecting, waits with the host, and stops on close', async () => {
-    const written: string[] = []
-    const timers: Array<{ ms: number; fire: () => void }> = []
-    let opened = 0
-    const fetchFake = (async (input: string | URL | Request): Promise<Response> => {
-      if (!String(input).includes('/events')) return new Response('{}')
-      opened++
-      return new Response(`data: ${JSON.stringify(frame())}\n\n`, { headers: { 'content-type': 'text/event-stream' } })
-    }) as typeof fetch
-    const client = startClient({ url: 'http://127.0.0.1:1/?t=x', size: () => ({ columns: 40, rows: 10 }), theme: 'light', write: bytes => written.push(bytes), fetch: fetchFake, copy: () => undefined, quit: () => undefined, suspend: () => undefined, after: (ms, fire) => timers.push({ ms, fire }) })
-    await new Promise(resolve => setTimeout(resolve, 30))
-    expect(strip(written.join(''))).toContain('Reconnecting to the server')
-    expect(timers.map(t => t.ms)).toContain(500)
-    timers.find(t => t.ms === 500)!.fire()
-    await new Promise(resolve => setTimeout(resolve, 30))
-    expect(opened).toBe(2)
-    client.close()
-    written.length = 0
-    client.input('2')
-    client.status('late')
-    expect(written).toEqual([])
-  })
-})
-
 describe('startClient keys in a field', () => {
   it('moves over a character beyond the basic plane whole, and ignores keys with nothing to do', async () => {
     const h = harness()

@@ -7,7 +7,7 @@ import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { HAS_PROC, scratch, spawnFixture } from './fixtures/helpers'
-import { PANE_HEADER, PATIENCE_MS, addressOf, claim, identity, lockFile } from './lock'
+import { PANE_HEADER, PATIENCE_MS, addressOf, claim, identity, lockFile, pointable } from './lock'
 import type { Silent } from './lock'
 
 const LOCK = join(dirname(fileURLToPath(import.meta.url)), 'lock.ts')
@@ -132,9 +132,9 @@ describe('claim', () => {
     const guard = `${file}.removing`
     writeFileSync(guard, '1')
     const remover = spawnFixture('sh', ['-c', `sleep 0.2; rm -f '${guard}'`])
-    const started = Date.now()
+    const started = performance.now()
     got.record(1234)
-    expect(Date.now() - started).toBeGreaterThanOrEqual(150)
+    expect(performance.now() - started).toBeGreaterThanOrEqual(150)
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.pid, port: 1234 })
     expect(readdirSync(join(data, 'web'))).toEqual([basename(file)])
     await new Promise(done => remover.on('close', done))
@@ -294,11 +294,13 @@ describe('claim', () => {
       mkdirSync(join(data, 'web'), { recursive: true })
       writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
       const told: Silent[] = []
-      const started = Date.now()
+      const started = performance.now()
       const got = await claim(data, root, TOKEN, holder => told.push(holder))
       expect(got.kind).toBe('mine')
-      expect(Date.now() - started).toBeGreaterThanOrEqual(PATIENCE_MS.reduce((a: number, b: number) => a + b, 0) - 100)
+      expect(performance.now() - started).toBeGreaterThanOrEqual(PATIENCE_MS.reduce((a: number, b: number) => a + b, 0) - 100)
       expect(told).toEqual([{ pid: process.ppid, stopped: false }])
+      // A live holder that stayed silent: the one whose tabs may still come looking on its port.
+      if (got.kind === 'mine') expect(got.replaced).toEqual({ pid: process.ppid, port: server.port })
     } finally {
       server.close()
     }
@@ -315,11 +317,31 @@ describe('claim', () => {
       mkdirSync(join(data, 'web'), { recursive: true })
       writeFileSync(lockFile(data, root), JSON.stringify({ pid: holder.pid, port }))
       const told: Silent[] = []
-      expect((await claim(data, root, TOKEN, h => told.push(h))).kind).toBe('mine')
+      const got = await claim(data, root, TOKEN, h => told.push(h))
+      expect(got.kind).toBe('mine')
       expect(told).toEqual([{ pid: holder.pid, stopped: true }])
+      if (got.kind === 'mine') expect(got.replaced).toEqual({ pid: holder.pid, port })
     } finally {
       process.kill(holder.pid!, 'SIGCONT')
     }
+  })
+
+  it('points from no port a live holder answered on as something else, nor from a privileged one', async () => {
+    const data = scratch()
+    const root = scratch()
+    // A live pid whose port answers as another program: a pid used again, nothing of a pane's.
+    const server = await serve((_req, res) => void res.writeHead(200).end('it works'))
+    try {
+      mkdirSync(join(data, 'web'), { recursive: true })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
+      const got = await claim(data, root, TOKEN)
+      if (got.kind !== 'mine') throw new Error('not mine')
+      expect(got.replaced).toBeNull()
+    } finally {
+      server.close()
+    }
+    expect([80, 443, 1023].map(pointable)).toEqual([false, false, false])
+    expect([1024, 41231].map(pointable)).toEqual([true, true])
   })
 
   it('tells a pane server from another program on the port: the marker, or the page of a server from before it', async () => {
@@ -339,6 +361,33 @@ describe('claim', () => {
       } finally {
         server.close()
       }
+    }
+  })
+
+  it('reads no more than the start of an answer that is not a pane server, however long it streams', async () => {
+    const data = scratch()
+    const root = scratch()
+    let sent = 0
+    // Another program on a port used again, streaming without end and never naming the pane's page.
+    const server = await serve((_req, res) => {
+      res.writeHead(200)
+      const chunk = Buffer.alloc(16 * 1024, 'x')
+      const more = () => {
+        while (!res.destroyed && res.write(chunk)) sent += chunk.length
+        if (!res.destroyed) res.once('drain', more)
+      }
+      more()
+    })
+    try {
+      mkdirSync(join(data, 'web'), { recursive: true })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
+      const started = performance.now()
+      expect((await claim(data, root, TOKEN)).kind).toBe('mine')
+      // Read up to its limit and let go at once, not read on until the probe's time is up.
+      expect(performance.now() - started).toBeLessThan(PATIENCE_MS[0] + PATIENCE_MS[1])
+      expect(sent).toBeLessThan(4 * 1024 * 1024)
+    } finally {
+      server.close()
     }
   })
 
@@ -381,13 +430,18 @@ describe('claim', () => {
     expect((await claim(data, root, TOKEN)).kind).toBe('mine')
   })
 
-  it("takes over a lock whose process is gone, and writes it as its own", async () => {
+  it("takes over a lock whose process is gone, and writes it as its own, pointing from nothing of the old one's", async () => {
     const data = scratch()
     const root = scratch()
     mkdirSync(join(data, 'web'), { recursive: true })
     writeFileSync(lockFile(data, root), JSON.stringify({ pid: deadPid(), port: 9 }))
     const got = await claim(data, root, TOKEN)
     expect(got.kind).toBe('mine')
+    // A holder already gone had no tab left to point: its port, whoever has it now, is left alone.
+    if (got.kind === 'mine') expect(got.replaced).toBeNull()
+    // A project nobody held replaces nothing.
+    const free = await claim(scratch(), scratch(), TOKEN)
+    if (free.kind === 'mine') expect(free.replaced).toBeNull()
     expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.pid, port: null })
   })
 

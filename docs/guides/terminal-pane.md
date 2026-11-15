@@ -83,7 +83,10 @@ out at its own size.
 
 If the server it attached to stops, the terminals attached to it notice, and
 one of them takes the project over while the others attach to that one. Until
-then the pane shows `Reconnecting to the server...`.
+then the pane shows `Reconnecting to the server...`. The server sends a
+keep-alive every 10 seconds, so a server that goes quiet without stopping (one
+suspended with `Ctrl-Z` in another terminal) is noticed too: after 20 to 40
+seconds without a word the pane reconnects, the same way.
 
 A server that is there but does not answer is waited on for a few seconds,
 and the pane says what it waits for. The usual case is a pane suspended with

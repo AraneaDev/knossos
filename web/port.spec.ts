@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { scratch as scratchUnder } from './fixtures/helpers'
@@ -36,12 +36,40 @@ describe('webPort', () => {
     expect((await io.process.run(['true'], { timeoutMs: 5_000 })).exitCode).toBe(0)
   })
 
+  it("interrupts its runs when its server ends it, as Ctrl-C would, kills one that does not stop, and runs none after", async () => {
+    const io = webPort({ root: '/work/app', pluginRoot: '/nowhere', storeFile: join(scratch(), 'store.json'), hub: fakeHub(), endGraceMs: 300 })
+    const dir = scratch()
+    // A scan stops at its next checkpoint on SIGINT; a run that ignores it is killed with its group after the grace.
+    const polite = io.process.run(['sh', '-c', `trap 'echo stopped; exit 3' INT; echo $$ > ${dir}/a; while :; do sleep 0.05; done`])
+    const stubborn = io.process.run(['sh', '-c', `trap '' INT; echo $$ > ${dir}/b; while :; do sleep 0.05; done`])
+    await vi.waitFor(() => expect(readdirSync(dir).sort()).toEqual(['a', 'b']))
+    const started = performance.now()
+    io.end()
+    expect(await polite).toEqual({ exitCode: 3, stdout: 'stopped\n', stderr: '' })
+    await expect(stubborn).rejects.toThrow(/killed \(SIGKILL\)/)
+    expect(performance.now() - started).toBeGreaterThanOrEqual(250)
+    await expect(io.process.run(['true'])).rejects.toThrow(/the server stopped/)
+  })
+
+  it('kills what is left of an interrupted run after the grace, when its own shell already stopped', async () => {
+    const io = webPort({ root: '/work/app', pluginRoot: '/nowhere', storeFile: join(scratch(), 'store.json'), hub: fakeHub(), endGraceMs: 300 })
+    const pidFile = join(scratch(), 'pid')
+    // The shell stops on the interrupt; what it started ignores it, and lets go of the output, so the run is over.
+    const run = io.process.run(['sh', '-c', `trap 'exit 0' INT; (trap '' INT; exec sleep 30) >/dev/null 2>&1 & echo $! > ${pidFile}; while :; do sleep 0.05; done`])
+    await vi.waitFor(() => expect(readFileSync(pidFile, 'utf8')).toMatch(/^\d+\n$/))
+    const left = Number(readFileSync(pidFile, 'utf8'))
+    io.end()
+    expect((await run).exitCode).toBe(0)
+    expect(() => process.kill(left, 0)).not.toThrow()
+    await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 3_000 })
+  })
+
   it('kills a run that outlives its timeout', async () => {
     const io = portOver(fakeHub())
     const pidFile = join(scratch(), 'pid')
-    const started = Date.now()
+    const started = performance.now()
     await expect(io.process.run(['sh', '-c', `echo $$ > ${pidFile}; exec sleep 30`], { timeoutMs: 300 })).rejects.toThrow(/timed out/)
-    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(performance.now() - started).toBeLessThan(5_000)
     const pid = Number(readFileSync(pidFile, 'utf8'))
     expect(() => process.kill(pid, 0)).toThrow()
   })
@@ -49,10 +77,10 @@ describe('webPort', () => {
   it('ends a timed-out run whose own child still holds its output open, and that child too', async () => {
     const io = portOver(fakeHub())
     const pidFile = join(scratch(), 'pid')
-    const started = Date.now()
+    const started = performance.now()
     // Not exec'd: the shell waits on a sleep of its own, which keeps the pipe open after the shell is killed.
     await expect(io.process.run(['sh', '-c', `sleep 30 & echo $! > ${pidFile}; wait`], { timeoutMs: 300 })).rejects.toThrow(/timed out after 300 ms/)
-    expect(Date.now() - started).toBeLessThan(5_000)
+    expect(performance.now() - started).toBeLessThan(5_000)
     const pid = Number(readFileSync(pidFile, 'utf8'))
     await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow())
   })

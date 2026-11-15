@@ -49,9 +49,10 @@ function endGroup(pid: number): void {
  * more than `maxOutput` bytes is ended with everything it started, so a
  * hung grandchild (PHP under the wrapper's shell) cannot keep its output
  * open. A run that could not start, timed out, printed too much or was
- * killed rejects, saying which.
+ * killed rejects, saying which. Its group is in `own` while it runs, for the
+ * port that started it to end it.
  */
-function run(argv: string[], timeoutMs: number, env: NodeJS.ProcessEnv, maxOutput: number): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+function run(argv: string[], timeoutMs: number, env: NodeJS.ProcessEnv, maxOutput: number, own: Set<number>): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   if (!groupsEnded) {
     groupsEnded = true
     process.once('exit', () => groups.forEach(endGroup))
@@ -60,6 +61,7 @@ function run(argv: string[], timeoutMs: number, env: NodeJS.ProcessEnv, maxOutpu
     const child = spawn(argv[0]!, argv.slice(1), { env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
     const pid = child.pid
     if (pid !== undefined) groups.add(pid)
+    if (pid !== undefined) own.add(pid)
     const out = { stdout: '', stderr: '' }
     let size = 0
     let why: string | null = null
@@ -79,6 +81,7 @@ function run(argv: string[], timeoutMs: number, env: NodeJS.ProcessEnv, maxOutpu
     const settle = () => {
       if (timer !== null) clearTimeout(timer)
       if (pid !== undefined) groups.delete(pid)
+      if (pid !== undefined) own.delete(pid)
     }
     child.on('error', error => {
       settle()
@@ -174,13 +177,25 @@ function storeOf(file: string): Record<string, unknown> {
 }
 
 /**
+ * How long a run interrupted by {@link WebPort.end} is given to stop on its own before its group is killed: a scan
+ * stops at its next checkpoint, where the graph is left whole, and a checkpoint comes well within this.
+ */
+const END_GRACE_MS = 10_000
+
+/** A pane's port, and `end` for the server that stops: see {@link webPort}. */
+export type WebPort = Port & { end(): void }
+
+/**
  * The port for one project's pane at `root`, running the plugin's wrapper
  * from `pluginRoot` with `env`, keeping the store in `storeFile`. `heard` is
  * called whenever a spawned child (the watcher) prints; `maxOutput` bounds
  * what a run may print; `log` takes the lines meant for the user (stderr by
- * default).
+ * default). `end` is for its server's stop: the runs under way (a scan, say)
+ * are interrupted as Ctrl-C interrupts them, which `knossos scan` takes as a
+ * cancellation, and killed with what they started if they have not ended
+ * after `endGraceMs`; a run asked for after that refuses.
  */
-export function webPort(o: { root: string; pluginRoot: string; storeFile: string; hub: PortHub; env?: NodeJS.ProcessEnv; heard?: () => void; maxOutput?: number; log?: (text: string) => void }): Port {
+export function webPort(o: { root: string; pluginRoot: string; storeFile: string; hub: PortHub; env?: NodeJS.ProcessEnv; heard?: () => void; maxOutput?: number; log?: (text: string) => void; endGraceMs?: number }): WebPort {
   const env = o.env ?? process.env
   const heard = o.heard ?? (() => undefined)
   const log = o.log ?? ((text: string) => console.error(text))
@@ -195,7 +210,24 @@ export function webPort(o: { root: string; pluginRoot: string; storeFile: string
     },
   })
   const store = storeOf(o.storeFile)
+  const own = new Set<number>()
+  let ended = false
   return {
+    end: () => {
+      ended = true
+      const interrupted = [...own]
+      for (const pid of interrupted) {
+        try {
+          process.kill(-pid, 'SIGINT')
+        } catch {
+          // Gone already.
+        }
+      }
+      // Each group is ended by its id, whether its leader is still there or not: a grandchild that ignored the
+      // interrupt outlives the wrapper's shell, and is still in the group. A group whose last member is gone takes
+      // the signal as nothing (ESRCH); its id is not handed out again while any member lives.
+      if (interrupted.length > 0) timer(setTimeout(() => interrupted.forEach(endGroup), o.endGraceMs ?? END_GRACE_MS), clearTimeout)
+    },
     clock: {
       now: async () => Date.now(),
       after: (ms: number, fire: () => void) => timer(setTimeout(fire, ms), clearTimeout),
@@ -221,7 +253,8 @@ export function webPort(o: { root: string; pluginRoot: string; storeFile: string
     },
     session: { root: async () => o.root, id: async () => 'web', append: async () => undefined },
     process: {
-      run: (argv: string[], options?: { timeoutMs?: number }) => run(argv, options?.timeoutMs ?? 0, env, o.maxOutput ?? MAX_OUTPUT),
+      run: (argv: string[], options?: { timeoutMs?: number }) =>
+        ended ? Promise.reject(new Error(`${argv[0]} was not run: the server stopped`)) : run(argv, options?.timeoutMs ?? 0, env, o.maxOutput ?? MAX_OUTPUT, own),
       spawn: (args: { argv: string[] }) => spawned(args.argv, env, heard),
     },
     fs: {

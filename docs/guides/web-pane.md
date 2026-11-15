@@ -99,7 +99,17 @@ A server that finds another holding the project closes: its terminal says so,
 Another server took over the pane for /home/you/code/shop; this one stops.
 ```
 
-and a browser tab on it moves to the other server's address by itself. A
+and a browser tab on it moves to the other server's address by itself.
+
+A tab that was away when that happened, on a laptop that slept say, can find
+its way too. When the server that took over did so from one that was still
+running but silent (a terminal pane suspended with `Ctrl-Z`), it also listens
+on that server's old port once it is free, with only directions to its own
+address, for as long as it runs. It tries that port while the old pane still
+runs and for a minute after it ends, and never takes a port below 1024 or one
+another program uses: if something that is not the old pane answers there,
+it leaves the port alone for good. A tab whose server goes quiet without
+stopping reconnects after 20 to 40 seconds, and lands there the same way. A
 server that stops on a failure of its own still ends its watcher and removes
 its lock. A second Ctrl-C while it stops makes it stop at once.
 

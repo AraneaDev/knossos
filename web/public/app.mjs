@@ -13,6 +13,15 @@
 /** The first wait before the event stream is opened again, and the longest. */
 export const RETRY_FIRST_MS = 500;
 export const RETRY_MOST_MS = 5000;
+/** How often the server sends a keep-alive on the event stream, whatever else it sends. */
+export const ALIVE_MS = 10000;
+/**
+ * How often a page looks whether its stream said anything: a whole period with
+ * no event at all (two keep-alives missed) is a stream lost, so a stream gone
+ * silent is noticed within one to two periods. A server that is scanning still
+ * sends them: a scan runs in a process of its own.
+ */
+export const SILENT_MS = 2 * ALIVE_MS;
 /** How long a page waits for a window that stops changing size before it says so. */
 const RESIZE_MS = 100;
 /** How long a toast stays. */
@@ -141,11 +150,20 @@ export function movedTo(port, href) {
  * One page's connection to the pane: the event stream, opened again with
  * {@link retryDelay} after each loss (the first event back is the current
  * frame, which replaces whatever the page shows), and its inputs, each sent
- * once as it happens and never again. A host that is not a browser hands it
- * `after(ms, fire)` to wait with.
+ * once as it happens and never again. A stream silent for {@link SILENT_MS}
+ * is a loss as well, once its server is known to send keep-alives, and
+ * `lost()`, when given, is told of every loss. A host
+ * that is not a browser hands it `after(ms, fire)` to wait with.
  */
 export function createPage(o) {
     let attempt = 0;
+    /** Whether the host closed the page for good: no stream is opened again, and no silence is looked for. */
+    let stopped = false;
+    /**
+     * Whether the page's server has sent a keep-alive event: only then is a silent stream a lost one. A server from
+     * before those events (an update can leave one running) sends a comment no page sees, and is never taken for lost.
+     */
+    let sendsAlive = false;
     // A host without timers of its own to hand (the browser) waits with `setTimeout`.
     const later = o.after ?? ((ms, fire) => setTimeout(fire, ms));
     const page = {
@@ -163,6 +181,7 @@ export function createPage(o) {
             });
         },
         connect() {
+            if (stopped) return;
             const size = o.size();
             const query = new URLSearchParams({
                 t: o.token,
@@ -172,15 +191,37 @@ export function createPage(o) {
                 theme: o.theme(),
             });
             const source = new o.EventSource(`/events?${query}`);
-            source.onmessage = (message) => {
-                attempt = 0;
-                received(JSON.parse(message.data));
-            };
-            source.onerror = () => {
+            let heard = 0;
+            let gone = false;
+            const lose = () => {
+                if (gone) return;
+                gone = true;
                 // The stream would retry on its own at once; the page waits instead, longer each time.
                 source.close();
+                o.lost?.();
                 later(retryDelay(attempt++), () => page.connect());
             };
+            // A stream that says nothing for a whole period is lost too, as one whose server was suspended is: it
+            // never ends by itself. The same holds for one that never opens.
+            const look = (seen) =>
+                later(SILENT_MS, () => {
+                    if (gone || stopped) return;
+                    if (heard === seen && sendsAlive) return lose();
+                    look(heard);
+                });
+            source.onmessage = (message) => {
+                heard++;
+                attempt = 0;
+                const event = JSON.parse(message.data);
+                if (event.type === "alive") sendsAlive = true;
+                received(event);
+            };
+            source.onerror = lose;
+            look(heard);
+        },
+        /** Ends the page's connection for good: the host is closing. */
+        stop() {
+            stopped = true;
         },
         /** The focus landed on `element` (a press or field id): told to the pane, unless it already knows. */
         focusedOn(element) {

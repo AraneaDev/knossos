@@ -117,6 +117,29 @@ describe('startDeliberately', () => {
         expect(mod.deliberate.claiming).toBe(false)
     })
 
+    it('starts nothing after the first scan for a server that stopped while it ran', async () => {
+        const runs = async (stop: boolean) => {
+            // Each from a fresh state: a scan flight left from the other would run on that one's port.
+            reset(options)
+            const port = fakePort({ answers: { claim: claim('added') } })
+            const run = port.io.process.run.bind(port.io.process)
+            port.io.process.run = (async (argv: string[], options?: unknown) => {
+                const answer = await run(argv, options as never)
+                // The server stops while its first scan runs.
+                if (argv[2] === 'scan' && stop) endDeliberately()
+                return answer
+            }) as typeof port.io.process.run
+            await startDeliberately(port.io)
+            return port.subs()
+        }
+        const whole = await runs(false)
+        const stopped = await runs(true)
+        // Left running, the start goes on past the first scan to the turn's brief; stopped, nothing follows the scan and
+        // the reload of what it landed.
+        expect(whole).toEqual(['claim', 'scan', 'dashboard', 'turn-brief'])
+        expect(stopped).toEqual(['claim', 'scan', 'dashboard'])
+    })
+
     it('claims the folder with --execute, scans the claimed root, then loads the dashboard, in that order', async () => {
         const port = fakePort({ answers: { claim: claim('added') } })
         await startDeliberately(port.io)

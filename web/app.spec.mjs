@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ALIVE_MS as SERVER_ALIVE_MS } from "./server.ts";
 import {
+    ALIVE_MS,
+    SILENT_MS,
     createPage,
     focusStep,
     movedTo,
@@ -209,6 +212,83 @@ describe("the event stream", () => {
         const before = FakeSource.opened.length;
         vi.advanceTimersByTime(500);
         expect(FakeSource.opened.length).toBe(before + 1);
+    });
+
+    it("takes a stream that says nothing for a while as lost, and keeps one that gets its keep-alives", () => {
+        vi.useFakeTimers();
+        let lost = 0;
+        const p = createPage({
+            EventSource: FakeSource,
+            fetch: async () => ({ ok: true }),
+            token: "t",
+            id: "a",
+            size: () => ({ cols: 80, rows: 24 }),
+            theme: () => "dark",
+            draw: () => undefined,
+            lost: () => lost++,
+            on: {},
+        });
+        p.connect();
+        const first = FakeSource.opened[0];
+        first.emit(FRAME);
+        // The server's keep-alives keep it, however long nothing else comes.
+        for (let i = 0; i < 12; i++) {
+            vi.advanceTimersByTime(ALIVE_MS);
+            first.emit({ type: "alive" });
+        }
+        expect(first.closed).toBe(false);
+        expect(lost).toBe(0);
+        // Silent from here, as a stream whose server was suspended: lost after one to two periods, then opened again.
+        const until = (done) => {
+            let waited = 0;
+            while (!done() && waited < 10 * SILENT_MS) {
+                vi.advanceTimersByTime(1000);
+                waited += 1000;
+            }
+            return waited;
+        };
+        const silent = until(() => first.closed);
+        expect(silent).toBeGreaterThanOrEqual(SILENT_MS);
+        expect(silent).toBeLessThanOrEqual(2 * SILENT_MS);
+        expect(lost).toBe(1);
+        until(() => FakeSource.opened.length === 2);
+        // One that never says anything is lost too, a period after it was opened.
+        const never = until(() => FakeSource.opened[1].closed);
+        expect(never).toBeLessThanOrEqual(SILENT_MS);
+        expect(lost).toBe(2);
+        until(() => FakeSource.opened.length === 3);
+        // Stopped, it opens nothing more and looks for nothing.
+        p.stop();
+        vi.advanceTimersByTime(10 * SILENT_MS);
+        expect(FakeSource.opened).toHaveLength(3);
+        expect(lost).toBe(2);
+    });
+
+    it("never takes a stream for lost when its server sends no keep-alive events, as one from before them does", () => {
+        vi.useFakeTimers();
+        let lost = 0;
+        const p = createPage({
+            EventSource: FakeSource,
+            fetch: async () => ({ ok: true }),
+            token: "t",
+            id: "a",
+            size: () => ({ cols: 80, rows: 24 }),
+            theme: () => "dark",
+            draw: () => undefined,
+            lost: () => lost++,
+            on: {},
+        });
+        p.connect();
+        FakeSource.opened[0].emit(FRAME);
+        vi.advanceTimersByTime(10 * SILENT_MS);
+        expect(FakeSource.opened[0].closed).toBe(false);
+        expect(lost).toBe(0);
+        p.stop();
+    });
+
+    it("counts on the keep-alive the server sends", () => {
+        expect(SERVER_ALIVE_MS).toBe(ALIVE_MS);
+        expect(SILENT_MS).toBeGreaterThanOrEqual(2 * ALIVE_MS);
     });
 
     it("hands the other events to their handlers", () => {
