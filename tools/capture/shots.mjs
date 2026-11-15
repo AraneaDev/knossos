@@ -414,7 +414,7 @@ export const SHOTS = {
     },
     "web-overview": {
         kind: "browser",
-        size: [1440, 900],
+        size: [1440, 1360],
         theme: "dark",
         match: String.raw`Cross-boundary flows`,
         still: "overview",

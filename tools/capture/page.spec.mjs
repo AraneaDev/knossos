@@ -85,7 +85,7 @@ describe("shootPage", () => {
             });
             expect(browser.seen.viewport).toEqual({
                 width: 1440,
-                height: 900,
+                height: 1360,
                 deviceScaleFactor: 1,
             });
             expect(browser.seen.media).toEqual([
