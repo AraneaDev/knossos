@@ -24,6 +24,25 @@ const version = fs
     .readFileSync(path.join(repositoryRoot, "version.txt"), "utf8")
     .trim();
 
+// The pane's sigil, read from the web client so the site never carries a copy that
+// drifts. It goes inline as data: URIs, since the site may load nothing from
+// another host and VitePress serves public files only from docs/public.
+const sigil = fs.readFileSync(
+    path.join(repositoryRoot, "web/public/icon.svg"),
+    "utf8",
+);
+const dataUri = (svg) =>
+    `data:image/svg+xml,${encodeURIComponent(svg.replace(/\s+/g, " "))}`;
+// The favicon keeps the sigil's own rule: a dark backplate only when the
+// browser is light. The logo follows the site's appearance switch instead.
+const favicon = dataUri(sigil);
+const logoOnDark = dataUri(sigil.replace(/<style>[\s\S]*?<\/style>/, ""));
+const logoOnLight = dataUri(
+    sigil
+        .replace(/<style>[\s\S]*?<\/style>/, "")
+        .replace(/(class="backplate"[\s\S]*?)fill="none"/, '$1fill="#08090b"'),
+);
+
 const groups = readIndex(docsDir);
 const problems = [
     ...unlistedPages(docsDir, groups).map(
@@ -96,10 +115,18 @@ export default defineConfig({
     // Off: a shallow checkout would give every page the date of one commit.
     lastUpdated: false,
     vite: { plugins: [resolveFromSite] },
-    head: [["meta", { name: "color-scheme", content: "light dark" }]],
+    // Dark first, as the pane: a reader's own choice in the switch still wins.
+    appearance: "dark",
+    head: [
+        ["meta", { name: "color-scheme", content: "dark light" }],
+        ["link", { rel: "icon", type: "image/svg+xml", href: favicon }],
+    ],
     markdown: {
         // GitHub's anchors, not VitePress's: see slug.mjs.
         anchor: { slugify: githubSlug },
+        // Screenshots load as they scroll into view, and the variant for the
+        // other appearance, hidden by the theme, does not load at all.
+        image: { lazyLoading: true },
         config: (md) => {
             md.use(repositoryLinks({ docsDir, ref }));
             // Vue reads {{ }} in a page as an expression. Fenced code is exempt
@@ -110,6 +137,7 @@ export default defineConfig({
         },
     },
     themeConfig: {
+        logo: { light: logoOnLight, dark: logoOnDark, alt: "" },
         nav: [
             ...nav,
             { text: "All pages", link: "/all-pages" },

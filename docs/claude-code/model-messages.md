@@ -75,7 +75,7 @@ quiet file in a policed boundary gets no edit message.
 
 ## The turn-end message
 
-![After the turn, with the pane shut: the band above the prompt reads knossos, 1 file, 3 dependents, 20 tests, with details and hide](../images/claude-code/band.png)
+![After a turn that edited hooks/lib/paths.ts, with the pane closed: the band above the prompt reads knossos, 1 file, 15 dependents, 20 tests, as of 26s ago, with details and hide](../images/claude-code/band.png)
 
 The person sees the same turn as the band above the prompt.
 

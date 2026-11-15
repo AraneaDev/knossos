@@ -5,7 +5,8 @@ click on one.
 
 ## Overview
 
-![The Knossos pane's Overview tab beside Claude Code: headline counts, this session, composition by boundary, language and kind, dependency concentration and cross-boundary flows](../../images/claude-code/overview.png)
+![The Knossos pane's Overview tab beside Claude Code: headline counts, this session, composition by boundary, language and kind, dependency concentration and cross-boundary flows](../../images/claude-code/overview.png#gh-dark-mode-only)
+![The same Overview tab in Claude Code's light theme, drawn in that theme's own colours](../../images/claude-code/overview-light.png#gh-light-mode-only)
 
 Overview measures the project; the lists are on the other tabs.
 
@@ -80,7 +81,8 @@ The marker walks the way to Changes, the buckets, the flows, then the notes.
 
 ## Hubs
 
-![The Hubs tab: the most depended-on components with ResultEnvelope marked, and its dependencies drawn beside the list](../../images/claude-code/hubs-detail.png)
+![The Hubs tab: the most depended-on components with ResultEnvelope marked, and its dependencies drawn beside the list](../../images/claude-code/hubs-detail.png#gh-dark-mode-only)
+![The same Hubs tab in Claude Code's light theme, drawn in that theme's own colours](../../images/claude-code/hubs-detail-light.png#gh-light-mode-only)
 
 **Hubs and hotspots** lists the components most depended on, one row each,
 with its boundary and three degrees:
@@ -120,7 +122,7 @@ still: here `ResultEnvelope`, used by 89 and using 15.
 
 ## Boundaries
 
-![The Boundaries tab past twelve boundaries: all 29 listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Query flow drawn with the component pairs behind it](../../images/claude-code/boundaries.png)
+![The Boundaries tab: 33 boundaries, the five largest listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Query flow drawn with the component pairs behind it](../../images/claude-code/boundaries.png)
 
 **The heat map** shows how much each boundary depends on each other one. Rows
 are where a dependency starts, columns where it lands. The axes are lettered,
@@ -167,7 +169,7 @@ name and `q` asks Claude what its dependencies are for.
 
 ## Cycles
 
-![The Cycles tab: a 4-member dependency cycle in the Python worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and the list of both cycles below](../../images/claude-code/cycles.png)
+![The Cycles tab: a 4-member cycle inside ProjectModuleIndex in the Python worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and the list of all seven cycles below](../../images/claude-code/cycles.png)
 
 **Cycle 1** draws the marked dependency cycle as a serpentine of boxes, one box
 per member: the first row left to right, the next right to left, an arrow from
@@ -231,7 +233,7 @@ longest function.
 
 ## Changes
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 31 tests that reach it, and its detail with the diff since the session began](../../images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 15 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](../../images/claude-code/changes-diff.png)
 
 Changes lists everything that changed in the project since the session began,
 whoever changed it: the session's own turns and subagents, your editor, a
@@ -324,7 +326,7 @@ process the earlier ones read `outside`.
 
 ## Branch
 
-![The Branch tab: this checkout against main, the verdict that it broke nothing (no new cycles, crossings, hubs that grew, dead code or violations), and what it changed by boundary with its lines and the files it reaches](../../images/claude-code/branch.png)
+![The Branch tab: a detached checkout four commits ahead of main, 14 things to look at, most of them new dependencies across boundaries, and what it changed by boundary with its lines and its reach](../../images/claude-code/branch.png)
 
 Branch answers two things at a glance: what this branch changed against its
 default branch, and whether it broke anything.

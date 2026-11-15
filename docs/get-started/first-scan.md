@@ -156,7 +156,8 @@ to extend.
 
 ## Next step
 
-![The Knossos pane's Overview tab beside Claude Code: headline counts, this session, composition by boundary, language and kind, dependency concentration and cross-boundary flows](../images/claude-code/overview.png)
+![The Knossos pane's Overview tab beside Claude Code: headline counts, this session, composition by boundary, language and kind, dependency concentration and cross-boundary flows](../images/claude-code/overview.png#gh-dark-mode-only)
+![The same Overview tab in Claude Code's light theme, drawn in that theme's own colours](../images/claude-code/overview-light.png#gh-light-mode-only)
 
 Where you use the graph decides what you set up next.
 
