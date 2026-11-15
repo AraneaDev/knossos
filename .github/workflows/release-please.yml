@@ -314,10 +314,16 @@ jobs:
   # architecture: no emulation and no action beyond the buildx setup this
   # repository already pins. It runs once the gate and every tarball passed,
   # and pushes each architecture by digest only, untagged; the assets job joins
-  # the two under :<version> and :latest right before the release is
-  # published. A dry run builds and checks both and pushes nothing. Each image
-  # is started first: it must answer with the tag's version and carry the
-  # launcher template and the scripts container mode runs from it.
+  # the two under :<version> right before the release is published. A dry run
+  # builds and checks both and pushes nothing.
+  #
+  # What is pushed is a rebuild of the gated commit, not the image the gate
+  # job checked: that one exists for amd64 only, in another job's daemon, and
+  # a multi-arch image needs both architectures from one build pipeline. So
+  # each rebuild is gated here, on its own architecture's runner, before
+  # anything can point at it: it must answer with the tag's version, pass
+  # doctor (all four workers start), and carry the launcher template and the
+  # scripts container mode runs from it.
   #
   # The only job besides the assets job with `packages: write`: pushing is all
   # it needs it for.
@@ -370,6 +376,9 @@ jobs:
             echo "::error::the image says '$said', but the release tag is $TAG"
             exit 1
           fi
+          # doctor exits non-zero when a check fails, as in the tarball smoke step.
+          docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -e KNOSSOS_DATA_DIR=/tmp/check -e KNOSSOS_ROOTS_FILE=/tmp/check/roots.json knossos:image-check doctor --json
           docker run --rm --network none --entrypoint /bin/sh knossos:image-check -c \
             'test -x /opt/knossos/launcher/knossos && test -x /opt/knossos/tools/launcher/idle-stop && test -x /opt/knossos/tools/launcher/container-update'
           echo "$said"
@@ -484,10 +493,12 @@ jobs:
           TAG: ${{ needs.release-please.outputs.tag_name }}
         run: gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY"
 
-      # The two architectures under the release's version and latest, as one
-      # multi-arch image, only now that everything else is in place. The digest
-      # of that image goes into the release notes: it is what a container
-      # install records.
+      # The two architectures under the release's version, as one multi-arch
+      # image, only now that everything else is in place. There is no :latest:
+      # install.sh and self-update pull the version a published release names
+      # and nothing else, and a :latest left on a release that was rolled back
+      # would point at a build nobody released. The digest of the image goes
+      # into the release notes: it is what a container install records.
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}
         with:
@@ -502,7 +513,7 @@ jobs:
           merge-multiple: true
           path: digests
 
-      - name: Tag the image with the version and latest
+      - name: Tag the image with its version
         id: image
         if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}
         env:
@@ -518,10 +529,29 @@ jobs:
             sources="$sources ghcr.io/araneadev/knossos@$(cat "digests/$arch")"
           done
           # shellcheck disable=SC2086 # one source reference per word
-          docker buildx imagetools create -t "ghcr.io/araneadev/knossos:${TAG#v}" -t ghcr.io/araneadev/knossos:latest $sources
+          docker buildx imagetools create -t "ghcr.io/araneadev/knossos:${TAG#v}" $sources
           digest=$(docker buildx imagetools inspect "ghcr.io/araneadev/knossos:${TAG#v}" --format '{{json .Manifest}}' | jq -r .digest)
           case $digest in sha256:*) ;; *) echo "::error::could not read the digest of the tagged image"; exit 1 ;; esac
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      # The first push of a ghcr package makes it private, and then every
+      # container install of this release would fail to pull. Asked the way an
+      # installer asks, without credentials: an anonymous token, then the
+      # manifest.
+      - name: Check that the image can be pulled without credentials
+        if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          token=$(curl --silent --show-error --fail "https://ghcr.io/token?scope=repository:araneadev/knossos:pull" | jq -r '.token // empty') || token=''
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+            "https://ghcr.io/v2/araneadev/knossos/manifests/${TAG#v}")
+          if [ "$status" != 200 ]; then
+            echo "::error::ghcr.io/araneadev/knossos:${TAG#v} cannot be pulled without credentials (HTTP $status): the package is private. Make it public once in the GitHub package settings (Package settings, Change visibility), then release again."
+            exit 1
+          fi
 
       - name: Record the image digest in the release notes
         if: ${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}
@@ -555,7 +585,11 @@ jobs:
           GATE: ${{ (job.status == 'success' && needs.tarballs.result == 'success' && needs.image.result == 'success' && needs.release-please.result == 'success') && 'success' || 'failure' }}
           TAG: ${{ needs.release-please.outputs.tag_name }}
           SHA: ${{ needs.release-please.outputs.sha }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
+          if [ "$GATE" != success ] && [ -n "$IMAGE_DIGEST" ]; then
+            echo "::notice::The image tag ghcr.io/araneadev/knossos:${TAG#v} stays in the registry. It is harmless: install.sh and self-update only pull a version that has a published release, and this one has none."
+          fi
           if [ ! -x tools/ci/release-rollback ]; then
             echo '::error::The release commit was not checked out; deleting the draft. Relabel the Release PR to autorelease: pending by hand.'
             gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY"

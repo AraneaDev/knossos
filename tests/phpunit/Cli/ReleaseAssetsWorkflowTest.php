@@ -140,7 +140,7 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
         self::assertStringContainsString('if: ${{ !inputs.dry_run }}', $login);
         self::assertStringContainsString('name: image-digest-${{ matrix.arch }}', $image);
         // In the assets job, everything that touches the registry is a real release's alone.
-        foreach (['Tag the image with the version and latest', 'Record the image digest in the release notes'] as $name) {
+        foreach (['Tag the image with its version', 'Check that the image can be pulled without credentials', 'Record the image digest in the release notes'] as $name) {
             self::assertStringContainsString("if: \${{ !inputs.dry_run && needs.tarballs.result == 'success' && needs.image.result == 'success' }}", $this->step($this->job($this->workflow(), 'assets'), $name));
         }
     }
@@ -151,6 +151,8 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
         $check = $this->step($this->job($this->workflow(), 'image'), 'Start the image and check what container mode needs');
 
         self::assertStringContainsString('if [ "$DRY_RUN" != true ] && [ "$said" != "Knossos ${TAG#v}" ]; then', $check);
+        // The same gate as the tarballs: doctor, on the architecture's own runner, before the push.
+        self::assertStringContainsString('-e KNOSSOS_DATA_DIR=/tmp/check -e KNOSSOS_ROOTS_FILE=/tmp/check/roots.json knossos:image-check doctor --json', $check);
         foreach (['/opt/knossos/launcher/knossos', '/opt/knossos/tools/launcher/idle-stop', '/opt/knossos/tools/launcher/container-update'] as $path) {
             self::assertStringContainsString('test -x ' . $path, $check);
         }
@@ -164,6 +166,7 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
         $order = array_map(static fn(string $needle): int|false => strpos($assets, $needle), [
             'gh release upload',
             'docker buildx imagetools create',
+            'name: Check that the image can be pulled without credentials',
             'name: Record the image digest in the release notes',
             '--draft=false',
         ]);
@@ -172,13 +175,24 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
         sort($sorted);
         assertSame($sorted, $order);
 
-        $tag = $this->step($assets, 'Tag the image with the version and latest');
-        self::assertStringContainsString('-t "ghcr.io/araneadev/knossos:${TAG#v}" -t ghcr.io/araneadev/knossos:latest $sources', $tag);
+        $tag = $this->step($assets, 'Tag the image with its version');
+        self::assertStringContainsString('docker buildx imagetools create -t "ghcr.io/araneadev/knossos:${TAG#v}" $sources', $tag);
+        // No :latest: nothing pulls it, and one left on a rolled-back release would name a build nobody released.
+        self::assertStringNotContainsString('knossos:latest', $this->workflow());
         self::assertStringContainsString('for arch in amd64 arm64; do', $tag);
         self::assertStringContainsString('echo "digest=$digest" >> "$GITHUB_OUTPUT"', $tag);
         $notes = $this->step($assets, 'Record the image digest in the release notes');
         self::assertStringContainsString('DIGEST: ${{ steps.image.outputs.digest }}', $notes);
         self::assertStringContainsString('--notes-file notes.md', $notes);
+        // A private package fails the release instead of shipping container installs that cannot pull.
+        $anonymous = $this->step($assets, 'Check that the image can be pulled without credentials');
+        self::assertStringContainsString('https://ghcr.io/token?scope=repository:araneadev/knossos:pull', $anonymous);
+        self::assertStringContainsString('https://ghcr.io/v2/araneadev/knossos/manifests/${TAG#v}', $anonymous);
+        self::assertStringContainsString('Make it public once in the GitHub package settings', $anonymous);
+        self::assertStringNotContainsString('password', $anonymous);
+        // The rollback says plainly that the version tag stays, and why that is harmless.
+        self::assertStringContainsString('IMAGE_DIGEST: ${{ steps.image.outputs.digest }}', $assets);
+        self::assertStringContainsString('stays in the registry. It is harmless', $assets);
         // A failed image build ends in the rollback, like a failed tarball.
         self::assertStringContainsString("needs.tarballs.result == 'success' && needs.image.result == 'success' && needs.release-please.result == 'success') && 'success' || 'failure'", $assets);
     }
