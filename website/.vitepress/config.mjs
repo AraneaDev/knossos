@@ -154,6 +154,13 @@ export default defineConfig({
             text: "Edit this page on GitHub",
         },
         outline: { level: [2, 3] },
-        footer: { message: "Released under the MIT license." },
+        // The footer shows on the front page; the pages with a sidebar carry
+        // the same two links at the end of the front page's own text.
+        footer: {
+            message:
+                'Built by <a href="https://tim-schipper.nl/en">Tim Schipper</a> and released as open source under <a href="https://aranea.dev">aranea.dev</a>.',
+            copyright:
+                '<a href="https://aranea.dev/tools/knossos">Knossos on aranea.dev</a> · Released under the MIT license.',
+        },
     },
 });
