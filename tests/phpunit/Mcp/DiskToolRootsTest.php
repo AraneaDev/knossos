@@ -33,7 +33,7 @@ final class DiskToolRootsTest extends KnossosTestCase
     #[Group('mcp')]
     public function testDiskReadingToolsRefuseAProjectOutsideTheServersRoots(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-disk-roots-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-disk-roots');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/mixed', $root);
         try {
             $pdo = $this->freshTestDatabase();
@@ -64,7 +64,7 @@ final class DiskToolRootsTest extends KnossosTestCase
     #[Group('mcp')]
     public function testAVanishedRootIsNotReportedAsOutsideTheRoots(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-disk-roots-gone-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-disk-roots-gone');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/mixed', $root);
         $pdo = $this->freshTestDatabase();
         $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
@@ -150,7 +150,7 @@ final class DiskToolRootsTest extends KnossosTestCase
     #[Group('mcp')]
     public function testTheAssembledServerReportsAProjectOutsideTheRootsAsUnverified(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-probe-assembly-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-probe-assembly');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/mixed', $root);
         try {
             $pdo = $this->freshTestDatabase();
@@ -177,7 +177,7 @@ final class DiskToolRootsTest extends KnossosTestCase
      */
     private function findComponentProbed(\Closure $allowedRoots, ?DriftOracle $drift = null): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-probe-roots-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-probe-roots');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/mixed', $root);
         try {
             $pdo = $this->freshTestDatabase();

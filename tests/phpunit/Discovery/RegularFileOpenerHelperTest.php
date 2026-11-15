@@ -25,7 +25,7 @@ final class RegularFileOpenerHelperTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = sys_get_temp_dir() . '/knossos-stale-opener-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-stale-opener');
         mkdir($this->directory, 0o700, true);
     }
 

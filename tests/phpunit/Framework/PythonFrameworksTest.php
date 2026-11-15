@@ -14,7 +14,6 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class PythonFrameworksTest extends KnossosTestCase
 {
@@ -168,10 +167,7 @@ final class PythonFrameworksTest extends KnossosTestCase
         assertArrayContains(['configures', 'py:module:app.settings', 'py:setting:app.settings.INSTALLED_APPS'], $edgeTuples);
         assertSame(['PY_DYNAMIC_ROUTE_PATH', 'PY_DYNAMIC_ROUTE_PATH'], array_column($diagnostics, 'code'));
 
-        $database = tempnam(sys_get_temp_dir(), 'knossos-python-frameworks-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate Python framework database.');
-        }
+        $database = self::scratchFile('knossos-python-frameworks');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -196,7 +192,7 @@ final class PythonFrameworksTest extends KnossosTestCase
     #[Group('python-frameworks')]
     public function testATaskSentByItsNameIsReachedFromTheSender(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-celery-name-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-celery-name');
         $files = [
             'requirements.txt' => "celery\n",
             'shop/__init__.py' => '',

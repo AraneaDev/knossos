@@ -13,7 +13,7 @@ final class DocumentationAnchorTest extends KnossosTestCase
     #[Group('documentation')]
     public function testEmphasisUnderscoresAreDroppedButThoseInsideWordsAndCodeAreKept(): void
     {
-        $tree = sys_get_temp_dir() . '/knossos-anchors-' . bin2hex(random_bytes(6));
+        $tree = self::scratchPath('knossos-anchors');
         foreach (['docs', 'skills', 'plugins'] as $directory) {
             mkdir($tree . '/' . $directory, 0o777, true);
         }

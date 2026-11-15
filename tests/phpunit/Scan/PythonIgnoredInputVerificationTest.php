@@ -27,7 +27,7 @@ final class PythonIgnoredInputVerificationTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
         mkdir($this->root . '/generated', 0o777, true);
         file_put_contents($this->root . '/knossos.json', (string) json_encode(['version' => 1, 'ignores' => ['generated/**']]));
         file_put_contents($this->root . '/app.py', "from generated.models import Model\n\n\nclass App(Model):\n    pass\n");

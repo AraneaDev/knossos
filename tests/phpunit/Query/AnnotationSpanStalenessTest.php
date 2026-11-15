@@ -30,7 +30,7 @@ final class AnnotationSpanStalenessTest extends KnossosTestCase
 
     protected function setUp(): void
     {
-        $this->root = sys_get_temp_dir() . '/knossos-stale-span-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-span');
         mkdir($this->root . '/src', 0o777, true);
         file_put_contents($this->root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');
         file_put_contents($this->root . '/src/A.php', self::SOURCE);

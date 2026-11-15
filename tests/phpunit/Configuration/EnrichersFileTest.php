@@ -14,17 +14,16 @@ use function PHPUnit\Framework\assertStringContainsString;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('enrichers-file')]
-final class EnrichersFileTest extends TestCase
+final class EnrichersFileTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private string $directory;
     private string|false $savedRootsFile;
 
     protected function setUp(): void
     {
-        $this->directory = sys_get_temp_dir() . '/knossos-enrichers-' . uniqid('', true);
+        $this->directory = self::scratchPath('knossos-enrichers');
         mkdir($this->directory, 0o777, true);
         $this->savedRootsFile = getenv('KNOSSOS_ROOTS_FILE');
     }

@@ -27,7 +27,7 @@ final class PolicyBoundaryReferencesTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-policy-refs-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-policy-refs');
         mkdir($this->root . '/src', 0o777, true);
         file_put_contents($this->root . '/src/a.ts', "export const a = 1;\n");
     }

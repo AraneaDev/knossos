@@ -24,7 +24,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerScansAnExtensionlessShebangScriptUnderItsRealPath(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-shebang-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-shebang');
         mkdir($root . '/bin', 0o755, true);
         mkdir($root . '/src', 0o755, true);
         file_put_contents($root . '/package.json', '{"name":"shebang-fixture"}');
@@ -89,7 +89,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerMarksShebangScriptModulesExecutable(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-executable-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-executable');
         mkdir($root . '/bin', 0o755, true);
         mkdir($root . '/src', 0o755, true);
         file_put_contents($root . '/package.json', '{"name":"executable-fixture"}');
@@ -230,7 +230,7 @@ final class TypescriptScannerTest extends KnossosTestCase
      */
     private function executableModules(string $name, array $files): array
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-' . $name . '-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-' . $name);
         mkdir($root . '/src', 0o755, true);
         $files = ['package.json' => '{"name":"' . $name . '-fixture"}', ...$files];
         foreach ($files as $relative => $contents) {
@@ -278,7 +278,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerDoesNotReferenceDeclarationsItNeverEmits(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-unemitted-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-unemitted');
         mkdir($root . '/src', 0o755, true);
         $files = [
             'package.json' => '{"name":"unemitted-fixture"}',
@@ -347,7 +347,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerLinksAModuleLoadedThroughAnImportMetaUrl(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-url-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-url');
         mkdir($root . '/src/workers', 0o755, true);
         $files = [
             'package.json' => '{"name":"url-fixture"}',
@@ -401,7 +401,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerFollowsADynamicImportWhoseTemplateStartsWithAFilePath(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-template-import-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-template-import');
         mkdir($root . '/web', 0o755, true);
         $files = [
             'package.json' => '{"name":"template-import-fixture"}',
@@ -467,7 +467,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerReferencesExportsDestructuredFromADynamicImport(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-dynamic-named-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-dynamic-named');
         mkdir($root . '/src/tui', 0o755, true);
         $files = [
             'package.json' => '{"name":"dynamic-named-fixture"}',
@@ -522,7 +522,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerReferencesShorthandPropertiesAndDefaults(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-shorthand-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-shorthand');
         mkdir($root . '/src', 0o755, true);
         $files = [
             'package.json' => '{"name":"shorthand-fixture"}',
@@ -584,7 +584,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerReturnsEachNamedMemberOfAUnion(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-union-return-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-union-return');
         mkdir($root . '/src', 0o755, true);
         $files = [
             'package.json' => '{"name":"union-return-fixture"}',
@@ -636,7 +636,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerDoesNotDeclareMembersOfTypeLiterals(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-type-literal-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-type-literal');
         mkdir($root . '/src', 0o755, true);
         $files = [
             'package.json' => '{"name":"type-literal-fixture"}',
@@ -701,7 +701,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerMarksAmbientDeclarationsInOrdinaryFiles(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-ambient-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-ambient');
         mkdir($root . '/src', 0o755, true);
         $files = [
             'package.json' => '{"name":"ambient-fixture"}',
@@ -763,7 +763,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerReferencesFunctionsPassedInJsx(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-ts-jsx-handler-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-ts-jsx-handler');
         mkdir($root . '/src', 0o755, true);
         $files = [
             'package.json' => '{"name":"jsx-handler-fixture"}',
@@ -964,7 +964,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerReportsTheHashOfTheRawBytesItParsed(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'src/Bom.ts' => "\xEF\xBB\xBFexport class Bom {}\n",
@@ -999,7 +999,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTypescriptWorkerReportsEveryFileItsProgramRead(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'src/Base.ts' => "\xEF\xBB\xBFexport class Base {}\n",
@@ -1033,7 +1033,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testAShebangRefusalReportsTheHashItsVerdictRestedOn(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/bin', 0o777, true);
         $python = "#!/usr/bin/env python3\nprint(1)\n";
         file_put_contents($root . '/bin/tool', $python);
@@ -1064,7 +1064,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testPackageJsonReadsDuringModuleResolutionAreRecorded(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         mkdir($root . '/sub', 0o777, true);
         $package = "{\"type\":\"module\"}\n";
@@ -1094,7 +1094,7 @@ final class TypescriptScannerTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testTsconfigReadsAreRecordedByTheHashOfTheirRawBytes(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         $base = "{\n  // shared\n  \"compilerOptions\": {\"strict\": true}\n}\n";
         $config = "\xEF\xBB\xBF{\"extends\": \"./tsconfig.base.json\", \"include\": [\"src\"]}\n";

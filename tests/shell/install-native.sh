@@ -9,13 +9,14 @@
 # KNOSSOS_TEST_RELEASE_DIR to a directory that already holds one (the tarball
 # and its SHA256SUMS) to skip the build.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 ROOT="$HERE/../.."
 INSTALL="${KNOSSOS_TEST_INSTALL:-$ROOT/install.sh}"
 failures=0
 WORK=$(mktemp -d)
-trap 'chmod -R u+rwx "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
 
 pass() { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }

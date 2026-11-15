@@ -21,7 +21,7 @@ final class TypescriptUnnameableFileScanTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-unnameable-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-unnameable');
         mkdir($this->root . '/src', 0o777, true);
         file_put_contents($this->root . '/tsconfig.json', '{"compilerOptions":{"strict":true},"include":["src/**/*"]}');
         file_put_contents($this->root . '/src/ok.ts', "export class Ok {}\n");

@@ -22,7 +22,7 @@ final class AtomicFileTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-stale');
         mkdir($this->directory, 0o700, true);
         // A permissive umask, so a mode the writer does not set would show.
         $this->umask = umask(0o022);

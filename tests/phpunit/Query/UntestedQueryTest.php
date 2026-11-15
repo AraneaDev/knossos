@@ -121,7 +121,7 @@ final class UntestedQueryTest extends KnossosTestCase
     /** @return array{0: PDO, 1: string, 2: string} */
     private function scan(): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-untested-' . bin2hex(random_bytes(5));
+        $root = self::scratchPath('knossos-stale-untested');
         foreach (self::FILES as $path => $contents) {
             @mkdir(dirname($root . '/' . $path), 0o777, true);
             file_put_contents($root . '/' . $path, $contents);

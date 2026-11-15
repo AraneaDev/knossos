@@ -29,7 +29,7 @@ final class LauncherRootsRoundTripTest extends KnossosTestCase
 
     protected function setUp(): void
     {
-        $work = sys_get_temp_dir() . '/knossos-launcher-roots-' . bin2hex(random_bytes(6));
+        $work = self::scratchPath('knossos-launcher-roots');
         mkdir($work . '/home', 0o700, true);
         mkdir($work . '/data', 0o700, true);
         mkdir($work . '/share/knossos/plugin', 0o700, true);

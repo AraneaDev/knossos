@@ -158,10 +158,7 @@ final class DocstringCoverageTest extends KnossosTestCase
 
     private function makeFixtureFile(string $contents): string
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-docstring-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate a docstring fixture file.');
-        }
+        $path = self::scratchFile('knossos-docstring');
         file_put_contents($path, $contents . "\n");
         $this->fixtures[] = $path;
 
@@ -301,7 +298,7 @@ final class DocstringCoverageTest extends KnossosTestCase
     /** A tree whose only area is src: one documented class with one documented and one bare public method. */
     private function fixtureTree(): string
     {
-        $root = sys_get_temp_dir() . '/knossos-docstring-tree-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-docstring-tree');
         mkdir($root . '/src', 0o700, true);
         $this->trees[] = $root;
         file_put_contents($root . '/src/Thing.php', <<<'PHP'

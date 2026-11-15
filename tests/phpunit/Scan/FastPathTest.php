@@ -272,7 +272,7 @@ final class FastPathTest extends KnossosTestCase
      */
     private function installationRootWithDeadTypescriptWorker(): string
     {
-        $installation = sys_get_temp_dir() . '/knossos-stale-install-' . bin2hex(random_bytes(6));
+        $installation = self::scratchPath('knossos-stale-install');
         $this->copyTree(self::repositoryRoot() . '/workers/php', $installation . '/workers/php');
         mkdir($installation . '/workers/typescript/bin', 0o777, true);
         file_put_contents($installation . '/workers/typescript/bin/worker.js', "process.exit(3);\n");
@@ -286,7 +286,7 @@ final class FastPathTest extends KnossosTestCase
      */
     private function installationRootWithAnOversizedTypescriptFile(string $record): string
     {
-        $installation = sys_get_temp_dir() . '/knossos-stale-left-out-install-' . bin2hex(random_bytes(6));
+        $installation = self::scratchPath('knossos-stale-left-out-install');
         $this->copyTree(self::repositoryRoot() . '/workers/php', $installation . '/workers/php');
         mkdir($installation . '/workers/typescript/bin', 0o777, true);
         file_put_contents($installation . '/workers/typescript/bin/worker.js', sprintf(
@@ -305,10 +305,10 @@ final class FastPathTest extends KnossosTestCase
     {
         // A left-out file with no cache entry counted as added on every
         // rescan, so a project holding one never took the fast path again.
-        $root = sys_get_temp_dir() . '/knossos-stale-left-out-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-left-out');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/mixed', $root);
         file_put_contents($root . '/frontend/src/Huge.ts', "export const huge = 1;\n");
-        $record = (string) tempnam(sys_get_temp_dir(), 'knossos-left-out-record-');
+        $record = (string) self::scratchFile('knossos-left-out-record');
         $installation = $this->installationRootWithAnOversizedTypescriptFile($record);
         try {
             $pdo = $this->freshTestDatabase();
@@ -337,7 +337,7 @@ final class FastPathTest extends KnossosTestCase
     #[Group('scan')]
     public function testDegradedIncrementalScanPreservesTheLastGoodGraph(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/mixed', $root);
         $installation = $this->installationRootWithDeadTypescriptWorker();
         try {
@@ -371,7 +371,7 @@ final class FastPathTest extends KnossosTestCase
     #[Group('scan')]
     public function testRequestedFullRescanKeepsTheLastGoodGraphWhenAWorkerFails(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/mixed', $root);
         $dead = $this->installationRootWithDeadTypescriptWorker();
         try {
@@ -401,7 +401,7 @@ final class FastPathTest extends KnossosTestCase
     #[Group('scan')]
     public function testFullRescanProceedsWhenTheFailedLanguageHasNoFactsInTheGraph(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/mixed', $root);
         $installation = $this->installationRootWithDeadTypescriptWorker();
         try {

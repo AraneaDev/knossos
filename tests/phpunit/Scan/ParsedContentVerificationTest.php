@@ -40,7 +40,7 @@ final class ParsedContentVerificationTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
         mkdir($this->root . '/src', 0o777, true);
         file_put_contents($this->root . '/src/Checkout.ts', "export class Checkout {}\n");
     }

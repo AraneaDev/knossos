@@ -93,7 +93,7 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
         if (trim((string) @shell_exec('command -v node 2>/dev/null')) === '') {
             self::markTestSkipped('node is not on PATH.');
         }
-        $this->root = sys_get_temp_dir() . '/knossos-stale-ts-call-arguments-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-ts-call-arguments');
         mkdir($this->root . '/src', 0o777, true);
         $this->write('jsconfig.json', '{"compilerOptions": {"checkJs": false}, "include": ["src"]}' . "\n");
         $this->write('src/devices.js', "export function recorder() {\n    return { hold() {} };\n}\n\nexport function camera() {\n    return { hold() {} };\n}\n");
@@ -130,7 +130,7 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
         if (trim((string) @shell_exec('command -v node 2>/dev/null')) === '') {
             self::markTestSkipped('node is not on PATH.');
         }
-        $this->root = sys_get_temp_dir() . '/knossos-stale-ts-call-arguments-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-ts-call-arguments');
         mkdir($this->root . '/src', 0o777, true);
         $this->write('jsconfig.json', '{"compilerOptions": {"checkJs": false}, "include": ["src"]}' . "\n");
         $this->write('src/devices.js', "export function recorder() {\n    return { hold() {} };\n}\n");
@@ -246,7 +246,7 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
         if (trim((string) @shell_exec('command -v node 2>/dev/null')) === '') {
             self::markTestSkipped('node is not on PATH.');
         }
-        $this->root = sys_get_temp_dir() . '/knossos-stale-ts-call-arguments-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-ts-call-arguments');
         mkdir($this->root . '/src', 0o777, true);
     }
 

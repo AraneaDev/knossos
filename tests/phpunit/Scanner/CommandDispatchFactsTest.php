@@ -107,7 +107,7 @@ final class CommandDispatchFactsTest extends KnossosTestCase
     /** @param array<string, string> $files */
     private function project(array $files): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         foreach ($files as $path => $contents) {
             if (!is_dir(dirname($root . '/' . $path))) {
                 mkdir(dirname($root . '/' . $path), 0o700, true);

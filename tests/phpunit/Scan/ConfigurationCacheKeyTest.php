@@ -30,7 +30,7 @@ final class ConfigurationCacheKeyTest extends KnossosTestCase
     #[Group('scan')]
     public function testOnlyASettingAWorkerReadsInvalidatesTheCache(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-config-key-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-config-key');
         mkdir($root . '/src', 0o700, true);
         file_put_contents($root . '/composer.json', "{\"name\": \"demo/config\", \"autoload\": {\"psr-4\": {\"App\\\\\": \"src/\"}}}\n");
         foreach (['A', 'B', 'C'] as $class) {

@@ -3,11 +3,12 @@
 # passed, or, for a release-please pull request, when exactly the static lane
 # ran and the coverage jobs were skipped.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 CHECK="${QUALITY_VERDICT_CHECK:-$HERE/../../tools/ci/quality-verdict}"
 failures=0
 out="$(mktemp)"
-trap 'rm -f "$out"' EXIT
 
 # expect label expected-status message lanes shards merge [--release-pr]
 expect() {

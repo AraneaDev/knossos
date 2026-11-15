@@ -25,7 +25,7 @@ final class LaunchedProcessTest extends KnossosTestCase
     /** @return array{0: PDO, 1: string, 2: string} */
     private function scanned(): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-launches-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-launches');
         $files = [
             'composer.json' => "{\"name\": \"demo/launcher\", \"autoload\": {\"psr-4\": {\"App\\\\\": \"src/\"}}}\n",
             'src/Workers.php' => "<?php\n\nnamespace App;\n\nfinal class Workers\n{\n"
@@ -97,7 +97,7 @@ final class LaunchedProcessTest extends KnossosTestCase
         if (!is_file(self::rustWorkerBinary())) {
             self::markTestSkipped('The Rust worker binary is not built.');
         }
-        $root = sys_get_temp_dir() . '/knossos-stale-launches-polyglot-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-launches-polyglot');
         $files = [
             'runner.py' => "import subprocess\ndef start():\n    subprocess.run(['node', 'js/worker.js'])\n",
             'js/package.json' => "{\"name\": \"js\", \"private\": true}\n",
@@ -135,7 +135,7 @@ final class LaunchedProcessTest extends KnossosTestCase
     #[Group('scan')]
     public function testTheTypescriptWorkerReadsEveryArgvForm(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-launches-ts-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-launches-ts');
         mkdir($root . '/src', 0o700, true);
         file_put_contents($root . '/src/runner.js', implode("\n", [
             "import { spawn, execFile, fork } from 'node:child_process';",

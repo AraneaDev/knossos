@@ -33,7 +33,7 @@ final class ScanFailureRecordingTest extends KnossosTestCase
 
     private function temporaryDirectory(string $prefix): string
     {
-        $directory = sys_get_temp_dir() . '/' . $prefix . bin2hex(random_bytes(6));
+        $directory = self::scratchPath(rtrim($prefix, '-'));
         mkdir($directory, 0o700, true);
 
         return $this->cleanup[] = $directory;

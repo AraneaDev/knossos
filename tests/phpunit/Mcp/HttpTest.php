@@ -214,10 +214,7 @@ final class HttpTest extends KnossosTestCase
      */
     private static function withErrorLogRedirected(callable $operation): mixed
     {
-        $capture = tempnam(sys_get_temp_dir(), 'knossos-errorlog-');
-        if ($capture === false) {
-            throw new RuntimeException('Unable to allocate an error-log capture file.');
-        }
+        $capture = self::scratchFile('knossos-errorlog');
         $previous = ini_get('error_log');
         ini_set('error_log', $capture);
         try {
@@ -232,10 +229,7 @@ final class HttpTest extends KnossosTestCase
     #[Group('http')]
     public function testHttpSessionCapacityAndInitializationTransitionsAreAtomicAcrossConnections(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-http-session-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate HTTP session database.');
-        }
+        $path = self::scratchFile('knossos-http-session');
         try {
             $firstPdo = SqliteConnection::open($path);
             (new MigrationRunner($firstPdo, self::repositoryRoot() . '/migrations'))->migrate();

@@ -58,7 +58,7 @@ final class Laravel13LivewireFixtureTest extends KnossosTestCase
      */
     public function testRemovingAViewActionOnARescanMakesItsMethodACandidate(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-lw-inc-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-lw-inc');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/laravel13-livewire', $root);
         try {
             $pdo = $this->freshTestDatabase();

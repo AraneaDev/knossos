@@ -12,10 +12,9 @@ use Knossos\Result\ResultEnvelope;
 use Knossos\Store\SqliteConnection;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('graph-bundle-service')]
-final class GraphBundleServiceTest extends TestCase
+final class GraphBundleServiceTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private PDO $pdo;
     private GraphBundleService $service;
@@ -308,7 +307,7 @@ final class GraphBundleServiceTest extends TestCase
     /** A message naming the absolute root, or the real path behind a linked root, kept it. */
     public function testExportRedactionReplacesTheProjectRootAndItsRealPath(): void
     {
-        $real = sys_get_temp_dir() . '/knossos-root-real-' . bin2hex(random_bytes(6));
+        $real = self::scratchPath('knossos-root-real');
         $link = $real . '-link';
         mkdir($real);
         symlink($real, $link);

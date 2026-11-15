@@ -98,7 +98,7 @@ final class ScanHeadCaptureTest extends KnossosTestCase
     /** A project tree with one source file, the minimum a scan needs to produce a graph. */
     private function tempRootWithOneFile(): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/Existing.php', "<?php\n\nfinal class Existing {}\n");
 

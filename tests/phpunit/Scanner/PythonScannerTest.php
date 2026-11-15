@@ -124,7 +124,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerResolvesAScriptsSiblingImportsFromItsOwnDirectory(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-script-dir-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-script-dir');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -189,7 +189,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerReferencesBoundMethodsReadAsValues(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-bound-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-bound');
         mkdir($root, 0o755, true);
         file_put_contents($root . '/widget.py', implode("\n", [
             'class Widget:',
@@ -247,7 +247,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerResolvesASubmoduleImportedFromItsPackage(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-submodule-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-submodule');
         mkdir($root . '/app/tools', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -293,7 +293,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerMarksImportsUnderTypeCheckingAsTypeOnly(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-py-type-checking-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-py-type-checking');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -360,7 +360,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerReferencesFunctionsUsedAsValues(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-values-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-values');
         mkdir($root, 0o755, true);
         file_put_contents($root . '/tools.py', implode("\n", [
             'def make_tool():',
@@ -419,7 +419,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerDoesNotReadALocalAsTheModuleFunctionItShadows(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-shadow-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-shadow');
         mkdir($root, 0o755, true);
         file_put_contents($root . '/io.py', implode("\n", [
             'def handle(request):',
@@ -496,7 +496,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerTypesOptionalCollaborators(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-py-optional-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-py-optional');
         mkdir($root . '/pkg', 0o755, true);
         $files = [
             'pkg/__init__.py' => '',
@@ -564,7 +564,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerTypesAnImportedModuleLevelInstance(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-singleton-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-singleton');
         mkdir($root . '/app/clients', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -642,7 +642,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerResolvesACallThroughAChainOfTypedAttributes(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-chain-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-chain');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -765,7 +765,7 @@ final class PythonScannerTest extends KnossosTestCase
     #[Group('python-scanner')]
     public function testPythonWorkerContainsProtocolAndEdgeCaseSyntaxPaths(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-python-edge-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-python-edge');
         if (!mkdir($root . '/shop', 0o700, true)) {
             throw new RuntimeException('Unable to create Python edge-case fixture.');
         }
@@ -847,7 +847,7 @@ final class PythonScannerTest extends KnossosTestCase
         // way a name comes to hold a class -- annotation, construction,
         // assignment from another name -- and the reassignment that takes it
         // away again.
-        $root = sys_get_temp_dir() . '/knossos-python-receiver-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-python-receiver');
         if (!mkdir($root, 0o700, true)) {
             throw new RuntimeException('Unable to create Python receiver fixture.');
         }
@@ -952,10 +952,7 @@ PYTHON);
     public function testPythonProjectScanPersistsClassificationsBoundariesDiagnosticsAndCache(): void
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/python';
-        $database = tempnam(sys_get_temp_dir(), 'knossos-python-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate Python database.');
-        }
+        $database = self::scratchFile('knossos-python');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -988,14 +985,11 @@ PYTHON);
     #[Group('python-scanner')]
     public function testManyInvalidEscapeSequencesDoNotDegradeThePythonScan(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o777, true);
         file_put_contents($root . '/a.py', "import re\n" . str_repeat("re.compile(\"\\d\")\n", 2000));
         file_put_contents($root . '/b.py', "def f():\n    return 1\n");
-        $database = tempnam(sys_get_temp_dir(), 'knossos-python-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate Python database.');
-        }
+        $database = self::scratchFile('knossos-python');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -1021,7 +1015,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testTopLevelRelativeImportReportsADiagnosticInsteadOfAnEmptyModule(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-pyrelative-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-pyrelative');
         mkdir($root, 0o700, true);
         file_put_contents($root . '/toplevel.py', "from . import helper\n");
         try {
@@ -1044,7 +1038,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerReportsTheHashOfTheRawBytesItParsed(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/pkg', 0o777, true);
         $files = [
             'pkg/bom.py' => "\xEF\xBB\xBFclass Bom:\n    pass\n",
@@ -1082,7 +1076,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerReportsEveryModuleFileTheIndexRead(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/pkg', 0o777, true);
         $files = [
             'pkg/a.py' => "from pkg.b import Thing\nfrom pkg.broken import Gone\n\n\nclass Local(Thing):\n    pass\n",
@@ -1124,7 +1118,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerReportsAModuleReadBothForAnImporterAndItsOwnScan(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/pkg', 0o777, true);
         $files = [
             'pkg/a.py' => "from pkg.b import Thing\n\n\nclass Local(Thing):\n    pass\n",
@@ -1166,7 +1160,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testIdenticalRepeatReadsOfOnePathKeepTheirHash(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         // Two separate trees: `pkg/b.py` at the first tree's root would shadow `pkg.b`.
         mkdir($root . '/one/pkg', 0o777, true);
         mkdir($root . '/two/src/pkg', 0o777, true);
@@ -1216,7 +1210,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testAShebangRefusalReportsTheHashItsVerdictRestedOn(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/bin', 0o777, true);
         $node = "#!/usr/bin/env node\nconsole.log(1)\n";
         file_put_contents($root . '/bin/tool', $node);
@@ -1257,7 +1251,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerKeysAModuleReadThroughASymlinkByItsTarget(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/real', 0o777, true);
         $files = [
             'app.py' => "from linked.b import Thing\n\n\nclass Local(Thing):\n    pass\n",
@@ -1293,7 +1287,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerKeysALinkBelowNodeModulesItReadThrough(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/real', 0o777, true);
         mkdir($root . '/node_modules', 0o777, true);
         $files = [
@@ -1338,7 +1332,7 @@ PYTHON);
         if (!function_exists('posix_mkfifo')) {
             self::markTestSkipped('FIFOs are unavailable here.');
         }
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/generated/models', 0o777, true);
         $app = "from generated.models import Model\n\n\nclass App(Model):\n    pass\n";
         $module = "class Model:\n    pass\n";
@@ -1388,7 +1382,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerReportsTheHashOnAnInternalErrorDuringCollection(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o777, true);
         $bytes = 'x = ' . str_repeat('-', 4000) . "1\n";
         file_put_contents($root . '/deep.py', $bytes);
@@ -1416,7 +1410,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testACollidingModuleFileDoesNotSeedTheIdThePackageOwns(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/mod', 0o777, true);
         file_put_contents($root . '/mod.py', "class OnlyInModule:\n    pass\n");
         file_put_contents($root . '/mod/__init__.py', '');
@@ -1460,7 +1454,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerReportsAModuleItRefusedAsNull(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/pkg', 0o777, true);
         $importer = "from pkg.big import Thing\n";
         file_put_contents($root . '/pkg/a.py', $importer);
@@ -1490,8 +1484,8 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerReportsARequestedFileWhoseReadFailsAsNull(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
-        $outside = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
+        $outside = self::scratchPath('knossos-stale');
         mkdir($root . '/app', 0o777, true);
         mkdir($root . '/app/dir.py', 0o777, true);
         mkdir($outside, 0o777, true);
@@ -1534,7 +1528,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testStableLinkLayoutsAreKeyedByTheKernelWalkAndPassVerification(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         foreach (['pkg', 'deep/dir', 'lib', 'real', 'chain'] as $directory) {
             mkdir($root . '/' . $directory, 0o777, true);
         }
@@ -1695,7 +1689,7 @@ PYTHON);
         // whose class the code states: by a return annotation, by the model a
         // manager belongs to, by the class a `with` builds. Each resolves to
         // that class's method instead of an untyped receiver.
-        $root = sys_get_temp_dir() . '/knossos-py-typed-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-typed');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -1828,7 +1822,7 @@ PYTHON);
         // `self.declarations(module)`: the call runs whatever was stored, not a
         // method of the class, so naming `Mounts::declarations` invented a
         // component no file declares. A method of the class still resolves.
-        $root = sys_get_temp_dir() . '/knossos-py-stored-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-stored');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -1890,7 +1884,7 @@ PYTHON);
         // A base named *View and an @action decorator mean Django only where the
         // module imports Django or its REST framework: a Qt `QGraphicsView`
         // subclass is no view a URL router calls.
-        $root = sys_get_temp_dir() . '/knossos-py-views-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-views');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -1948,7 +1942,7 @@ PYTHON);
         // `Repo().count()` calls a method on the instance just built, so the
         // class it names types the receiver. A call on another call's result
         // has no type to go on and counts as a call on an untyped receiver.
-        $root = sys_get_temp_dir() . '/knossos-py-fresh-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-fresh');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2012,7 +2006,7 @@ PYTHON);
         // later, so nothing in the code calls it by name. A decorator taken
         // from a module, `@functools.cache`, wraps the function and registers
         // it nowhere.
-        $root = sys_get_temp_dir() . '/knossos-py-registered-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-registered');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2079,7 +2073,7 @@ PYTHON);
         // `{"cache": client.prune_cache}` hands a bound method to a dispatch
         // table, and a class declared under `if TYPE_CHECKING:` is still a
         // module-level name an annotation refers to.
-        $root = sys_get_temp_dir() . '/knossos-py-bound-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-bound');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2139,7 +2133,7 @@ PYTHON);
         // `029_seed.py` cannot be the target of an import statement, so a
         // runner loads it by path and calls what it exposes. Its private
         // helpers are still judged by their callers.
-        $root = sys_get_temp_dir() . '/knossos-py-by-path-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-by-path');
         mkdir($root . '/app/migrations', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2194,7 +2188,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerMarksMethodsThatOverrideASupertypesMember(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-overrides-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-overrides');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2299,7 +2293,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerLinksAVisitorsVisitToItsHooks(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-dispatch-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-dispatch');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2372,7 +2366,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerResolvesAModuleAConftestFixtureLoadsByPath(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-fixture-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-fixture');
         mkdir($root . '/tests', 0o755, true);
         mkdir($root . '/bin', 0o755, true);
         $files = [
@@ -2458,7 +2452,7 @@ PYTHON);
     #[Group('python-scanner')]
     public function testPythonWorkerLinksAClassCallToTheInitItDeclares(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-py-init-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-init');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2525,7 +2519,7 @@ PYTHON);
         // `run_in_threadpool(tasks.snapshot)` hands the function on without
         // calling it here. A module's data, or a name read off a module outside
         // the project, is no declaration.
-        $root = sys_get_temp_dir() . '/knossos-py-module-value-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-module-value');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2566,7 +2560,7 @@ PYTHON);
         // `getattr(editor, "narrowed", None)` looks a method up by name, which
         // counts as a call on a receiver nothing types. `partial(Repo().rows, 1)`
         // hands that class's method on as a value.
-        $root = sys_get_temp_dir() . '/knossos-py-getattr-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-getattr');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2635,7 +2629,7 @@ PYTHON);
     {
         // A class defined inside a function is instantiated there; and a call
         // through a structural `Protocol` may reach any class with the member.
-        $root = sys_get_temp_dir() . '/knossos-py-local-class-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-local-class');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2727,7 +2721,7 @@ PYTHON);
     {
         // `app = FastAPI()` is what `uvicorn main:app` serves; nothing imports
         // the module. A router is mounted by an app, not served.
-        $root = sys_get_temp_dir() . '/knossos-py-served-app-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-served-app');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2771,7 +2765,7 @@ PYTHON);
     {
         // `RepoDep = Annotated[Repo, Depends(get_repo)]` is how FastAPI names
         // an injected dependency; a parameter typed by it holds a `Repo`.
-        $root = sys_get_temp_dir() . '/knossos-py-annotated-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-annotated');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2825,7 +2819,7 @@ PYTHON);
         // `index: Index` in a class body, as a mixin or a dataclass declares
         // it, types `self.index` in every method of the class. An assignment
         // that tracks another class wins over the annotation.
-        $root = sys_get_temp_dir() . '/knossos-py-class-annotation-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-class-annotation');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2892,7 +2886,7 @@ PYTHON);
         // `Repo.inherited()` a class method `Repo` inherits from a base it names
         // through the base's module: the worker names it on `Repo`, and the
         // persisted call reaches the base that declares it.
-        $root = sys_get_temp_dir() . '/knossos-py-class-call-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-class-call');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',
@@ -2912,10 +2906,7 @@ PYTHON);
         foreach ($files as $relative => $contents) {
             file_put_contents($root . '/' . $relative, $contents);
         }
-        $database = tempnam(sys_get_temp_dir(), 'knossos-python-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate Python database.');
-        }
+        $database = self::scratchFile('knossos-python');
 
         try {
             $pdo = SqliteConnection::open($database);
@@ -2954,7 +2945,7 @@ PYTHON);
         // subclass's `self.index`, through a base named by its module
         // (`b.Base`, `mid.Mid`) too, and `"Index"` in quotes names the class
         // as `Index` does.
-        $root = sys_get_temp_dir() . '/knossos-py-base-annotation-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-py-base-annotation');
         mkdir($root . '/app', 0o755, true);
         $files = [
             'app/__init__.py' => '',

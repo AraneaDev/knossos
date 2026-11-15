@@ -17,7 +17,7 @@ final class TestHomeIsolationTest extends KnossosTestCase
     public function testTheSuiteRunsUnderAHomeOfItsOwn(): void
     {
         $home = (string) getenv('HOME');
-        self::assertStringStartsWith(rtrim(sys_get_temp_dir(), '/') . '/knossos-test-home-', $home);
+        self::assertSame(rtrim(sys_get_temp_dir(), '/') . '/home', $home);
         self::assertDirectoryExists($home);
         self::assertFileDoesNotExist($home . '/.knossos/knossos.sqlite');
     }

@@ -105,6 +105,17 @@ that same config, so the resulting warning aborts the suite.
 `tests/phpunit/NoCoverageTargetAttributesTest` enforces this. Express targeted
 coverage through `<source>` in `phpunit.xml` instead.
 
+**A test leaves nothing in the temp directory.** The bootstrap gives each
+PHPUnit run a temp root of its own and points `TMPDIR` at it, so a test and
+every process it starts write there. A test asks `scratchPath()`,
+`scratchDirectory()` or `scratchFile()` for a temporary path instead of
+building one from `sys_get_temp_dir()`: the path lives under a root for that
+test, removed after it however it ended, with permissions restored and
+without following links. `Support\TempRootGuard` fails the run and names
+whatever is still in the run's root at the end. The shell tests do the same
+through `tests/shell/lib/scratch.sh`, and `tests/shell/run.sh` fails a script
+that leaves anything in the temp directory it was given.
+
 ## Commit Messages
 
 This repository releases through

@@ -83,7 +83,7 @@ final class ServerEnvironmentToolsTest extends KnossosTestCase
     #[Group('mcp')]
     public function testServerInfoWarnsAboutRootsThatDoNotExistHere(): void
     {
-        $ghost = sys_get_temp_dir() . '/knossos-ghost-' . uniqid('', true);
+        $ghost = self::scratchPath('knossos-ghost');
         $file = $this->makeTempDir() . '/roots.json';
         file_put_contents($file, json_encode(['roots' => [$ghost]], JSON_THROW_ON_ERROR));
 
@@ -103,7 +103,7 @@ final class ServerEnvironmentToolsTest extends KnossosTestCase
         // the unfiltered one and from a key-preserving one, so mutation testing
         // showed both the filter and the array_values reindex going unobserved.
         $real = $this->makeTempDir();
-        $ghost = sys_get_temp_dir() . '/knossos-ghost-' . uniqid('', true);
+        $ghost = self::scratchPath('knossos-ghost');
         $file = $this->makeTempDir() . '/roots.json';
         file_put_contents($file, json_encode(['roots' => [$real, $ghost]], JSON_THROW_ON_ERROR));
 
@@ -244,7 +244,7 @@ final class ServerEnvironmentToolsTest extends KnossosTestCase
 
     private function makeTempDir(): string
     {
-        $dir = sys_get_temp_dir() . '/knossos-serverinfo-' . uniqid('', true);
+        $dir = self::scratchPath('knossos-serverinfo');
         mkdir($dir, 0o755, true);
         $this->tempDirs[] = $dir;
 

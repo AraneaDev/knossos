@@ -96,7 +96,7 @@ final class TuiCommandTest extends KnossosTestCase
      */
     private function runWith(string $version, bool $terminal = true, int $exit = 0, array $positionals = [], array $options = []): array
     {
-        $bin = sys_get_temp_dir() . '/knossos-stale-tui-' . bin2hex(random_bytes(4));
+        $bin = self::scratchPath('knossos-stale-tui');
         mkdir($bin);
         $calls = $bin . '/calls';
         file_put_contents($bin . '/node', sprintf(

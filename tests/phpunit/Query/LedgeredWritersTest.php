@@ -68,7 +68,7 @@ final class LedgeredWritersTest extends KnossosTestCase
     #[Group('query')]
     public function testKnossosScanFromAShellIsRecorded(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
         $database = $root . '/.data/knossos.sqlite';
         $scan = static function () use ($root, $database): void {
@@ -102,7 +102,7 @@ final class LedgeredWritersTest extends KnossosTestCase
     #[Group('query')]
     public function testAPlainWatchScanIsRecorded(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
         $database = $root . '/.data/knossos.sqlite';
         $watch = null;
@@ -189,7 +189,7 @@ final class LedgeredWritersTest extends KnossosTestCase
     #[Group('query')]
     public function testAFirstScanWaitsForAnotherWritersLease(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
         $pdo = $this->freshTestDatabase();
         try {
@@ -239,7 +239,7 @@ final class LedgeredWritersTest extends KnossosTestCase
     #[Group('query')]
     public function testAHeldLeaseLeavesALockLineInTheFailureLog(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
         try {
             $pdo = $this->freshTestDatabase();

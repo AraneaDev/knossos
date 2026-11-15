@@ -28,7 +28,7 @@ final class CreationBriefBarsTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
         mkdir($this->root . '/src/Query', 0o777, true);
         foreach (['A', 'B', 'C', 'D', 'E', 'F'] as $name) {
             file_put_contents($this->root . "/src/Query/{$name}Service.php", "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Query;\n\nfinal class {$name}Service {}\n");

@@ -83,7 +83,7 @@ final class ListUsagesSupertypeTest extends KnossosTestCase
     /** @return array{0: PDO, 1: string, 2: string} */
     private function scannedFixture(): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $files = [
             'composer.json' => '{"autoload": {"psr-4": {"App\\\\": "src/"}}}',
             'src/Store.php' => "<?php\nnamespace App;\ninterface Store\n{\n    public function save(): void;\n}\n",

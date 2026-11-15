@@ -342,7 +342,7 @@ final class SqliteTransactionsTest extends KnossosTestCase
     #[Group('store')]
     public function testRunHoldsTheWriteLockBeforeTheOperationWrites(): void
     {
-        $path = sys_get_temp_dir() . '/knossos-lock-' . bin2hex(random_bytes(6)) . '.sqlite';
+        $path = self::scratchPath('knossos-lock') . '.sqlite';
         try {
             $pdo = SqliteConnection::open($path);
             $pdo->exec('CREATE TABLE t(v TEXT NOT NULL)');

@@ -21,7 +21,7 @@ final class PaneAutostartTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->dir = sys_get_temp_dir() . '/knossos-autostart-' . bin2hex(random_bytes(4));
+        $this->dir = self::scratchPath('knossos-autostart');
         mkdir($this->dir, 0o755, true);
     }
 

@@ -48,7 +48,7 @@ final class DiscoveryDtoTest extends \Knossos\Tests\Phpunit\KnossosTestCase
      */
     private function tempFile(string $relativePath, string $content): string
     {
-        $base = sys_get_temp_dir() . '/knossos-discovery-' . bin2hex(random_bytes(6));
+        $base = self::scratchPath('knossos-discovery');
         mkdir($base, 0700, true);
         $absolute = $base . '/' . $relativePath;
         $dir = dirname($absolute);

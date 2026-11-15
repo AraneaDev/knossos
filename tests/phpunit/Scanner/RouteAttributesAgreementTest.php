@@ -121,7 +121,7 @@ final class RouteAttributesAgreementTest extends KnossosTestCase
      */
     private function scan(string $worker, array $files, array $request): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-route-attributes-' . bin2hex(random_bytes(5));
+        $root = self::scratchPath('knossos-stale-route-attributes');
         foreach ($files as $path => $contents) {
             @mkdir(dirname($root . '/' . $path), 0o777, true);
             file_put_contents($root . '/' . $path, $contents);

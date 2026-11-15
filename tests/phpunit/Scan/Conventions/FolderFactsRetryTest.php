@@ -18,7 +18,7 @@ final class FolderFactsRetryTest extends KnossosTestCase
 {
     public function testAFailedRebuildLeavesNoFactsAndTheNextUnchangedScanWritesThem(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/One.php', "<?php\n\nfinal class One {}\n");
         try {

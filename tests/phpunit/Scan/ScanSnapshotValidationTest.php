@@ -380,7 +380,7 @@ final class ScanSnapshotValidationTest extends KnossosTestCase
     /** A copy of a shipped fixture in a temp tree removeTempTree() will accept. */
     private function copyFixtureTree(string $fixture): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/' . $fixture, $root);
 
         return $root;
@@ -389,7 +389,7 @@ final class ScanSnapshotValidationTest extends KnossosTestCase
     /** A temp tree holding one file, for the validator's own unit cases. */
     private function tempRootWithFile(string $relativePath, string $contents): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir(dirname($root . '/' . $relativePath), 0o777, true);
         file_put_contents($root . '/' . $relativePath, $contents);
 

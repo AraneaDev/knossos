@@ -28,7 +28,7 @@ final class PropertyReceiverTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testACallThroughATypedPropertyOrAScriptVariableResolvesToTheDeclaringMethod(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-property-receiver-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-property-receiver');
         if (!mkdir($root . '/src', 0o755, true) || !mkdir($root . '/bin', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
         }
@@ -157,7 +157,7 @@ final class PropertyReceiverTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testACallOnAVariableAssignedFromATypedPropertyResolvesToTheDeclaringMethod(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-property-variable-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-property-variable');
         if (!mkdir($root . '/src', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
         }
@@ -252,7 +252,7 @@ final class PropertyReceiverTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testACallThroughAReturnedValuesPropertyOrAChainedCallResolvesToTheDeclaringMethod(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-return-chain-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-return-chain');
         if (!mkdir($root . '/src', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
         }

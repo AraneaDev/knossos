@@ -144,7 +144,7 @@ final class CliHelpersTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     private static function tempFile(string $relativePath): string
     {
-        $base = sys_get_temp_dir() . '/knossos-cli-' . bin2hex(random_bytes(6));
+        $base = self::scratchPath('knossos-cli');
         mkdir($base, 0700, true);
         $absolute = $base . '/' . $relativePath;
         $dir = dirname($absolute);

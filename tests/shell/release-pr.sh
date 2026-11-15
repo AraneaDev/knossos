@@ -3,6 +3,8 @@
 # nothing that only looks like one: a fork, a missing label, a file of its own,
 # or a version line that also changes something else.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 CHECK="${RELEASE_PR_CHECK:-$HERE/../../tools/ci/release-pr}"
 FIX="$HERE/fixtures/release-pr"
@@ -10,7 +12,6 @@ CONFIG="$HERE/../../release-please-config.json"
 REPO=AraneaDev/knossos
 failures=0
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
 
 # expect label expected-status message [extra arguments], run with the case's
 # files in $work/files, $work/labels and $work/diff. The message is a fragment

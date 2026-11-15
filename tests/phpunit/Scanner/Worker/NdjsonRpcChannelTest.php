@@ -10,10 +10,9 @@ use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerLimits;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('scanner-worker')]
-final class NdjsonRpcChannelTest extends TestCase
+final class NdjsonRpcChannelTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private function mockProcess(): FakeWorkerProcess
     {
@@ -137,7 +136,7 @@ final class NdjsonRpcChannelTest extends TestCase
         // send() a descriptor whose read fails: the one portable way to make
         // fread() fail — a write-only handle — is exactly what select()
         // reports as never readable.
-        $path = tempnam(sys_get_temp_dir(), 'knossos-absorb-');
+        $path = self::scratchFile('knossos-absorb');
         $writeOnly = fopen($path, 'w');
         $stderr = fopen('php://temp', 'r+');
         if (@fread($writeOnly, 8) !== false) {

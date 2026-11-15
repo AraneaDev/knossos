@@ -129,7 +129,7 @@ final class NotesTransferToolTest extends KnossosTestCase
 
     private function checkout(): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o700, true);
         file_put_contents($root . '/src/A.php', "<?php\nnamespace App;\nfinal class A {}\n");
 

@@ -31,7 +31,7 @@ final class RustReceiverDeadCodeTest extends KnossosTestCase
         if (!is_file(self::rustWorkerBinary())) {
             self::markTestSkipped('The Rust worker binary is not built.');
         }
-        $root = sys_get_temp_dir() . '/knossos-stale-rust-receivers-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-rust-receivers');
         mkdir($root . '/src/report', 0o700, true);
         file_put_contents($root . '/Cargo.toml', "[package]\nname = \"receivers\"\nversion = \"0.1.0\"\n");
         file_put_contents($root . '/src/main.rs', <<<'RUST'

@@ -21,7 +21,7 @@ final class FileLengthCheckTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = sys_get_temp_dir() . '/knossos-file-length-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-file-length');
         mkdir($this->directory . '/src', 0o700, true);
         $this->runFixtureCommand(['git', '-C', $this->directory, 'init', '-q']);
     }

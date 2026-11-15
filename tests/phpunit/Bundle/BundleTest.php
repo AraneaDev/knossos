@@ -26,10 +26,7 @@ final class BundleTest extends KnossosTestCase
     public function testPortableGraphBundlesAreDeterministicChecksummedRedactedAndAtomic(): void
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/configured';
-        $database = tempnam(sys_get_temp_dir(), 'knossos-bundle-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate bundle database.');
-        }
+        $database = self::scratchFile('knossos-bundle');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -102,10 +99,7 @@ final class BundleTest extends KnossosTestCase
     public function testARedactedBundleImportsAsTheSameGraph(): void
     {
         $root = self::repositoryRoot() . '/tests/Fixtures/configured';
-        $database = tempnam(sys_get_temp_dir(), 'knossos-bundle-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate bundle database.');
-        }
+        $database = self::scratchFile('knossos-bundle');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -148,7 +142,7 @@ final class BundleTest extends KnossosTestCase
     #[Group('bundle')]
     public function testFileMetricsQueryFiltersSortsPaginatesAndSurvivesBundleRoundTrips(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-metrics-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-metrics');
         if (!mkdir($root . '/src', 0o700, true)) {
             throw new RuntimeException('Unable to create file-metrics fixture.');
         }
@@ -157,10 +151,7 @@ final class BundleTest extends KnossosTestCase
         file_put_contents($root . '/src/bee.php', "<?php\necho 1;\n");
         file_put_contents($root . '/src/cee.php', "<?php\r\necho 2;\r\necho 3;\r\n");
         file_put_contents($root . '/src/dee.php', "<?php\necho 4;\necho 5;\necho 6;");
-        $database = tempnam(sys_get_temp_dir(), 'knossos-metrics-db-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate file-metrics database.');
-        }
+        $database = self::scratchFile('knossos-metrics-db');
 
         try {
             $pdo = SqliteConnection::open($database);

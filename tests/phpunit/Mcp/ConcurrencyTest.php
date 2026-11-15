@@ -19,17 +19,13 @@ use Knossos\Store\StableId;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class ConcurrencyTest extends KnossosTestCase
 {
     #[Group('concurrency')]
     public function testWriterLeasesCancellationAndStaleRecoveryPreserveQueryAvailability(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-concurrency-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate concurrency database.');
-        }
+        $path = self::scratchFile('knossos-concurrency');
         try {
             $writerPdo = SqliteConnection::open($path);
             (new MigrationRunner($writerPdo, self::repositoryRoot() . '/migrations'))->migrate();

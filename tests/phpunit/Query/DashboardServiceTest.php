@@ -84,7 +84,7 @@ final class DashboardServiceTest extends KnossosTestCase
     public function testAnUnscannedPathReportsUnscanned(): void
     {
         $pdo = $this->freshTestDatabase();
-        $empty = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $empty = self::scratchPath('knossos-stale');
         mkdir($empty);
         try {
             $d = (new DashboardService($pdo))->dashboard($empty);
@@ -1050,7 +1050,7 @@ final class DashboardServiceTest extends KnossosTestCase
     #[Group('query')]
     public function testTheBoundaryMatrixHoldsMoreThanTwelveBoundaries(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-boundaries-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-boundaries');
         $boundaries = [];
         for ($i = 0; $i < 14; ++$i) {
             mkdir("{$root}/src/B{$i}", 0o777, true);

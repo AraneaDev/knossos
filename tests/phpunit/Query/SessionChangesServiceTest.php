@@ -511,7 +511,7 @@ final class SessionChangesServiceTest extends KnossosTestCase
     #[Group('query')]
     public function testAProjectInASubdirectoryListsOnlyItsOwnFiles(): void
     {
-        $parent = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $parent = self::scratchPath('knossos-stale');
         $root = $parent . '/pkg';
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/' . self::FIXTURE, $root);
         file_put_contents($parent . '/README.md', "readme\n");

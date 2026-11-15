@@ -17,9 +17,9 @@ final class IncrementalTest extends KnossosTestCase
     #[Group('incremental')]
     public function testIncrementalContributionCacheDetectsEditsDeletesAndRenamesWithFullEquivalence(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-incremental-' . bin2hex(random_bytes(6));
-        $database = tempnam(sys_get_temp_dir(), 'knossos-incremental-db-');
-        if ($database === false || !mkdir($root . '/src', 0700, true)) {
+        $root = self::scratchPath('knossos-incremental');
+        $database = self::scratchFile('knossos-incremental-db');
+        if (!mkdir($root . '/src', 0700, true)) {
             throw new RuntimeException('Unable to create incremental fixture.');
         }
         file_put_contents($root . '/composer.json', json_encode([

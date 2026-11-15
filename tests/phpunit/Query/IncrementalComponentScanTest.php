@@ -23,7 +23,7 @@ final class IncrementalComponentScanTest extends KnossosTestCase
 {
     public function testEditingTheLoaderAloneKeepsWhatItLoadsLive(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-incremental-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-incremental');
         mkdir($root . '/js/store/modules/nested', 0o777, true);
         mkdir($root . '/js/components', 0o777, true);
         $files = [

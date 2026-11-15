@@ -28,10 +28,7 @@ final class ProjectConfigTest extends KnossosTestCase
         assertSame(2, $configuration->snapshotRetention);
         assertSame(['new_cycles' => 0, 'error_diagnostics' => 0], $configuration->qualityBudgets);
 
-        $database = tempnam(sys_get_temp_dir(), 'knossos-configured-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate configured project database.');
-        }
+        $database = self::scratchFile('knossos-configured');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -54,7 +51,7 @@ final class ProjectConfigTest extends KnossosTestCase
             }
         }
 
-        $invalid = sys_get_temp_dir() . '/knossos-invalid-config-' . bin2hex(random_bytes(6));
+        $invalid = self::scratchPath('knossos-invalid-config');
         if (!mkdir($invalid, 0o700)) {
             throw new RuntimeException('Unable to create invalid configuration fixture.');
         }
@@ -106,7 +103,7 @@ final class ProjectConfigTest extends KnossosTestCase
     #[Group('project-config')]
     public function testTheRefreshBudgetIsALimitWithItsOwnRange(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o700);
         try {
             assertSame(null, ProjectConfigurationLoader::load($root, [$root])->refreshBudgetMs);
@@ -132,7 +129,7 @@ final class ProjectConfigTest extends KnossosTestCase
     #[Group('project-config')]
     public function testTheWatchScanTimeoutIsALimitWithItsOwnRange(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o700);
         try {
             assertSame(null, ProjectConfigurationLoader::load($root, [$root])->watchScanTimeoutMs);

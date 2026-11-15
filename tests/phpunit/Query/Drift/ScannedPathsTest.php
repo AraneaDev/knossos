@@ -33,7 +33,7 @@ final class ScannedPathsTest extends KnossosTestCase
     #[Group('query')]
     public function testJavaScriptCompiledBesideItsSourceIsNotTracked(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-compiled-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-compiled');
         mkdir($root . '/shared', 0o777, true);
         try {
             file_put_contents($root . '/shared/errors.ts', "export class E {}\n");
@@ -59,7 +59,7 @@ final class ScannedPathsTest extends KnossosTestCase
     #[Group('query')]
     public function testADirectoryIsTrackedOnlyWhenItHoldsSomethingDiscoveryReads(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-directories-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-directories');
         mkdir($root . '/backend/vendor/pkg', 0o777, true);
         mkdir($root . '/empty', 0o777, true);
         mkdir($root . '/assets/img', 0o777, true);
@@ -154,7 +154,7 @@ final class ScannedPathsTest extends KnossosTestCase
     #[Group('query')]
     public function testAPathTheTreesGitignoreIgnoresIsNotDrift(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-gitignore-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-gitignore');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/a.php', "<?php\n\nnamespace Fixture;\n\nfinal class A {}\n");
         file_put_contents($root . '/.gitignore', "/src/cache/\n");
@@ -269,7 +269,7 @@ final class ScannedPathsTest extends KnossosTestCase
      */
     private function scanRootIgnoring(string $pattern): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-ignores-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-ignores');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/a.php', "<?php\n\nnamespace Fixture;\n\nfinal class A {}\n");
         file_put_contents($root . '/knossos.json', (string) json_encode(['version' => 1, 'ignores' => [$pattern]]));

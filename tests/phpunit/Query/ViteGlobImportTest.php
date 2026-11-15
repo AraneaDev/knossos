@@ -19,7 +19,7 @@ final class ViteGlobImportTest extends KnossosTestCase
 {
     public function testAGlobImportKeepsTheModulesItMatchesLive(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-vite-glob-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-vite-glob');
         mkdir($root . '/js/Pages/Admin', 0o777, true);
         mkdir($root . '/js/Layouts', 0o777, true);
         mkdir($root . '/js/Widgets', 0o777, true);

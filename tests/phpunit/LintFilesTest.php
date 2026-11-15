@@ -41,7 +41,7 @@ final class LintFilesTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = sys_get_temp_dir() . '/knossos-lint-files-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-lint-files');
         mkdir($this->directory . '/repo/tools', 0o700, true);
         foreach (self::TREE as $path => [$contents]) {
             $this->writeFile($path, $contents);

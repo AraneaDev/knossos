@@ -138,7 +138,7 @@ final class EloquentMagicReferencesTest extends KnossosTestCase
      */
     private function reportedNames(array $files): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-eloquent-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-eloquent');
         foreach (self::MODELS + $files as $relative => $contents) {
             if (!is_dir(dirname($root . '/' . $relative))) {
                 mkdir(dirname($root . '/' . $relative), 0o777, true);

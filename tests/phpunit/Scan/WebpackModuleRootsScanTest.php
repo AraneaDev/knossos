@@ -171,7 +171,7 @@ final class WebpackModuleRootsScanTest extends KnossosTestCase
     /** @param array<string, string> $files */
     private function writeTree(array $files): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-webpack-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-webpack');
         foreach ($files as $path => $contents) {
             @mkdir(dirname("{$root}/{$path}"), 0o777, true);
             file_put_contents("{$root}/{$path}", $contents);

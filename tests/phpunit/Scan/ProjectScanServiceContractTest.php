@@ -99,7 +99,7 @@ final class ProjectScanServiceContractTest extends KnossosTestCase
     public function testALeaseLostMidScanIsLoggedAndAnOrdinaryScanIsNot(): void
     {
         [$pdo, , $root] = $this->scanTempFixture('mixed');
-        $log = tempnam(sys_get_temp_dir(), 'knossos-lease-log-');
+        $log = self::scratchFile('knossos-lease-log');
         $previous = ini_set('error_log', (string) $log);
         try {
             $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
@@ -209,7 +209,7 @@ final class ProjectScanServiceContractTest extends KnossosTestCase
     #[Group('scan')]
     public function testAFullRescanOfAnEmptyProjectStillReconciles(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-empty-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-empty');
         mkdir($root);
         try {
             $pdo = $this->freshTestDatabase();

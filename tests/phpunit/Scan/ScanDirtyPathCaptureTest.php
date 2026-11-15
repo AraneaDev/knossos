@@ -40,7 +40,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
     #[Group('scan')]
     public function testAScanRecordsThePathsThatDifferedFromItsCommit(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/Existing.php', "<?php\n\nfinal class Existing {}\n");
         try {
@@ -78,7 +78,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
     #[Group('scan')]
     public function testAScanWhoseTreeCouldNotBeListedSaysSo(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/Existing.php', "<?php\n\nfinal class Existing {}\n");
         $previous = ini_set('error_log', '/dev/null');
@@ -114,7 +114,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
     #[Group('scan')]
     public function testAScanWhoseTreeWasListedDoesNotWarn(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/Existing.php', "<?php\n\nfinal class Existing {}\n");
         try {
@@ -140,7 +140,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
     #[Group('scan')]
     public function testAGitlessProjectRecordsNoSetAndIsNotAsked(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/Existing.php', "<?php\n\nfinal class Existing {}\n");
         try {
@@ -182,7 +182,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
     public function testAFileRestoredRightAfterTheScanIsStillDrift(): void
     {
         $committed = "<?php\n\nfinal class Existing {}\n";
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         // What the scan reads: modified relative to the commit it records.
         file_put_contents($root . '/src/Existing.php', "<?php\n\nfinal class Existing { public int \$edited = 1; }\n");
@@ -267,7 +267,7 @@ final class ScanDirtyPathCaptureTest extends KnossosTestCase
     public function testASha256RepositoryGetsSha256BlobIds(): void
     {
         $content = "<?php\n\nfinal class Existing {}\n";
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/Existing.php', $content);
         try {

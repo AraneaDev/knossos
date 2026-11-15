@@ -8,6 +8,8 @@
 # explicitly, so whatever KNOSSOS_DATA_DIR and KNOSSOS_ROOTS_FILE the caller
 # exported change nothing.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 ROOT="$HERE/../.."
@@ -15,7 +17,6 @@ INSTALL_SH="${KNOSSOS_TEST_INSTALL:-$ROOT/install.sh}"
 failures=0
 WORK=$(mktemp -d)
 WORK=$(CDPATH='' cd -P -- "$WORK" && pwd -P)
-trap 'rm -rf "$WORK"' EXIT
 
 # A home directory of the test's own, for the launcher's mount rule.
 HOME="$WORK/home"

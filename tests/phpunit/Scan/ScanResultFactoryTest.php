@@ -16,10 +16,9 @@ use Knossos\Scan\ScanResultFactory;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Scanner\Worker\WorkerExecutionPolicy;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('scan-factory')]
-final class ScanResultFactoryTest extends TestCase
+final class ScanResultFactoryTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private function makePreparation(array $diagnostics = [], int $files = 0): ScanPreparation
     {
@@ -116,7 +115,7 @@ final class ScanResultFactoryTest extends TestCase
      */
     public function testAScanThatRanAStaleWorkerBinaryWarns(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-factory-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-factory');
         mkdir($root . '/workers/rust/src', 0o777, true);
         file_put_contents($root . '/workers/rust/Cargo.toml', "[package]\n");
         file_put_contents($root . '/workers/rust/src/main.rs', "fn main() {}\n");

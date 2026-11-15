@@ -14,12 +14,11 @@ use Knossos\Store\SqliteConnection;
 use PDO;
 use PDOException;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use RuntimeException;
 
 #[Group('database-maintenance-service')]
-final class DatabaseMaintenanceServiceTest extends TestCase
+final class DatabaseMaintenanceServiceTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private static function projectRoot(): string
     {
@@ -34,7 +33,7 @@ final class DatabaseMaintenanceServiceTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-maint-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-maint');
         mkdir($this->tempDir, 0o755, true);
         $this->dbPath = $this->tempDir . '/database.sqlite';
         $this->pdo = SqliteConnection::open($this->dbPath);

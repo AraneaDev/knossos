@@ -31,7 +31,7 @@ final class RootsCommandReportTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/knossos-roots-report-' . bin2hex(random_bytes(4));
+        $this->tempDir = self::scratchPath('knossos-roots-report');
         $this->target = $this->tempDir . '/project';
         mkdir($this->target, 0o755, true);
     }

@@ -21,6 +21,10 @@
     <php>
         <ini name="memory_limit" value="1G"/>
     </php>
+    <extensions>
+        <!-- Fails the run when a test leaves anything in the run's temp directory (see tests/phpunit/bootstrap.php). -->
+        <bootstrap class="Knossos\Tests\Phpunit\Support\TempRootGuard"/>
+    </extensions>
     <source>
         <include>
             <directory>src</directory>

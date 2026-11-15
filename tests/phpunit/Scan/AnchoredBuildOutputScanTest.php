@@ -28,7 +28,7 @@ final class AnchoredBuildOutputScanTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-anchored-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-anchored');
         mkdir($this->root, 0o777, true);
     }
 

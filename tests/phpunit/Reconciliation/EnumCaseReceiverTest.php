@@ -19,7 +19,7 @@ final class EnumCaseReceiverTest extends KnossosTestCase
 {
     public function testACallOnTheCaseFromOrTryFromReturnsNamesTheEnumsMethod(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-enum-case-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-enum-case');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/Kind.php', "<?php\nnamespace App;\n\nenum Kind: string\n{\n    case A = 'a';\n\n    public function label(): string\n    {\n        return 'A';\n    }\n\n    public function isA(): bool\n    {\n        return \$this === self::A;\n    }\n}\n");
         file_put_contents($root . '/src/Plain.php', "<?php\nnamespace App;\n\nfinal class Plain\n{\n    public static function from(string \$value): string\n    {\n        return \$value;\n    }\n\n    public function unused(): void\n    {\n    }\n}\n");

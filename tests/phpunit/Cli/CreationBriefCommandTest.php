@@ -45,7 +45,7 @@ final class CreationBriefCommandTest extends KnossosTestCase
     /** A scanned copy of a small fixture that declares a boundary, a rule and a gate, with its own database. */
     private function scannedRoot(): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
         file_put_contents($root . '/knossos.json', json_encode([
             'version' => 1,
@@ -109,7 +109,7 @@ final class CreationBriefCommandTest extends KnossosTestCase
     /** A directory nothing scanned fails the way every query command does: the same message, and no database is made. */
     public function testAnUnscannedPathFailsLikeTheOtherQueryCommands(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory, 0o777, true);
         try {
             $messages = [];

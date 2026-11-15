@@ -21,7 +21,7 @@ final class SupportTraitsTest extends KnossosTestCase
     /** The capture returns what was logged and puts the previous destination back, also when the operation throws. */
     public function testErrorLogOfReturnsTheLogAndRestoresTheSettingEvenWhenTheOperationThrows(): void
     {
-        $destination = (string) tempnam(sys_get_temp_dir(), 'knossos-errorlog-outer-');
+        $destination = (string) self::scratchFile('knossos-errorlog-outer');
         $previous = ini_set('error_log', $destination);
         try {
             self::assertSame(true, str_contains($this->errorLogOf(static function (): void {
@@ -54,8 +54,8 @@ final class SupportTraitsTest extends KnossosTestCase
      */
     public function testRemoveTempTreeUnlinksDirectoryLinksWithoutFollowingThem(): void
     {
-        $outside = rtrim(sys_get_temp_dir(), '/') . '/knossos-outside-' . bin2hex(random_bytes(6));
-        $root = rtrim(sys_get_temp_dir(), '/') . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $outside = self::scratchPath('knossos-outside');
+        $root = self::scratchPath('knossos-stale');
         mkdir($outside);
         file_put_contents($outside . '/kept.txt', 'kept');
         mkdir($root . '/pkg/real', 0o777, true);

@@ -10,10 +10,9 @@ use Knossos\Roots\RootGuard;
 use Knossos\Roots\RootNotFoundException;
 use Knossos\Tests\Phpunit\Support\PinsContainer;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('root-guard')]
-final class RootGuardTest extends TestCase
+final class RootGuardTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     use PinsContainer;
 
@@ -64,7 +63,7 @@ final class RootGuardTest extends TestCase
         $guard = new RootGuard(allowedRoots: [sys_get_temp_dir()]);
 
         $error = captureThrows(
-            static fn() => $guard->resolve(sys_get_temp_dir() . '/knossos-nonexistent-' . uniqid()),
+            static fn() => $guard->resolve(self::scratchPath('knossos-nonexistent')),
             RootException::class,
         );
 
@@ -223,7 +222,7 @@ final class RootGuardTest extends TestCase
         // matching root and reports the ordinary "outside allowed roots" error
         // rather than vetoing the request outright.
         $this->tempDir = $this->makeTempDir();
-        $invalidAllowed = sys_get_temp_dir() . '/knossos-missing-' . uniqid('', true);
+        $invalidAllowed = self::scratchPath('knossos-missing');
 
         $guard = new RootGuard(allowedRoots: [$invalidAllowed]);
 
@@ -240,7 +239,7 @@ final class RootGuardTest extends TestCase
         // --allow-root=/deleted --allow-root=/valid must still resolve against
         // the valid root instead of failing on the first stale entry.
         $this->tempDir = $this->makeTempDir();
-        $invalidAllowed = sys_get_temp_dir() . '/knossos-missing-' . uniqid('', true);
+        $invalidAllowed = self::scratchPath('knossos-missing');
 
         $guard = new RootGuard(allowedRoots: [$invalidAllowed, $this->tempDir]);
 
@@ -310,7 +309,7 @@ final class RootGuardTest extends TestCase
 
     private function makeTempDir(): string
     {
-        $dir = sys_get_temp_dir() . '/knossos-rootguard-' . uniqid('', true);
+        $dir = self::scratchPath('knossos-rootguard');
         mkdir($dir, 0o755, true);
         return $dir;
     }

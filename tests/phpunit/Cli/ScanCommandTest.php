@@ -28,8 +28,8 @@ final class ScanCommandTest extends KnossosTestCase
     {
         parent::setUp();
         $suffix = bin2hex(random_bytes(4));
-        $this->database = sys_get_temp_dir() . '/knossos-stale-scan-' . $suffix . '.sqlite';
-        $this->root = sys_get_temp_dir() . '/knossos-stale-scan-root-' . $suffix;
+        $this->database = self::scratchPath('knossos-stale-scan') . $suffix . '.sqlite';
+        $this->root = self::scratchPath('knossos-stale-scan-root') . $suffix;
         mkdir($this->root . '/src', 0o777, true);
         file_put_contents($this->root . '/src/Checkout.php', "<?php\n\nnamespace App;\n\nfinal class Checkout\n{\n    public function total(): int\n    {\n        return 1;\n    }\n}\n");
         $this->root = (string) realpath($this->root);
@@ -90,7 +90,7 @@ final class ScanCommandTest extends KnossosTestCase
     public function testNoEnrichersKeepsTheProjectsEnrichersFromStarting(): void
     {
         // The installation's enrichers.json sits beside the roots file, so both move to a directory of this test's own.
-        $installation = sys_get_temp_dir() . '/knossos-stale-scan-enrichers-' . bin2hex(random_bytes(4));
+        $installation = self::scratchPath('knossos-stale-scan-enrichers');
         mkdir($installation);
         $marker = $installation . '/started';
         file_put_contents($installation . '/enrichers.json', json_encode(['enrichers' => [[

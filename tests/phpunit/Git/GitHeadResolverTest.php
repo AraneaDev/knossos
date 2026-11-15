@@ -83,7 +83,7 @@ final class GitHeadResolverTest extends KnossosTestCase
     #[Group('git')]
     public function testItRecordsWhyGitCouldNotAnswerWithoutNarratingAGitlessProject(): void
     {
-        $log = sys_get_temp_dir() . '/knossos-head-breadcrumb-' . bin2hex(random_bytes(6)) . '.log';
+        $log = self::scratchPath('knossos-head-breadcrumb') . '.log';
         $previous = ini_set('error_log', $log);
         try {
             (new GitHeadResolver($this->failingRunner()))->resolve(sys_get_temp_dir());

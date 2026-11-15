@@ -192,7 +192,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // Also verifies the written bundle is valid gzip+JSON.
         $this->expectOutputRegex('/"project_id":"[^"]*"/');
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
-        $outputPath = sys_get_temp_dir() . '/knossos-bundle-' . bin2hex(random_bytes(6)) . '.gxt';
+        $outputPath = self::scratchPath('knossos-bundle') . '.gxt';
         try {
             $context = new CliCommandContext(
                 new CliOptionParser(),
@@ -233,7 +233,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // mutants (M7-M12) on the output() call.
         $this->expectOutputRegex('/Imported \\d+ portable graph facts\.\nProject: bundle:/');
         [$dbPath, $exportProjectId, $dbCleanup] = $this->populatedTestDatabase();
-        $bundlePath = sys_get_temp_dir() . '/knossos-bundle-' . bin2hex(random_bytes(6)) . '.gxt';
+        $bundlePath = self::scratchPath('knossos-bundle') . '.gxt';
         $importDbPath = null;
         try {
             // Step 1: Export a bundle from the populated database.
@@ -246,7 +246,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
             assertSame(0, (new BundleCommand())->run('export-bundle', [$exportProjectId], ['output' => [$bundlePath]], $exportContext));
 
             // Step 2: Import the bundle into a fresh file-based database.
-            $importDbPath = sys_get_temp_dir() . '/knossos-import-' . bin2hex(random_bytes(6)) . '.sqlite';
+            $importDbPath = self::scratchPath('knossos-import') . '.sqlite';
             $importPdo = SqliteConnection::open($importDbPath);
             (new MigrationRunner($importPdo, self::repositoryRoot() . '/migrations'))->migrate();
             unset($importPdo);
@@ -691,7 +691,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
      */
     private function populatedTestDatabase(): array
     {
-        $dbPath = sys_get_temp_dir() . '/knossos-commands-' . bin2hex(random_bytes(6)) . '.sqlite';
+        $dbPath = self::scratchPath('knossos-commands') . '.sqlite';
         $pdo = SqliteConnection::open($dbPath);
         try {
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -990,7 +990,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
     public function testQueryCommandExplainFlowWithPopulatedDatabase(): void
     {
         // The command prints to stdout; expecting it keeps the run's output clean and checks the summary.
-        $this->expectOutputRegex('/^No component matched "Fixture\\Vendor\\Missing"\./');
+        $this->expectOutputRegex('/^' . preg_quote('No component matched "Fixture\\Vendor\\Missing".', '/') . '/');
         // M36 / QueryCommand::run() -- explainFlow() happy path.
         // The fixture has nodes connected via edges — trace flow between them.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
@@ -1076,7 +1076,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // passes a valid policy file to exercise the policy-parsing code path
         // (CliInputLoader::policies) before the boundary-resolution check.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
-        $policiesFile = sys_get_temp_dir() . '/knossos-policies-' . bin2hex(random_bytes(6)) . '.json';
+        $policiesFile = self::scratchPath('knossos-policies') . '.json';
         file_put_contents($policiesFile, json_encode([
             ['id' => 'pol1', 'from_boundary' => 'nonexistent-boundary', 'allow_targets' => ['@unassigned']],
         ]));
@@ -1137,11 +1137,11 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // (#[Group('git')], knossos-git- temp root via runFixtureCommand /
         // removeGitFixture) rather than populatedTestDatabase()'s fixed,
         // non-existent project root.
-        $root = sys_get_temp_dir() . '/knossos-git-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-git');
         if (!mkdir($root . '/src', 0700, true)) {
             throw new \RuntimeException('Unable to create git fixture.');
         }
-        $dbPath = sys_get_temp_dir() . '/knossos-commands-' . bin2hex(random_bytes(6)) . '.sqlite';
+        $dbPath = self::scratchPath('knossos-commands') . '.sqlite';
         try {
             $this->runFixtureCommand(['git', 'init', '--quiet', $root]);
             $this->runFixtureCommand(['git', '-C', $root, 'config', 'user.name', 'Knossos Test']);
@@ -1300,7 +1300,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // M43 / QueryCommand::run() -- qualityGate() happy path.
         // Uses the archived scan as baseline (which differs from active).
         [$dbPath, $projectId, , $archivedScanId, $cleanup] = $this->richPopulatedTestDatabase();
-        $budgetsFile = sys_get_temp_dir() . '/knossos-budgets-' . bin2hex(random_bytes(6)) . '.json';
+        $budgetsFile = self::scratchPath('knossos-budgets') . '.json';
         file_put_contents($budgetsFile, json_encode([
             'error_diagnostics' => 100,
             'warning_diagnostics' => 100,
@@ -1328,7 +1328,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
     public function testQueryCommandQualityGateTakesAnEmptyBudgetsObjectAsNoBudgets(): void
     {
         [$dbPath, $projectId, , $archivedScanId, $cleanup] = $this->richPopulatedTestDatabase();
-        $budgetsFile = sys_get_temp_dir() . '/knossos-budgets-' . bin2hex(random_bytes(6)) . '.json';
+        $budgetsFile = self::scratchPath('knossos-budgets') . '.json';
         file_put_contents($budgetsFile, '{}');
         try {
             $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), $dbPath);
@@ -1358,7 +1358,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
     public function testQualityGateExitsNonZeroExactlyWhenABudgetIsExceeded(): void
     {
         [$dbPath, $projectId, , $archivedScanId, $cleanup] = $this->richPopulatedTestDatabase();
-        $budgetsFile = sys_get_temp_dir() . '/knossos-budgets-' . bin2hex(random_bytes(6)) . '.json';
+        $budgetsFile = self::scratchPath('knossos-budgets') . '.json';
         try {
             $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), $dbPath);
             $gate = static function (array $budgets) use ($projectId, $archivedScanId, $budgetsFile, $context): array {
@@ -1407,7 +1407,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // The rich fixture has an explicit 'Checkout' boundary. The policy
         // references this boundary.
         [$dbPath, $projectId, $boundaryId, , $cleanup] = $this->richPopulatedTestDatabase();
-        $policiesFile = sys_get_temp_dir() . '/knossos-policies-' . bin2hex(random_bytes(6)) . '.json';
+        $policiesFile = self::scratchPath('knossos-policies') . '.json';
         file_put_contents($policiesFile, json_encode([
             // Vendor code is @external, not @unassigned: an allow list admits both.
             ['id' => 'pol1', 'from_boundary' => $boundaryId, 'allow_targets' => ['@unassigned', '@external']],
@@ -1443,7 +1443,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
     public function testCliEdgeBudgetsDefaultToTheAdvertisedMcpDefault(): void
     {
         [$dbPath, $projectId, $boundaryId, , $cleanup] = $this->richPopulatedTestDatabase();
-        $policiesFile = sys_get_temp_dir() . '/knossos-policies-' . bin2hex(random_bytes(6)) . '.json';
+        $policiesFile = self::scratchPath('knossos-policies') . '.json';
         file_put_contents($policiesFile, json_encode([['id' => 'p', 'from_boundary' => $boundaryId, 'deny_targets' => ['@unassigned']]], JSON_THROW_ON_ERROR));
         $defaults = [];
         foreach (\Knossos\Mcp\ToolCatalog::definitions() as $definition) {
@@ -1482,7 +1482,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // quality-gate). Asserting the exit code equals the sign of the
         // authoritative violation_count keeps the test robust to the fixture.
         [$dbPath, $projectId, $boundaryId, , $cleanup] = $this->richPopulatedTestDatabase();
-        $policiesFile = sys_get_temp_dir() . '/knossos-policies-' . bin2hex(random_bytes(6)) . '.json';
+        $policiesFile = self::scratchPath('knossos-policies') . '.json';
         file_put_contents($policiesFile, json_encode([
             ['id' => 'deny-unassigned', 'from_boundary' => $boundaryId, 'deny_targets' => ['@unassigned']],
         ]));
@@ -1513,7 +1513,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // ArchitecturePolicyQueryService::checkArchitecture() guard:
         // policies must be a non-empty list with at most 50 declarations.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
-        $policiesFile = sys_get_temp_dir() . '/knossos-policies-' . bin2hex(random_bytes(6)) . '.json';
+        $policiesFile = self::scratchPath('knossos-policies') . '.json';
         file_put_contents($policiesFile, json_encode([]));
         try {
             $context = new CliCommandContext(
@@ -1538,7 +1538,7 @@ final class CommandsTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         // ArchitecturePolicyQueryService::checkArchitecture() guard:
         // policy ids must be unique.
         [$dbPath, $projectId, $cleanup] = $this->populatedTestDatabase();
-        $policiesFile = sys_get_temp_dir() . '/knossos-policies-' . bin2hex(random_bytes(6)) . '.json';
+        $policiesFile = self::scratchPath('knossos-policies') . '.json';
         file_put_contents($policiesFile, json_encode([
             ['id' => 'dup', 'from_boundary' => '@unassigned', 'allow_targets' => ['@unassigned']],
             ['id' => 'dup', 'from_boundary' => '@unassigned', 'allow_targets' => ['@unassigned']],

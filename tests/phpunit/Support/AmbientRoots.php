@@ -38,7 +38,7 @@ trait AmbientRoots
         $previousRoots = getenv('KNOSSOS_ALLOWED_ROOTS');
         $previousFile = getenv('KNOSSOS_ROOTS_FILE');
         putenv('KNOSSOS_ALLOWED_ROOTS');
-        putenv('KNOSSOS_ROOTS_FILE=' . sys_get_temp_dir() . '/knossos-absent-roots-' . bin2hex(random_bytes(6)) . '.json');
+        putenv('KNOSSOS_ROOTS_FILE=' . self::scratchPath('knossos-absent-roots') . '.json');
         try {
             $callback();
         } finally {

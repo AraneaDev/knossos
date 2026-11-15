@@ -20,7 +20,7 @@ final class NestedPackageFallbackTest extends KnossosTestCase
 {
     public function testANestedPackageIsReadWithItsOwnTypesAndTypeScript(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-nested-package-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-nested-package');
         $files = [
             'package.json' => '{"name":"app","private":true}',
             'tsconfig.json' => '{"compilerOptions":{"strict":true},"include":["src"]}',

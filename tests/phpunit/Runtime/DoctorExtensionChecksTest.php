@@ -38,7 +38,7 @@ final class DoctorExtensionChecksTest extends KnossosTestCase
     public function testEachRequiredExtensionIsACheckThatIsOkWhenLoaded(string $extension): void
     {
         assertSame(true, extension_loaded($extension), $extension . ' is required for the rest of the suite');
-        $root = sys_get_temp_dir() . '/knossos-doctor-extensions-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-doctor-extensions');
         mkdir($root, 0o700, true);
         try {
             $result = (new DoctorService(SqliteConnection::open(':memory:'), $root, ':memory:'))->run();

@@ -44,7 +44,7 @@ final class WorkerTest extends KnossosTestCase
     #[Group('worker')]
     public function testCancellingAnActiveScanTerminatesTheWorkerAndSendsTheIntegerRequestId(): void
     {
-        $record = sys_get_temp_dir() . '/knossos-blocked-scan-' . bin2hex(random_bytes(6));
+        $record = self::scratchPath('knossos-blocked-scan');
         $client = new ProcessScannerClient([
             PHP_BINARY,
             self::repositoryRoot() . '/tests/Fixtures/workers/fake-worker.php',

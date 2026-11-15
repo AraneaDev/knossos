@@ -14,7 +14,6 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class TypescriptAppTest extends KnossosTestCase
 {
@@ -56,10 +55,7 @@ final class TypescriptAppTest extends KnossosTestCase
         assertSame(1, count(array_filter($edges, fn(EdgeFact $edge): bool => $edge->kind === 'uses_hook')));
         assertSame(2, count(array_filter($edges, fn(EdgeFact $edge): bool => $edge->kind === 'calls_endpoint')));
 
-        $database = tempnam(sys_get_temp_dir(), 'knossos-typescript-app-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate TypeScript app database.');
-        }
+        $database = self::scratchFile('knossos-typescript-app');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -85,7 +81,7 @@ final class TypescriptAppTest extends KnossosTestCase
     #[Group('typescript-scanner')]
     public function testANextPageOrLayoutIsOneOnlyUnderTheRoutingFolder(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-next-pages-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-next-pages');
         $files = [
             'tsconfig.json' => '{"compilerOptions":{"strict":false,"jsx":"react-jsx"},"include":["app","src"]}',
             'app/dashboard/page.tsx' => "export default function Dashboard() { return null; }\n",

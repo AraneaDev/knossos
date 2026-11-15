@@ -39,7 +39,7 @@ final class SourceExcerptTest extends KnossosTestCase
     {
         // The reader is the sole disk-touching seam; test its containment
         // guard directly with a real filesystem layout.
-        $base = sys_get_temp_dir() . '/knossos-excerpt-' . bin2hex(random_bytes(6));
+        $base = self::scratchPath('knossos-excerpt');
         mkdir($base . '/project/src', 0755, true);
         try {
             file_put_contents($base . '/project/src/Ok.php', "<?php\n// line 2\n// line 3\n");

@@ -9,14 +9,13 @@ use Knossos\Git\ProcessGitHistoryProvider;
 use Knossos\Tests\Phpunit\Support\Processes;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 /**
  * The Git subprocess boundary: a scanned repository's own .git/config must not
  * be able to turn a read-only query into command execution.
  */
 #[Group('git')]
-final class GitProcessRunnerHardeningTest extends TestCase
+final class GitProcessRunnerHardeningTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     use Processes;
 
@@ -56,7 +55,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
      */
     public function testHardenedArgvAndEnvironmentReachTheChildProcess(): void
     {
-        $dir = sys_get_temp_dir() . '/knossos-git-hardening-argv-' . bin2hex(random_bytes(8));
+        $dir = self::scratchPath('knossos-git-hardening-argv');
         mkdir($dir, 0o700, true);
         $fakeGit = $dir . '/git';
         file_put_contents(
@@ -120,7 +119,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
      */
     public function testANamedSafeDirectoryReachesGitAsAConfigSetting(): void
     {
-        $dir = sys_get_temp_dir() . '/knossos-git-hardening-safe-' . bin2hex(random_bytes(8));
+        $dir = self::scratchPath('knossos-git-hardening-safe');
         mkdir($dir, 0o700, true);
         $fakeGit = $dir . '/git';
         file_put_contents($fakeGit, "#!/bin/sh\nfor a in \"\$@\"; do printf '%s\\037' \"\$a\"; done\n");
@@ -151,7 +150,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if ($git === null || !function_exists('posix_getuid') || posix_getuid() !== 0) {
             self::markTestSkipped('Needs git and root, to hand the repository to another user.');
         }
-        $root = sys_get_temp_dir() . '/knossos-git-hardening-owner-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-git-hardening-owner');
         mkdir($root, 0o755, true);
         try {
             self::runQuiet([$git, 'init', '--quiet', $root]);
@@ -182,7 +181,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if ($git === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $root = sys_get_temp_dir() . '/knossos-git-hardening-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-git-hardening');
         $canary = $root . '.canary';
         mkdir($root, 0o700, true);
         try {
@@ -216,7 +215,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if ($git === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $root = sys_get_temp_dir() . '/knossos-git-hardening-filter-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-git-hardening-filter');
         $canary = $root . '.canary';
         mkdir($root, 0o700, true);
         try {
@@ -249,7 +248,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if ($git === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $root = sys_get_temp_dir() . '/knossos-git-hardening-gpg-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-git-hardening-gpg');
         $canary = $root . '.canary';
         $program = $root . '.gpg';
         $object = $root . '.commit';
@@ -379,7 +378,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if ($git === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $bin = sys_get_temp_dir() . '/knossos-git-hardening-helper-' . bin2hex(random_bytes(8));
+        $bin = self::scratchPath('knossos-git-hardening-helper');
         $canary = $bin . '.canary';
         mkdir($bin, 0o700, true);
         file_put_contents($bin . '/git-remote-none', sprintf("#!/bin/sh\ntouch %s\nexit 1\n", escapeshellarg($canary)));
@@ -416,7 +415,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
      */
     private static function partialCloneFixture(string $git, string $transport, string $missing = 'b.txt'): array
     {
-        $root = sys_get_temp_dir() . '/knossos-git-hardening-promisor-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-git-hardening-promisor');
         $fixture = ['root' => $root, 'canary' => $root . '.canary', 'program' => $root . '.transport', 'remote' => $root . '.remote', 'commit' => ''];
         mkdir($root, 0o700, true);
         mkdir($fixture['remote'], 0o700, true);
@@ -478,7 +477,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if ($git === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $root = sys_get_temp_dir() . '/knossos-git-hardening-eqname-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-git-hardening-eqname');
         $canary = $root . '.canary';
         mkdir($root, 0o700, true);
         try {
@@ -518,7 +517,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if ($git === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $root = sys_get_temp_dir() . '/knossos-git-hardening-include-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-git-hardening-include');
         $canary = $root . '.canary';
         mkdir($root, 0o700, true);
         try {
@@ -558,7 +557,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if ($git === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $root = sys_get_temp_dir() . '/knossos-git-hardening-worktree-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-git-hardening-worktree');
         $canary = $root . '.canary';
         mkdir($root, 0o700, true);
         try {
@@ -599,7 +598,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if ($git === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $root = sys_get_temp_dir() . '/knossos-git-hardening-lfs-' . bin2hex(random_bytes(8));
+        $root = self::scratchPath('knossos-git-hardening-lfs');
         $canary = $root . '.canary';
         mkdir($root, 0o700, true);
         try {
@@ -840,7 +839,7 @@ final class GitProcessRunnerHardeningTest extends TestCase
         if (!function_exists('posix_kill')) {
             self::markTestSkipped('posix_kill() is needed to observe the reap.');
         }
-        $dir = sys_get_temp_dir() . '/knossos-git-timeout-' . bin2hex(random_bytes(8));
+        $dir = self::scratchPath('knossos-git-timeout');
         mkdir($dir, 0o700, true);
         $fakeGit = $dir . '/git';
         $pidFile = $dir . '/pid';

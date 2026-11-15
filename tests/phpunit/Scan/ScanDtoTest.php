@@ -451,7 +451,7 @@ final class ScanDtoTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 
     public function testAPresentOptionalWorkerIsIncludedInTheInstalledSet(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-installed-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-installed');
         mkdir($root . '/workers/rust/bin', 0o700, true);
         touch($root . '/workers/rust/bin/knossos-rust-worker');
         try {

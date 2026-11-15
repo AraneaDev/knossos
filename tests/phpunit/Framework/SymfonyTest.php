@@ -16,7 +16,6 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class SymfonyTest extends KnossosTestCase
 {
@@ -50,10 +49,7 @@ final class SymfonyTest extends KnossosTestCase
         assertArrayContains(['injects', 'php:class:App\\CheckoutController', 'php:service:app.audit'], $edgeTuples);
         assertSame('SYMFONY_DYNAMIC_ROUTE_PATH', $diagnostics[0]->code);
 
-        $path = tempnam(sys_get_temp_dir(), 'knossos-symfony-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate Symfony database.');
-        }
+        $path = self::scratchFile('knossos-symfony');
         try {
             $pdo = SqliteConnection::open($path);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();

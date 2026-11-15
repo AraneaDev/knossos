@@ -23,7 +23,7 @@ final class ProjectListCommandTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->database = sys_get_temp_dir() . '/knossos-stale-list-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $this->database = self::scratchPath('knossos-stale-list') . '.sqlite';
     }
 
     protected function tearDown(): void

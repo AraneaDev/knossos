@@ -29,7 +29,7 @@ final class IncrementalReadsScanTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-reads-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-reads');
         mkdir($this->root, 0o777, true);
     }
 
@@ -218,7 +218,7 @@ final class IncrementalReadsScanTest extends KnossosTestCase
         $this->write('composer.json', '{"name": "app/upgrade"}' . "\n");
         $this->write('src/A.php', "<?php\nnamespace App;\nclass A {}\n");
         $this->write('src/B.php', "<?php\nnamespace App;\nclass B {}\n");
-        $migrations = sys_get_temp_dir() . '/knossos-stale-migrations-' . bin2hex(random_bytes(6));
+        $migrations = self::scratchPath('knossos-stale-migrations');
         mkdir($migrations, 0o700);
         try {
             foreach (glob(self::repositoryRoot() . '/migrations/0*.sql') ?: [] as $migration) {

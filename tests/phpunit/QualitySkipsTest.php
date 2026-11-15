@@ -34,7 +34,7 @@ final class QualitySkipsTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = sys_get_temp_dir() . '/knossos-quality-skips-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-quality-skips');
         mkdir($this->directory . '/empty-path', 0o700, true);
     }
 

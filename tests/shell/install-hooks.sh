@@ -1,12 +1,13 @@
 #!/bin/sh
 # tools/install-hooks must install every hook type the pre-commit config defines.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 ROOT="$HERE/../.."
 failures=0
 STUBS=$(mktemp -d)
-trap 'rm -rf "$STUBS"' EXIT
 
 # A pre-commit that only records what it was asked to install.
 printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "%s/args"\n' "$STUBS" > "$STUBS/pre-commit"
