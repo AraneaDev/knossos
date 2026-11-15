@@ -37,6 +37,8 @@ export type ClientOptions = {
   /** Ctrl-Z: give the terminal back as a stopped job would. */
   suspend(): void
   after(ms: number, fire: () => void): void
+  /** The server said the project's pane moved to another server (it stepped down, or this is where it used to be). */
+  moved?(): void
 }
 
 /** What the host calls: input as it arrives, the terminal resized, the end, a persistent line to show (null clears it), and a toast that goes by itself. */
@@ -207,6 +209,8 @@ export function startClient(o: ClientOptions): Client {
     },
     on: {
       toast: (e: { text: string }) => showToast(e.text),
+      // The host finds the server that holds the project now: through the project's lock, not the port named here.
+      moved: () => o.moved?.(),
       // A terminal cannot tell whether the copy arrived, so the text is shown too, as the page shows it when the copy fails.
       copy: (e: { text: string }) => {
         o.copy(e.text)

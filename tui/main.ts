@@ -322,6 +322,10 @@ try {
     },
     quit: () => quit(0),
     suspend,
+    // Moved: the next reconnect takes the project's usual take-over path, which finds the lock's server.
+    moved: () => {
+      if (hosted?.kind === 'running') lost = true
+    },
     after: (ms, fire) => void setTimeout(fire, ms),
   })
   if (started.kind === 'running' && editor !== null) client.toast("This project's pane already runs; files open in its editor.")

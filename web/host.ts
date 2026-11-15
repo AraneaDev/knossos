@@ -60,6 +60,7 @@ export async function hostProject(o: {
       editor: o.editor,
       ...(o.log === undefined ? {} : { log: o.log }),
       holder: lock.holder,
+      formerPort: lock.replaced,
     })
   } catch (error) {
     lock.release()

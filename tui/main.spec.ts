@@ -201,9 +201,14 @@ describe('knossos (the terminal pane)', () => {
       expect(pidOf(data, dir)).not.toBe(own.pid)
       process.kill(own.pid, 'SIGCONT')
       resumed = true
-      // Resumed, the first pane's server sees the lock name the other and closes; the first pane joins the other's server.
-      for (let i = 0; i < 200 && (await fetch(`http://127.0.0.1:${own.port}/`).then(() => true, () => false)); i++) await wait(50)
-      await expect(fetch(`http://127.0.0.1:${own.port}/`)).rejects.toThrow()
+      // Resumed, the first pane's server sees the lock name the other and closes; the first pane joins the other's server,
+      // which then takes the port the first let go, so a tab that was away from it is told where the pane went.
+      const { token } = JSON.parse(readFileSync(lockFile(data, dir).replace(/\.json$/, '.host.json'), 'utf8')) as { token: string }
+      const now = JSON.parse(readFileSync(lockFile(data, dir), 'utf8')) as { pid: number; port: number }
+      const moved = `data: ${JSON.stringify({ type: 'moved', port: now.port })}`
+      const told = () => fetch(`http://127.0.0.1:${own.port}/events?t=${token}&id=away`).then(r => r.text(), () => '')
+      for (let i = 0; i < 300 && !(await told()).startsWith(moved); i++) await wait(50)
+      expect(await told()).toContain(moved)
       const seen = second.out().length
       for (let i = 0; i < 60 && !second.out().slice(seen).includes('Component0'); i++) {
         first.child.stdin.write('2')

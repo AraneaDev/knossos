@@ -408,13 +408,17 @@ describe('claim', () => {
     expect((await claim(data, root, TOKEN)).kind).toBe('mine')
   })
 
-  it("takes over a lock whose process is gone, and writes it as its own", async () => {
+  it("takes over a lock whose process is gone, and writes it as its own, saying the port the old one named", async () => {
     const data = scratch()
     const root = scratch()
     mkdirSync(join(data, 'web'), { recursive: true })
     writeFileSync(lockFile(data, root), JSON.stringify({ pid: deadPid(), port: 9 }))
     const got = await claim(data, root, TOKEN)
     expect(got.kind).toBe('mine')
+    if (got.kind === 'mine') expect(got.replaced).toBe(9)
+    // A project nobody held replaces nothing.
+    const free = await claim(scratch(), scratch(), TOKEN)
+    if (free.kind === 'mine') expect(free.replaced).toBeNull()
     expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.pid, port: null })
   })
 

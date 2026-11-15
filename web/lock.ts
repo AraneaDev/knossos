@@ -22,9 +22,10 @@ import { join } from 'node:path'
 /**
  * `mine`: `record` the port once the server listens, `release` when it stops, and `holder` to learn whether
  * another pane server took the project over: its port once the lock names another live process and a pane server
- * answers there, null otherwise.
+ * answers there, null otherwise. `replaced` is the port of the stale lock this claim removed, if it named one: where
+ * pages of the server it replaced may still come looking.
  */
-export type Claim = { kind: 'mine'; record(port: number): void; release(): void; holder(): Promise<number | null> } | { kind: 'running'; url: string }
+export type Claim = { kind: 'mine'; record(port: number): void; release(): void; holder(): Promise<number | null>; replaced: number | null } | { kind: 'running'; url: string }
 
 /** A live process that holds the lock but whose server has not answered yet, and whether it is stopped (a pane suspended with Ctrl-Z). */
 export type Silent = { pid: number; stopped: boolean }
@@ -277,9 +278,15 @@ export async function claim(dataDir: string, root: string, token: string, silent
     guarded(file, () => {
       if (existsSync(file) && doomed(held(file))) rmSync(file, { force: true })
     })
+  /** The port of the last stale lock this claim removed: see {@link Claim}. */
+  let replaced: number | null = null
   /** Removes the stale lock that read as `seen`, and only that one. */
   const removeStale = (seen: { pid: unknown; port: unknown } | null, patient: boolean) =>
-    removeIf(now => (now === null ? seen === null && !(patient && writing(file)) : seen !== null && now.pid === seen.pid && now.port === seen.port))
+    removeIf(now => {
+      const doomed = now === null ? seen === null && !(patient && writing(file)) : seen !== null && now.pid === seen.pid && now.port === seen.port
+      if (doomed) replaced = now !== null && isPort(now.port) ? now.port : replaced
+      return doomed
+    })
   /** When this start first found the lock unreadable, by its own clock: how long it waits on one is bounded by that, not by the file. */
   let unreadSince: number | null = null
   /**
@@ -308,6 +315,7 @@ export async function claim(dataDir: string, root: string, token: string, silent
       return {
         kind: 'mine',
         record,
+        replaced,
         // Only while it is still this process's: a start that took a lock this one no longer answered for keeps it.
         release: () => {
           if (released) return

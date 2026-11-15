@@ -160,6 +160,12 @@ export async function startServer(o: {
    * asked on the head poll's tick. Once it names one, the server tells its pages where it went and closes itself.
    */
   holder?: () => Promise<number | null>
+  /**
+   * The port of the server whose stale lock this one replaced. Once it is free the server listens there too, with
+   * only directions here: a tab of that server that was away when it stepped down (asleep, or between tries) finds
+   * its way when it comes back.
+   */
+  formerPort?: number | null
 }): Promise<{ url: string; token: string; port: number; ready: Promise<void>; stepped: Promise<void>; close(): Promise<void> }> {
   // Before anything starts: a port it cannot have stops it here, with nothing to undo.
   const wanted = await portFor(o.port ?? 0, o.movable === true)
@@ -189,11 +195,17 @@ export async function startServer(o: {
   const stepped = new Promise<void>(resolve => (stepDown = resolve))
   /** The server's stop once asked for: see {@link close}. */
   let closing: Promise<void> | null = null
+  /** Whether the server listens yet: its port is known from then on. */
+  let listening = false
+  /** What answers on the former port once it has it, and whether it is trying for it. */
+  let pointer: ReturnType<typeof createServer> | null = null
+  let pointing = false
   /** Whether the tick is asking the lock: the ask probes the other server, and a slow one must not pile up asks. */
   let asking = false
   // The poll's tick also asks whether the lock is still this server's: a lock another server holds leaves this one serving no one's project.
   const headPoll = setInterval(() => {
     follow()
+    pointFrom()
     if (o.holder === undefined || asking) return
     asking = true
     void o
@@ -343,12 +355,43 @@ export async function startServer(o: {
   })
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : 0
+  listening = true
   origin = `http://127.0.0.1:${port}`
+
+  /** Listens on the former port with {@link directions}, once it is free: tried on each tick until it is. */
+  function pointFrom(): void {
+    const former = o.formerPort ?? null
+    if (!listening || former === null || former === port || pointer !== null || pointing || closing !== null) return
+    pointing = true
+    const there = createServer((req, res) => directions(req, res))
+    there.once('error', () => (pointing = false))
+    there.listen(former, '127.0.0.1', () => {
+      pointing = false
+      if (closing !== null) return void there.close()
+      pointer = there
+    })
+  }
+  /**
+   * The former port's only answers, under the same token rule: a page's event stream is told where the pane is
+   * now, as a connected page is when a server steps down, and anything else is sent there. Nothing here says it is
+   * a pane server, so no start takes it for one.
+   */
+  function directions(req: IncomingMessage, res: ServerResponse): void {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+    res.setHeader('referrer-policy', 'no-referrer')
+    if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
+    if (url.pathname === '/events') {
+      return void res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' }).end(`data: ${JSON.stringify({ type: 'moved', port })}\n\n`)
+    }
+    res.writeHead(307, { location: `http://127.0.0.1:${port}${url.pathname}${url.search}`, 'cache-control': 'no-store' }).end()
+  }
 
   /** Stops the server; asked again (a step-down, then the host's own stop), it is the same stop. */
   function close(): Promise<void> {
     closing ??= (async () => {
       clearInterval(headPoll)
+      pointer?.close()
+      pointer?.closeAllConnections()
       stopClocks()
       // A claim of the folder still running would go on to a first scan for a server that is gone.
       endDeliberately()

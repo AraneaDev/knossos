@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { IncomingMessage } from 'node:http'
 import { stripTypeScriptTypes } from 'node:module'
+import { createServer as createNetServer } from 'node:net'
 import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { activeTab, fixturePluginRoot, frameText, scratch } from './fixtures/helpers'
@@ -337,6 +338,34 @@ describe('startServer', () => {
     // Two keep-alives, as events a page sees, not comments it never does.
     while (text.split('data: {"type":"alive"}').length < 3) text += new TextDecoder().decode((await reader.read()).value)
     await reader.cancel()
+  })
+
+  it('takes the port of the server it replaced once that one has let it go, with only directions here', async () => {
+    // The port the replaced server listened on, still held by it for a while (suspended, or stepping down).
+    const held = createNetServer()
+    await new Promise<void>(resolve => held.listen(0, '127.0.0.1', resolve))
+    const former = (held.address() as { port: number }).port
+    running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, headPollMs: 20, formerPort: former })
+    await running.ready
+    const at = (path: string) => fetch(`http://127.0.0.1:${former}${path}`, { redirect: 'manual' })
+    // Tried on each tick while it is held, and taken once it is free.
+    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise<void>(resolve => held.close(() => resolve()))
+    await vi.waitFor(async () => expect((await at(`/events?t=${running!.token}&id=a`)).status).toBe(200))
+    // A tab's stream is told where the pane is, as a connected one is when its server steps down.
+    expect(await (await at(`/events?t=${running.token}&id=a`)).text()).toBe(`data: ${JSON.stringify({ type: 'moved', port: running.port })}\n\n`)
+    // A tab that loads again is sent there, its address kept but for the port.
+    const page = await at(`/?t=${running.token}`)
+    expect(page.status).toBe(307)
+    expect(page.headers.get('location')).toBe(`http://127.0.0.1:${running.port}/?t=${running.token}`)
+    // The same token rule, and nothing that a start could take for a pane server.
+    const refused = await at('/events')
+    expect(refused.status).toBe(403)
+    expect(refused.headers.has(PANE_HEADER)).toBe(false)
+    expect(page.headers.has(PANE_HEADER)).toBe(false)
+    // It goes with the server.
+    await running.close()
+    await expect(at(`/?t=${running.token}`)).rejects.toThrow()
   })
 
   it('says it is a pane server in every answer, the refused ones too', async () => {

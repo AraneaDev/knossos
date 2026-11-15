@@ -99,7 +99,11 @@ A server that finds another holding the project closes: its terminal says so,
 Another server took over the pane for /home/you/code/shop; this one stops.
 ```
 
-and a browser tab on it moves to the other server's address by itself. A
+and a browser tab on it moves to the other server's address by itself. A tab
+that was away when that happened, on a laptop that slept say, finds its way
+too: the server that took over answers on the old address with directions to
+its own, for as long as it runs. A tab whose server goes quiet without
+stopping reconnects after 20 to 40 seconds, and lands there the same way. A
 server that stops on a failure of its own still ends its watcher and removes
 its lock. A second Ctrl-C while it stops makes it stop at once.
 

@@ -58,6 +58,13 @@ describe('startClient when the stream is lost', () => {
     expect(strip(h.written.at(-1)!)).not.toContain(RECONNECTING)
   })
 
+  it('tells its host when the server says the pane moved', async () => {
+    let moved = 0
+    client({ moved: () => moved++ }, [frame, { type: 'moved', port: 41234 }])
+    await settle()
+    expect(moved).toBe(1)
+  })
+
   it('says it is reconnecting, waits with the host, and stops on close', async () => {
     const h = client({}, [frame], true)
     await settle()
