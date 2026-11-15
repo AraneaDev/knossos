@@ -467,16 +467,32 @@ else
 fi
 rm -rf "$INSTALL/plugin" "$INSTALL/container-update"
 
-if command -v script >/dev/null 2>&1; then
+# The terminal decision, without a terminal: KNOSSOS_TEST_TERMINALS stands in
+# for "is stdin a terminal, is stdout a terminal", and the flags are read off
+# the exec line.
+# terminal_flags STDIN,STDOUT COMMAND: whether that call got -t and TERM.
+terminal_flags() {
     : > "$FAKE_DOCKER_STATE/calls"
-    (cd "$PROJECT" && script -qec "env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE '$LAUNCHER' version" /dev/null </dev/null >/dev/null 2>&1)
-    case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls") in
-        *'[exec] [-i] [-w] '*' [-t] [-e] [TERM='*) pass 'on a terminal the call gets -t and TERM' ;;
-        *) fail "terminal call: $(calls)" ;;
+    (cd "$PROJECT" && KNOSSOS_TEST_TERMINALS=$1 TERM=xterm-test kn "$2" </dev/null >/dev/null 2>&1)
+    case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in
+        *' [-t] [-e] [TERM=xterm-test] '*) printf 'tty' ;;
+        *'[-t]'*) printf 'tty without TERM' ;;
+        *) printf 'none' ;;
     esac
+}
+terminals_ok=yes
+for case in 'yes,yes tui tty' 'yes,no tui none' 'no,yes tui none' 'no,no version none' 'yes,yes serve none'; do
+    # shellcheck disable=SC2086 # three words, split on purpose
+    set -- $case
+    got=$(terminal_flags "$1" "$2")
+    if [ "$got" != "$3" ]; then terminals_ok=no; printf '  %s %s: wanted %s, got %s\n' "$1" "$2" "$3" "$got"; fi
+done
+if [ "$terminals_ok" = yes ]; then
+    pass 'a call gets -t and TERM only when stdin and stdout are terminals, and serve never does'
 else
-    fail 'script(1) is needed to test the terminal branch'
+    fail 'the terminal flags are chosen wrongly'
 fi
+if ! grep -q '^call \[exec\].*KNOSSOS_TEST_TERMINALS' "$FAKE_DOCKER_STATE/calls"; then pass 'the test-only terminal switch never reaches the container'; else fail 'KNOSSOS_TEST_TERMINALS was passed into the container'; fi
 
 # ---- the mount rule cannot be got around ---------------------------------------------
 
