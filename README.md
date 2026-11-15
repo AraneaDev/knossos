@@ -310,6 +310,7 @@ drive releases, and how to add a language scanner.
 
 ## Further reading
 
+- [The documentation site](https://araneadev.github.io/knossos/): every page below, with search and navigation
 - [The documentation index](docs/README.md): which page answers which question
 - [What a dependency graph finds that your coding agent misses](https://tim-schipper.nl/en/blog/dependency-graph-coding-agents)
 
