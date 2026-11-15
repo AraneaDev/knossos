@@ -11,9 +11,9 @@ import { startServer } from './server'
 /** Why `error` happened, as text. */
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-/** A server this process runs (stop it with `close`, then `release`), or the address of the one that already runs. */
+/** A server this process runs (stop it with `close`, then `release`; `ready` settles once its start-up is done), or the address of the one that already runs. */
 export type Hosted =
-  | { kind: 'mine'; url: string; token: string; port: number; kept: number | null; close(): Promise<void>; release(): void }
+  | { kind: 'mine'; url: string; token: string; port: number; kept: number | null; ready: Promise<void>; close(): Promise<void>; release(): void }
   | { kind: 'running'; url: string }
 
 /**
@@ -61,10 +61,12 @@ export async function hostProject(o: {
     lock.record(server.port)
     kept.remember(server.port)
   } catch (error) {
-    // The server is up but nothing says so: stop it and free the lock rather than leave both held.
+    // The server is up but nothing says so: stop it and free the lock rather than leave both held. Its start-up is
+    // let finish first, or it would go on after the close and start a watcher for a server that no longer runs.
+    await server.ready
     await server.close().catch(() => undefined)
     lock.release()
     throw error
   }
-  return { kind: 'mine', url: server.url, token: server.token, port: server.port, kept: kept.port, close: server.close, release: lock.release }
+  return { kind: 'mine', url: server.url, token: server.token, port: server.port, kept: kept.port, ready: server.ready, close: server.close, release: lock.release }
 }
