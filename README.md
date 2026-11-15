@@ -4,6 +4,8 @@
 
 **The labyrinth mapped once: on screen beside Claude Code, and in the notes your agent reads while it works.**
 
+**[Documentation](https://araneadev.github.io/knossos/)** · [Install](https://araneadev.github.io/knossos/get-started/installation) · [First scan](https://araneadev.github.io/knossos/get-started/first-scan) · [The pane](https://araneadev.github.io/knossos/claude-code/pane/) · [MCP tools](https://araneadev.github.io/knossos/reference/mcp-tools)
+
 [![Release](https://img.shields.io/github/v/release/AraneaDev/knossos?label=release)](https://github.com/AraneaDev/knossos/releases)
 [![Tool page](https://img.shields.io/badge/tool%20page-aranea.dev-0b7285)](https://aranea.dev/tools/knossos)
 [![CI](https://img.shields.io/github/actions/workflow/status/AraneaDev/knossos/quality.yml?label=CI)](https://github.com/AraneaDev/knossos/actions/workflows/quality.yml)
@@ -93,9 +95,9 @@ natively, which needs PHP 8.3 or newer with the mbstring, PDO, PDO SQLite and to
 Node 24 or newer, Python 3.11 or newer, Git, `tar` and `sha256sum` or `shasum`. When something is
 missing, it stops before it writes anything, lists what is missing, and names the two ways out:
 install it, or run the installer with `--mode=container`, which is experimental and needs Docker
-or Podman. [Installation](docs/get-started/installation.md) covers what it checks and how to
+or Podman. [Installation](https://araneadev.github.io/knossos/get-started/installation) covers what it checks and how to
 choose a mode, and
-[Updating](docs/operate/updating.md) covers `knossos self-update`.
+[Updating](https://araneadev.github.io/knossos/operate/updating) covers `knossos self-update`.
 
 Start a new session. The brief appears at its start, and `/knossos` opens the pane.
 
@@ -126,17 +128,17 @@ knossos install-agent-plugin                                        # preview
 knossos install-agent-plugin --data-dir="$HOME/.knossos" --execute
 ```
 
-- **Codex or another MCP client**: [Codex and other MCP clients](docs/agents/clients.md). The
+- **Codex or another MCP client**: [Codex and other MCP clients](https://araneadev.github.io/knossos/agents/clients). The
   native pane and the messages are Claude Code hooks; every other client gets the MCP tools
   and can use the [web client](#web-client) to browse the graph.
 - **No PHP on the host**: `--mode=container` installs the experimental container mode, which
   keeps what the host trusts in `~/.local/share/knossos` and the graph in `~/.knossos`; see
-  [Container mode](docs/operate/container-mode.md). To run the image by hand instead, see
-  [Running Knossos in Docker](docs/operate/container.md).
-- **When it does not start**: [installation pitfalls](docs/get-started/installation.md#installation-pitfalls),
+  [Container mode](https://araneadev.github.io/knossos/operate/container-mode). To run the image by hand instead, see
+  [Running Knossos in Docker](https://araneadev.github.io/knossos/operate/container).
+- **When it does not start**: [installation pitfalls](https://araneadev.github.io/knossos/get-started/installation#installation-pitfalls),
   such as an unpinned data directory that gives the server and the plugin two different graphs.
-- **Updating, removing, or trying the plugin for one session**: [Updating](docs/operate/updating.md)
-  and [the plugin guide](docs/claude-code/plugin.md).
+- **Updating, removing, or trying the plugin for one session**: [Updating](https://araneadev.github.io/knossos/operate/updating)
+  and [the plugin guide](https://araneadev.github.io/knossos/claude-code/plugin).
 
 ## Quick start
 
@@ -154,7 +156,7 @@ knossos scan /absolute/path/to/project
 In a Claude Code session in that project, type `/knossos` to open the pane, then ask the agent a
 structural question, such as "what breaks if I change `UserRepository`, and which tests would
 tell me?". The routing skill sends it to the graph. A first scan with real output is in
-[first scan](docs/get-started/first-scan.md#a-worked-example).
+[first scan](https://araneadev.github.io/knossos/get-started/first-scan#a-worked-example).
 
 Outside a session, run `knossos` in the project for the same pane in your terminal, or
 `knossos web` for it in your browser.
@@ -195,7 +197,7 @@ The finder: `f`, a few letters of a name, and Enter opens that component.
 
 The band: after a turn that edited files, how far the change reaches, with the pane shut.
 
-Every tab, key and setting is in [the pane guide](docs/claude-code/pane/index.md).
+Every tab, key and setting is in [the pane guide](https://araneadev.github.io/knossos/claude-code/pane/).
 
 ## Terminal pane
 
@@ -209,7 +211,7 @@ knossos
 It is the same nine tabs, drawn in the terminal, with the mouse and the keys of the pane.
 `Ctrl-C` quits, and so does `q` unless the pane gives `q` to a press: on a project that
 was never scanned, `q` starts the scan. It shares the project's server with `knossos web`, so a browser open
-on the same project shows the same pane. See [the terminal guide](docs/guides/terminal-pane.md)
+on the same project shows the same pane. See [the terminal guide](https://araneadev.github.io/knossos/guides/terminal-pane)
 for the options, the keys and what differs from the browser.
 
 ## Web client
@@ -236,7 +238,7 @@ or choose a port without opening a browser automatically:
 knossos web /path/to/your-project --port=8123 --no-open
 ```
 
-Use the printed address, including its token. See [the web client guide](docs/guides/web-pane.md)
+Use the printed address, including its token. See [the web client guide](https://araneadev.github.io/knossos/guides/web-pane)
 for editor integration, keyboard controls, bookmarks, installing it as an app, and the
 differences from the Claude Code pane.
 
@@ -253,7 +255,7 @@ knossos: this session's changes carry 1 changed file no test reaches (src/Kernel
 
 Before an edit, `file_context` gives one file's boundary and the rules that bind it, its
 dependents, the tests that reach it and its latest commits, in one call instead of a grep for
-its callers. Every message and its limits are in [messages for the model](docs/claude-code/model-messages.md).
+its callers. Every message and its limits are in [messages for the model](https://araneadev.github.io/knossos/claude-code/model-messages).
 
 Over MCP, in any client, the 40 tools answer questions such as:
 
@@ -265,8 +267,8 @@ Over MCP, in any client, the 40 tools answer questions such as:
 - Which files and functions does no test reach?
 - Where would a refunds feature fit the existing structure?
 
-Each group of tools has its own guide, linked from the [docs index](docs/README.md), and every
-schema is in the [MCP tool reference](docs/reference/mcp-tools.md).
+Each group of tools has its own guide, linked from the [docs index](https://araneadev.github.io/knossos/all-pages), and every
+schema is in the [MCP tool reference](https://araneadev.github.io/knossos/reference/mcp-tools).
 
 ## CLI and CI
 
@@ -285,21 +287,21 @@ knossos watch /absolute/path/to/project
 ```
 
 Exit code `0` means every evaluated gate passed, `1` that a gate failed, and `2` that the result
-could not be evaluated. See [CI and editor integration](docs/operate/ci-editor-integration.md),
-[rules and budgets](docs/guides/architecture-rules.md), [watch mode](docs/operate/watch-mode.md)
-and the [CLI reference](docs/reference/cli.md).
+could not be evaluated. See [CI and editor integration](https://araneadev.github.io/knossos/operate/ci-editor-integration),
+[rules and budgets](https://araneadev.github.io/knossos/guides/architecture-rules), [watch mode](https://araneadev.github.io/knossos/operate/watch-mode)
+and the [CLI reference](https://araneadev.github.io/knossos/reference/cli).
 
 ## Supported languages
 
-| Language                                         | Extraction                                                                                         | Framework enrichment                                                                         |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| PHP 8.3 or newer                                 | Declarations, inheritance, calls, construction, types, injection                                   | [Laravel, Livewire](docs/languages/php-laravel.md), [Symfony](docs/languages/php-symfony.md) |
-| TypeScript/JavaScript                            | Compiler symbol resolution, imports, calls, types, project references, Vue/Svelte/Astro components | [Next.js, NestJS, React, Vue, stores, endpoints](docs/languages/typescript.md)               |
-| Python 3.11 or newer                             | Standard-library AST in an isolated interpreter; manifests, packages, calls, routes                | [FastAPI, Django, Flask, Celery](docs/languages/python.md)                                   |
-| Rust 1.82 or newer, optional on a native install | `syn` parsing; Cargo manifests, cross-file impls, routes; never invokes cargo/rustc                | [Details and limits](docs/languages/rust.md)                                                 |
+| Language                                         | Extraction                                                                                         | Framework enrichment                                                                                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PHP 8.3 or newer                                 | Declarations, inheritance, calls, construction, types, injection                                   | [Laravel, Livewire](https://araneadev.github.io/knossos/languages/php-laravel), [Symfony](https://araneadev.github.io/knossos/languages/php-symfony) |
+| TypeScript/JavaScript                            | Compiler symbol resolution, imports, calls, types, project references, Vue/Svelte/Astro components | [Next.js, NestJS, React, Vue, stores, endpoints](https://araneadev.github.io/knossos/languages/typescript)                                           |
+| Python 3.11 or newer                             | Standard-library AST in an isolated interpreter; manifests, packages, calls, routes                | [FastAPI, Django, Flask, Celery](https://araneadev.github.io/knossos/languages/python)                                                               |
+| Rust 1.82 or newer, optional on a native install | `syn` parsing; Cargo manifests, cross-file impls, routes; never invokes cargo/rustc                | [Details and limits](https://araneadev.github.io/knossos/languages/rust)                                                                             |
 
 Mixed repositories reconcile into one graph. Other scanners plug in as isolated worker
-processes through the [scanner SDK](docs/reference/scanner-sdk.md).
+processes through the [scanner SDK](https://araneadev.github.io/knossos/reference/scanner-sdk).
 
 ## Safety model
 
@@ -313,9 +315,9 @@ processes through the [scanner SDK](docs/reference/scanner-sdk.md).
 - The database is derived and rebuildable, and source mounts stay read-only.
 - The Git-backed tools run `git` with repository-controlled hooks, pagers and drivers forced off.
 - MCP stdio is the recommended transport. The loopback-only HTTP profile has its own
-  [threat model](docs/operate/http-threat-model.md).
+  [threat model](https://araneadev.github.io/knossos/operate/http-threat-model).
 - A failed scan is never activated: the last complete scan stays the graph you query. See the
-  [fault recovery matrix](docs/operate/recovery-matrix.md).
+  [fault recovery matrix](https://araneadev.github.io/knossos/operate/recovery-matrix).
 
 ## Development
 
@@ -328,14 +330,14 @@ tools/quality-container full
 
 `fast` covers linting, static analysis, formatting and the whole test suite. `full` adds
 security audits, coverage floors, performance budgets, mutation score and supply-chain checks.
-See [quality gates](docs/contribute/quality.md), [how the mod is built](docs/contribute/mod-internals.md)
+See [quality gates](https://araneadev.github.io/knossos/contribute/quality), [how the mod is built](https://araneadev.github.io/knossos/contribute/mod-internals)
 and [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the Conventional Commit prefixes that
 drive releases, and how to add a language scanner.
 
 ## Further reading
 
-- [The documentation site](https://araneadev.github.io/knossos/): every page below, with search and navigation
-- [The documentation index](docs/README.md): which page answers which question
+- [The documentation site](https://araneadev.github.io/knossos/): every page, with search and navigation
+- [All pages](https://araneadev.github.io/knossos/all-pages): which page answers which question
 - [What a dependency graph finds that your coding agent misses](https://tim-schipper.nl/en/blog/dependency-graph-coding-agents)
 
 ## License
