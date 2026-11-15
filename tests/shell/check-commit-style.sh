@@ -1,11 +1,12 @@
 #!/bin/sh
 # The commit-style check accepts exactly the types release-please knows, whatever tools are installed.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 CHECK="${COMMIT_STYLE_CHECK:-$HERE/../../tools/check-commit-style.sh}"
 failures=0
 nojq="$(mktemp -d)"
-trap 'rm -rf "$nojq"' EXIT
 mkdir "$nojq/bin"
 # Every external tool the check needs, and deliberately not jq.
 for tool in bash dirname sed grep sort paste tr cat head; do

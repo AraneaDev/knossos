@@ -8,12 +8,13 @@
 # Set KNOSSOS_TEST_RELEASE_DIR to a directory that already holds a release
 # (tarball and SHA256SUMS) to skip the build.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 ROOT="$HERE/../.."
 failures=0
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
 
 pass() { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }

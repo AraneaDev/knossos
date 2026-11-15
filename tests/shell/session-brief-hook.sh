@@ -5,6 +5,8 @@
 # may fail to help, and may never cost anything. Each case must exit 0 with
 # empty stdout, except a timeout, which prints one line saying so.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 
 HOOK="$(CDPATH='' cd -- "$(dirname -- "$0")/../../hooks/scripts" && pwd)/session-brief.sh"
 failures=0
@@ -283,17 +285,17 @@ cat > "$upd/knossos" <<'STUB'
 if [ "$1" = session-brief ]; then echo brief; exit 0; fi
 echo "$*" >> "$KNOSSOS_TEST_RECORD"
 case ${KNOSSOS_TEST_MODE:-} in
-    slow) sleep 5 ;;
+    slow) sleep 5; echo done >> "$KNOSSOS_TEST_RECORD.done" ;;
     fail) echo noise >&2; exit 7 ;;
 esac
 exit 0
 STUB
 chmod +x "$upd/knossos"
 
-# wait_for FILE: the refresh is detached, so give it a moment to land.
+# wait_for FILE [TENTHS]: the refresh is detached, so give it a moment to land.
 wait_for() {
     n=0
-    while [ ! -s "$1" ] && [ "$n" -lt 50 ]; do
+    while [ ! -s "$1" ] && [ "$n" -lt "${2:-50}" ]; do
         sleep 0.1
         n=$((n + 1))
     done
@@ -329,6 +331,8 @@ else
     printf 'FAIL slow update check: output=%s elapsed=%s\n' "$output" "$elapsed"
     failures=$((failures + 1))
 fi
+# The detached check is still asleep; let it finish rather than outlive the script.
+wait_for "$upd/record.done" 100
 output="$(env KNOSSOS_TEST_MODE=fail KNOSSOS_BIN="$upd/knossos" KNOSSOS_TEST_RECORD="$upd/record" CLAUDE_PROJECT_DIR="$upd_proj" sh "$HOOK" 2>&1)"
 status=$?
 if [ "$status" -eq 0 ] && [ "$output" = brief ]; then

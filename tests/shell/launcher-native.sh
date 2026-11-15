@@ -5,12 +5,13 @@
 # goes, never which release runs), and says what to do when no release is
 # installed.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 TEMPLATE="$HERE/../../tools/launcher/knossos"
 failures=0
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
 
 pass() { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }

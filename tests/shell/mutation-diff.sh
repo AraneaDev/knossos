@@ -5,11 +5,12 @@
 # it reaches Infection instead of reading as nothing to mutate. Infection is a
 # stub here that records its arguments, so no case runs a mutant.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 CHECK="${MUTATION_DIFF_CHECK:-$HERE/../../tools/mutation-diff}"
 failures=0
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
 
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CEILING_DIRECTORIES="$work"
 export GIT_AUTHOR_NAME=mutation GIT_AUTHOR_EMAIL=mutation@example.invalid

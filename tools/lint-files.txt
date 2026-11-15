@@ -18,12 +18,14 @@ shell	tests/shell/install-native.sh
 shell	tests/shell/knossos-run-hook.sh
 shell	tests/shell/launcher-container.sh
 shell	tests/shell/launcher-native.sh
+shell	tests/shell/lib/scratch.sh
 shell	tests/shell/mutation-diff.sh
 shell	tests/shell/mutation-gate.sh
 shell	tests/shell/quality-verdict.sh
 shell	tests/shell/release-pr.sh
 shell	tests/shell/release-rollback.sh
 shell	tests/shell/release-tarball.sh
+shell	tests/shell/run.sh
 shell	tests/shell/self-update.sh
 shell	tests/shell/session-brief-hook.sh
 shell	tools/benchmark

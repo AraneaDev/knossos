@@ -12,6 +12,8 @@
 # nothing.
 # shellcheck disable=SC2016 # the sh -c programs below expand their own arguments
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 TEMPLATE="${KNOSSOS_TEST_LAUNCHER:-$HERE/../../tools/launcher/knossos}"
@@ -19,7 +21,6 @@ IDLE_STOP="$HERE/../../tools/launcher/idle-stop"
 failures=0
 WORK=$(mktemp -d)
 WORK=$(CDPATH='' cd -P -- "$WORK" && pwd -P)
-trap 'rm -rf "$WORK"' EXIT
 
 # A home directory of the test's own: the launcher refuses to mount it or
 # anything above it, and the real one must never be in play.

@@ -4,11 +4,12 @@
 # did or when no release was cut. gh is a stub that records what it was asked
 # and answers the pull request lookup from STUB_PR.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 CHECK="${RELEASE_ROLLBACK_CHECK:-$HERE/../../tools/ci/release-rollback}"
 failures=0
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
 mkdir "$work/bin"
 cat >"$work/bin/gh" <<'EOF'
 #!/bin/sh

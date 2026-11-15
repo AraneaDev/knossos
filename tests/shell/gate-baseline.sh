@@ -5,11 +5,12 @@
 # branch. Without any of those it refuses, rather than gating the last commit
 # alone or a name that does not resolve.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 CHECK="${GATE_BASELINE_CHECK:-$HERE/../../tools/gate-baseline}"
 failures=0
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
 
 # Repositories of the test's own, unaffected by whatever the machine's git
 # configuration says about identities, signing or the initial branch.

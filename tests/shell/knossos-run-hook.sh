@@ -2,13 +2,14 @@
 # The mod's wrapper must be silent on every failure, say so when it refuses a
 # call, and pass JSON through.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 SCRIPTS="$HERE/../../hooks/scripts"
 RUN="$SCRIPTS/knossos-run.sh"
 failures=0
 STUBS=$(mktemp -d)
-trap 'rm -rf "$STUBS"' EXIT
 # The wrapper hands the binary the project's physical path. Under a TMPDIR that
 # is itself a symbolic link that differs from the spelling given, so every
 # expectation below compares against the resolved path, never a literal.
