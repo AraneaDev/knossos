@@ -52,3 +52,7 @@ docs/audits/
 
 # Dev-only capture output (frames, stills, scratch scripts); never committed.
 /tools/capture/out/
+
+# The documentation site's build output and its VitePress cache.
+/website/.vitepress/dist/
+/website/.vitepress/cache/

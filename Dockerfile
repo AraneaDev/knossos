@@ -452,6 +452,9 @@ COPY --chown=knossos:knossos tests ./tests
 COPY --chown=knossos:knossos workers/python/tests ./workers/python/tests
 COPY --chown=knossos:knossos tools ./tools
 COPY --chown=knossos:knossos .github ./.github
+# The documentation site's package: its scripts are listed for the linters.
+# .dockerignore keeps node_modules and the build output out of the copy.
+COPY --chown=knossos:knossos website ./website
 RUN chmod 0755 \
     bin/knossos \
     workers/php/bin/worker \

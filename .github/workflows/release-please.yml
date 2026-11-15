@@ -614,3 +614,45 @@ jobs:
         with:
           skip-github-release: true
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+  # The documentation site for the release just published. This job only
+  # starts the Documentation site workflow (docs-site.yml) for the tag, and
+  # only when GitHub says the release is published and not a draft: `assets`
+  # ends green after rolling back a release whose tarball leg failed, so its
+  # result alone does not say that. The build and the deploy run in that
+  # workflow's own run, under its own `pages` concurrency group, so they never
+  # lengthen this run's queue. Nothing in the rollback or in `release-pr` reads
+  # this job: no `always()`, no `needs.docs-site`. `continue-on-error` keeps a
+  # failed dispatch from failing the run of a release that is already out.
+  docs-site:
+    name: Publish the documentation site
+    needs: [release-please, assets]
+    if: ${{ !inputs.dry_run && needs.release-please.outputs.release_created == 'true' && needs.assets.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      actions: write # starts docs-site.yml, which gh does with the workflow token
+      contents: read
+    steps:
+      - name: Start the documentation site workflow for the published release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || echo unknown)
+          if [ "$draft" != false ]; then
+            echo "::warning::Release $TAG is not published (draft state: $draft), so the documentation site was not published."
+            echo "The documentation site for $TAG was not published: the release is not published (draft state: $draft)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh workflow run docs-site.yml --repo "$GITHUB_REPOSITORY" --ref main -f ref="$TAG"
+          echo "Started the Documentation site workflow for $TAG." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Say that the documentation was not published
+        if: ${{ failure() }}
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          echo "::warning::The documentation site for $TAG was not published. Run the Documentation site workflow from main with ref $TAG."
+          echo "The documentation site for $TAG was not published. Run the Documentation site workflow from main with ref $TAG to publish it by hand." >> "$GITHUB_STEP_SUMMARY"
