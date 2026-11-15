@@ -14,52 +14,52 @@ use PHPUnit\Framework\Attributes\Group;
 final class DocsSiteWorkflowTest extends KnossosTestCase
 {
     #[Group('packaging')]
-    public function testTheDeployJobsAreSkippedUnlessARealReleaseWasPublished(): void
+    public function testTheReleaseOnlyStartsTheSiteForAReleaseThatIsPublished(): void
     {
-        $build = $this->job($this->release(), 'docs-site');
+        $job = $this->job($this->release(), 'docs-site');
 
-        self::assertStringContainsString('needs: [release-please, assets]', $build);
-        self::assertStringContainsString('!inputs.dry_run', $build);
-        self::assertStringContainsString("needs.release-please.outputs.release_created == 'true'", $build);
-        // `assets` is the job that publishes; a rolled-back release has no site.
-        self::assertStringContainsString("needs.assets.result == 'success'", $build);
-        self::assertStringContainsString('ref: ${{ needs.release-please.outputs.sha }}', $build);
-        self::assertStringContainsString('docs-ref: ${{ needs.release-please.outputs.tag_name }}', $build);
-        self::assertStringContainsString('needs: [docs-site]', $this->job($this->release(), 'docs-deploy'));
+        self::assertStringContainsString('needs: [release-please, assets]', $job);
+        self::assertStringContainsString('!inputs.dry_run', $job);
+        self::assertStringContainsString("needs.release-please.outputs.release_created == 'true'", $job);
+        // `assets` ends green after rolling a release back, so its result is not proof of a published release.
+        // The job asks GitHub, so it stays right however many legs the release gains.
+        self::assertStringContainsString('gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft', $job);
+        self::assertStringContainsString('if [ "$draft" != false ]; then', $job);
+        self::assertLessThan(strpos($job, 'gh workflow run docs-site.yml'), strpos($job, 'if [ "$draft" != false ]; then'));
+        self::assertStringContainsString('gh workflow run docs-site.yml --repo "$GITHUB_REPOSITORY" --ref main -f ref="$TAG"', $job);
+        self::assertStringContainsString('TAG: ${{ needs.release-please.outputs.tag_name }}', $job);
     }
 
     #[Group('packaging')]
     public function testNothingInTheReleaseCanSeeTheSite(): void
     {
         $workflow = $this->release();
+        $job = $this->job($workflow, 'docs-site');
 
-        foreach (['docs-site', 'docs-deploy'] as $name) {
-            $job = $this->job($workflow, $name);
-            self::assertStringContainsString('continue-on-error: true', $job, $name . ' cannot fail the run of a published release');
-            self::assertStringNotContainsString('always()', $job);
-            self::assertStringNotContainsString('cancelled()', $job);
-        }
-        // No other job waits on them, and the rollback never reads them.
+        self::assertStringContainsString('continue-on-error: true', $job, 'a failed dispatch cannot fail the run of a published release');
+        self::assertStringNotContainsString('cancelled()', $job);
+        self::assertStringNotContainsString('always()', $job);
+        // No other job waits on it, and the rollback never reads it.
         foreach (['release-please', 'tarballs', 'assets', 'release-pr'] as $name) {
-            $job = $this->withoutComments($this->job($workflow, $name));
-            self::assertStringNotContainsString('docs-site', $job, $name);
-            self::assertStringNotContainsString('docs-deploy', $job, $name);
-            self::assertStringNotContainsString('pages', $job, $name);
+            $code = $this->withoutComments($this->job($workflow, $name));
+            self::assertStringNotContainsString('docs-site', $code, $name);
+            self::assertStringNotContainsString('pages', $code, $name);
         }
-        self::assertStringNotContainsString('docs-', $this->withoutComments($this->job($workflow, 'release-pr')));
+        // The site is built and deployed in its own workflow run, not in the release run's queue.
+        self::assertStringNotContainsString('pages: write', $workflow);
+        self::assertStringNotContainsString('deploy-pages', $workflow);
     }
 
     #[Group('packaging')]
-    public function testOnlyTheDeployJobHoldsThePagesPermissions(): void
+    public function testAFailureToStartTheSiteIsReportedAndNothingElse(): void
     {
-        $workflow = $this->release();
+        $job = $this->job($this->release(), 'docs-site');
 
-        self::assertSame(1, substr_count($workflow, 'pages: write'));
-        self::assertSame(1, substr_count($workflow, 'id-token: write'));
-        self::assertStringContainsString("pages: write\n      id-token: write", $this->job($workflow, 'docs-deploy'));
-        self::assertStringContainsString("permissions:\n      contents: read", $this->job($workflow, 'docs-site'));
-        self::assertStringContainsString("group: pages\n      cancel-in-progress: false", $this->job($workflow, 'docs-deploy'));
-        self::assertStringContainsString('environment:', $this->job($workflow, 'docs-deploy'));
+        self::assertStringContainsString("permissions:\n      actions: write", $job);
+        self::assertStringNotContainsString('contents: write', $job);
+        self::assertStringContainsString('if: ${{ failure() }}', $job);
+        self::assertStringContainsString('::warning::The documentation site for $TAG was not published. Run the Documentation site workflow from main with ref $TAG.', $job);
+        self::assertStringContainsString('>> "$GITHUB_STEP_SUMMARY"', $job);
     }
 
     #[Group('packaging')]
@@ -77,7 +77,8 @@ final class DocsSiteWorkflowTest extends KnossosTestCase
         self::assertSame(1, substr_count($workflow, 'pages: write'));
         // The same build steps as the release: one composite action.
         self::assertStringContainsString('uses: ./.github/actions/docs-site', $workflow);
-        self::assertStringContainsString('uses: ./.github/actions/docs-site', $this->release());
+        self::assertStringContainsString('failure() && github.event_name == \'workflow_dispatch\'', $workflow);
+        self::assertSame(2, substr_count($workflow, '>> "$GITHUB_STEP_SUMMARY"'));
         self::assertStringContainsString("upload: \${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}", $workflow);
     }
 

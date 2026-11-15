@@ -1,10 +1,10 @@
 name: Documentation site
 
 # Builds the documentation site on every pull request that touches it, so a
-# dead link or an unlisted page is caught before merge. Deploying is not done
-# here for a pull request. The release workflow deploys after each release;
-# the manual run below publishes the docs of a chosen ref without releasing,
-# for a fix to a page.
+# dead link or an unlisted page is caught before merge. A pull request is never
+# deployed. The release workflow starts the manual run below for each published
+# release; it can also be started by hand to publish the docs of a chosen ref
+# without releasing, for a fix to a page.
 on:
   pull_request:
     paths:
@@ -38,6 +38,13 @@ jobs:
         with:
           docs-ref: ${{ inputs.ref || 'main' }}
           upload: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+      - name: Say that the documentation was not published
+        if: ${{ failure() && github.event_name == 'workflow_dispatch' }}
+        env:
+          DOCS_REF: ${{ inputs.ref }}
+        run: |
+          echo "::warning::The documentation for $DOCS_REF was not published. Run this workflow again from main with that ref."
+          echo "The documentation for $DOCS_REF was not published: the build failed." >> "$GITHUB_STEP_SUMMARY"
 
   # Only a manual run from main deploys. Pages takes one deployment at a time,
   # and a later one waits for the running one instead of cancelling it.
@@ -60,3 +67,10 @@ jobs:
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+      - name: Say that the documentation was not published
+        if: ${{ failure() }}
+        env:
+          DOCS_REF: ${{ inputs.ref }}
+        run: |
+          echo "::warning::The documentation for $DOCS_REF was not published. Check that the Pages source is GitHub Actions, then run this workflow again from main with that ref."
+          echo "The documentation for $DOCS_REF was not published: the deploy failed." >> "$GITHUB_STEP_SUMMARY"
