@@ -152,8 +152,10 @@ export const knossosCommand = {
 
 /** Opens the pane, gives it the keyboard and widens it to `columns`, so the tabs are named. */
 const openPane = (columns, beat = true) => [
-    // The first dashboard read can take a while on a busy machine.
-    { ...knossosCommand, until: "Overview", untilMs: 60000 },
+    // The first dashboard read can take a while on a busy machine: in a GIF a wait, so its seconds play as a time-lapse.
+    ...(beat
+        ? [knossosCommand, wait("pane open", "Overview", { timeoutMs: 60000 })]
+        : [{ ...knossosCommand, until: "Overview", untilMs: 60000 }]),
     { do: "focus" },
     { do: "widen", columns },
     beat
@@ -165,6 +167,14 @@ const openPane = (columns, beat = true) => [
 /** A row the marker stands on, by its name: a one-glyph mark before the name (a kind letter, a change's `~`) is optional. */
 export const marked = (name) => String.raw`›\s*(?:\S\s+)?${lit(name)}\s`;
 
+/**
+ * The Hubs list with the marker on its row `index` (the first is 0), counted
+ * down from the table's header: a `j` that was lost, or not yet drawn, is
+ * pressed again rather than leaving the marker short of the hub.
+ */
+export const markedRow = (index) =>
+    String.raw`name +boundary +in +out +cross[^\n]*\n(?:[^›\n]*\n){${index}}[^›\n]*›`;
+
 /** The finder's field: `f` opens it with the keys in it, checked before typing, so a word can never reach the prompt. */
 const find = (text, fixture, delayMs = 0) => [
     press("f", String.raw`⌕ Find`),
@@ -173,10 +183,21 @@ const find = (text, fixture, delayMs = 0) => [
     wait(`found ${text}`, marked(FIXTURE[fixture]), { fixture }),
 ];
 
-/** Finds the hub and opens its detail. */
+/**
+ * The blast radius card once its rings have loaded: its title then counts the
+ * dependents. While they load the title reads `reading…` before the count, or
+ * has none, and the page is shorter than it will be.
+ */
+export const RINGS_LOADED = String.raw`Blast radius ─+ [\d,]+\+? dependents`;
+
+/**
+ * Finds the hub and opens its detail, until its rings have loaded: `End`
+ * scrolls to the bottom of the page as it is when pressed, and the rings
+ * that load after it make the page taller under a view that stays put.
+ */
 const openHub = (delayMs = 0) => [
     ...find(FIXTURE.hubLetters, "hub", delayMs),
-    { do: "send", keys: ["Enter"], until: "Blast radius" },
+    { do: "send", keys: ["Enter"], until: RINGS_LOADED, untilMs: 60000 },
 ];
 
 /** A still of one view: open the pane, do `steps`, keep the screen as `name`. */
@@ -203,7 +224,9 @@ const hubDetail = (theme) =>
         [
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
             press("2", marked(FIXTURE.firstHub)),
-            ...Array.from({ length: FIXTURE.hubRank - 1 }, () => press("j")),
+            ...Array.from({ length: FIXTURE.hubRank - 1 }, (_, i) =>
+                press("j", markedRow(i + 1)),
+            ),
             wait(
                 "hub detail",
                 // Both on screen, in either order: the detail beside the list starts at its own height.
@@ -230,7 +253,9 @@ export const SHOTS = {
             hold(500),
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
             press("2", marked(FIXTURE.firstHub)),
-            ...Array.from({ length: FIXTURE.hubRank - 1 }, () => press("j")),
+            ...Array.from({ length: FIXTURE.hubRank - 1 }, (_, i) =>
+                press("j", markedRow(i + 1)),
+            ),
             wait("hub marked", marked(FIXTURE.hub), { fixture: "hub" }),
             hold(500),
             press("4"),
@@ -349,7 +374,7 @@ export const SHOTS = {
         { do: "type", text: FIXTURE.hub },
         wait("target found", marked(FIXTURE.hub), { fixture: "hub" }),
         { do: "send", keys: ["Enter"] },
-        wait("route drawn", String.raw`Route 1 ─+ \d+ hops?`),
+        wait("route drawn", String.raw`Route(?: \d+)? ─+ \d+ hops?`),
     ]),
     rings: pane("rings", [
         ...openHub(),
@@ -370,6 +395,7 @@ export const SHOTS = {
         wait("note recorded", String.raw`Record this note`, { absent: true }),
         // Recording the note draws the detail again from its top.
         hold(1500),
+        wait("rings again", RINGS_LOADED),
         press("End"),
         wait("note kept", String.raw`change the note`),
     ]),

@@ -185,7 +185,7 @@ through an edge whose node no longer exists, which only a graph written before
 foreign keys were enforced can hold, lists the members it could load and is
 marked truncated with `missing_detail`.
 
-![The Cycles tab: a 4-member cycle inside ProjectModuleIndex in the Python worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and the list of all seven cycles below](../images/claude-code/cycles.png)
+![The Cycles tab: a 9-member cycle inside Calls in the Rust worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and below it the list of all ten cycles, each within one type](../images/claude-code/cycles.png)
 
 ## Architecture health
 

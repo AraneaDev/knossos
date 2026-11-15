@@ -123,7 +123,7 @@ still: here `ResultEnvelope`, used by 89 and using 15.
 
 ## Boundaries
 
-![The Boundaries tab: 33 boundaries, the five largest listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Query flow drawn with the component pairs behind it](../../images/claude-code/boundaries.png)
+![The Boundaries tab: 34 boundaries, the first five listed with their components and dependencies in and out, what the marked tests boundary depends on and what uses it, and the tests to Query flow drawn with the component pairs behind it](../../images/claude-code/boundaries.png)
 
 **The heat map** shows how much each boundary depends on each other one. Rows
 are where a dependency starts, columns where it lands. The axes are lettered,
@@ -170,7 +170,7 @@ name and `q` asks Claude what its dependencies are for.
 
 ## Cycles
 
-![The Cycles tab: a 4-member cycle inside ProjectModuleIndex in the Python worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and the list of all seven cycles below](../../images/claude-code/cycles.png)
+![The Cycles tab: a 9-member cycle inside Calls in the Rust worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and below it the list of all ten cycles, each within one type](../../images/claude-code/cycles.png)
 
 **Cycle 1** draws the marked dependency cycle as a serpentine of boxes, one box
 per member: the first row left to right, the next right to left, an arrow from
@@ -202,7 +202,7 @@ cycle.
 
 ## Issues
 
-![The Issues tab on this repository: the policy violation, diagnostic, line-budget and dead-code cards, each headed by its count, above the complexity hotspots ranked by lines times dependents](../../images/claude-code/issues.png)
+![The Issues tab on this repository: the policy violation, diagnostic and dead-code cards, each headed by its count of zero, the complexity hotspots ranked by lines times dependents, and the line budget with no function over 205 lines](../../images/claude-code/issues.png)
 
 The Issues tab on this repository: a card per kind of finding, each headed by its count, and the complexity hotspots below them.
 
@@ -234,7 +234,7 @@ longest function.
 
 ## Changes
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 15 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](../../images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 16 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](../../images/claude-code/changes-diff.png)
 
 Changes lists everything that changed in the project since the session began,
 whoever changed it: the session's own turns and subagents, your editor, a
