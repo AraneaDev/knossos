@@ -58,4 +58,18 @@ final class UpdateNoticeTest extends KnossosTestCase
 
         assertSame(null, UpdateNotice::line(new Installation($data . '/versions/1.0.0'), '1.0.0'));
     }
+
+    #[Group('install')]
+    public function testAContainerInstallReadsTheSameCacheThroughItsInstallDirectory(): void
+    {
+        $install = $this->work . '/container';
+        mkdir($install, 0o755, true);
+        mkdir($this->work . '/image', 0o755, true);
+        file_put_contents($install . '/install.json', '{"mode": "container", "version": "1.0.0", "image": "knossos@sha256:00"}');
+        $installation = new Installation($this->work . '/image', $install);
+        assertSame(null, UpdateNotice::line($installation, '1.0.0'));
+
+        (new UpdateCheck($install))->record('1.1.0');
+        assertSame('knossos 1.1.0 is available (you have 1.0.0): run knossos self-update', UpdateNotice::line($installation, '1.0.0'));
+    }
 }

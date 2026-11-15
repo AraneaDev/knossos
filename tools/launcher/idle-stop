@@ -1,0 +1,105 @@
+#!/bin/sh
+# The entrypoint of a container that the launcher runs in container mode.
+#
+#   idle-stop MARKER [LIMIT_SECONDS [POLL_SECONDS]]
+#       Keep the container alive until it has been idle for LIMIT_SECONDS
+#       (default 1800, 30 minutes), then exit, which stops the container. Idle
+#       means both: MARKER, which the launcher touches on every call, is older
+#       than the limit, and no call the launcher started with the runtime's
+#       exec is still running (an MCP server or a watcher can run for hours
+#       without a new call). A process such a call left behind does not count.
+#       Checked every POLL_SECONDS (default 60). A SIGTERM from `docker stop`
+#       ends it at once.
+#
+#   idle-stop --run ID COMMAND [ARGS...]
+#       What the launcher's `exec` runs: note this process id under ID, then
+#       become COMMAND. The exit status is COMMAND's.
+#
+#   idle-stop --signal SIGNAL ID
+#       Send SIGNAL to the command started with --run ID. The runtime's exec
+#       client does not pass a signal on, so the launcher does it this way.
+#
+# KNOSSOS_IDLE_PROC (default /proc) and KNOSSOS_IDLE_RUN_DIR (default
+# /tmp/knossos-exec) exist for tests.
+set -u
+
+RUN_DIR=${KNOSSOS_IDLE_RUN_DIR:-/tmp/knossos-exec}
+
+case ${1-} in
+    --run)
+        [ $# -ge 3 ] || { echo 'usage: idle-stop --run ID COMMAND [ARGS...]' >&2; exit 2; }
+        id=$2
+        shift 2
+        mkdir -p "$RUN_DIR" 2>/dev/null
+        printf '%s\n' "$$" > "$RUN_DIR/$id.pid" 2>/dev/null
+        exec "$@"
+        ;;
+    --signal)
+        [ $# -eq 3 ] || { echo 'usage: idle-stop --signal SIGNAL ID' >&2; exit 2; }
+        pid=$(cat "$RUN_DIR/$3.pid" 2>/dev/null) || exit 1
+        case $pid in '' | *[!0-9]*) exit 1 ;; esac
+        kill -s "$2" "$pid"
+        exit
+        ;;
+    '' | -*)
+        echo 'usage: idle-stop MARKER [LIMIT_SECONDS [POLL_SECONDS]]' >&2
+        exit 2
+        ;;
+esac
+
+MARKER=$1
+LIMIT=${2:-1800}
+POLL=${3:-60}
+PROC=${KNOSSOS_IDLE_PROC:-/proc}
+STARTED=$(date +%s)
+
+# The marker's modification time in seconds, or the start time when there is none.
+touched() {
+    stat -c %Y "$MARKER" 2>/dev/null || stat -f %m "$MARKER" 2>/dev/null || printf '%s' "$STARTED"
+}
+
+# Whether a call is still running: a process that the runtime's exec started,
+# which is every command the launcher runs here. Such a process has its parent
+# outside the container, so /proc reports its parent as 0. Anything a command
+# leaves behind, on purpose or not, has a parent inside the container (or is
+# handed to the init process once its parent ends), so it does not keep the
+# container alive. A process whose status cannot be read (it ended while this
+# looked) counts as running until the next look. The records of commands that
+# have ended are swept on the way.
+busy() {
+    for record in "$RUN_DIR"/*.pid; do
+        [ -f "$record" ] || continue
+        pid=$(cat "$record" 2>/dev/null)
+        if [ -z "$pid" ] || [ ! -d "$PROC/$pid" ]; then rm -f "$record"; fi
+    done
+    for entry in "$PROC"/[0-9]*; do
+        [ -d "$entry" ] || continue
+        case ${entry##*/} in
+            1 | "$$") continue ;;
+        esac
+        parent=''
+        while IFS= read -r line; do
+            case $line in
+                PPid:*)
+                    parent=${line#PPid:}
+                    parent=${parent#"${parent%%[! 	]*}"}
+                    break
+                    ;;
+            esac
+        done 2>/dev/null < "$entry/status" || return 0
+        [ -n "$parent" ] || return 0
+        [ "$parent" != 0 ] || return 0
+    done
+    return 1
+}
+
+trap 'exit 0' TERM INT HUP
+while :; do
+    # In the background and waited for, so a SIGTERM is acted on at once
+    # instead of after the sleep.
+    sleep "$POLL" &
+    wait $!
+    busy && continue
+    now=$(date +%s)
+    [ $((now - $(touched))) -lt "$LIMIT" ] || exit 0
+done

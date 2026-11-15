@@ -1,0 +1,740 @@
+#!/bin/sh
+# Installs, updates and rolls back a container-mode Knossos, on the HOST.
+#
+# The image carries this script at /opt/knossos/tools/launcher/container-update.
+# Nothing inside a container can replace its own image, so the launcher reads
+# this script out of the image install.json names and runs it with the host's
+# sh; install.sh reads it out of the image it is about to install. Like the
+# launcher it is POSIX sh and needs no PHP, Node or Python on the host: only
+# the container runtime install.json records and, to look for a newer
+# release, curl or wget.
+#
+#   container-update install --install-dir=DIR --bin-dir=DIR --data-dir=DIR
+#                            --runtime=docker|podman --image=REF --version=V [--plugin]
+#   container-update self-update --install-dir=DIR [--check [--quiet]] [--rollback]
+#                                [--version=V] [--json]
+#
+# Both end in the same switch (see switch_to): the launcher is rewritten from
+# the template in the image switched to, the running containers of this
+# installation are stopped so the next call starts one from that image,
+# install.json then names the image by digest together with the one before
+# it, and the plugin, when the installation has one, is rewritten by that
+# image's own install-agent-plugin. A failure at any step puts install.json and
+# the launcher back as they were; the image before stays on disk, so the
+# previous state keeps working.
+#
+# Environment:
+#   KNOSSOS_RELEASE_BASE      where to look for the newest release, as install.sh
+#                             and self-update in native mode read it
+#   KNOSSOS_IMAGE_REPOSITORY  where release images are pulled from
+#                             (default: ghcr.io/araneadev/knossos)
+#   KNOSSOS_NO_UPDATE_CHECK=1 makes --check --quiet do nothing
+set -u
+
+DEFAULT_BASE=https://github.com/AraneaDev/knossos/releases
+LATEST_API=https://api.github.com/repos/AraneaDev/knossos/releases/latest
+REPOSITORY=${KNOSSOS_IMAGE_REPOSITORY:-ghcr.io/araneadev/knossos}
+IN_IMAGE=/opt/knossos
+RESTART_NOTE='A running Claude Code session keeps the previous release loaded until you restart it.'
+PLACEHOLDER="INSTALL_DIR='__KNOSSOS_INSTALL_DIR__'"
+PIN_PLACEHOLDER="INSTALL_PIN='__KNOSSOS_INSTALL_PIN__'"
+
+QUIET=0
+die() {
+    [ "$QUIET" = 1 ] || printf 'knossos: %s\n' "$1" >&2
+    exit 1
+}
+
+# ---- small helpers -------------------------------------------------------------
+
+hash12() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sum=$(printf '%s' "$1" | sha256sum)
+    elif command -v shasum >/dev/null 2>&1; then
+        sum=$(printf '%s' "$1" | shasum -a 256)
+    else
+        die 'sha256sum or shasum is required'
+    fi
+    printf '%s' "$sum" | cut -c 1-12
+}
+
+# A JSON string for a value: quote and backslash escaped. The values written
+# (paths without control characters, versions, image references) need no more.
+json_string() {
+    printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+}
+
+# json_field FILE NAME: the string value of the key NAME, decoded; nothing for
+# a missing key or null.
+json_field() {
+    [ -r "$1" ] || return 0
+    awk -v want="$2" '
+        { text = text $0 "\n" }
+        END {
+            n = length(text); i = 1; key = ""
+            while (i <= n) {
+                c = substr(text, i, 1)
+                if (c ~ /[ \t\r\n:]/) { i++; continue }
+                if (c != "\"") { key = ""; i++; continue }
+                value = ""; i++
+                while (i <= n) {
+                    c = substr(text, i, 1)
+                    if (c == "\\") { value = value substr(text, i + 1, 1); i += 2; continue }
+                    if (c == "\"") break
+                    value = value c; i++
+                }
+                i++
+                j = i
+                while (j <= n && substr(text, j, 1) ~ /[ \t\r\n]/) j++
+                if (substr(text, j, 1) == ":") { key = value; continue }
+                if (key == want) { print value; exit }
+                key = ""
+            }
+        }
+    ' "$1" 2>/dev/null
+}
+
+# A version is digits and dots with an optional pre-release suffix after a hyphen.
+valid_version() {
+    case $1 in
+        '' | *[!0-9A-Za-z.-]* | *..* | -* | .* | [!0-9]*) return 1 ;;
+    esac
+    case ${1%%-*} in
+        *[!0-9.]* | *.) return 1 ;;
+    esac
+    return 0
+}
+
+# version_gt A B: whether A is a newer version than B. Numeric parts compare
+# as numbers; with equal numbers a final release is newer than a pre-release,
+# and two pre-releases compare as text. This is what self-update in native
+# mode gets from PHP's version_compare for every version Knossos publishes.
+version_gt() {
+    a=${1%%-*}
+    b=${2%%-*}
+    while [ -n "$a" ] || [ -n "$b" ]; do
+        x=${a%%.*}
+        y=${b%%.*}
+        case $a in *.*) a=${a#*.} ;; *) a='' ;; esac
+        case $b in *.*) b=${b#*.} ;; *) b='' ;; esac
+        x=${x:-0}
+        y=${y:-0}
+        [ "$x" -gt "$y" ] && return 0
+        [ "$x" -lt "$y" ] && return 1
+    done
+    as=''
+    bs=''
+    case $1 in *-*) as=${1#*-} ;; esac
+    case $2 in *-*) bs=${2#*-} ;; esac
+    if [ -z "$as" ]; then [ -n "$bs" ]; return; fi
+    [ -n "$bs" ] || return 1
+    [ "$as" != "$bs" ] && [ "$(printf '%s\n%s\n' "$as" "$bs" | LC_ALL=C sort | tail -n 1)" = "$as" ]
+}
+
+# ---- the newest release --------------------------------------------------------------
+
+# GET URL: the body on stdout. Only a fixed User-Agent goes with it: nothing
+# about the user, the host or a project.
+http_get() {
+    if command -v curl >/dev/null 2>&1; then
+        curl --fail --silent --show-error --location --connect-timeout 5 --max-time 12 \
+            -H 'User-Agent: knossos-self-update' -H 'Accept: application/vnd.github+json' "$1" </dev/null
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O - --timeout=5 --tries=1 --user-agent=knossos-self-update --header='Accept: application/vnd.github+json' "$1" </dev/null
+    else
+        echo 'curl or wget is required to look for a newer release' >&2
+        return 1
+    fi
+}
+
+# The URL a URL ends up at after its redirects.
+http_final() {
+    if command -v curl >/dev/null 2>&1; then
+        curl --fail --silent --show-error --location --connect-timeout 5 --max-time 12 --output /dev/null \
+            --write-out '%{url_effective}' -H 'User-Agent: knossos-self-update' "$1" </dev/null
+    elif command -v wget >/dev/null 2>&1; then
+        final=$(wget --spider -S --max-redirect=5 --timeout=5 --tries=1 --user-agent=knossos-self-update "$1" 2>&1 </dev/null \
+            | sed -n 's/^ *[Ll]ocation: *//p' | tail -n 1 | tr -d '\r')
+        printf '%s' "${final:-$1}"
+    else
+        echo 'curl or wget is required to look for a newer release' >&2
+        return 1
+    fi
+}
+
+# The newest release version, by the rules self-update follows in native mode:
+# GitHub's API by default; `<base>/latest` and its redirect to `.../tag/v<V>`
+# for another URL; for a directory, the highest version among its
+# knossos-<version>-*.tar.gz assets.
+latest_version() {
+    base=${KNOSSOS_RELEASE_BASE:-$DEFAULT_BASE}
+    case $base in
+        http://* | https://*)
+            base=${base%/}
+            if [ "$base" = "$DEFAULT_BASE" ]; then
+                answer=$(http_get "$LATEST_API") || return 1
+                tag=$(printf '%s' "$answer" | tr -d '\n' | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            else
+                final=$(http_final "$base/latest") || return 1
+                [ "$final" != "$base/latest" ] || { echo "$base/latest did not lead to a release tag" >&2; return 1; }
+                tag=${final##*/}
+            fi
+            latest=${tag#v}
+            ;;
+        *)
+            base=${base#file://}
+            latest=''
+            for file in "${base%/}"/knossos-*-*.tar.gz; do
+                [ -e "$file" ] || continue
+                stem=${file##*/knossos-}
+                candidate=${stem%-*-*.tar.gz}
+                valid_version "$candidate" || continue
+                if [ -z "$latest" ] || version_gt "$candidate" "$latest"; then latest=$candidate; fi
+            done
+            [ -n "$latest" ] || { echo "no release asset knossos-<version>-*.tar.gz in $base" >&2; return 1; }
+            ;;
+    esac
+    valid_version "$latest" || { echo "not a valid version: $latest" >&2; return 1; }
+    printf '%s' "$latest"
+}
+
+# record_check LATEST: update-check.json as UpdateCheck writes it. An empty
+# LATEST records a failed look and keeps the last known answer.
+record_check() {
+    latest=$1
+    [ -n "$latest" ] || latest=$(json_field "$INSTALL/update-check.json" latest)
+    if [ -n "$latest" ]; then value=$(json_string "$latest"); else value=null; fi
+    printf '{\n    "checked_at": "%s",\n    "latest": %s\n}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$value" \
+        > "$WORKDIR/update-check.json" 2>/dev/null \
+        && mv -f "$WORKDIR/update-check.json" "$INSTALL/update-check.json" 2>/dev/null
+}
+
+# ---- the image -------------------------------------------------------------------------
+
+# run_once ARGS: every run of an image this helper makes, in one place: a
+# throwaway container as the caller, with no network and only the mounts in
+# ARGS. Rootless Podman maps the caller's ids into the container only with
+# --userns=keep-id, as the launcher does too; without it the caller's uid is a
+# subordinate one that cannot write the caller's own files.
+run_once() {
+    if [ "$RUNTIME" = podman ]; then
+        "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" --userns=keep-id "$@"
+    else
+        "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" "$@"
+    fi
+}
+
+# A throwaway run of an image, as the caller, with no network and no mount.
+run_image() {
+    image=$1
+    shift
+    run_once -e HOME=/tmp \
+        -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
+        --entrypoint "$IN_IMAGE/bin/knossos" "$image" "$@" </dev/null
+}
+
+# The reference an image is recorded by: its digest in the repository it came
+# from, or its id for an image that was built here and never pushed.
+digest_of() {
+    repository=${1%@*}
+    case ${repository##*/} in *:*) repository=${repository%:*} ;; esac
+    digests=$("$RUNTIME" image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$1" 2>/dev/null) || return 1
+    chosen=''
+    for digest in $digests; do
+        case $digest in "$repository"@sha256:*) chosen=$digest; break ;; esac
+    done
+    if [ -z "$chosen" ]; then
+        for digest in $digests; do chosen=$digest; break; done
+    fi
+    if [ -z "$chosen" ]; then
+        chosen=$("$RUNTIME" image inspect --format '{{.Id}}' "$1" 2>/dev/null) || return 1
+    fi
+    printf '%s' "$chosen"
+}
+
+# Pull a release image, check that it answers with its version and passes
+# doctor, and print its digest reference.
+fetch_image() {
+    ref=$1
+    want=$2
+    if ! "$RUNTIME" image inspect "$ref" >/dev/null 2>&1; then
+        "$RUNTIME" pull "$ref" >&2 </dev/null || die "could not pull $ref; nothing was changed"
+    fi
+    said=$(run_image "$ref" version 2>&1) || die "$ref does not start: $said; nothing was changed"
+    [ "$said" = "Knossos $want" ] || die "$ref says '$said', not Knossos $want; nothing was changed"
+    report=$(run_image "$ref" doctor 2>&1) || die "knossos doctor failed in $ref; nothing was changed:
+$report"
+    digest_of "$ref" || die "could not read the digest of $ref"
+}
+
+# Stop every running container of this installation, so the next call starts
+# one from the image install.json names.
+stop_containers() {
+    ids=$("$RUNTIME" ps -q --filter "label=io.knossos.install=$(hash12 "$INSTALL")" 2>/dev/null) || return 0
+    for id in $ids; do
+        if ! "$RUNTIME" stop "$id" >/dev/null 2>&1 </dev/null; then
+            # Gone already (a stop or idle-stop ended it first) is stopped.
+            "$RUNTIME" container inspect "$id" >/dev/null 2>&1 </dev/null && printf 'warning: could not stop container %s\n' "$id" >&2
+        fi
+    done
+}
+
+# The name of an idle marker: the launcher's pattern, word for word
+# (tests/shell/install-container.sh compares them).
+MARKER_GLOB='knossos-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
+
+# forget_markers: the markers of this installation's containers, after every
+# one of them was stopped. idle-stop is the only reader, a container started
+# later writes its own again, and without this each update would leave one
+# per project and image behind.
+forget_markers() {
+    [ -d "$INSTALL/containers" ] && [ ! -L "$INSTALL/containers" ] || return 0
+    find "$INSTALL/containers" -type f -name "$MARKER_GLOB" -exec rm -f {} + 2>/dev/null
+    return 0
+}
+
+# ---- the switch --------------------------------------------------------------------------
+
+# dir_id DIR: "<device>:<inode>" of DIR itself, the launcher's dir_id: GNU
+# and BusyBox stat -c, then BSD stat -f (macOS and the BSDs), then the inode
+# alone from POSIX ls -di.
+dir_id() {
+    id=$(stat -c '%d:%i' -- "$1" 2>/dev/null) || id=''
+    case $id in [0-9]*:[0-9]*) case $id in *[!0-9:]*) ;; *) printf '%s' "$id"; return 0 ;; esac ;; esac
+    id=$(stat -f '%d:%i' -- "$1" 2>/dev/null) || id=''
+    case $id in [0-9]*:[0-9]*) case $id in *[!0-9:]*) ;; *) printf '%s' "$id"; return 0 ;; esac ;; esac
+    id=$(ls -di -- "$1" 2>/dev/null) || id=''
+    id=${id#"${id%%[! ]*}"}
+    id=${id%%[! 0-9]*}
+    id=${id%% *}
+    case $id in '' | *[!0-9]*) return 1 ;; esac
+    printf ':%s' "$id"
+}
+
+# The launcher from an image's template, with the install directory baked in
+# exactly as install.sh and Launcher::render do it, and beside it the device
+# and inode numbers of that directory, which the launcher compares at every
+# call. Nothing here ever recreates the install directory, so an update or a
+# rollback bakes in the same numbers the installer did.
+render_launcher() {
+    run_once --entrypoint cat "$1" "$IN_IMAGE/launcher/knossos" > "$WORKDIR/template" 2>/dev/null </dev/null \
+        || return 1
+    quoted=$(printf '%s' "$INSTALL" | sed "s/'/'\\\\''/g")
+    pin=$(dir_id "$INSTALL") || return 1
+    baked=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [ "$line" = "$PLACEHOLDER" ]; then
+            printf "INSTALL_DIR='%s'\n" "$quoted"
+            baked=1
+        elif [ "$line" = "$PIN_PLACEHOLDER" ]; then
+            printf "INSTALL_PIN='%s'\n" "$pin"
+        else
+            printf '%s\n' "$line"
+        fi
+    done < "$WORKDIR/template" > "$2"
+    [ "$baked" = 1 ] && sh -n "$2" 2>/dev/null && chmod 0755 "$2"
+}
+
+# The plugin of the installation, written by the image's own
+# install-agent-plugin with the options ProcessReleaseProbe::pluginArguments
+# fixes, as the caller. No claude command runs: the plugin directory is the one
+# Claude Code registered, so the registration stays valid.
+#
+# The one exception to "containers only read the install directory": this
+# short-lived run has to write the plugin files, so it gets <install>/plugin
+# read-write, and nothing else from the host: no project, no graph, no
+# network, only the image being installed, which is the code that wrote every
+# plugin file anyway.
+write_plugin() {
+    if [ -L "$INSTALL/plugin" ] || [ ! -d "$INSTALL/plugin" ]; then die "$INSTALL/plugin is not a plain directory; run the installer again with --install-dir=$INSTALL."; fi
+    run_once -e HOME=/tmp \
+        -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
+        --mount "$(bind_spec "$INSTALL/plugin")" \
+        --entrypoint "$IN_IMAGE/bin/knossos" "$1" \
+        install-agent-plugin --execute --no-register "--plugin-dir=$INSTALL/plugin" "--bin=$LAUNCHER" "--data-dir=$2" </dev/null \
+        && name_host_roots
+}
+
+# name_host_roots: the plugin's hooks name the allow-list the host keeps,
+# <install>/roots.json, as the MCP registration does, rather than the
+# roots.json beside the graph, which the launcher would only map to it. The
+# line is filled in here, on the host, in a lib.sh from an image that has it.
+name_host_roots() {
+    lib="$INSTALL/plugin/hooks/scripts/lib.sh"
+    if [ ! -f "$lib" ] || [ -L "$lib" ]; then return 0; fi
+    quoted=$(printf '%s' "$INSTALL/roots.json" | sed "s/'/'\\\\''/g")
+    if cp -p "$lib" "$lib.tmp" \
+        && ROOTS_LINE="KNOSSOS_INSTALLED_ROOTS_FILE='$quoted'" awk '
+            $0 == "KNOSSOS_INSTALLED_ROOTS_FILE='"'"'__KNOSSOS_ROOTS_FILE__'"'"'" { print ENVIRON["ROOTS_LINE"]; next }
+            { print }
+        ' "$lib" > "$lib.tmp" \
+        && mv -f "$lib.tmp" "$lib"; then
+        return 0
+    fi
+    rm -f "$lib.tmp"
+    echo "could not name $INSTALL/roots.json in $lib" >&2
+    return 1
+}
+
+# bind_spec DIR: the --mount value that binds DIR at its own path, read by the
+# runtime as one CSV record: a path with a double quote goes in a quoted field
+# with the quote doubled (as in the launcher).
+bind_spec() {
+    case $1 in
+        *'"'*)
+            quoted=$(printf '%s' "$1" | sed 's/"/""/g')
+            printf 'type=bind,"source=%s","target=%s"' "$quoted" "$quoted"
+            ;;
+        *) printf 'type=bind,source=%s,target=%s' "$1" "$1" ;;
+    esac
+}
+
+# The graph directory the plugin's hooks were given, so a refresh keeps one
+# set by hand (Installation::pluginDataDir in PHP); else the data directory
+# install.json records.
+plugin_data_dir() {
+    value=$(sed -n "s/^KNOSSOS_INSTALLED_DATA_DIR='\(.*\)'\$/\1/p" "$INSTALL/plugin/hooks/scripts/lib.sh" 2>/dev/null | head -n 1)
+    value=$(printf '%s' "$value" | sed "s/'\\\\''/'/g")
+    case $value in /*) printf '%s' "$value" ;; *) printf '%s' "$DATA_DIR" ;; esac
+}
+
+# switch_to IMAGE VERSION PREVIOUS_IMAGE PREVIOUS_VERSION PLUGIN_DATA_DIR
+#   PLUGIN_DATA_DIR empty: no plugin step.
+switch_to() {
+    [ -f "$INSTALL/install.json" ] && cp "$INSTALL/install.json" "$WORKDIR/install.json.prev"
+    [ -f "$LAUNCHER" ] && cp "$LAUNCHER" "$WORKDIR/launcher.prev"
+    [ -f "$INSTALL/container-update" ] && cp "$INSTALL/container-update" "$WORKDIR/helper.prev"
+    # The plugin as it is, so a plugin step that fails half way can be undone.
+    PLUGIN_SAVED=0
+    if [ -n "$5" ] && [ -d "$INSTALL/plugin" ] && [ ! -L "$INSTALL/plugin" ]; then
+        cp -pR "$INSTALL/plugin" "$WORKDIR/plugin.prev" || die "could not keep a copy of $INSTALL/plugin; nothing was changed"
+        PLUGIN_SAVED=1
+    fi
+    mkdir -p "$BIN_DIR" || die "could not create $BIN_DIR"
+    NEW_LAUNCHER="$BIN_DIR/.knossos.tmp.$$"
+    render_launcher "$1" "$NEW_LAUNCHER" || { rm -f "$NEW_LAUNCHER"; die "the image $1 has no usable launcher template at $IN_IMAGE/launcher/knossos; nothing was changed"; }
+    # This script, from the image switched to, beside install.json: the
+    # launcher runs it from there, so the next update works even when that
+    # image is gone from the host by then.
+    if ! run_once --entrypoint cat "$1" "$IN_IMAGE/tools/launcher/container-update" \
+        > "$WORKDIR/container-update" 2>/dev/null </dev/null || ! sh -n "$WORKDIR/container-update" 2>/dev/null; then
+        rm -f "$NEW_LAUNCHER"
+        die "the image $1 has no usable update helper at $IN_IMAGE/tools/launcher/container-update; nothing was changed"
+    fi
+
+    stop_containers
+    if [ -n "$3" ]; then previous=$(json_string "$3"); else previous=null; fi
+    if [ -n "$4" ]; then previous_version=$(json_string "$4"); else previous_version=null; fi
+    # `layout` tells the launcher this install directory lies outside every
+    # data directory and is only ever read by containers; `data_dir` is the
+    # graph directory a call uses when KNOSSOS_DATA_DIR is not set.
+    printf '{\n  "mode": "container",\n  "layout": "install-dir",\n  "version": %s,\n  "image": %s,\n  "previous_version": %s,\n  "previous_image": %s,\n  "runtime": %s,\n  "bin_dir": %s,\n  "data_dir": %s,\n  "installed_at": "%s"\n}\n' \
+        "$(json_string "$2")" "$(json_string "$1")" "$previous_version" "$previous" "$(json_string "$RUNTIME")" \
+        "$(json_string "$BIN_DIR")" "$(json_string "$DATA_DIR")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$WORKDIR/install.json"
+    if ! mv -f "$WORKDIR/install.json" "$INSTALL/install.json"; then
+        rm -f "$NEW_LAUNCHER"
+        die "could not write $INSTALL/install.json; nothing was changed"
+    fi
+    # Again, now that install.json names the new image: a call that read the
+    # old one before the switch may have started a container of the old image
+    # since the first stop. (A call that reads it after its container started
+    # finds the image changed and removes that container itself.)
+    stop_containers
+    forget_markers
+    if ! mv -f "$NEW_LAUNCHER" "$LAUNCHER"; then
+        restore
+        die "could not write the launcher $LAUNCHER; the previous state was restored"
+    fi
+    # A rename: the copy this run may be executing from stays intact.
+    if ! mv -f "$WORKDIR/container-update" "$INSTALL/container-update"; then
+        restore
+        die "could not write $INSTALL/container-update; the previous state was restored"
+    fi
+    if [ -n "$5" ]; then
+        if ! output=$(write_plugin "$1" "$5" 2>&1); then
+            restore
+            die "the image $1 could not write its plugin: $output
+The previous state was restored."
+        fi
+    fi
+}
+
+# Put install.json, the launcher, the helper copy and the plugin back as
+# switch_to found them.
+restore() {
+    stop_containers
+    if [ "${PLUGIN_SAVED:-0}" = 1 ]; then
+        # The directory Claude Code registered keeps its path: its content is
+        # replaced, from this run's own copy.
+        find "$INSTALL/plugin" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null
+        (cd "$WORKDIR/plugin.prev" && cp -pR . "$INSTALL/plugin/") \
+            || printf 'warning: could not put %s back as it was\n' "$INSTALL/plugin" >&2
+    fi
+    # Every file is put back by a rename from this run's own work directory,
+    # never written in place: sh may be reading the helper copy.
+    if [ -f "$WORKDIR/install.json.prev" ]; then
+        cp "$WORKDIR/install.json.prev" "$WORKDIR/install.json.back" && mv -f "$WORKDIR/install.json.back" "$INSTALL/install.json"
+    else
+        rm -f "$INSTALL/install.json"
+    fi
+    if [ -f "$WORKDIR/launcher.prev" ]; then cp "$WORKDIR/launcher.prev" "$LAUNCHER"; else rm -f "$LAUNCHER"; fi
+    if [ -f "$WORKDIR/helper.prev" ]; then
+        cp "$WORKDIR/helper.prev" "$WORKDIR/helper.back" && mv -f "$WORKDIR/helper.back" "$INSTALL/container-update"
+    else
+        rm -f "$INSTALL/container-update"
+    fi
+    rm -f "$BIN_DIR/.knossos.tmp.$$"
+}
+
+# Keep exactly one previous image: the one before the previous goes, unless
+# something still names it.
+prune_image() {
+    [ -n "$1" ] || return 0
+    case $1 in "$CURRENT_IMAGE" | "$PREVIOUS_IMAGE") return 0 ;; esac
+    "$RUNTIME" image rm "$1" >/dev/null 2>&1 || true
+}
+
+# One run at a time: `mkdir` of a lock directory, which is atomic on every
+# POSIX filesystem, holding the owner's process id. A lock whose owner is gone
+# is taken over, and only under a second lock directory (`.takeover`), so two
+# runs that both found the same dead owner cannot both take it: the one that
+# gets the second lock checks the owner again before it removes anything, and
+# the other is refused. The EXIT trap removes the lock this run holds.
+lock() {
+    LOCK="$INSTALL/self-update.lock.d"
+    if mkdir "$LOCK" 2>/dev/null; then
+        printf '%s\n' "$$" > "$LOCK/pid"
+        LOCKED=1
+        return 0
+    fi
+    TAKEOVER="$LOCK.takeover"
+    # A takeover that crashed half-way is old; anything younger is running.
+    if [ -n "$(find "$TAKEOVER" -prune -mmin +1 2>/dev/null)" ]; then rm -rf "$TAKEOVER"; fi
+    mkdir "$TAKEOVER" 2>/dev/null || die 'another knossos self-update is running; try again when it has finished'
+    owner=$(cat "$LOCK/pid" 2>/dev/null)
+    stale=no
+    if [ -n "$owner" ]; then
+        kill -0 "$owner" 2>/dev/null || stale=yes
+    elif [ -d "$LOCK" ] && [ -n "$(find "$LOCK" -prune -mmin +1 2>/dev/null)" ]; then
+        # No id after a minute: a run that died between mkdir and writing it.
+        stale=yes
+    elif [ ! -d "$LOCK" ]; then
+        stale=yes
+    fi
+    if [ "$stale" = yes ]; then
+        rm -rf "$LOCK"
+        if mkdir "$LOCK" 2>/dev/null; then
+            printf '%s\n' "$$" > "$LOCK/pid"
+            LOCKED=1
+        fi
+    fi
+    rm -rf "$TAKEOVER"
+    [ "${LOCKED:-0}" = 1 ] || die 'another knossos self-update is running; try again when it has finished'
+}
+
+cleanup() {
+    [ -z "$WORKDIR" ] || rm -rf "$WORKDIR"
+    # The temporary copy of this script the launcher made, once it is done.
+    if [ -n "${KNOSSOS_UPDATE_HELPER:-}" ] && [ "$KNOSSOS_UPDATE_HELPER" = "$0" ]; then rm -f "$0"; fi
+    if [ "${LOCKED:-0}" = 1 ]; then rm -rf "$LOCK"; fi
+    [ -z "$BIN_DIR" ] || rm -f "$BIN_DIR/.knossos.tmp.$$"
+}
+
+# ---- arguments -------------------------------------------------------------------------------
+
+# From the first line on, so even a refused argument removes the launcher's copy of this script.
+WORKDIR=''
+BIN_DIR=''
+INSTALL=''
+trap cleanup EXIT
+trap 'exit 1' INT TERM HUP
+
+ACTION=${1-}
+[ $# -gt 0 ] && shift
+INSTALL=''
+BIN_DIR=''
+RUNTIME=''
+IMAGE_REF=''
+VERSION=''
+PLUGIN=0
+DATA_DIR=''
+CHECK=0
+ROLLBACK=0
+JSON=0
+for argument in "$@"; do
+    case $argument in
+        --install-dir=*) INSTALL=${argument#*=} ;;
+        --bin-dir=*) BIN_DIR=${argument#*=} ;;
+        --runtime=*) RUNTIME=${argument#*=} ;;
+        --image=*) IMAGE_REF=${argument#*=} ;;
+        --version=*) VERSION=${argument#*=}; VERSION=${VERSION#v} ;;
+        --data-dir=*) DATA_DIR=${argument#*=} ;;
+        --plugin) PLUGIN=1 ;;
+        --check) CHECK=1 ;;
+        --quiet) QUIET=1 ;;
+        --rollback) ROLLBACK=1 ;;
+        --json) JSON=1 ;;
+        *) die "unknown argument: $argument" ;;
+    esac
+done
+case $INSTALL in /*) INSTALL=${INSTALL%/} ;; *) die '--install-dir must name an absolute directory' ;; esac
+[ -n "$INSTALL" ] || INSTALL=/
+
+# The host state directory, as install.sh made it and the launcher checks it:
+# the path itself, physical, and no entry a symlink. Every file this run
+# writes there is first written in a fresh `mktemp -d` work directory inside
+# it, then renamed into place, so a name nobody else could know is the only
+# one ever opened for writing.
+if [ "$ACTION" = install ]; then
+    for entry in "" /plugin /containers /settings /tmp; do
+        [ ! -L "$INSTALL$entry" ] || die "$INSTALL$entry is a symlink; nothing was changed"
+        mkdir -p "$INSTALL$entry" || die "could not create $INSTALL$entry"
+    done
+fi
+[ ! -L "$INSTALL" ] || die "the install directory $INSTALL is a symlink; run the installer again with --install-dir=$INSTALL"
+[ "$( (cd -P -- "$INSTALL" 2>/dev/null && pwd -P) )" = "$INSTALL" ] || die "the install directory $INSTALL is not at its own physical path; run the installer again with --install-dir=$INSTALL"
+for entry in install.json plugin containers container-update update-check.json self-update.lock.d roots.json settings tmp; do
+    [ ! -L "$INSTALL/$entry" ] || die "$INSTALL/$entry is a symlink; run the installer again with --install-dir=$INSTALL"
+done
+WORKDIR=$(mktemp -d "$INSTALL/.work.XXXXXX") || die "could not create a work directory in $INSTALL"
+
+case $ACTION in
+    install)
+        case $BIN_DIR in /*) ;; *) die '--bin-dir must be absolute' ;; esac
+        case $DATA_DIR in /*) DATA_DIR=${DATA_DIR%/} ;; *) die '--data-dir must be absolute' ;; esac
+        [ -n "$DATA_DIR" ] || DATA_DIR=/
+        [ -n "$IMAGE_REF" ] || die '--image is required'
+        valid_version "$VERSION" || die "not a valid version: $VERSION"
+        case $RUNTIME in docker | podman) ;; *) die '--runtime must be docker or podman' ;; esac
+        LAUNCHER="$BIN_DIR/knossos"
+        lock
+        CURRENT_IMAGE=$(digest_of "$IMAGE_REF") || die "the image $IMAGE_REF is not on this host"
+        # Installing over a container install keeps what it replaces for --rollback.
+        PREVIOUS_IMAGE=''
+        PREVIOUS_VERSION=''
+        if [ "$(json_field "$INSTALL/install.json" mode)" = container ]; then
+            PREVIOUS_IMAGE=$(json_field "$INSTALL/install.json" image)
+            PREVIOUS_VERSION=$(json_field "$INSTALL/install.json" version)
+            if [ "$PREVIOUS_IMAGE" = "$CURRENT_IMAGE" ]; then
+                PREVIOUS_IMAGE=$(json_field "$INSTALL/install.json" previous_image)
+                PREVIOUS_VERSION=$(json_field "$INSTALL/install.json" previous_version)
+            fi
+        fi
+        plugin_dir=''
+        if [ "$PLUGIN" = 1 ]; then plugin_dir=$DATA_DIR; fi
+        switch_to "$CURRENT_IMAGE" "$VERSION" "$PREVIOUS_IMAGE" "$PREVIOUS_VERSION" "$plugin_dir"
+        printf '%s\n' "$CURRENT_IMAGE"
+        exit 0
+        ;;
+    self-update) ;;
+    *) die 'usage: container-update install|self-update --install-dir=DIR ...' ;;
+esac
+
+# ---- self-update -------------------------------------------------------------------------------
+
+if [ "$QUIET" = 1 ] && [ "$CHECK" = 0 ]; then QUIET=0; die '--quiet goes with --check.'; fi
+if { [ "$CHECK" = 1 ] && [ "$ROLLBACK" = 1 ]; } || { [ -n "$VERSION" ] && { [ "$CHECK" = 1 ] || [ "$ROLLBACK" = 1 ]; }; }; then
+    die '--check, --rollback and --version cannot be combined.'
+fi
+[ "$(json_field "$INSTALL/install.json" mode)" = container ] || die "$INSTALL/install.json does not record a container install; run the installer again with --install-dir=$INSTALL."
+CURRENT_IMAGE=$(json_field "$INSTALL/install.json" image)
+CURRENT=$(json_field "$INSTALL/install.json" version)
+PREVIOUS_IMAGE=$(json_field "$INSTALL/install.json" previous_image)
+PREVIOUS_VERSION=$(json_field "$INSTALL/install.json" previous_version)
+RUNTIME=$(json_field "$INSTALL/install.json" runtime)
+BIN_DIR=$(json_field "$INSTALL/install.json" bin_dir)
+DATA_DIR=$(json_field "$INSTALL/install.json" data_dir)
+[ -n "$RUNTIME" ] || RUNTIME=docker
+case $DATA_DIR in /*) ;; *) die "$INSTALL/install.json does not name the data directory; run the installer again with --install-dir=$INSTALL." ;; esac
+case $BIN_DIR in /*) BIN_DIR=${BIN_DIR%/} ;; *) die "$INSTALL/install.json does not name where the launcher is; run the installer again with --install-dir=$INSTALL." ;; esac
+LAUNCHER="${BIN_DIR:-}/knossos"
+if [ -z "$CURRENT_IMAGE" ] || ! valid_version "$CURRENT"; then
+    die "$INSTALL/install.json names no image or version; run the installer again with --install-dir=$INSTALL."
+fi
+
+if [ "$CHECK" = 1 ]; then
+    if [ "$QUIET" = 1 ] && [ "${KNOSSOS_NO_UPDATE_CHECK:-}" = 1 ]; then exit 0; fi
+    # The attempt is recorded before the network is asked: a look that is cut
+    # off (the session hook's own time limit) still counts, so an offline or
+    # slow host does not try again at every session start.
+    record_check ''
+    if ! latest=$(latest_version); then
+        die 'could not look up the latest release'
+    fi
+    record_check "$latest"
+    [ "$QUIET" = 0 ] || exit 0
+    if version_gt "$latest" "$CURRENT"; then update=true; else update=false; fi
+    if [ "$JSON" = 1 ]; then
+        printf '{"current":%s,"latest":%s,"update":%s}\n' "$(json_string "$CURRENT")" "$(json_string "$latest")" "$update"
+    elif [ "$update" = true ]; then
+        printf 'Knossos %s is available (you have %s): run knossos self-update.\n' "$latest" "$CURRENT"
+    else
+        printf 'Knossos %s is the latest version.\n' "$CURRENT"
+    fi
+    [ "$update" = false ] || exit 10
+    exit 0
+fi
+
+command -v "$RUNTIME" >/dev/null 2>&1 || die "$RUNTIME is not installed or not on PATH"
+"$RUNTIME" info >/dev/null 2>&1 </dev/null || die "the $RUNTIME daemon is not running; start it and try again."
+lock
+# A plugin that was written once is refreshed; an empty plugin/ (an install
+# with --no-plugin) stays empty.
+if [ -f "$INSTALL/plugin/hooks/scripts/lib.sh" ]; then plugin_dir=$(plugin_data_dir); else plugin_dir=''; fi
+
+if [ "$ROLLBACK" = 1 ]; then
+    if [ -z "$PREVIOUS_IMAGE" ] || ! valid_version "$PREVIOUS_VERSION"; then die 'There is no previous version to roll back to'; fi
+    "$RUNTIME" image inspect "$PREVIOUS_IMAGE" >/dev/null 2>&1 || die "the previous image $PREVIOUS_IMAGE is no longer on this host; install a version with knossos self-update --version=V"
+    switch_to "$PREVIOUS_IMAGE" "$PREVIOUS_VERSION" "$CURRENT_IMAGE" "$CURRENT" "$plugin_dir"
+    status='rolled back'
+    from=$CURRENT
+    to=$PREVIOUS_VERSION
+    text="Rolled back from $CURRENT to $PREVIOUS_VERSION."
+else
+    if [ -n "$VERSION" ]; then
+        valid_version "$VERSION" || die "not a valid version: $VERSION"
+        target=$VERSION
+    else
+        target=$(latest_version) || die 'could not look up the latest release'
+    fi
+    # The image the installation runs may have been pruned from the host. Then
+    # the current version is fetched again (the "update" to it repairs the
+    # installation), and a newer one is fetched as usual: neither needs the
+    # missing image, since the launcher, the plugin and this helper all come
+    # from the image switched to.
+    current_present=yes
+    "$RUNTIME" image inspect "$CURRENT_IMAGE" >/dev/null 2>&1 </dev/null || current_present=no
+    if [ "$current_present" = no ] && { [ "$target" = "$CURRENT" ] || { [ -z "$VERSION" ] && ! version_gt "$target" "$CURRENT"; }; }; then
+        new_image=$(fetch_image "$REPOSITORY:$CURRENT" "$CURRENT") || exit 1
+        switch_to "$new_image" "$CURRENT" "$PREVIOUS_IMAGE" "$PREVIOUS_VERSION" "$plugin_dir"
+        status=repaired
+        from=$CURRENT
+        to=$CURRENT
+        text="Fetched the image of Knossos $CURRENT again: $new_image."
+    elif { [ -z "$VERSION" ] && ! version_gt "$target" "$CURRENT"; } || [ "$target" = "$CURRENT" ]; then
+        if [ "$JSON" = 1 ]; then
+            printf '{"status":"current","from":%s,"to":%s}\n' "$(json_string "$CURRENT")" "$(json_string "$CURRENT")"
+        else
+            printf 'Knossos %s is already the latest version.\n' "$CURRENT"
+        fi
+        exit 0
+    else
+        new_image=$(fetch_image "$REPOSITORY:$target" "$target") || exit 1
+        switch_to "$new_image" "$target" "$CURRENT_IMAGE" "$CURRENT" "$plugin_dir"
+        [ -n "$VERSION" ] || record_check "$target"
+        # Exactly one previous image is kept: the one that was previous until now goes.
+        old_previous=$PREVIOUS_IMAGE
+        PREVIOUS_IMAGE=$CURRENT_IMAGE
+        CURRENT_IMAGE=$new_image
+        prune_image "$old_previous"
+        status=updated
+        from=$CURRENT
+        to=$target
+        text="Updated Knossos from $CURRENT to $target."
+    fi
+fi
+if [ "$JSON" = 1 ]; then
+    printf '{"status":%s,"from":%s,"to":%s,"restart":%s}\n' "$(json_string "$status")" "$(json_string "$from")" "$(json_string "$to")" "$(json_string "$RESTART_NOTE")"
+else
+    printf '%s\n%s\n' "$text" "$RESTART_NOTE"
+fi

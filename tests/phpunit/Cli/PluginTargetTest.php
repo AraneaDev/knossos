@@ -10,6 +10,7 @@ use Knossos\Cli\CliInputLoader;
 use Knossos\Cli\CliOptionParser;
 use Knossos\Cli\Command\PluginCommand;
 use Knossos\Cli\Command\PluginTarget;
+use Knossos\Install\Installation;
 use Knossos\Runtime\RuntimeFactory;
 use Knossos\Tests\Phpunit\Install\InstallFixtures;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -41,6 +42,24 @@ final class PluginTargetTest extends KnossosTestCase
 
         assertSame($data . '/plugin', $target->directory);
         assertSame($this->work . '/d-bin/knossos', $target->bin);
+    }
+
+    #[Group('cli')]
+    public function testInsideAContainerOfAContainerInstallThePluginIsLeftToTheHost(): void
+    {
+        $install = $this->work . '/container install';
+        mkdir($install . '/plugin', 0o755, true);
+        file_put_contents($install . '/install.json', sprintf('{"mode": "container", "version": "1.0.0", "bin_dir": "%s"}', $this->work . '/bin'));
+        putenv(Installation::CONTAINER_VARIABLE . '=' . $install);
+        try {
+            $error = self::captureThrown(static fn() => PluginTarget::resolve(self::repositoryRoot(), $install . '/plugin', null), InvalidArgumentException::class);
+        } finally {
+            putenv(Installation::CONTAINER_VARIABLE);
+        }
+
+        assertSame('This is a container install: its plugin is managed from the host. Run knossos self-update there, or re-run the installer.', $error->getMessage());
+        // The host's own plugin run names no install directory, and writes where it is told.
+        assertSame($install . '/plugin', PluginTarget::resolve(self::repositoryRoot(), $install . '/plugin', null)->directory);
     }
 
     #[Group('cli')]

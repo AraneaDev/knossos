@@ -102,6 +102,31 @@ final class NotesTransferToolTest extends KnossosTestCase
         }
     }
 
+    /** In a container install the project is read-only: the tool says so, and what works instead. */
+    #[Group('mcp')]
+    public function testAnExportIntoAReadOnlyProjectInContainerModeSaysWhatWorksInstead(): void
+    {
+        $root = $this->checkout();
+        $saved = getenv('KNOSSOS_CONTAINER_INSTALL_DIR');
+        try {
+            $tools = $this->tools($this->freshTestDatabase(), [$root]);
+            $tools->call('scan_project', ['path' => $root]);
+            chmod($root, 0o555);
+            putenv('KNOSSOS_CONTAINER_INSTALL_DIR=/srv/knossos/install');
+            $error = captureThrows(fn() => $tools->call('export_notes', ['path' => $root]), InvalidArgumentException::class);
+            self::assertSame(
+                'NOTES_FILE_WRITE_FAILED: could not write ' . $root . '/knossos-notes.json: in container mode the project is read-only; '
+                . 'run `knossos export-notes` from a terminal instead, which writes the file through the host.',
+                $error->getMessage(),
+            );
+            self::assertFileDoesNotExist($root . '/knossos-notes.json');
+        } finally {
+            putenv($saved === false ? 'KNOSSOS_CONTAINER_INSTALL_DIR' : 'KNOSSOS_CONTAINER_INSTALL_DIR=' . $saved);
+            chmod($root, 0o700);
+            $this->removeTempTree($root);
+        }
+    }
+
     private function checkout(): string
     {
         $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));

@@ -56,6 +56,15 @@ printf '{"mode":"native","version":"1.0.0"}\n' > "$DATA/install.json"
 out=$("$LAUNCHER" version 2>&1); status=$?
 if [ "$status" -eq 0 ]; then pass 'reads compact install.json'; else fail "compact install.json (status $status, output $out)"; fi
 
+# A symlinked install.json is read through the link, as every release has read it.
+mv "$DATA/install.json" "$WORK/record.json"
+ln -s "$WORK/record.json" "$DATA/install.json"
+out=$(env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version 2>&1); status=$?
+case $out in *'release:1.0.0'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a symlinked install.json in native mode runs the release, as released'; else fail "symlinked install.json (status $status, output $out)"; fi
+rm -f "$DATA/install.json"
+mv "$WORK/record.json" "$DATA/install.json"
+
 # A caller's KNOSSOS_DATA_DIR says where the graph goes and is passed on, and
 # so is a caller's roots file; the release still comes from the install
 # directory, even when the foreign directory holds a release of its own.
@@ -120,14 +129,16 @@ else
     fail "missing current (status $status, lines $lines, output $out)"
 fi
 
-# Container mode is not served by this launcher yet.
+# A container record goes to container mode, never to a native release
+# (tests/shell/launcher-container.sh covers that mode); one without an image
+# says how to repair it.
 printf '{"mode": "container"}\n' > "$EMPTY/install.json"
 out=$(KNOSSOS_INSTALL_DIR="$EMPTY" "$LAUNCHER" version 2>&1); status=$?
 case $out in
-    *"container mode"*) said=yes ;;
+    *"names no image; run the installer again"*) said=yes ;;
     *) said=no ;;
 esac
-if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'container mode is refused clearly'; else fail "container mode (status $status, output $out)"; fi
+if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'a container record without an image is refused clearly'; else fail "container mode (status $status, output $out)"; fi
 
 # No install.json at all means native: the release runs.
 NOJSON="$WORK/nojson"

@@ -240,4 +240,26 @@ final class AllowedRoots
 
         return dirname($databasePath) . '/roots.json';
     }
+
+    /**
+     * Where `enrichers.json` and `pane-autostart.json` live: beside the roots file.
+     *
+     * `KNOSSOS_SETTINGS_DIR` names another directory. The container launcher
+     * sets it to `<install dir>/settings`, which every container only reads:
+     * `enrichers.json` names commands a scan starts and `pane-autostart.json`
+     * says which projects open the pane, so no scanned project may write
+     * either. The launcher carries out `enricher add|remove` and
+     * `autostart --set` in a short run of the image that may write only that
+     * directory, and also sets `KNOSSOS_ENRICHERS_FILE`
+     * ({@see \Knossos\Configuration\EnrichersFile}).
+     */
+    public static function settingsDirectory(string $databasePath): string
+    {
+        $override = getenv('KNOSSOS_SETTINGS_DIR');
+        if (is_string($override) && $override !== '') {
+            return rtrim($override, '/') === '' ? '/' : rtrim($override, '/');
+        }
+
+        return dirname(self::defaultConfigPath($databasePath));
+    }
 }

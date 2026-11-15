@@ -14,11 +14,20 @@ namespace Knossos\Install;
  * holding `versions/`, `current`, `install.json`, `update-check.json` and the
  * plugin, is derived from the real path of the running code. Anything else is
  * a checkout (or an image) that something other than self-update maintains.
+ *
+ * One exception: in container mode the code runs from the image, which has no
+ * `versions/`. There the launcher names the install directory, which it mounts
+ * at the same path, in `KNOSSOS_CONTAINER_INSTALL_DIR`, and it counts only
+ * when the `install.json` there records a container install. That variable is
+ * set by the launcher for the container and nowhere else.
  */
 final readonly class Installation
 {
     /** The directory under the install directory that holds the materialised plugin. */
     public const PLUGIN_DIRECTORY = 'plugin';
+
+    /** Where the launcher tells code in a container which install directory it runs for. */
+    public const CONTAINER_VARIABLE = 'KNOSSOS_CONTAINER_INSTALL_DIR';
 
     /** Where the release lives (the directory holding `versions/`), or null for a source checkout. */
     public ?string $installDir;
@@ -33,11 +42,20 @@ final readonly class Installation
      */
     public ?string $layoutDir;
 
-    /** @param string $root where the running code lives (the directory holding `bin/` and `src/`) */
-    public function __construct(public string $root)
+    /**
+     * @param string $root where the running code lives (the directory holding `bin/` and `src/`)
+     * @param string|null $containerInstallDir the install directory a container install names; defaults to
+     *        {@see CONTAINER_VARIABLE}, and is only consulted for code that is not under `versions/`
+     */
+    public function __construct(public string $root, ?string $containerInstallDir = null)
     {
         $this->layoutDir = self::layoutDirOf($root);
-        $this->installDir = $this->layoutDir !== null && self::recordsVersion($this->layoutDir, (string) basename((string) realpath($root))) ? $this->layoutDir : null;
+        if ($this->layoutDir !== null) {
+            $this->installDir = self::recordsVersion($this->layoutDir, (string) basename((string) realpath($root))) ? $this->layoutDir : null;
+
+            return;
+        }
+        $this->installDir = self::containerInstall($containerInstallDir ?? (getenv(self::CONTAINER_VARIABLE) ?: null));
     }
 
     /**
@@ -154,6 +172,16 @@ final readonly class Installation
         if ($this->isSourceCheckout()) {
             return sprintf('source checkout at %s', $this->root);
         }
+        if ($this->mode() === 'container') {
+            $image = $this->record()['image'] ?? null;
+
+            return sprintf(
+                'container %s from %s, installed in %s',
+                (string) ($this->record()['version'] ?? 'unknown version'),
+                is_string($image) && $image !== '' ? $image : 'an unrecorded image',
+                $this->installDir,
+            );
+        }
 
         return sprintf(
             '%s %s at %s',
@@ -182,6 +210,24 @@ final readonly class Installation
         }
 
         return dirname($versions);
+    }
+
+    /**
+     * The install directory a container install names, when its `install.json` records one; else null.
+     *
+     * Only an absolute directory counts, so a relative value can never be
+     * resolved against whatever the working directory happens to be.
+     */
+    private static function containerInstall(?string $directory): ?string
+    {
+        if ($directory === null || !str_starts_with($directory, '/')) {
+            return null;
+        }
+        $directory = rtrim($directory, '/') === '' ? '/' : rtrim($directory, '/');
+        $bytes = @file_get_contents($directory . '/install.json');
+        $record = $bytes === false ? null : json_decode($bytes, true);
+
+        return is_array($record) && ($record['mode'] ?? null) === 'container' ? $directory : null;
     }
 
     /**

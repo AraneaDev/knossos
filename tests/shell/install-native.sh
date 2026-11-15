@@ -162,6 +162,8 @@ printf 'corrupt' >> "$BAD/$ASSET"
 T2="$WORK/corrupt"
 mkdir -p "$T2/data dir/versions/0.0.1/bin"
 ln -s versions/0.0.1 "$T2/data dir/current"
+# The record every release writes beside them; without it they are not trusted.
+printf '{"mode": "native", "version": "0.0.1"}\n' > "$T2/data dir/install.json"
 out=$(BASE_OVERRIDE=$BAD run_install "$T2" --version="$VERSION"); status=$?
 case $out in *"checksum mismatch"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'a corrupted tarball is refused with the reason'; else fail "corrupt: status $status, output $out"; fi
@@ -236,13 +238,27 @@ if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'a PHP that is too old is
 
 # ---- container mode --------------------------------------------------------
 
-out=$(run_install "$WORK/container" --mode=container --version="$VERSION"); status=$?
-case $out in *"container mode is not available"*) said=yes ;; *) said=no ;; esac
+# tests/shell/install-container.sh covers the mode itself, with a fake docker.
+# Here, on a PATH with neither docker nor podman (never the system's, which
+# may hold a real one), asking for it says what is missing and creates nothing.
+out=$(PATH=$BARE KNOSSOS_RELEASE_BASE=$RELEASE sh "$INSTALL" --mode=container --no-plugin --data-dir="$WORK/container/data" --bin-dir="$WORK/container/bin" --version="$VERSION" 2>&1 </dev/null); status=$?
+case $out in *"container mode needs Docker or Podman"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/container" ]; then
-    pass '--mode=container is refused in this version'
+    pass '--mode=container without docker or podman says so and creates nothing'
 else
     fail "container mode: status $status, output $out"
 fi
+
+# A knossos in the bin directory that is not this installation's launcher is
+# named before it is replaced.
+TR="$WORK/replace"
+mkdir -p "$TR/bin dir"
+printf '#!/bin/sh\necho mine\n' > "$TR/bin dir/knossos"
+out=$(run_install "$TR" --version="$VERSION"); status=$?
+case $out in *"replacing $TR/bin dir/knossos, a file that was not a Knossos launcher"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'replacing a file that is not a launcher says so'; else fail "replace: status $status, output $out"; fi
+out=$(run_install "$TR" --version="$VERSION")
+case $out in *replacing*) fail "reinstalling over its own launcher says replacing: $out" ;; *) pass 'its own launcher is replaced without a note' ;; esac
 
 # ---- a script cut off mid-download -----------------------------------------
 
@@ -372,6 +388,7 @@ printf '%s  %s\n' "$sum" "$ASSET" > "$NOTPL/SHA256SUMS"
 T12="$WORK/notemplate-target"
 mkdir -p "$T12/data dir/versions/0.0.1"
 ln -s versions/0.0.1 "$T12/data dir/current"
+printf '{"mode": "native", "version": "0.0.1"}\n' > "$T12/data dir/install.json"
 out=$(BASE_OVERRIDE=$NOTPL run_install "$T12" --version="$VERSION"); status=$?
 case $out in *"no launcher template"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ "$(readlink "$T12/data dir/current")" = 'versions/0.0.1' ]; then
@@ -421,6 +438,7 @@ stub_version "$TP2/data dir" 0.0.0
 mkdir -p "$TP2/data dir/versions/0.0.2.partial.2147483646/bin"
 ln -s versions/0.0.1 "$TP2/data dir/current"
 printf '0.0.0\n' > "$TP2/data dir/previous-version"
+printf '{"mode": "native", "version": "0.0.1"}\n' > "$TP2/data dir/install.json"
 out=$(run_install "$TP2" --version="$VERSION"); status=$?
 kept=$(cd "$TP2/data dir/versions" && printf '%s ' *)
 if [ "$status" -eq 0 ] && [ "$(cat "$TP2/data dir/previous-version")" = 0.0.1 ] && [ "$kept" = "0.0.1 $VERSION " ]; then
@@ -598,6 +616,54 @@ case $(tail -n 2 "$INSTALL" | tr '\n' ' ') in
     'main "$@"; exit } ') pass 'the script ends with main "$@"; exit and the closing brace' ;;
     *) fail "unexpected end of install.sh: $(tail -n 2 "$INSTALL")" ;;
 esac
+
+# ---- native mode keeps the data and bin directories wherever they are -----------
+
+# Container mode refuses a data or bin directory inside the directory the
+# installer runs from (a container could write it); native mode runs nothing
+# in a container and accepts both, as it always has.
+T22="$WORK/inside project"
+mkdir -p "$T22"
+out=$(cd "$T22" && run_install "$T22" --version="$VERSION" --no-roots); status=$?
+got=$("$T22/bin dir/knossos" version 2>&1)
+if [ "$status" -eq 0 ] && [ "$got" = "Knossos $VERSION" ]; then
+    pass 'native mode accepts a data and a bin directory inside the directory the installer runs from'
+else
+    fail "native inside the working directory: status $status, version said $got, output $out"
+fi
+
+# ---- a data directory a container install had ------------------------------------
+
+# Every container could write it, so a native install trusts nothing of its
+# own kind found there: it refuses, or with --force-clean removes exactly the
+# container install and those entries, never the graph or the roots file.
+T23="$WORK/was container"
+mkdir -p "$T23/data dir/install/plugin" "$T23/data dir/versions/$VERSION/bin"
+printf '{"mode": "container", "layout": "separate"}\n' > "$T23/data dir/install/install.json"
+printf '#!/bin/sh\necho planted\n' > "$T23/data dir/versions/$VERSION/bin/knossos"
+printf 'graph\n' > "$T23/data dir/knossos.sqlite"
+printf '{"roots": []}\n' > "$T23/data dir/roots.json"
+out=$(run_install "$T23" --version="$VERSION" --no-roots); status=$?
+case $out in *"$T23/data dir holds a container install, or files its own install.json does not vouch for (install versions); remove those entries or pick another --data-dir, or re-run with --force-clean to remove exactly them."*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ -d "$T23/data dir/install" ] && [ ! -e "$T23/bin dir/knossos" ]; then
+    pass 'a native install into a data directory a container install had is refused, and nothing changes'
+else
+    fail "over a container install: status $status, output $out"
+fi
+out=$(run_install "$T23" --version="$VERSION" --no-roots --force-clean); status=$?
+got=$("$T23/bin dir/knossos" version 2>&1)
+if [ "$status" -eq 0 ] && [ "$got" = "Knossos $VERSION" ] && [ ! -e "$T23/data dir/install" ] \
+    && [ "$(cat "$T23/data dir/knossos.sqlite")" = graph ] && [ -f "$T23/data dir/roots.json" ]; then
+    pass '--force-clean removes the container install and the planted release, keeps the graph and roots, and installs'
+else
+    fail "force-clean over a container install: status $status, version said $got, output $out"
+fi
+# Files of a native install that no install.json vouches for are refused too.
+T24="$WORK/planted native"
+mkdir -p "$T24/data dir/plugin"
+out=$(run_install "$T24" --version="$VERSION" --no-roots); status=$?
+case $out in *'holds a container install, or files its own install.json does not vouch for (plugin)'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'a plugin/ no install.json vouches for is refused'; else fail "unvouched plugin: status $status, output $out"; fi
 
 if [ "$failures" -ne 0 ]; then
     printf '%s failure(s)\n' "$failures"

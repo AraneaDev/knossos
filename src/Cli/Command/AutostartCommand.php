@@ -15,8 +15,11 @@ use Knossos\Runtime\PaneAutostart;
 /**
  * Reads or sets whether a project opens the pane when a session starts.
  *
- * The switch lives in `pane-autostart.json` beside the roots file, keyed by
+ * The switch lives in `pane-autostart.json` beside the roots file (or in
+ * `KNOSSOS_SETTINGS_DIR`, see AllowedRoots::settingsDirectory()), keyed by
  * the project's toplevel, so any folder inside a repository answers for it.
+ * In container mode the launcher runs `--set` in a short run of the image
+ * that may write only that settings directory; every other container reads it.
  */
 final class AutostartCommand implements CliCommand
 {
@@ -41,7 +44,7 @@ final class AutostartCommand implements CliCommand
             throw new InvalidArgumentException('--set takes on or off.');
         }
         $root = AllowedRoots::normaliseRoot(StartClaim::targetOf($path, null)['root']);
-        $autostart = new PaneAutostart(dirname(AllowedRoots::defaultConfigPath($context->databasePath())) . '/pane-autostart.json');
+        $autostart = new PaneAutostart(AllowedRoots::settingsDirectory($context->databasePath()) . '/pane-autostart.json');
         $json = $context->options->flag($options, 'json');
         if ($set !== null) {
             try {

@@ -39,6 +39,15 @@ final readonly class DoctorService
         'python' => ['Python', '/^Python (\d+\.\d+)\./', '3.11'],
     ];
 
+    /**
+     * The PHP extensions this release needs, each a `php.extension.<name>` check.
+     *
+     * tokenizer is the PHP worker's: nikic/php-parser lexes with it. install.sh
+     * asks a host's PHP for exactly these before it chooses native mode
+     * (InstallDetectionTest ties the two lists).
+     */
+    public const REQUIRED_EXTENSIONS = ['json', 'mbstring', 'pdo', 'pdo_sqlite', 'tokenizer'];
+
     public function __construct(private PDO $pdo, private string $installationRoot, private string $databasePath) {}
 
     /** The version floor for one runtime, by the key it is registered under in {@see self::FLOORS}. */
@@ -72,7 +81,7 @@ final readonly class DoctorService
             }
             return $detail;
         });
-        foreach (['json', 'mbstring', 'pdo', 'pdo_sqlite'] as $extension) {
+        foreach (self::REQUIRED_EXTENSIONS as $extension) {
             $this->check($checks, 'php.extension.' . $extension, static fn(): string => extension_loaded($extension) ? 'loaded' : throw new \RuntimeException('missing'));
         }
         $this->check($checks, 'installation', fn(): string => (new Installation($this->installationRoot))->describe());

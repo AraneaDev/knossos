@@ -29,7 +29,13 @@ final class SelfUpdater
     }
 
     /**
-     * Look up the newest release and cache the answer; a failed lookup is cached as an attempt.
+     * Look up the newest release and cache the answer; the attempt is cached before the lookup starts.
+     *
+     * A look counts as a look even when it never finishes: the session hook
+     * runs this under its own time limit, which kills a slow lookup before it
+     * could record anything, and an offline or slow host must not try again
+     * at every session start. The last known answer is kept until a lookup
+     * brings a new one.
      *
      * @param string $current the running version
      * @return array{current: string, latest: string, update: bool}
@@ -37,13 +43,8 @@ final class SelfUpdater
     public function check(string $current): array
     {
         $cache = new UpdateCheck($this->installation->directory());
-        try {
-            $latest = $this->source->latest();
-        } catch (InstallException $error) {
-            // A failed look counts as a look: an offline host must not retry at every session start.
-            $cache->record(null);
-            throw $error;
-        }
+        $cache->record(null);
+        $latest = $this->source->latest();
         $cache->record($latest);
 
         return ['current' => $current, 'latest' => $latest, 'update' => version_compare($latest, $current, '>')];

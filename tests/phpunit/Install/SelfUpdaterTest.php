@@ -6,7 +6,9 @@ namespace Knossos\Tests\Phpunit\Install;
 
 use Knossos\Install\GitHubReleaseSource;
 use Knossos\Install\Installation;
+use Knossos\Install\InstallException;
 use Knossos\Install\ReleaseProbe;
+use Knossos\Install\ReleaseSource;
 use Knossos\Install\SelfUpdater;
 use Knossos\Install\UpdateCheck;
 use Knossos\Install\VersionSwitch;
@@ -224,6 +226,37 @@ final class SelfUpdaterTest extends KnossosTestCase
         assertSame('1.0.0', (new VersionSwitch($data))->current());
         assertSame($installJson, file_get_contents($data . '/install.json'));
         assertSame(true, is_dir($data . '/previous-version'));
+    }
+
+    #[Group('install')]
+    public function testTheAttemptIsRecordedBeforeTheLookupStarts(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        (new UpdateCheck($data))->record('1.2.0', 1_000_000);
+        // A lookup that is cut off: it never returns, here by throwing after looking at the cache.
+        $source = new class ($data) implements ReleaseSource {
+            /** @var array{checked_at: string, latest: string|null}|null what the cache held while the lookup ran */
+            public ?array $seen = null;
+
+            public function __construct(private readonly string $data) {}
+
+            public function latest(): string
+            {
+                $this->seen = (new UpdateCheck($this->data))->read();
+                throw new InstallException('killed by the hook timeout');
+            }
+
+            public function fetch(string $version, string $asset, string $to): void {}
+        };
+        $updater = new SelfUpdater(new Installation($data . '/current'), $source, new FakeProbe(), self::PLATFORM);
+
+        $this->refused(fn() => $updater->check('1.0.0'), 'killed by the hook timeout');
+
+        self::assertNotNull($source->seen);
+        assertSame('1.2.0', $source->seen['latest']);
+        // The stamp the lookup saw is this attempt's, not the old one: it was written before the network was asked.
+        self::assertNotSame(1_000_000, strtotime($source->seen['checked_at']));
+        assertSame(false, (new UpdateCheck($data))->due());
     }
 
     #[Group('install')]

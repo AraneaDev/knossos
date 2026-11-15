@@ -29,11 +29,14 @@ and pull-request validation uses a freshly generated, encrypted ephemeral
 Cosign key to prove the complete signing and verification path without storing
 release credentials. Published releases should replace that local key with the
 project's protected keyless or hardware-backed identity and retain transparency
-log verification. The release workflow does not sign or publish an image. It runs the
-full profile against the released tree and checks that the runtime image reports
-its version and passes `doctor`, but its publish step is switched off until a
-registry is set up. The only image pushed today is the per-commit quality image
-that CI's lanes share, which is not a release artifact.
+log verification. The release workflow does not sign anything. It
+runs the full profile against the released tree, checks that the runtime image
+reports its version and passes `doctor`, builds a tarball for each of four
+platforms with a merged `SHA256SUMS`, and publishes the runtime image as
+`ghcr.io/araneadev/knossos:<version>` for amd64 and arm64, with version tags
+only and no `latest`. The checksums guard against a corrupted download and come
+from the same origin as the tarballs, so they are not a signature. The
+per-commit quality image that CI's lanes share is not a release artifact.
 
 ## Install, upgrade, and rollback lifecycle
 

@@ -30,6 +30,9 @@ hooks
 web
 tui
 tools/ts-resolve.mjs
+tools/launcher/knossos
+tools/launcher/idle-stop
+tools/launcher/container-update
 skills
 types'
 
