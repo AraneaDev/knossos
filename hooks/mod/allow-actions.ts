@@ -71,16 +71,20 @@ async function runAllow(io: Port, root: string): Promise<void> {
 /**
  * What follows a root that is allowed, whoever allowed it (the person in the
  * pane, or starting Knossos in its folder): the first scan, which creates the
- * project, and the turn's brief after it.
+ * project, and the turn's brief after it. `live` says whether it should go
+ * on: it is asked before each step that starts work.
  */
-export async function afterGrant(io: Port, root: string): Promise<void> {
+export async function afterGrant(io: Port, root: string, live: () => boolean = () => true): Promise<void> {
   await io.state.allow.update((): AllowState => ({ phase: 'done', root, reason: null }))
+  if (!live()) return
   await io.state.rescan.update((r): RescanState => ({ ...r, refusedRoot: null }))
   // A watcher refused for this root may watch it now, once the scan below lands a dashboard.
   mod.watch.refused = false
   // The turn brief would answer `unscanned` for a project nobody has scanned, so the pane's own rescan runs first:
   // it creates the project at exactly this root, shows scanning, done or failed, and reloads the dashboard.
   await rescanRoot(io, root)
+  // Ended while the first scan ran (its server stopped): nothing more is started for it.
+  if (!live()) return
   const scanned = await io.state.rescan.read()
   if (scanned.phase !== 'idle' && !mod.session.disabled) {
     // A failure to retry with `a`; the next turn's brief still reports the edits that were refused.

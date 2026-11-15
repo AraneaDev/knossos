@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { scratch as scratchUnder } from './fixtures/helpers'
@@ -34,6 +34,21 @@ describe('webPort', () => {
     const io = portOver(fakeHub())
     expect(await io.process.run(['sh', '-c', 'printf hello; printf oops >&2; exit 3'], { timeoutMs: 5_000 })).toEqual({ exitCode: 3, stdout: 'hello', stderr: 'oops' })
     expect((await io.process.run(['true'], { timeoutMs: 5_000 })).exitCode).toBe(0)
+  })
+
+  it("interrupts its runs when its server ends it, as Ctrl-C would, kills one that does not stop, and runs none after", async () => {
+    const io = webPort({ root: '/work/app', pluginRoot: '/nowhere', storeFile: join(scratch(), 'store.json'), hub: fakeHub(), endGraceMs: 300 })
+    const dir = scratch()
+    // A scan stops at its next checkpoint on SIGINT; a run that ignores it is killed with its group after the grace.
+    const polite = io.process.run(['sh', '-c', `trap 'echo stopped; exit 3' INT; echo $$ > ${dir}/a; while :; do sleep 0.05; done`])
+    const stubborn = io.process.run(['sh', '-c', `trap '' INT; echo $$ > ${dir}/b; while :; do sleep 0.05; done`])
+    await vi.waitFor(() => expect(readdirSync(dir).sort()).toEqual(['a', 'b']))
+    const started = Date.now()
+    io.end()
+    expect(await polite).toEqual({ exitCode: 3, stdout: 'stopped\n', stderr: '' })
+    await expect(stubborn).rejects.toThrow(/killed \(SIGKILL\)/)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(250)
+    await expect(io.process.run(['true'])).rejects.toThrow(/the server stopped/)
   })
 
   it('kills a run that outlives its timeout', async () => {

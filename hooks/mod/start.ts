@@ -54,10 +54,11 @@ export async function startDeliberately(io: Port): Promise<void> {
     if (claim === null) return
     if (claim.status === 'no-binary') return await disable(io)
     const { root } = claim
-    if (claim.status === 'added') return await afterGrant(io, root)
+    const live = () => mine === run
+    if (claim.status === 'added') return await afterGrant(io, root, live)
     if (claim.status === 'present') {
       // Only a project knossos says it never scanned: a dashboard that is slow, failed or not loaded yet is no reason to scan.
-      if ((await io.state.dashboard.read())?.status === 'unscanned') await afterGrant(io, root)
+      if ((await io.state.dashboard.read())?.status === 'unscanned' && live()) await afterGrant(io, root, live)
       return
     }
     // Too broad to allow unasked: left refused, so the pane makes today's offer.

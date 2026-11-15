@@ -353,6 +353,9 @@ export async function startServer(o: {
       // A claim of the folder still running would go on to a first scan for a server that is gone.
       endDeliberately()
       await endWatcher(io).catch(() => undefined)
+      // A scan or any other run still under way is interrupted, as Ctrl-C would, and none is started after
+      // (after the watcher's end, which runs a kill of its own).
+      io.end()
       for (const res of streams) res.end()
       await new Promise<void>(resolve => server.close(() => resolve()))
     })()
