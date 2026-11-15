@@ -52,8 +52,9 @@ Start a new session afterwards. The brief appears at its start, and `/knossos`
 opens the pane once the project is scanned.
 
 A release installed with `install.sh` picks its own defaults: the plugin goes
-to `plugin/` in the install directory (`<data dir>/install/plugin` in
-[container mode](../operate/container-mode.md)) and the hooks call the
+to `plugin/` in the install directory (`~/.local/share/knossos/plugin`, or
+`<install dir>/plugin`, in [container mode](../operate/container-mode.md)) and
+the hooks call the
 launcher, so a `knossos self-update` never leaves them on an old version: it
 rewrites that directory in place, which Claude Code has registered. Restart
 Claude Code afterwards. Neither option may point inside that install's

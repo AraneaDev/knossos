@@ -95,7 +95,7 @@ enrichers a project requests are kept rather than removed (see
 
 ### In container mode
 
-A container install keeps the list in `<data dir>/install/settings/enrichers.json`,
+A container install keeps the list in `<install dir>/settings/enrichers.json`,
 where every container can read it and none can change it. An enricher is a
 command a scan starts, so a scanned project that could add one would run code
 in the container of every other project you scan.
@@ -111,9 +111,9 @@ The command runs inside the container, as the user you run Knossos as. So it
 must exist there:
 
 - a program the image has: `python3`, `php`, `node` or `sh`;
-- a script in `<data dir>/install/settings`, which every container sees at the
+- a script in `<install dir>/settings`, which every container sees at the
   same path, read-only. Put it there on the host, then add it, for example
-  `knossos enricher add endpoints -- python3 ~/.knossos/install/settings/endpoints.py`.
+  `knossos enricher add endpoints -- python3 ~/.local/share/knossos/settings/endpoints.py`.
 
 An enricher must not read or run anything from the graph directory, in any
 way: the graph directory is shared by every project of the installation, and
@@ -121,7 +121,7 @@ any project's container can write it. A command in the graph directory is
 refused when you add it, because any project's container could replace it. That
 check only catches a path given as a word of its own, so it does not catch a
 path built inside a shell command or an environment value. Keep what an
-enricher runs and reads in `<data dir>/install/settings`. A file in one of your projects is only
+enricher runs and reads in `<install dir>/settings`. A file in one of your projects is only
 mounted while that project is scanned. A command that does not exist in the
 container makes the scan report `ENRICHER_FAILED` with the reason
 `missing_command`, and the enricher's previous facts are kept.

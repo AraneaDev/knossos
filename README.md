@@ -127,7 +127,8 @@ knossos install-agent-plugin --data-dir="$HOME/.knossos" --execute
 - **Codex or another MCP client**: [Codex and other MCP clients](docs/agents/clients.md). The
   native pane and the messages are Claude Code hooks; every other client gets the MCP tools
   and can use the [web client](#web-client) to browse the graph.
-- **No PHP on the host**: the installer uses container mode, see
+- **No PHP on the host**: the installer uses container mode, which keeps what the host trusts in
+  `~/.local/share/knossos` and the graph in `~/.knossos`; see
   [Container mode](docs/operate/container-mode.md). To run the image by hand instead, see
   [Running Knossos in Docker](docs/operate/container.md).
 - **When it does not start**: [installation pitfalls](docs/get-started/installation.md#installation-pitfalls),

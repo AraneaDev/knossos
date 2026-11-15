@@ -52,6 +52,18 @@ and the allow-list, then runs the command in the container for that project:
 - **The network is off**, and the container runs as your user and group, with
   `HOME=/tmp`.
 
+Two directories belong to an installation, and they never overlap:
+
+- **The install directory**, `~/.local/share/knossos` (or
+  `$XDG_DATA_HOME/knossos`, or what you gave the installer with
+  `--install-dir`). It holds everything the host reads, runs or trusts: the
+  install record, the update helper, the plugin, the allow-list, the settings,
+  the idle markers and the host's own temporary files. The launcher has its
+  path baked in and never looks it up in the environment.
+- **The data directory**, `~/.knossos` unless you chose another. It holds the
+  graph and nothing else: every container can write it, and the host reads
+  nothing in it.
+
 The project, the data directory and the directory of a roots file you named are
 mounted at their physical paths, the same inside as outside, so a path means
 the same thing in both and the project keeps the id a native install would
@@ -63,17 +75,20 @@ starts a container from it. See [updating](updating.md#in-container-mode).
 
 ## What a container can reach
 
-| Where                                                             | In the container                     |
-| ----------------------------------------------------------------- | ------------------------------------ |
-| The project root                                                  | read-only                            |
-| The graph directory, `<data dir>`                                 | read-write                           |
-| The install directory, `<data dir>/install`                       | read-only, on top of the graph mount |
-| The directory of a roots file you named with `KNOSSOS_ROOTS_FILE` | read-only                            |
-| Everything else on the host                                       | not mounted                          |
+| Where                                                             | In the container              |
+| ----------------------------------------------------------------- | ----------------------------- |
+| The project root                                                  | read-only                     |
+| The graph directory, `<data dir>`                                 | read-write                    |
+| The install directory, `<install dir>`                            | read-only, a mount of its own |
+| The directory of a roots file you named with `KNOSSOS_ROOTS_FILE` | read-only                     |
+| Everything else on the host                                       | not mounted                   |
 
-The install directory holds the allow-list (`roots.json`), the enricher list
-(`settings/enrichers.json`), the plugin and the install record
-(`install.json`).
+The install directory holds the allow-list (`roots.json`), the settings
+(`settings/enrichers.json` and `settings/pane-autostart.json`), the plugin,
+the install record (`install.json`), the update helper (`container-update`),
+`update-check.json`, `containers/` (idle markers and graph records) and `tmp/`.
+It lies in no read-write mount, so no container can change it or rename
+anything around it.
 
 ### What this protects
 
@@ -82,14 +97,23 @@ The install directory holds the allow-list (`roots.json`), the enricher list
   project inside the data directory is refused, since every other container
   could write it there, and so is a data directory that holds anything
   Knossos did not put there (see [refusals](#refusals)).
-- **The host's own files stay out of reach.** The install directory with the
-  allow-list, the enricher list, the plugin and the install record is read-only
-  to every container, and the launcher checks at every call that it is the
-  directory the installer made.
+- **The host's own files stay out of reach.** The install directory lies
+  outside every data directory and is read-only to every container. The
+  launcher checks at every call that it is the directory the installer made
+  and that no graph directory of this installation holds it, and before it
+  starts a container or runs the update helper, that no running Knossos
+  container of another installation can write it.
 - **The host never reads or runs a file a container can write.** The launcher,
   the plugin's hooks and the update helper take their input from the install
-  directory only. The one exception is the scratch copy of a file you asked a
-  command to write, handled as [described below](#commands-that-work-differently).
+  directory only, and its own temporary files go there too, never to `TMPDIR`.
+  Nothing in a graph directory is read, run or trusted. The one exception is
+  the scratch copy of a file you asked a command to write, handled as
+  [described below](#commands-that-work-differently).
+- **A graph directory holds graph data only when a container is given it.**
+  Before any container starts with a graph directory, the launcher checks that
+  it holds only what Knossos puts there. So no install directory of another
+  installation, and nothing else of yours, is ever in a container's read-write
+  mount.
 - **No network** inside the container.
 
 ### What it does not protect
@@ -99,7 +123,13 @@ The install directory holds the allow-list (`roots.json`), the enricher list
   corrupt the graph data, notes and scan results of the others, and through
   them put text in front of your agent, in a session brief or an answer. It
   cannot run code on the host through the graph directory. Treat the graph as
-  trusted by every project of the installation.
+  trusted by every project of the installation. Two installations that use one
+  graph directory share it the same way: the data can be corrupted, and no
+  code can run.
+- **A container can keep new containers from starting.** Anything it leaves
+  in the graph directory that Knossos does not put there makes the next
+  container start for that graph refused, until you remove it (see
+  [refusals](#refusals)). The host reads none of it.
 - **Files you name are visible while the command runs.** A file you pass to a
   command from outside every mount, such as `--policies=<path>`, is copied into
   a scratch directory in the graph directory for the call. Another container
@@ -144,11 +174,13 @@ container. Messages begin with `knossos:`.
   Run `knossos` from inside a project, and keep the data directory in a
   directory of its own, as `~/.knossos` is. A root that your allow-list lists
   and that is too wide is skipped, and the narrower folder you are in is used.
-- **A data directory inside a project, or a project containing the data
-  directory or the launcher's directory.**
-  `the project root <path> contains the Knossos data directory <dir>, which a container must never be able to write; ...`
-  Run from a project that does not contain it, or install again with
-  `--data-dir` and `--bin-dir` outside the project.
+- **A data directory, install directory or launcher inside a project.**
+  `the project root <path> contains the Knossos data directory <dir>, which a container must never be able to write; ...`,
+  and the same for `the install directory <dir>` and for the launcher's
+  directory. A project's files come from wherever it was cloned from, so
+  nothing the host trusts may be part of one. Run from a project that does not
+  contain it, or install again with `--data-dir`, `--install-dir` or
+  `--bin-dir` outside the project.
 - **A data directory inside another graph directory.**
   `KNOSSOS_DATA_DIR (<path>) lies in the graph directory <dir>, which a container can write; pick a data directory outside <dir>.`
   A container of that installation could swap a directory there for a link, so
@@ -156,37 +188,39 @@ container. Messages begin with `knossos:`.
 - **A data directory that holds other things.** Every container can write the
   graph directory, so a new one must be empty, not exist yet, or hold only
   what Knossos puts in one, in the shape Knossos makes it (the database and its
-  files, `scan-failures.jsonl`, `roots.json`, `enrichers.json`,
-  `pane-autostart.json` and `mcp-serve.log` as plain files, `watch/` and
-  `backups/` holding plain files only, an empty `.knossos-graph/` and
-  `.knossos-files.*`; see
+  files, `scan-failures.jsonl` and `mcp-serve.log` as plain files, and
+  `watch/`, `backups/` and `.knossos-files.*` holding plain files only; see
   [installation](../get-started/installation.md#a-data-directory-that-holds-other-things)).
   `KNOSSOS_DATA_DIR (<path>) holds <entry>, which is not something Knossos puts in a graph directory, and every container would be able to write all of it; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install).`
   A native install's data directory is refused the same way, since the host
-  runs its release and plugin:
-  `KNOSSOS_DATA_DIR (<path>) holds a native Knossos install (<entry>), ...`.
+  runs its release and trusts its roots list and settings:
+  `KNOSSOS_DATA_DIR (<path>) holds <entry>, which a native Knossos install keeps in its data directory and the host runs or trusts, ...`.
   The check runs the first time a directory is used as a graph; the installer
-  checks the one you install into. A graph directory used this way is
-  recorded and marked with an empty `.knossos-graph/`, so another
-  installation's installer refuses to put its install directory there.
-- **Another installation's data directory.** A data directory other than your
-  own never holds an `install` entry, at any call:
-  `KNOSSOS_DATA_DIR (<path>) holds <path>/install, which is not this installation's install directory (<dir>): it is another Knossos installation's, or looks like one, ...`
-  Every container of your installation could otherwise rewrite the record,
-  update helper and plugin that installation's host side runs. Use that
-  installation's own `knossos`. Your own data directory, reached through a
-  link or another spelling, is your own and works.
+  checks the one you install into. Another installation's graph directory
+  holds only graph data, so it passes, and the two installations share it.
+- **A graph directory that came to hold other things.** Before every
+  container start, the launcher checks the graph directory again:
+  `the graph directory <dir> holds <entry>, which Knossos does not put there in that form, so no container is started with it: ... Remove <dir>/<entry> and run the command again.`
+  A container of that graph, or another program, put it there. Nothing in it
+  is read by the host. A container that is already running keeps working.
+- **An install directory that a read-write mount holds.** The launcher refuses
+  an install directory that lies in a graph directory of this installation, or
+  in the read-write mount of a running container of another installation,
+  before it starts a container or runs the update helper:
+  `the install directory <dir> lies in <mount>, which container <name> of another Knossos installation can write; stop that container (docker stop <name>) and run the installer again with --install-dir set to a directory of its own, outside every Knossos data directory (the default is ~/.local/share/knossos).`
+  A data directory that contains the install directory is refused too:
+  `KNOSSOS_DATA_DIR (<path>) contains the install directory <dir>, which a container must never be able to write; ...`.
 - **A project inside a graph directory.**
   `the project root <path> lies in the graph directory <dir>, which every container of that graph can write, so it would not stay read-only; keep projects outside the Knossos data directory, or pick another --data-dir.`
-- **A roots file, `TMPDIR` or a file to write or read inside a graph
-  directory.**
+- **A roots file or a file to write or read inside a graph directory.**
   `KNOSSOS_ROOTS_FILE (<path>) lies in the graph directory <dir>, which a container can write; ...`,
-  `TMPDIR (<path>) lies in the graph directory <dir>, ...`, and for an `--out`,
+  and for an `--out`,
   `<path> lies in the graph directory <dir>, which a container can write; write it somewhere else.`
   The host never opens a file there by a name a container could have changed.
-  `knossos stop` applies the same check to the roots file.
+  `knossos stop` applies the same check to the roots file. `TMPDIR` is never
+  refused, because the host keeps its temporary files in `<install dir>/tmp`.
 - **A folder that was once a graph directory.** Each graph directory the
-  launcher has used is recorded in `<data dir>/install/containers/graph-<hash>`,
+  launcher has used is recorded in `<install dir>/containers/graph-<hash>`,
   and every refusal that names one says which record file it is. If that
   folder no longer is a graph directory, remove the record file to lift the
   refusal.
@@ -205,9 +239,11 @@ container. Messages begin with `knossos:`.
   `the image <image> is gone from this host: run knossos self-update to fetch it again, or re-run the installer.` The launcher never pulls an image behind
   your back.
 - **A changed install directory.**
-  `the install directory <dir> is not the one the installer created; re-run the installer to fix it.`
+  `the install directory <dir> is not the one the installer made this launcher for (it was replaced, copied or restored); run the installer again with --install-dir=<dir> to repair it: your roots and enrichers are kept.`
   The launcher compares the inode it recorded at install time and trusts
-  nothing in a directory put in its place.
+  nothing in a directory put in its place. A backup you restored, or a copy
+  made by a move to another disk, is fine once the installer has run again
+  for it.
 - **An update while a call starts.**
   `Knossos was updated while this call started its container, so that container was removed; run the command again.`
   The call read the record of the image before the update, so its container
@@ -215,8 +251,9 @@ container. Messages begin with `knossos:`.
 
 A refused call creates nothing: the data directory, the directory of a roots
 file, the graph record and the scratch directory are made only once every
-check of the call has passed, its files and `TMPDIR` included. What can still
-fail after that is the runtime itself, such as a daemon that stops.
+check of the call has passed, its files included. What can still be refused
+after that is the start of a container (the two checks before a container
+starts, above) and the runtime itself, such as a daemon that stops.
 
 ## Commands that work differently
 
@@ -224,14 +261,19 @@ A few commands are carried out by the launcher on the host, because the thing
 they change must be out of a container's reach.
 
 - **`knossos allow-root`, `knossos claim` and `knossos move-project`** change
-  the allow-list, `<data dir>/install/roots.json`. The launcher edits it,
-  never a container. A `roots.json` in the graph directory is ignored, because
-  every container can write it.
+  the allow-list, `<install dir>/roots.json`. The launcher edits it, never a
+  container. A `roots.json` in the graph directory is ignored, because every
+  container can write it.
 - **`knossos enricher add` and `knossos enricher remove`** change the enricher
-  list, `<data dir>/install/settings/enrichers.json`, in a short run of the
-  image that is given that one directory read-write and nothing else.
-  `enricher list` and every scan read it read-only. Put the script an enricher
-  runs in `<data dir>/install/settings`.
+  list, `<install dir>/settings/enrichers.json`, in a short run of the image
+  that is given that one directory read-write and nothing else. `enricher list`
+  and every scan read it read-only. Put the script an enricher runs in
+  `<install dir>/settings`.
+- **`knossos autostart <path> --set=on|off`** changes
+  `<install dir>/settings/pane-autostart.json` the same way, with the project
+  root read-only beside it so the command can find its repository.
+  `knossos autostart <path>` without `--set` reads it in the project's
+  container.
 - **`knossos install-agent-plugin`** is refused:
   `This is a container install: its plugin is managed from the host. Run knossos self-update there, or re-run the installer.`
 - **`knossos self-update` and `knossos stop`** run on the host. See
@@ -271,5 +313,8 @@ Files inside the project are read through its read-only mount.
   image runs.
 - Check that the runtime answers: `docker info`.
 - `knossos stop --all` and a new call start a fresh container.
-- Re-run the installer with the same `--data-dir` to repair the install
-  directory.
+- Run the installer again with the same `--install-dir` (and `--data-dir`) to
+  repair the installation. It keeps the allow-list, the settings and the graph
+  records, writes the launcher again with the current inode of the install
+  directory, and takes a new `--bin-dir` if you give one. That also repairs a
+  deleted launcher and an install directory you restored from a backup.

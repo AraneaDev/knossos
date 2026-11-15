@@ -63,6 +63,15 @@ it started its container removes that container and asks you to run the
 command again. It needs the Docker or Podman daemon running. One previous image
 is kept for a rollback and the one before it is removed.
 
+Everything an update changes lies in the install directory
+(`~/.local/share/knossos` unless you installed with `--install-dir`), and the
+update runs the helper kept there, `container-update`, which came out of the
+image last switched to. The install directory itself never moves, so the
+plugin directory Claude Code registered, `<install dir>/plugin`, and the inode
+the launcher pins stay the same. The graph directory is not touched. Before
+the helper runs, the launcher checks that no running container of another
+Knossos installation can write the install directory, and refuses otherwise.
+
 Stopping a container ends what runs in it. A call in flight during an update
 fails, and so does one during `knossos stop`: a scan stops part way, and a
 running `knossos serve` or watcher ends, and Claude Code then shows the MCP
@@ -128,7 +137,8 @@ knossos <new> is available (you have <old>): run knossos self-update
 
 The brief never waits for the network. It reads a small cached answer,
 `update-check.json` in the install directory, which a background call refreshes
-after the brief is out. A checkout never shows the line.
+after the brief is out. In container mode the container reads it there through
+the read-only mount of the install directory. A checkout never shows the line.
 
 ### What the daily check sends
 

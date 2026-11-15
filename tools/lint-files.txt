@@ -994,6 +994,7 @@ php	tests/phpunit/Roots/RootsFileTest.php
 php	tests/phpunit/Roots/StartClaimTest.php
 php	tests/phpunit/Runtime/DataDirectoryTest.php
 php	tests/phpunit/Runtime/DefaultDatabasePathTest.php
+php	tests/phpunit/Runtime/DoctorExtensionChecksTest.php
 php	tests/phpunit/Runtime/DoctorInstallation.php
 php	tests/phpunit/Runtime/DoctorInstallationTest.php
 php	tests/phpunit/Runtime/DoctorServiceTest.php
