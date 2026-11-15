@@ -704,7 +704,7 @@ pin_refused() {
     reset_docker
     out=$(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$launcher" "$@" </dev/null 2>&1); status=$?
     cp "$WORK/record.kept" "$INSTALL/install.json"
-    if [ "$status" -eq 1 ] && [ "$out" = "knossos: the install directory $INSTALL is not the one the installer created; re-run the installer." ] \
+    if [ "$status" -eq 1 ] && [ "$out" = "knossos: the install directory $INSTALL is not the one the installer created; re-run the installer to fix it." ] \
         && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then
         pass "$what is refused before install.json is read"
     else
@@ -715,8 +715,13 @@ dev=${PIN%%:*}
 ino=${PIN#*:}
 bake "$dev:$((ino + 1))" "$WORK/wrong inode"
 pin_refused 'a launcher whose pinned inode differs' "$WORK/wrong inode"
+# The device is kept for diagnostics only: it can change across a reboot.
 bake "$((dev + 1)):$ino" "$WORK/wrong device"
-pin_refused 'a launcher whose pinned device differs' "$WORK/wrong device"
+reset_docker
+out=$(cd "$PROJECT" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$WORK/wrong device" version </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass 'a pin whose device differs but whose inode matches is accepted'; else fail "device change: $status, $out"; fi
+bake "$((dev + 1)):$((ino + 1))" "$WORK/wrong both"
+pin_refused 'a launcher whose pinned device and inode differ' "$WORK/wrong both"
 bake ":$((ino + 1))" "$WORK/wrong inode only"
 pin_refused 'a pin of the inode alone that differs' "$WORK/wrong inode only"
 # The attack itself: the directory moved aside and a copy put in its place.
@@ -1044,6 +1049,15 @@ case $out in *"the project root $HOME is your home directory, which container mo
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && ! grep -qF "\"$HOME\"" "$TRUSTED"; then pass 'allow-root refuses a root the mount rule refuses'; else fail "allow-root home: $status, $out"; fi
 out=$(cd / && kn allow-root "$WORK/no such project" --execute </dev/null 2>&1); status=$?
 if [ "$status" -eq 2 ] && [ "$out" = "KNOSSOS_INVALID_ARGUMENT: $WORK/no such project is not an existing directory." ]; then pass 'allow-root of a missing folder answers as in native mode'; else fail "allow-root missing: $status, $out"; fi
+
+# A list with an entry this launcher cannot reproduce is never rewritten.
+cp "$TRUSTED" "$WORK/list.escaped"
+printf '{"roots": ["/x\\u00e9"]}\n' > "$TRUSTED"
+cp "$TRUSTED" "$WORK/list.escaped.before"
+out=$(cd / && kn allow-root "$WORK/second project" --execute </dev/null 2>&1); status=$?
+case $out in *'holds an entry with an escape this launcher cannot rewrite safely, or cannot be read; edit it by hand.'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 2 ] && [ "$said" = yes ] && cmp -s "$TRUSTED" "$WORK/list.escaped.before"; then pass 'a list holding a \u escape is refused, not rewritten'; else fail "escaped list: $status, $out, $(cat "$TRUSTED")"; fi
+cp "$WORK/list.escaped" "$TRUSTED"
 
 # claim: the folder's repository, as StartClaim decides, written on the host.
 mkdir -p "$WORK/repo/.git" "$WORK/repo/pkg/sub"

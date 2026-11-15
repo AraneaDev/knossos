@@ -256,6 +256,32 @@ out=$(cid "$HOME" "$HOME/.knossos-test" "$WORK/home-bin" --no-plugin --no-roots)
 if [ "$status" -eq 0 ] && [ -f "$HOME/.knossos-test/install/install.json" ]; then pass 'run from the home directory, a data directory below it is accepted'; else fail "from home: $status, $out"; fi
 rm -rf "$HOME/.knossos-test"
 
+# A data directory that holds a native install is refused, or cleaned of
+# exactly the native entries with --force-clean; the graph and roots stay.
+NAT="$WORK/was native"
+mkdir -p "$NAT/data dir/versions/0.9.0" "$NAT/data dir/plugin"
+printf '{"mode": "native", "version": "0.9.0"}\n' > "$NAT/data dir/install.json"
+ln -s versions/0.9.0 "$NAT/data dir/current"
+printf 'graph\n' > "$NAT/data dir/knossos.sqlite"
+printf '{"roots": []}\n' > "$NAT/data dir/roots.json"
+reset_docker
+out=$(ci "$NAT" --version=1.0.0 --no-plugin --no-roots); status=$?
+case $out in *"$NAT/data dir holds a native install (install.json versions current plugin); remove those entries or pick another --data-dir, or re-run with --force-clean to remove exactly them."*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ -e "$NAT/data dir/versions" ] && [ ! -e "$NAT/data dir/install" ] && [ "$(count_calls pull)" -eq 0 ]; then
+    pass 'a container install into a data directory holding a native install is refused, and nothing changes'
+else
+    fail "over native: $status, $out"
+fi
+reset_docker
+out=$(ci "$NAT" --version=1.0.0 --no-plugin --no-roots --force-clean); status=$?
+if [ "$status" -eq 0 ] && [ ! -e "$NAT/data dir/versions" ] && [ ! -e "$NAT/data dir/current" ] && [ ! -L "$NAT/data dir/current" ] \
+    && [ ! -e "$NAT/data dir/install.json" ] && [ ! -e "$NAT/data dir/plugin" ] && [ "$(cat "$NAT/data dir/knossos.sqlite")" = graph ] \
+    && [ -f "$NAT/data dir/roots.json" ] && [ -f "$NAT/data dir/install/install.json" ]; then
+    pass '--force-clean removes exactly the native entries, keeps the graph and the roots file, and installs'
+else
+    fail "force-clean over native: $status, $out, $(ls -A "$NAT/data dir")"
+fi
+
 reset_docker
 : > "$FAKE_DOCKER_STATE/daemon-down"
 out=$(ci "$WORK/down" --version=1.0.0 --no-plugin); status=$?

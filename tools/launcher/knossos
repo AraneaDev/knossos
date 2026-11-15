@@ -54,9 +54,9 @@
 #     the graph directory and moved to the path named by the host, which never
 #     follows a link there; a file it is told to read from outside every mount
 #     is copied in. See FILE_ROLES below.
-#   - The installer bakes the device and inode numbers of the install
-#     directory into this file, and every call compares them before it reads
-#     anything there, so a directory put in its place by anyone is refused.
+#   - The installer bakes the inode number of the install directory into this
+#     file, and every call compares it before it reads anything there, so a
+#     directory put in its place by anyone is refused.
 #   - The image and the runtime come from install.json, which no container can
 #     write. KNOSSOS_* variables and PATH are your own environment.
 
@@ -67,9 +67,9 @@
 set -f
 
 INSTALL_DIR='__KNOSSOS_INSTALL_DIR__'
-# Container mode: the device and inode numbers of the install directory when
-# the installer made it, baked in beside the path. Native mode leaves the
-# placeholder, and then nothing is compared.
+# Container mode: `<device>:<inode>` of the install directory when the
+# installer made it, baked in beside the path; the inode is compared (below).
+# Native mode leaves the placeholder, and then nothing is compared.
 INSTALL_PIN='__KNOSSOS_INSTALL_PIN__'
 
 BAKED_INSTALL_DIR=$INSTALL_DIR
@@ -100,20 +100,17 @@ dir_id() {
 # anything in it is read: a directory put in its place, by anyone, is never
 # trusted. Only for the baked-in directory; KNOSSOS_INSTALL_DIR is your own
 # setting, for the installer's check and for tests.
+#
+# The inode is what is compared. A container can neither choose the inode of
+# a directory it makes nor reuse this one's, which it can only read, so the
+# inode alone keeps a planted directory out. The device number is baked in
+# beside it for a person looking into a refusal, but never compared: on LVM,
+# btrfs, NFS and ZFS it can change across a reboot, which would refuse every
+# call.
 if [ -n "$INSTALL_PIN" ] && [ "$INSTALL_DIR" = "$BAKED_INSTALL_DIR" ]; then
     now=$(dir_id "$INSTALL_DIR") || now=''
-    case $now in
-        '') pinned=no ;;
-        :*) if [ "${INSTALL_PIN#*:}" = "${now#:}" ]; then pinned=yes; else pinned=no; fi ;;
-        *)
-            case $INSTALL_PIN in
-                :*) if [ "${INSTALL_PIN#:}" = "${now#*:}" ]; then pinned=yes; else pinned=no; fi ;;
-                *) if [ "$INSTALL_PIN" = "$now" ]; then pinned=yes; else pinned=no; fi ;;
-            esac
-            ;;
-    esac
-    if [ "$pinned" = no ]; then
-        printf 'knossos: the install directory %s is not the one the installer created; re-run the installer.\n' "$INSTALL_DIR" >&2
+    if [ -z "$now" ] || [ "${INSTALL_PIN#*:}" != "${now#*:}" ]; then
+        printf 'knossos: the install directory %s is not the one the installer created; re-run the installer to fix it.\n' "$INSTALL_DIR" >&2
         exit 1
     fi
 fi
@@ -690,9 +687,13 @@ lock_roots() {
 
 # write_roots ENTRY...: the list, replaced whole. Prints why when it cannot.
 write_roots() {
-    if [ -f "$ROOTS_FILE_REAL" ] && grep -q '\\[ubfnrt]' "$ROOTS_FILE_REAL"; then
-        printf '%s' "$ROOTS_FILE_REAL holds an entry with an escape this launcher cannot rewrite safely; edit it by hand."
-        return 1
+    if [ -f "$ROOTS_FILE_REAL" ]; then
+        # 1 is "no such escape"; a match or an error (2) leaves the list as it is.
+        grep -q '\\[ubfnrt]' "$ROOTS_FILE_REAL" 2>/dev/null
+        if [ $? -ne 1 ]; then
+            printf '%s' "$ROOTS_FILE_REAL holds an entry with an escape this launcher cannot rewrite safely, or cannot be read; edit it by hand."
+            return 1
+        fi
     fi
     if ! next=$(mktemp "$ROOTS_DIR_REAL/.roots.XXXXXX" 2>/dev/null); then
         printf '%s' "Unable to write $ROOTS_FILE_REAL."

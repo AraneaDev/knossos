@@ -162,6 +162,8 @@ printf 'corrupt' >> "$BAD/$ASSET"
 T2="$WORK/corrupt"
 mkdir -p "$T2/data dir/versions/0.0.1/bin"
 ln -s versions/0.0.1 "$T2/data dir/current"
+# The record every release writes beside them; without it they are not trusted.
+printf '{"mode": "native", "version": "0.0.1"}\n' > "$T2/data dir/install.json"
 out=$(BASE_OVERRIDE=$BAD run_install "$T2" --version="$VERSION"); status=$?
 case $out in *"checksum mismatch"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'a corrupted tarball is refused with the reason'; else fail "corrupt: status $status, output $out"; fi
@@ -386,6 +388,7 @@ printf '%s  %s\n' "$sum" "$ASSET" > "$NOTPL/SHA256SUMS"
 T12="$WORK/notemplate-target"
 mkdir -p "$T12/data dir/versions/0.0.1"
 ln -s versions/0.0.1 "$T12/data dir/current"
+printf '{"mode": "native", "version": "0.0.1"}\n' > "$T12/data dir/install.json"
 out=$(BASE_OVERRIDE=$NOTPL run_install "$T12" --version="$VERSION"); status=$?
 case $out in *"no launcher template"*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ "$(readlink "$T12/data dir/current")" = 'versions/0.0.1' ]; then
@@ -435,6 +438,7 @@ stub_version "$TP2/data dir" 0.0.0
 mkdir -p "$TP2/data dir/versions/0.0.2.partial.2147483646/bin"
 ln -s versions/0.0.1 "$TP2/data dir/current"
 printf '0.0.0\n' > "$TP2/data dir/previous-version"
+printf '{"mode": "native", "version": "0.0.1"}\n' > "$TP2/data dir/install.json"
 out=$(run_install "$TP2" --version="$VERSION"); status=$?
 kept=$(cd "$TP2/data dir/versions" && printf '%s ' *)
 if [ "$status" -eq 0 ] && [ "$(cat "$TP2/data dir/previous-version")" = 0.0.1 ] && [ "$kept" = "0.0.1 $VERSION " ]; then
@@ -627,6 +631,39 @@ if [ "$status" -eq 0 ] && [ "$got" = "Knossos $VERSION" ]; then
 else
     fail "native inside the working directory: status $status, version said $got, output $out"
 fi
+
+# ---- a data directory a container install had ------------------------------------
+
+# Every container could write it, so a native install trusts nothing of its
+# own kind found there: it refuses, or with --force-clean removes exactly the
+# container install and those entries, never the graph or the roots file.
+T23="$WORK/was container"
+mkdir -p "$T23/data dir/install/plugin" "$T23/data dir/versions/$VERSION/bin"
+printf '{"mode": "container", "layout": "separate"}\n' > "$T23/data dir/install/install.json"
+printf '#!/bin/sh\necho planted\n' > "$T23/data dir/versions/$VERSION/bin/knossos"
+printf 'graph\n' > "$T23/data dir/knossos.sqlite"
+printf '{"roots": []}\n' > "$T23/data dir/roots.json"
+out=$(run_install "$T23" --version="$VERSION" --no-roots); status=$?
+case $out in *"$T23/data dir holds a container install, or files its own install.json does not vouch for (install versions); remove those entries or pick another --data-dir, or re-run with --force-clean to remove exactly them."*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ -d "$T23/data dir/install" ] && [ ! -e "$T23/bin dir/knossos" ]; then
+    pass 'a native install into a data directory a container install had is refused, and nothing changes'
+else
+    fail "over a container install: status $status, output $out"
+fi
+out=$(run_install "$T23" --version="$VERSION" --no-roots --force-clean); status=$?
+got=$("$T23/bin dir/knossos" version 2>&1)
+if [ "$status" -eq 0 ] && [ "$got" = "Knossos $VERSION" ] && [ ! -e "$T23/data dir/install" ] \
+    && [ "$(cat "$T23/data dir/knossos.sqlite")" = graph ] && [ -f "$T23/data dir/roots.json" ]; then
+    pass '--force-clean removes the container install and the planted release, keeps the graph and roots, and installs'
+else
+    fail "force-clean over a container install: status $status, version said $got, output $out"
+fi
+# Files of a native install that no install.json vouches for are refused too.
+T24="$WORK/planted native"
+mkdir -p "$T24/data dir/plugin"
+out=$(run_install "$T24" --version="$VERSION" --no-roots); status=$?
+case $out in *'holds a container install, or files its own install.json does not vouch for (plugin)'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ]; then pass 'a plugin/ no install.json vouches for is refused'; else fail "unvouched plugin: status $status, output $out"; fi
 
 if [ "$failures" -ne 0 ]; then
     printf '%s failure(s)\n' "$failures"

@@ -3,6 +3,7 @@
 #
 #   install.sh [--mode=native|container] [--version=V] [--data-dir=DIR]
 #              [--bin-dir=DIR] [--no-plugin] [--no-roots] [--dry-run]
+#              [--force-clean]
 #
 # Native mode needs PHP 8.3+, Node 24+ and Python 3.11+ on the host. It
 # downloads the release tarball for this platform, checks it against the
@@ -64,6 +65,7 @@ usage() {
     cat <<'USAGE'
 usage: install.sh [--mode=native|container] [--version=V] [--data-dir=DIR]
                   [--bin-dir=DIR] [--no-plugin] [--no-roots] [--dry-run]
+                  [--force-clean]
 USAGE
 }
 
@@ -514,6 +516,48 @@ rollback_container_switch() {
     fi
 }
 
+# The entries of the other mode in the data directory, which this install
+# would otherwise trust. A container install keeps its state in <data>/install
+# and gives every container the data directory read-write, so once one has
+# been there, nothing a native install keeps directly in it (install.json,
+# versions/, current, plugin/, previous-version) can be trusted: a container
+# could have put it there. Without a container install, those are trusted
+# only when the native install.json beside them vouches for them. A container
+# install, the other way round, does not install over a native one. The graph
+# database, the roots file and everything else are never touched.
+other_mode_entries() {
+    found=''
+    native_entries='install.json versions current plugin previous-version'
+    if [ "$MODE" = container ]; then
+        for entry in $native_entries; do
+            if [ -e "$DATA_DIR/$entry" ] || [ -L "$DATA_DIR/$entry" ]; then found="$found $entry"; fi
+        done
+    elif [ -e "$DATA_DIR/install" ] || [ -L "$DATA_DIR/install" ]; then
+        found=' install'
+        for entry in $native_entries; do
+            if [ -e "$DATA_DIR/$entry" ] || [ -L "$DATA_DIR/$entry" ]; then found="$found $entry"; fi
+        done
+    elif ! grep -q '"mode"[[:space:]]*:[[:space:]]*"native"' "$DATA_DIR/install.json" 2>/dev/null; then
+        for entry in $native_entries; do
+            if [ -e "$DATA_DIR/$entry" ] || [ -L "$DATA_DIR/$entry" ]; then found="$found $entry"; fi
+        done
+    fi
+    printf '%s' "${found# }"
+}
+
+refuse_other_mode() {
+    entries=$(other_mode_entries)
+    [ -n "$entries" ] || return 0
+    if [ "$MODE" = container ]; then what='a native install'; else what='a container install, or files its own install.json does not vouch for'; fi
+    if [ "$FORCE_CLEAN" = 0 ] || [ "$DRY_RUN" = 1 ]; then
+        die "$DATA_DIR holds $what ($entries); remove those entries or pick another --data-dir, or re-run with --force-clean to remove exactly them."
+    fi
+    for entry in $entries; do
+        rm -rf -- "${DATA_DIR:?}/$entry" || die "could not remove $DATA_DIR/$entry"
+        log "removed $DATA_DIR/$entry (--force-clean)"
+    done
+}
+
 # physical_of PATH: the physical form of a path that may not exist yet: its
 # deepest existing ancestor resolved, the rest appended as written. Fails for a
 # missing part spelled `.` or `..`, which mkdir -p would resolve differently.
@@ -755,6 +799,7 @@ main() {
     PLUGIN=1
     ROOTS=1
     DRY_RUN=0
+    FORCE_CLEAN=0
     PARTIAL=''
     TMP=''
     PREV_LINK=''
@@ -775,6 +820,7 @@ main() {
             --no-plugin) PLUGIN=0 ;;
             --no-roots) ROOTS=0 ;;
             --dry-run) DRY_RUN=1 ;;
+            --force-clean) FORCE_CLEAN=1 ;;
             -h | --help)
                 usage
                 exit 0
@@ -927,6 +973,7 @@ main() {
     unset KNOSSOS_INSTALL_DIR
     LAUNCHER="$BIN_DIR/knossos"
 
+    refuse_other_mode
     if [ "$MODE" = container ]; then
         install_container
         finish
