@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { withMermaid } from "vitepress-plugin-mermaid";
+import { defineConfig } from "vitepress";
 import { REPOSITORY, repositoryLinks } from "./links.mjs";
 import {
     SCRATCH_DIRECTORIES,
@@ -74,7 +74,9 @@ const resolveFromSite = {
     },
 };
 
-export default withMermaid({
+// No page has a diagram, so there is no Mermaid plugin: it made every page preload
+// 1.4 MB. To draw one, add vitepress-plugin-mermaid and mermaid@11 and wrap this in withMermaid().
+export default defineConfig({
     title: "Knossos",
     description:
         "Documentation for Knossos, the architecture graph for your code that Claude Code and other MCP clients can read.",

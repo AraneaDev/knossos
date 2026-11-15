@@ -228,21 +228,7 @@ if (fs.existsSync(path.join(dist, "README.html"))) {
     fail("docs/README.md is also published as /README");
 }
 
-// 4. A page with a Mermaid fence carries diagram markup.
-for (const [page, built] of html) {
-    if (
-        /^```mermaid$/m.test(
-            fs.readFileSync(path.join(docsDir, page), "utf8"),
-        ) &&
-        !/mermaid/i.test(built)
-    ) {
-        fail(
-            `${page}: has a mermaid diagram but the built page carries no diagram markup`,
-        );
-    }
-}
-
-// 5. The search index exists.
+// 4. The search index exists.
 const chunks = path.join(dist, "assets/chunks");
 const searchIndex = fs.existsSync(chunks)
     ? fs
@@ -253,7 +239,7 @@ if (searchIndex.length === 0) {
     fail("no local search index in assets/chunks");
 }
 
-// 6. Nothing is loaded from anywhere but the site itself.
+// 5. Nothing is loaded from anywhere but the site itself.
 for (const file of files) {
     const external = [
         ...fs
