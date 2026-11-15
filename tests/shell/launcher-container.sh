@@ -952,13 +952,20 @@ OUT_OUT="$WORK/outside/brief.md"
 
 FAKE_EXEC_WRITE='bundle bytes' out_call export-bundle project_1 "--output=$OUT_IN" --json
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
-case $exec_line in *"[--output=$DATA/.knossos-files."*"/output]"*) via=scratch ;; *) via=other ;; esac
+case $exec_line in *"[--output=$DATA/.knossos-files."*"/output."[0-9a-f]*"]"*) via=scratch ;; *) via=other ;; esac
 if [ "$status" -eq 0 ] && [ "$via" = scratch ] && [ "$(cat "$OUT_IN" 2>/dev/null)" = 'bundle bytes' ] && [ -z "$(scratch_left)" ]; then
     pass 'an --output in the read-only project is written by the command into a scratch file and moved there by the host'
 else
     fail "output into the project: $status, $out, $exec_line, $(cat "$OUT_IN" 2>&1), left $(scratch_left)"
 fi
 case $out in *"$OUT_IN"*) case $out in *.knossos-files.*) fail "the scratch path was printed: $out" ;; *) pass 'the command prints the path that was named, not the scratch path' ;; esac ;; *) fail "named path not printed: $out" ;; esac
+rm -f "$OUT_IN"
+# The name the command writes in the scratch directory is new at every call,
+# so another container of the graph cannot plant a FIFO there before it.
+first=$(sed -n 's|.*/\.knossos-files\.[^/]*/\(output\.[0-9a-f]*\)\].*|\1|p' "$FAKE_DOCKER_STATE/calls" | head -n 1)
+FAKE_EXEC_WRITE='bundle bytes' out_call export-bundle project_1 "--output=$OUT_IN" --json
+second=$(sed -n 's|.*/\.knossos-files\.[^/]*/\(output\.[0-9a-f]*\)\].*|\1|p' "$FAKE_DOCKER_STATE/calls" | head -n 1)
+if [ "${#first}" -ge 20 ] && [ "${#second}" -ge 20 ] && [ "$first" != "$second" ]; then pass 'the scratch output has a random name, new at every call'; else fail "scratch output names: $first, $second"; fi
 rm -f "$OUT_IN"
 
 FAKE_EXEC_WRITE='brief text' out_call export-agent-brief "$PROJECT" "--out=$OUT_OUT"
@@ -1102,7 +1109,7 @@ printf '{"note": "quotes \\"format\\":\\"knossos-notes\\""}\n' > "$PROJECT/knoss
 cp "$PROJECT/knossos-notes.json" "$WORK/quoting.json"
 FAKE_EXEC_REFUSE=1 out_call notes-export "$PROJECT" --json
 case $out in *"file:$PROJECT/knossos-notes.json:read-only:$(cat "$WORK/quoting.json")"*) copied=yes ;; *) copied=no ;; esac
-case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *"[--file=$DATA/.knossos-files."*"/output]") ;; *) copied=no ;; esac
+case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *"[--file=$DATA/.knossos-files."*"/output."[0-9a-f]*"]") ;; *) copied=no ;; esac
 case $out in *'{"status":"refused","reason":"NOTES_FILE_NOT_NOTES: '"$PROJECT"'/knossos-notes.json exists and is not a knossos notes file; remove it or pick another --file."}') said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 0 ] && [ "$copied" = yes ] && [ "$said" = yes ] && cmp -s "$PROJECT/knossos-notes.json" "$WORK/quoting.json" && [ -z "$(scratch_left)" ]; then
     pass 'a file in the way of a notes export is handed to the command read-only, which decides, and a refusal leaves it as it was'

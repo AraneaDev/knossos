@@ -1976,6 +1976,11 @@ MOUNTED
 # with on_exit, which removes them.
 OUTPUT_SCRATCH=''
 OUTPUT_DEST=''
+# The name of the file the command writes in the scratch directory: random,
+# so that another container of the graph cannot put a FIFO there before the
+# command opens it, which would block the command (the host never opens it).
+# Chosen by place_output, so a call that writes no file spends nothing on it.
+OUTPUT_NAME=''
 # The `<device>:<inode>` of the copy of a notes file in the way that the host
 # put in the scratch directory, so it can tell whether the command replaced it.
 OUTPUT_PLACED=''
@@ -2039,7 +2044,9 @@ place_output() {
     # is checked now, with every other refusal.
     host_tmp
     OUTPUT_DEST=$dest
-    OUTPUT_SCRATCH="$PENDING/output"
+    OUTPUT_NAME="output.$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+    [ "$OUTPUT_NAME" != output. ] || OUTPUT_NAME="output.$$.$(date +%s)"
+    OUTPUT_SCRATCH="$PENDING/$OUTPUT_NAME"
     [ -e "$dest" ] || return 0
     # A file already in place, which the container cannot see.
     case $COMMAND in
@@ -2069,13 +2076,13 @@ place_output() {
 # argument that names PENDING is then given the scratch directory.
 place_pending() {
     scratch
-    if [ -n "$OUTPUT_DEST" ]; then OUTPUT_SCRATCH="$SCRATCH/output"; fi
+    if [ -n "$OUTPUT_DEST" ]; then OUTPUT_SCRATCH="$SCRATCH/$OUTPUT_NAME"; fi
     if [ -n "$OUTPUT_EXISTING" ]; then
         if ! cat < "$OUTPUT_EXISTING" > "$PRIVATE/existing" 2>/dev/null || ! chmod 0444 "$PRIVATE/existing"; then
             notes_answer "NOTES_FILE_NOT_NOTES: $OUTPUT_EXISTING exists and is not a knossos notes file; remove it or pick another --file." KNOSSOS_INVALID_ARGUMENT
         fi
-        in_scratch mv -f -- "$PRIVATE/existing" ./output || die "could not copy $OUTPUT_EXISTING into $SCRATCH"
-        OUTPUT_PLACED=$(in_scratch dir_id output) || OUTPUT_PLACED=''
+        in_scratch mv -f -- "$PRIVATE/existing" "./$OUTPUT_NAME" || die "could not copy $OUTPUT_EXISTING into $SCRATCH"
+        OUTPUT_PLACED=$(in_scratch dir_id "$OUTPUT_NAME") || OUTPUT_PLACED=''
         [ -n "$OUTPUT_PLACED" ] || die "could not copy $OUTPUT_EXISTING into $SCRATCH"
     fi
     copied=0
@@ -2498,7 +2505,7 @@ finish_output() {
     refusal=''
     limit_text="$OUTPUT_LIMIT_MB MB, the most the host moves out of a container (KNOSSOS_OUTPUT_LIMIT_MB raises it)"
     nothing="nothing was written to $OUTPUT_DEST."
-    if [ -n "$OUTPUT_PLACED" ] && [ "$(in_scratch dir_id output)" = "$OUTPUT_PLACED" ]; then
+    if [ -n "$OUTPUT_PLACED" ] && [ "$(in_scratch dir_id "$OUTPUT_NAME")" = "$OUTPUT_PLACED" ]; then
         if [ "$COMMAND" = notes-export ]; then
             answer=$(tail -n 1 "$PRIVATE/stdout" 2>/dev/null)
             case $answer in '{"status":"refused"'* | refused) return 0 ;; esac
@@ -2506,15 +2513,15 @@ finish_output() {
         refusal="the file in the way was left as it was; $nothing"
         return 1
     fi
-    if ! in_scratch test -e output && ! in_scratch test -L output; then
+    if ! in_scratch test -e "$OUTPUT_NAME" && ! in_scratch test -L "$OUTPUT_NAME"; then
         refusal="the command left no file for $OUTPUT_DEST; nothing was written."
         return 1
     fi
-    if [ -z "$(in_scratch find output -prune -type f -links 1 2>/dev/null)" ]; then
+    if [ -z "$(in_scratch find "$OUTPUT_NAME" -prune -type f -links 1 2>/dev/null)" ]; then
         refusal="the command left no plain file with a single link for $OUTPUT_DEST; nothing was written."
         return 1
     fi
-    if [ -n "$(in_scratch find output -prune -size +"${OUTPUT_LIMIT_BYTES}c" 2>/dev/null)" ]; then
+    if [ -n "$(in_scratch find "$OUTPUT_NAME" -prune -size +"${OUTPUT_LIMIT_BYTES}c" 2>/dev/null)" ]; then
         refusal="the command wrote more than $limit_text, for $OUTPUT_DEST; nothing was written."
         return 1
     fi
@@ -2523,7 +2530,7 @@ finish_output() {
         refusal="neither the install directory $INSTALL_REAL nor the directory around the graph directory $DATA_REAL is on the graph directory's filesystem, so the host cannot take the file out of every container's reach without copying it; $nothing To fix it, put the graph directory on the same filesystem as its parent or as the install directory, by choosing another --data-dir (or KNOSSOS_DATA_DIR)."
         return 1
     fi
-    if ! in_scratch mv -f -- output "$TAKEN/output" 2>/dev/null; then
+    if ! in_scratch mv -f -- "$OUTPUT_NAME" "$TAKEN/output" 2>/dev/null; then
         refusal="the scratch directory $SCRATCH changed while the command ran; $nothing"
         return 1
     fi

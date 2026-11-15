@@ -134,7 +134,12 @@ anything around it.
   command from outside every mount, such as `--policies=<path>`, is copied into
   a scratch directory in the graph directory for the call. Another container
   can read it there and can swap it. An output file is staged there too, so
-  another container can choose the bytes the host writes to the path you named.
+  another container can choose the bytes the host writes to the path you named. The file
+  a command writes there has a random name, so no container can put a FIFO in
+  its way before the command opens it; a file the command reads there (an
+  input or a notes file in the way) can still be swapped for one, which
+  blocks that command until you stop it (Ctrl-C reaches it). The host itself
+  never opens either.
 - **An enricher you register must not read or run anything from the graph
   directory.** The enricher runs in the container of the project being
   scanned, and any project's container can write the graph directory. The
