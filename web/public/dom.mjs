@@ -147,6 +147,49 @@ export function movedTo(port, href) {
 }
 
 /**
+ * Where a page at `href` goes when its server says the pane moved to `port`,
+ * and whether the server there proved itself to the page first (see
+ * {@link provesPane}): asked across origins, without the token, before the
+ * page sends it there in its address. Null for a port that is not one; a
+ * server that cannot be asked counts as not proven.
+ */
+export async function provenMove(port, href, token, fetchIt, subtle) {
+    const to = movedTo(port, href);
+    if (to === null) return null;
+    const there = (url, init) => fetchIt(new URL(url, to).href, init);
+    const proven = await provesPane(there, subtle, token, port).catch(
+        () => false,
+    );
+    return { to, proven };
+}
+
+/**
+ * Follows the pane to `port`, once the server there proved itself to this
+ * page: the page says where it went on a line in `toasts` that stays, in case
+ * the browser does not follow (an installed app keeps to its origin). One that
+ * does not prove itself is named, and not gone to.
+ */
+export async function follow(port, token, toasts) {
+    const move = await provenMove(
+        port,
+        location.href,
+        token,
+        (url, init) => fetch(url, init),
+        globalThis.crypto?.subtle,
+    );
+    if (move === null) return;
+    toasts.append(
+        Object.assign(document.createElement("div"), {
+            className: "toast",
+            textContent: move.proven
+                ? `This pane moved to ${move.to}`
+                : `This pane moved to ${move.to}, which does not answer as this project's pane`,
+        }),
+    );
+    if (move.proven) location.replace(move.to);
+}
+
+/**
  * Whether `a` and `b` are the same text, looked at whole whatever they hold:
  * how long it takes says nothing of where they differ, as a comparison of a
  * secret must not.

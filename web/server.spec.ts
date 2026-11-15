@@ -369,6 +369,29 @@ describe('startServer', () => {
     }
   })
 
+  it("lets a page of this pane on another port ask the challenge across origins, and no other site", async () => {
+    const server = await started()
+    const ask = (origin: string, method = 'GET') =>
+      fetch(`http://127.0.0.1:${server.port}/`, { method, headers: { origin, [CHALLENGE_HEADER]: 'ab'.repeat(16), 'access-control-request-headers': CHALLENGE_HEADER } })
+    for (const origin of ['http://127.0.0.1:40000', 'http://localhost:40000']) {
+      const preflight = await ask(origin, 'OPTIONS')
+      expect(preflight.status).toBe(204)
+      expect(preflight.headers.get('access-control-allow-origin')).toBe(origin)
+      expect(preflight.headers.get('access-control-allow-headers')).toBe(CHALLENGE_HEADER)
+      const answer = await ask(origin)
+      await answer.body?.cancel()
+      expect(answer.headers.get('access-control-allow-origin')).toBe(origin)
+      expect(answer.headers.get('access-control-expose-headers')).toBe(PROOF_HEADER)
+    }
+    // Another site: no leave to read anything, not even that a pane server answers here.
+    for (const origin of ['https://evil.example', 'http://127.0.0.1.evil.example:80', 'null']) {
+      const preflight = await ask(origin, 'OPTIONS')
+      await preflight.body?.cancel()
+      expect(preflight.status).toBe(403)
+      expect(preflight.headers.has('access-control-allow-origin')).toBe(false)
+    }
+  })
+
   it('says it is a pane server in every answer, the refused ones too', async () => {
     const server = await started()
     const base = server.url.slice(0, server.url.indexOf('?'))

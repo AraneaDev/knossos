@@ -186,16 +186,20 @@ can read; the lock beside it holds only the process id and port, and `web/`
 itself is yours alone. To make a new token, delete the `.host.json` file and
 start again.
 
-Knossos never sends the token to a port before it knows its own server listens
-there. Each time a pane, a tab or a new start looks at the project's server, it
-asks without the token, and the server proves it holds the token by answering a
-fresh challenge with it. Another program on that port, another user's
-included, is sent nothing it could use. A server from an older version of
-Knossos cannot answer the challenge: a new pane uses it only when the system
-shows the server is yours (on Linux), and otherwise says that an older server
-runs for the project and asks you to stop it. See
-[Web pane token](../operate/http-threat-model.md#web-pane-token)
-for what another user on the same machine can and cannot do.
+No probe and no reconnect sends the token. A start that finds the project's
+lock, and a server that checks the lock, ask the port without the token, and
+the project's server proves it holds the token by answering a fresh challenge
+with it. The terminal pane and the browser page do the same before every event
+stream they open, and send their input only while a proven stream holds. A
+page that is told the pane moved proves the new address before it goes there.
+The address you open or reload, and the files the page loads with it, go
+where the address points without such a check. A server from an older version
+of Knossos cannot answer the challenge: a new pane uses it only when the
+system shows the server is yours (on Linux). Otherwise it names the process,
+the port and the lock file, and says to stop that process if it is yours, or
+to remove the lock file if it is not. See
+[Web pane token](../operate/http-threat-model.md#web-pane-token) for what
+another user on the same machine can and cannot do, and the known limits.
 
 The page can be installed as an app from the browser. The app opens while
 `knossos web` runs for its project; when it does not, the browser cannot reach it

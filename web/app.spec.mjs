@@ -15,6 +15,7 @@ import {
 import {
     movedTo,
     pageId,
+    provenMove,
     provesPane,
     sameText,
     swipeRows,
@@ -332,6 +333,53 @@ describe("the event stream", () => {
     });
 });
 
+describe("provenMove", () => {
+    const TOKEN = "ab".repeat(24);
+    /** A server at `port` (proving with `token`), asked at the absolute address the page builds for it. */
+    const at = (port, token) => async (url, init) => {
+        expect(url).toBe(`http://127.0.0.1:${port}/`);
+        const challenge = init.headers["x-knossos-challenge"];
+        return new Response("refused", {
+            status: 403,
+            headers: { "x-knossos-proof": proofOf(token, challenge, port) },
+        });
+    };
+    const subtle = globalThis.crypto.subtle;
+    const page = "http://127.0.0.1:40000/?t=" + TOKEN + "#pane";
+
+    it("proves the server it moves to, across origins and without the token, before the page goes there", async () => {
+        expect(
+            await provenMove(41234, page, TOKEN, at(41234, TOKEN), subtle),
+        ).toEqual({
+            to: `http://127.0.0.1:41234/?t=${TOKEN}#pane`,
+            proven: true,
+        });
+    });
+
+    it("names one that does not prove itself, or cannot be asked, and does not count it as proven", async () => {
+        expect(
+            (
+                await provenMove(
+                    41234,
+                    page,
+                    TOKEN,
+                    at(41234, "cd".repeat(24)),
+                    subtle,
+                )
+            ).proven,
+        ).toBe(false);
+        const refusing = async () => {
+            throw new TypeError("network");
+        };
+        expect(
+            (await provenMove(41234, page, TOKEN, refusing, subtle)).proven,
+        ).toBe(false);
+        expect(
+            await provenMove(0, page, TOKEN, at(41234, TOKEN), subtle),
+        ).toBeNull();
+    });
+});
+
 describe("sameText", () => {
     it("says whether two texts are the same, length and every character", () => {
         expect(sameText("ab12", "ab12")).toBe(true);
@@ -393,7 +441,7 @@ describe("provesPane", () => {
         ).toBe(false);
     });
 
-    it("sends the token nowhere until the server proved itself, and tries again later when it cannot", async () => {
+    it("sends the token nowhere until the server proved itself, and tries again later when it cannot (a page that loads after a move too)", async () => {
         vi.useFakeTimers();
         const fetch = vi.fn(async () => ({ ok: true }));
         let proven = false;

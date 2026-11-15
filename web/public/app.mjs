@@ -325,7 +325,7 @@ function paneView(root, { token, draw: drawn, cardPlace, dom }) {
         wheelRows,
         swipeRows,
         wheelCell,
-        movedTo,
+        follow,
         provesPane,
     } = dom;
     const light = matchMedia("(prefers-color-scheme: light)");
@@ -388,19 +388,8 @@ function paneView(root, { token, draw: drawn, cardPlace, dom }) {
             focus: (e) => keyed(root, e.key)?.focus(),
             scroll: (e) =>
                 keyed(root, e.key)?.scrollIntoView({ block: "nearest" }),
-            // The server stepped down for another that took the project over: the page goes there, and says where
-            // it went on a line that stays, in case the browser does not follow (an installed app keeps to its origin).
-            moved: (e) => {
-                const to = movedTo(e.port, location.href);
-                if (to === null) return;
-                toasts.append(
-                    Object.assign(document.createElement("div"), {
-                        className: "toast",
-                        textContent: `This pane moved to ${to}`,
-                    }),
-                );
-                location.replace(to);
-            },
+            // The server stepped down for another that took the project over (see `follow`).
+            moved: (e) => void follow(e.port, token, toasts),
         },
     });
 

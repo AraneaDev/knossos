@@ -99,6 +99,11 @@ const themeOf = (value: unknown): WebTheme => (value === 'light' ? 'light' : 'da
 const sizeOf = (cols: unknown, rows: unknown): Size => ({ columns: clamp(Number(cols), 20, 500, 100), rows: clamp(Number(rows), 5, 300, 40) })
 const clamp = (n: number, low: number, high: number, otherwise: number) => (Number.isFinite(n) ? Math.min(high, Math.max(low, Math.round(n))) : otherwise)
 
+/** `origin` when it is a page on this machine's loopback (`http://127.0.0.1:<port>` or `http://localhost:<port>`), else null. */
+function loopbackOrigin(origin: string | undefined): string | null {
+  return typeof origin === 'string' && /^http:\/\/(?:127\.0\.0\.1|localhost):\d{1,5}$/.test(origin) ? origin : null
+}
+
 /** Whether `given` is the token, compared in constant time. */
 function tokenMatches(given: string | null | undefined, token: string): boolean {
   if (typeof given !== 'string' || given.length !== token.length) return false
@@ -448,6 +453,19 @@ export async function startServer(o: {
    * this project, and nothing in the answer tells anyone the token.
    */
   function refuse(req: IncomingMessage, res: ServerResponse, on: number, kind: 'pane' | 'directions'): void {
+    // A page of this pane on another port (one about to move here) may ask the challenge across origins; a page of
+    // any other site may not, and learns nothing, not even that a pane server listens here.
+    const asker = loopbackOrigin(req.headers.origin)
+    if (asker !== null) {
+      res.setHeader('access-control-allow-origin', asker)
+      res.setHeader('access-control-expose-headers', PROOF_HEADER)
+      res.setHeader('vary', 'origin')
+      if (req.method === 'OPTIONS') {
+        res.setHeader('access-control-allow-headers', CHALLENGE_HEADER)
+        res.setHeader('access-control-allow-methods', 'GET')
+        return void res.writeHead(204).end()
+      }
+    }
     const challenge = req.headers[CHALLENGE_HEADER]
     if (typeof challenge === 'string' && /^[0-9a-f]{16,128}$/.test(challenge)) res.setHeader(PROOF_HEADER, proofOf(token, challenge, on, kind))
     res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
