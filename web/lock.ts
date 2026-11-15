@@ -17,7 +17,11 @@ import { createHash, randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-export type Claim = { kind: 'mine'; record(port: number): void; release(): void } | { kind: 'running'; url: string }
+/**
+ * `mine`: `record` the port once the server listens, `release` when it stops, and `holds` to learn whether the
+ * lock is still this process's: false only once it names another live process, which took the project over.
+ */
+export type Claim = { kind: 'mine'; record(port: number): void; release(): void; holds(): boolean } | { kind: 'running'; url: string }
 
 /** The address of the server on `port` that holds `token`: the one `knossos web` prints. */
 export const addressOf = (port: number, token: string): string => `http://127.0.0.1:${port}/?t=${token}`
@@ -76,6 +80,8 @@ function held(file: string): { pid: unknown; port: unknown } | null {
  * Whether a server answers at `url` (its token in it) with its page. One that has not answered when the probe
  * gives up counts as answering: something listens there, and a live server that is busy (just started, or on a
  * loaded machine) is slow, not gone. Only a refusal, or an answer that is not the page, says nobody holds it.
+ * A known limit: a server whose process lives on but never answers again (its event loop stuck for good) keeps
+ * its lock this way, and a new pane attaches to it rather than replace it.
  */
 async function answers(url: string): Promise<boolean> {
   try {
@@ -228,6 +234,11 @@ export async function claim(dataDir: string, root: string, token: string): Promi
           released = true
           // Said at exit, where nothing can wait: a guard held by another start is waited on briefly, synchronously.
           for (let tries = 0; tries < GUARD_TRIES && !removeIf(now => now?.pid === process.pid); tries++) pause(GUARD_WAIT_MS)
+        },
+        // A lock that is missing or does not read is no sign of another holder: it may be in the middle of a write.
+        holds: () => {
+          const now = held(file)
+          return now === null || now.pid === process.pid || !alive(now.pid)
         },
       }
     } catch (error) {

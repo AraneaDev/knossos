@@ -11,9 +11,13 @@ import { startServer } from './server'
 /** Why `error` happened, as text. */
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-/** A server this process runs (stop it with `close`, then `release`; `ready` settles once its start-up is done), or the address of the one that already runs. */
+/**
+ * A server this process runs (stop it with `close`, then `release`; `ready` settles once its start-up is done,
+ * `stepped` once it closed itself because another server took the project's lock over), or the address of the
+ * one that already runs.
+ */
 export type Hosted =
-  | { kind: 'mine'; url: string; token: string; port: number; kept: number | null; ready: Promise<void>; close(): Promise<void>; release(): void }
+  | { kind: 'mine'; url: string; token: string; port: number; kept: number | null; ready: Promise<void>; stepped: Promise<void>; close(): Promise<void>; release(): void }
   | { kind: 'running'; url: string }
 
 /**
@@ -52,6 +56,7 @@ export async function hostProject(o: {
       token: kept.token,
       editor: o.editor,
       ...(o.log === undefined ? {} : { log: o.log }),
+      holds: lock.holds,
     })
   } catch (error) {
     lock.release()
@@ -68,5 +73,5 @@ export async function hostProject(o: {
     lock.release()
     throw error
   }
-  return { kind: 'mine', url: server.url, token: server.token, port: server.port, kept: kept.port, ready: server.ready, close: server.close, release: lock.release }
+  return { kind: 'mine', url: server.url, token: server.token, port: server.port, kept: kept.port, ready: server.ready, stepped: server.stepped, close: server.close, release: lock.release }
 }

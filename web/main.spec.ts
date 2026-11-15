@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { dirname, join } from 'node:path'
@@ -84,6 +84,27 @@ describe('knossos web', () => {
     expect(second.out()).toContain(`Knossos web pane for ${realpathSync(dir)} is already running: ${url}`)
     first.child.kill('SIGTERM')
     expect(await first.exited).toBe(0)
+  })
+
+  it('stops once another server took the project over, and leaves that one its lock', { timeout: 30_000 }, async () => {
+    const dir = scratch()
+    const data = scratch()
+    const env = { KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: markedPluginRoot(String(50_000 + Math.floor(Math.random() * 9_999))) }
+    const first = main(dir, env)
+    await first.line(/Press Ctrl-C/)
+    // Set aside while the second starts, the lock then names the second, as a take-over that found the first one stale leaves it.
+    const aside = `${lockFile(data, dir)}.aside`
+    renameSync(lockFile(data, dir), aside)
+    const second = main(dir, env)
+    await second.line(/Press Ctrl-C/)
+    rmSync(aside)
+    const lock = readFileSync(lockFile(data, dir), 'utf8')
+    expect(await first.exited).toBe(0)
+    expect(first.out()).toContain(`Another server took over the pane for ${realpathSync(dir)}; this one stops.`)
+    expect(readFileSync(lockFile(data, dir), 'utf8')).toBe(lock)
+    expect(second.child.exitCode).toBeNull()
+    second.child.kill('SIGTERM')
+    expect(await second.exited).toBe(0)
   })
 
   it('keeps its address across starts: the same token, and the same port while it is free', { timeout: 30_000 }, async () => {

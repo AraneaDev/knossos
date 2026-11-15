@@ -152,7 +152,9 @@ export async function startServer(o: {
   headPollMs?: number
   /** Where the server's log lines go (`console.error` when absent). */
   log?: (text: string) => void
-}): Promise<{ url: string; token: string; port: number; ready: Promise<void>; close(): Promise<void> }> {
+  /** Whether the project's lock is still this server's, asked on the head poll's tick: once it is not, the server closes itself. */
+  holds?: () => boolean
+}): Promise<{ url: string; token: string; port: number; ready: Promise<void>; stepped: Promise<void>; close(): Promise<void> }> {
   // Before anything starts: a port it cannot have stops it here, with nothing to undo.
   const wanted = await portFor(o.port ?? 0, o.movable === true)
   reset({ watch: true, ...(o.editor == null ? {} : { editor: o.editor }) }, 'web')
@@ -172,7 +174,19 @@ export async function startServer(o: {
   hub.attach(io)
   const act = handlersOf(io)
   const ready = startUp(io, 'deliberate').catch((error: unknown) => io.ui.log(`knossos web: start-up failed: ${messageOf(error)}`))
-  const headPoll = setInterval(follow, o.headPollMs ?? HEAD_POLL_MS)
+  /** Settles once the server closed itself because another took the project's lock: its pages reconnect to that one. */
+  let stepDown = () => undefined as void
+  const stepped = new Promise<void>(resolve => (stepDown = resolve))
+  // The poll's tick also asks whether the lock is still this server's: a lock another server holds leaves this one serving no one's project.
+  const headPoll = setInterval(() => {
+    if (o.holds?.() === false) {
+      clearInterval(headPoll)
+      // Its start-up is let finish first, or it would go on after the close and start a watcher for a server that no longer runs.
+      void ready.then(close).then(stepDown, stepDown)
+      return
+    }
+    follow()
+  }, o.headPollMs ?? HEAD_POLL_MS)
   const streams = new Set<ServerResponse>()
 
   /** One input from a page, handed to the pane's own handlers: false for a kind there is none of. A wheel answers whether the pane took it. */
@@ -296,22 +310,27 @@ export async function startServer(o: {
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(wanted, '127.0.0.1', () => resolve())
+  }).catch((error: unknown) => {
+    // Nothing listens: nothing is left polling either.
+    clearInterval(headPoll)
+    throw error
   })
   const address = server.address()
   const port = typeof address === 'object' && address !== null ? address.port : 0
   origin = `http://127.0.0.1:${port}`
 
-  return {
-    url: addressOf(port, token),
-    token,
-    port,
-    ready,
-    close: async () => {
+  /** Stops the server; asked again (a step-down, then the host's own stop), it is the same stop. */
+  let closing: Promise<void> | null = null
+  function close(): Promise<void> {
+    closing ??= (async () => {
       clearInterval(headPoll)
       stopClocks()
       await endWatcher(io).catch(() => undefined)
       for (const res of streams) res.end()
       await new Promise<void>(resolve => server.close(() => resolve()))
-    },
+    })()
+    return closing
   }
+
+  return { url: addressOf(port, token), token, port, ready, stepped, close }
 }

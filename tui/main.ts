@@ -225,6 +225,13 @@ async function host(): Promise<Hosted> {
     // Held from this moment, so that whatever ends the process releases it; a server that has not said where it listens replaces nothing.
     if (found.kind === 'mine' || found.url !== '') {
       hosted = found
+      // A server of this pane's own that another took the project from has closed itself: the pane is then one more
+      // attached to the project, and its next reconnect goes to the lock's server, as a take-over does.
+      if (found.kind === 'mine') void found.stepped.then(() => {
+        if (hosted !== found) return
+        hosted = { kind: 'running', url: found.url }
+        lost = true
+      })
       return found
     }
     if (Date.now() > deadline) throw new Error('the running server did not say where it listens')

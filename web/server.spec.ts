@@ -283,6 +283,27 @@ describe('startServer', () => {
     expect(lines.findIndex(l => l.startsWith('dashboard'))).toBeLessThan(lines.findIndex(l => l.startsWith('claim --execute')))
   })
 
+  it('closes itself once the lock is no longer its own, and ends its pages for them to reconnect elsewhere', async () => {
+    let holds = true
+    running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, headPollMs: 20, holds: () => holds })
+    await running.ready
+    const base = running.url.slice(0, running.url.indexOf('?'))
+    const stream = await events(`${base}events?t=${running.token}&id=a&cols=100&rows=40`)
+    await stream.next(() => true)
+    let stepped = false
+    void running.stepped.then(() => (stepped = true))
+    // Many ticks while the lock is still its own: it keeps serving.
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(stepped).toBe(false)
+    expect((await get(running.url)).status).toBe(200)
+    holds = false
+    await running.stepped
+    await expect(fetch(running.url)).rejects.toThrow()
+    // Its host's own stop afterwards is the same stop, not a second one that fails.
+    await running.close()
+    stream.close()
+  })
+
   it("reads the checkout's commit only while a page is connected, and at once when one connects", async () => {
     running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, headPollMs: 20 })
     await running.ready

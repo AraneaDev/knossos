@@ -1,5 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -144,6 +144,44 @@ describe('knossos (the terminal pane)', () => {
     second.child.stdin.write('q')
     await Promise.all([first.exited, second.exited])
     expect(existsSync(lockFile(data, dir))).toBe(false)
+  })
+
+  it('leaves its own server for the lock\'s when another server took the project over, and both panes end up there', { timeout: 40_000 }, async () => {
+    const dir = scratch()
+    const data = scratch()
+    const env = envOf(data, markedPluginRoot(mark()))
+    const first = tui(dir, env)
+    await first.until(text => text.includes('Overview'), 'the first pane drawing')
+    const own = JSON.parse(readFileSync(lockFile(data, dir), 'utf8')) as { pid: number; port: number }
+    const second = tui(dir, env)
+    await second.until(text => text.includes('Overview'), 'the second pane drawing')
+    // Two servers of one project: the lock is set aside while another starts, as a take-over that found the first one stale would.
+    const aside = `${lockFile(data, dir)}.aside`
+    renameSync(lockFile(data, dir), aside)
+    const other = web(dir, env)
+    await other.until(text => text.includes('Press Ctrl-C'), 'the other server')
+    rmSync(aside)
+    const lock = JSON.parse(readFileSync(lockFile(data, dir), 'utf8')) as { pid: number; port: number }
+    expect(lock.port).not.toBe(own.port)
+    // The first pane's own server sees the lock name another and closes; its address answers no one after that.
+    for (let i = 0; i < 200; i++) {
+      if (!(await fetch(`http://127.0.0.1:${own.port}/`).then(() => true, () => false))) break
+      await wait(50)
+    }
+    await expect(fetch(`http://127.0.0.1:${own.port}/`)).rejects.toThrow()
+    // Both panes then reach the lock's server, the only one there is: a press in the first moves the second.
+    const seen = second.out().length
+    for (let i = 0; i < 60 && !second.out().slice(seen).includes('Component0'); i++) {
+      first.child.stdin.write('2')
+      await wait(300)
+    }
+    expect(second.out().slice(seen)).toContain('Component0')
+    // Neither pane takes the lock it no longer holds with it.
+    first.child.stdin.write('q')
+    second.child.stdin.write('q')
+    await Promise.all([first.exited, second.exited])
+    expect(JSON.parse(readFileSync(lockFile(data, dir), 'utf8'))).toEqual(lock)
+    expect(other.child.exitCode).toBeNull()
   })
 
   it('stops the whole job on Ctrl-Z under a shell with job control, and takes the terminal again when the shell resumes it', { timeout: 40_000 }, async () => {

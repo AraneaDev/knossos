@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { basename, dirname, join } from 'node:path'
@@ -178,6 +178,29 @@ describe('claim', () => {
     expect(existsSync(file)).toBe(false)
     // Twice is harmless.
     got.release()
+  })
+
+  it('says it still holds the lock until the lock names another live process, whatever else it reads meanwhile', async () => {
+    const data = scratch()
+    const root = scratch()
+    const got = await claim(data, root, TOKEN)
+    if (got.kind !== 'mine') throw new Error('not mine')
+    const file = lockFile(data, root)
+    got.record(1234)
+    expect(got.holds()).toBe(true)
+    // Missing, or not yet written whole: a rewrite under way, not another holder.
+    rmSync(file)
+    expect(got.holds()).toBe(true)
+    writeFileSync(file, '')
+    expect(got.holds()).toBe(true)
+    // Named for a process that is gone: no one else holds it.
+    writeFileSync(file, JSON.stringify({ pid: deadPid(), port: 4321 }))
+    expect(got.holds()).toBe(true)
+    // Named for another live process (this one's parent): that one took the project over.
+    writeFileSync(file, JSON.stringify({ pid: process.ppid, port: 4321 }))
+    expect(got.holds()).toBe(false)
+    // And asking changed nothing.
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.ppid, port: 4321 })
   })
 
   it('keeps the token out of the lock, and the lock and its directory to their owner', async () => {

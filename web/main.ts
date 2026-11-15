@@ -98,5 +98,10 @@ if (hosted.kind === 'running') {
 
 if (asked.port === null && hosted.kept !== null && hosted.port !== hosted.kept) process.stdout.write(`Port ${hosted.kept} is taken, so the address changed: ${hosted.url}\n`)
 process.stdout.write(`Knossos web pane for ${root}: ${hosted.url}\nPress Ctrl-C to stop it.\n`)
+// Another server took the project over (this one stopped answering for a while): its pages went over to that one, and this one ends.
+void hosted.stepped.then(() => {
+  process.stdout.write(`Another server took over the pane for ${root}; this one stops.\n`)
+  stop(0)
+})
 
 await show(hosted.url)
