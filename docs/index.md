@@ -88,7 +88,3 @@ The installer grants the folder you run it from to the list of projects Knossos 
 - [MCP tool reference](reference/mcp-tools.md): what each tool takes and returns.
 - [The graph and its evidence](concepts/graph-and-evidence.md): what a scan stores and how far you can trust each fact.
 - [All pages](README.md): every page, grouped by the question it answers.
-
-## About
-
-Knossos is built by [Tim Schipper](https://tim-schipper.nl/en) and released as open source under [aranea.dev](https://aranea.dev). Its [tool page](https://aranea.dev/tools/knossos) there shows what it does at a glance, and the [source](https://github.com/AraneaDev/knossos) is on GitHub.
