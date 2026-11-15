@@ -9,7 +9,7 @@
 import { TOAST_MS, createPage, pressOfKey, pressOrder, releasedOn, segmentsOf, wheelQueue } from '../web/public/app.mjs'
 import type { Frame } from '../web/hub'
 import type { PageSegment } from '../web/page-rows'
-import { Decoder } from './input'
+import { Decoder, groundFor } from './input'
 import type { KeyEvent, MouseEvent, TermEvent } from './input'
 import { bodyLineOf, bytesFor, hitsOf, linesOf, pinnedFor, roomOf, screenOf } from './paint'
 import type { Rgb } from './paint'
@@ -28,7 +28,10 @@ export type ClientOptions = {
   url: string
   size(): { columns: number; rows: number }
   theme: 'dark' | 'light'
-  /** The terminal's own background, when it said: the pane's tints are moved onto it. */
+  /**
+   * The terminal's own background, when it said: the pane's tints are moved onto it. A reply that comes
+   * later, as input, replaces it, so a terminal that answers late still gets the pane on its own colour.
+   */
   ground?: Rgb | null
   write(bytes: string): void
   fetch: typeof fetch
@@ -83,6 +86,7 @@ export function startClient(o: ClientOptions): Client {
   const decoder = new Decoder()
 
   let closed = false
+  let ground = o.ground ?? null
   let previous: Screen | null = null
   let editing: Editing | null = null
   let scroll = 0
@@ -137,7 +141,7 @@ export function startClient(o: ClientOptions): Client {
     scroll = Math.min(scroll, maxScroll(frame))
     hits = hitsOf(frame, size(), scroll)
     const overlay: Overlay = { focused: page.focused, field: editing, toast: toast ?? persistent, card: cardKey(), scroll }
-    const screen = screenOf(frame, size(), overlay, o.ground ?? null)
+    const screen = screenOf(frame, size(), overlay, ground)
     o.write(bytesFor(previous, screen))
     previous = screen
   }
@@ -371,8 +375,18 @@ export function startClient(o: ClientOptions): Client {
     if (press !== null) void page.post({ kind: 'press', press })
   }
 
+  /** The terminal's background, told after the start: every line is painted again on it, or on the theme's ground when it does not fit. */
+  function background(rgb: Rgb): void {
+    const next = groundFor(rgb, o.theme)
+    if (next?.join() === ground?.join()) return
+    ground = next
+    previous = null
+    paint()
+  }
+
   /** One decoded event from the terminal. */
   function handle(e: TermEvent): void {
+    if (e.kind === 'background') return background(e.rgb)
     if (e.kind === 'key' && e.ctrlKey && e.key === 'c') return o.quit()
     if (e.kind === 'key' && e.ctrlKey && e.key === 'z') return o.suspend()
     if (holding) {

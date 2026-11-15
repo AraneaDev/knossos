@@ -38,7 +38,15 @@ highlights (the marked row, hover cards, diff lines, the heat map) are
 shifted onto that colour, so they stay a shade lighter or darker than the
 terminal rather than a fixed grey. A terminal that does not report its
 background, or a `--theme` that does not fit it, gets the theme's own dark or
-light background instead, so the text stays readable.
+light background over the whole pane instead, so the text stays readable.
+
+The pane asks the terminal for its colour as it starts, and once more a
+second later when no answer came. An answer that arrives late, as one over a
+slow SSH connection can, still moves the pane onto the terminal's colour.
+Under tmux the answer comes from tmux, which knows the colour only once its
+own terminal has told it: a pane started together with tmux can ask before
+that, and the second question is for that case. tmux with no client attached
+(`tmux new-session -d`) never answers.
 
 It needs a terminal for both input and output. Run from a script or with
 output piped, it prints the command list to stderr and exits with code 2;

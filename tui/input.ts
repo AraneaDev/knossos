@@ -52,12 +52,17 @@ const modsOf = (param: string | undefined): { ctrl: boolean; alt: boolean; shift
   return { shift: (bits & 1) !== 0, alt: (bits & 2) !== 0, ctrl: (bits & 4) !== 0 }
 }
 
-/** The colour in an OSC 11 reply (`rgb:rrrr/gggg/bbbb`, one to four hex digits each) as 0-255 channels; null for any other reply. */
+/**
+ * The colour in an OSC 11 reply as 0-255 channels: `rgb:rrrr/gggg/bbbb`, one to
+ * four hex digits each, or `rgba:` with an alpha after them (rxvt-unicode on a
+ * translucent window), which the pane has no use for. Null for any other reply.
+ */
 function backgroundOf(body: string): [number, number, number] | null {
-  const found = /^11;rgb:([0-9a-f]{1,4})\/([0-9a-f]{1,4})\/([0-9a-f]{1,4})$/i.exec(body)
-  if (found === null) return null
+  const found = /^11;(rgba?):([0-9a-f]{1,4})\/([0-9a-f]{1,4})\/([0-9a-f]{1,4})(\/[0-9a-f]{1,4})?$/i.exec(body)
+  // An alpha comes with `rgba:` and only with it.
+  if (found === null || (found[1]!.toLowerCase() === 'rgba') !== (found[5] !== undefined)) return null
   const channel = (hex: string) => Math.round((parseInt(hex, 16) / (16 ** hex.length - 1)) * 255)
-  return [channel(found[1]!), channel(found[2]!), channel(found[3]!)]
+  return [channel(found[2]!), channel(found[3]!), channel(found[4]!)]
 }
 
 /** Whether a background is dark or light: relative luminance above 0.5 is light. */
