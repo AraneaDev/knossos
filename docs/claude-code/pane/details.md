@@ -49,7 +49,7 @@ itself. The band, the notes and Changes count the same way.
 
 ## The finder
 
-![The finder over the pane: ResultEnv typed, 20 matches listed with ResultEnvelope marked first](../../images/claude-code/finder.png)
+![The finder over the pane: ResultEnv typed, more than 20 matches found with ResultEnvelope marked first](../../images/claude-code/finder.png)
 
 `f` opens the finder over any tab. Type part of a name, or a few words, and it
 lists first what `search_architecture` answers the agent: the components every
