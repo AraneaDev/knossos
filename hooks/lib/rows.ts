@@ -5,9 +5,9 @@
  * nothing here reads state. Text is measured and cut in `text.ts`, the
  * self-fitting table is in `table.ts`, boundary chips in `chips.ts`.
  */
-import { ACCENT, SECONDARY, SELECTED_BG } from './palette'
+import { SECONDARY, SELECTED_BG } from './palette'
 import { cells, fit, spaces } from './text'
-import { blankRow, moreRow } from './spacing'
+import { blankRow, gutter, moreRow } from './spacing'
 import type { Row, Segment } from './types'
 
 export const rowWidth = (row: Row): number => row.segments.reduce((n, s) => n + cells(s.text), 0)
@@ -68,9 +68,9 @@ export function tintedRow(key: string, segments: Segment[], on: boolean, { bg = 
   return { key, segments: tinted(padded, bg), tint: bg }
 }
 
-/** A row of a list the marker walks: `›` when marked, then `segments`, cut to `columns`, tinted to the edge when marked. */
-export function walkedRow(key: string, marked: boolean, segments: Segment[], columns: number): Row {
-  return tintedRow(key, clip([{ text: marked ? '›' : ' ', color: ACCENT, bold: true }, ...segments], columns), marked, { columns })
+/** A row of a list the marker walks: its gutter (`›` when marked, the row's one-cell `mark`), then `segments` at the body, cut to `columns`, tinted to the edge when marked. */
+export function walkedRow(key: string, marked: boolean, segments: Segment[], columns: number, mark?: Segment): Row {
+  return tintedRow(key, clip([...gutter(marked, mark), ...segments], columns), marked, { columns })
 }
 
 /** Segments laid out as `left`, a gap, then `right` against the right edge; `right` goes first when both do not fit. */

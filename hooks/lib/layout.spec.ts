@@ -737,11 +737,11 @@ describe('the issues tab', () => {
       expect(new Set(shown).size, `${columns} columns: ${rows.join(' | ')}`).toBe(1)
     }
   })
-  it('gives way in order: names are cut, then the boundary goes, then the place', () => {
+  it("gives way in order: the place's folders, the name to its floor, the file name, then the boundary, then the place", () => {
     const dead = (columns: number) => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), 'dead-0')!)
-    // A place takes the width the name leaves, cut from its front; the certainty in the gutter and two marks of four cells stay where the boundary and the place have gone.
-    const at = { 110: 'beforeTraverse ■ php-worker workers/php/src/FactCollector.php:108', 100: 'beforeTraverse ■ php-worker …rs/php/src/FactCollector.php:108', 90: 'beforeTraverse ■ php-worker …php/src/FactCollector.php:108', 70: 'beforeTrav… ■ php-worker FactCollector.php:108', 60: 'b… ■ php-worker …ctCollector.php:108', 50: 'beforeTr… …llector.php:108', 30: 'befor…' }
-    for (const [columns, said] of Object.entries(at)) expect(dead(Number(columns))).toBe(` ○ ∅ m FactCollector::${said}`)
+    // The certainty in the gutter and two marks of four cells stay where the boundary and the place have gone.
+    const at = { 110: 'FactCollector::beforeTraverse ■ php-worker workers/php/src/FactCollector.php:108', 100: 'FactCollector::beforeTraverse ■ php-worker …rs/php/src/FactCollector.php:108', 90: 'FactCollector::beforeTraverse ■ php-worker …php/src/FactCollector.php:108', 70: 'FactCollector::beforeTrav… ■ php-worker FactCollector.php:108', 60: 'FactCollector::… ■ php-worker FactCollector.php:108', 50: 'FactCollect… ■ php-worker …lector.php:108', 40: 'FactCollect… …Collector.php:108', 30: 'FactCollector::befor…' }
+    for (const [columns, said] of Object.entries(at)) expect(dead(Number(columns))).toBe(` ○ ∅ m ${said}`)
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)
     expect(dead(30)).not.toContain('.php')
@@ -1162,10 +1162,10 @@ describe('the pane at every width and height', () => {
       const head = rows.find(r => r.key.endsWith('|concentration-head'))!
       expect([rowWidth({ key: 'x', segments: head.segments.slice(0, head.split) }), /── {4}── /.test(rawText(head))], `${columns}`).toEqual([left, true])
       expect(plainText({ key: 'x', segments: head.segments.slice(head.split) })).toMatch(/^Dependency concentration +15 components$/)
-      // The composition and the concentration end on the same row: the shorter is stretched, never padded.
-      const last = (card: string) => rows.map(r => r.key.split('|').some(k => k.startsWith(card))).lastIndexOf(true)
-      expect(last('composition')).toBeGreaterThan(-1)
-      expect(last('composition')).toBe(last('concentration'))
+      // The composition and the concentration end on the same row, the shorter stretched, and the next grid row follows at once.
+      const last = (card: RegExp) => rows.map(r => r.key.split('|').some(k => card.test(k))).lastIndexOf(true)
+      expect(last(/^comp/)).toBeGreaterThan(-1)
+      expect([last(/^(degree|concentration)/), rows[last(/^comp/) + 1]?.key]).toEqual([last(/^comp/), 'gap-health|flows'])
       for (const r of rows) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
     }
   })
@@ -1698,7 +1698,7 @@ describe('the pane at every width and height, with a large project', () => {
 
   it('lists the files most depended on beside the hubs, walked after them, opening as files', () => {
     const rows = paneRows(at({ tab: 'hubs' }), 200, 40)
-    expect([rows.some(r => r.key.endsWith('|files-head')), plainText(row(rows, 'files-cols')!), plainText(row(paneRows(at({ tab: 'hubs' }), 140, 40), 'files-cols')!)]).toEqual([true, `   file${' '.repeat(50)}dependents`, `   file${' '.repeat(41)}deps`]) // the column's one name, its short form where the word would cut the paths
+    expect([rows.some(r => r.key.endsWith('|files-head')), plainText(row(rows, 'files-cols')!), plainText(row(paneRows(at({ tab: 'hubs' }), 140, 40), 'files-cols')!)]).toEqual([true, `   file${' '.repeat(50)}dependents`, `   file${' '.repeat(35)}dependents`]) // the column's one name at every width the pane is not narrow
     const list = listFor(at({ tab: 'hubs' }))
     expect(list).toHaveLength(50 + 50)
     expect(list[50]).toMatchObject({ canonical: 'src/Deep/Area0/File0.php', file: true })

@@ -18,9 +18,9 @@ import type { BranchDiff, BranchItem, BranchState } from '../../types'
 import { stamp } from './changes'
 import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
-import { boundaryColour, FAINT, NO_HUES, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryColour, FAINT, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { button, clip, inList, notListedRow, segmentsWidth, wrapGroups, walkedRow } from './rows'
+import { button, clip, inList, notListedRow, segmentsWidth, tintedRow, wrapGroups } from './rows'
 import { bar } from './table'
 import { chip, SWATCH } from './chips'
 import { cells, displayName, fit, grouped, padStart, plural, shortName, spaces, wrapWords } from './text'
@@ -205,7 +205,7 @@ const CHANGED_MIN = 3
 
 /** One walked row: the marker and a space, then `content` fitted to what is left, tinted when marked. */
 function itemRow(key: string, marked: boolean, content: Segment[], columns: number): Row {
-  return walkedRow(key, marked, [{ text: ' ' }, ...content], columns)
+  return tintedRow(key, clip([{ text: marked ? '›' : ' ', color: ACCENT, bold: true }, { text: ' ' }, ...content], columns), marked, { columns })
 }
 
 /** A component's name as a pressable cut to `width`, then its boundary as a chip when it fits. */

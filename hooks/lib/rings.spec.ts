@@ -101,7 +101,7 @@ describe('the blast radius in a component detail', () => {
     expect(raw.at(-2)).toMatch(/^│ ╰─+╯ │$/)
     for (const r of rows) expect(rowWidth(r), rawText(r)).toBe(80)
     // The untested marked; a boundary named only where it is not the component's own, in its own column.
-    expect(raw.find(r => r.includes('Near0'))).toMatch(/│ ▲ C Near0 {11}C Near1 ■ edge {4}C Near2/)
+    expect(raw.find(r => r.includes('Near0'))).toMatch(/│ ▲ C Near0 {12}C Near1 ■ edge {5}C Near2/)
     // What a ring does not show is its last cell; the tests that reach it, by file name, then how many more.
     // At 80 the long names leave room for one column: two of them, then the count of the rest.
     expect(raw.filter(r => r.includes('MiddleComponentWithALongerName'))).toHaveLength(2)

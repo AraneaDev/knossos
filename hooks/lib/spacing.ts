@@ -13,7 +13,8 @@
  *     ›▲ name   ...                       marker and mark in the GUTTER
  *        where   src/File.php:12          the body, at BODY
  */
-import { cells, fit, grouped, padEnd, spaces } from './text'
+import { ACCENT } from './palette'
+import { cells, fit, grouped, padEnd, spaces, wrapWords } from './text'
 import type { Row, Segment } from './types'
 import type { Tier } from './table'
 
@@ -38,6 +39,37 @@ export const LABEL_GAP = 3
 
 /** The margin at `tier`. */
 export const marginOf = (tier: Tier): number => (tier === 'narrow' ? NARROW_MARGIN : MARGIN)
+
+/**
+ * The gutter before a body row, the one way a row fills it: the selection
+ * marker `›` when `marked`, the row's own one-cell `mark` (a severity, a
+ * rank, a fold, a change) or a blank, then the cell that keeps the mark off
+ * the body.
+ */
+export function gutter(marked = false, mark?: Segment): Segment[] {
+  return [{ text: marked ? '›' : ' ', color: ACCENT, bold: true }, mark ?? { text: ' ' }, { text: spaces(GUTTER - 2) }]
+}
+
+/** `segments` moved in to the body, past an empty gutter. */
+export const atBody = (segments: readonly Segment[]): Segment[] => [{ text: spaces(GUTTER) }, ...segments]
+
+/** Rows moved in to the body, past an empty gutter. */
+export const toBody = (rows: readonly Row[]): Row[] => rows.map(row => ({ ...row, segments: atBody(row.segments) }))
+
+/** A row of `segments` at the body. */
+export const bodyRow = (key: string, segments: readonly Segment[]): Row => ({ key, segments: atBody(segments) })
+
+/** One line of text at the body in a card `width` wide, cut with `…` to fit; dim unless `style` says otherwise. */
+export const bodyLine = (key: string, text: string, width: number, style: Omit<Segment, 'text'> = { dim: true }): Row => bodyRow(key, [{ text: fit(text, Math.max(1, width - GUTTER)), ...style }])
+
+/**
+ * Text at the body in a card `width` wide, wrapped onto as many rows as it
+ * needs (keyed `key-0` on), dim unless `style` says otherwise; a `mark`
+ * (one cell: a warning) stands in the gutter before its first line.
+ */
+export function bodyText(key: string, text: string, width: number, style: Omit<Segment, 'text'> = { dim: true }, mark?: Segment): Row[] {
+  return wrapWords(text, Math.max(1, width - GUTTER)).map((line, i): Row => ({ key: `${key}-${i}`, segments: [...(i === 0 && mark !== undefined ? gutter(false, mark) : [{ text: spaces(GUTTER) }]), { text: line, ...style }] }))
+}
 
 /** A blank row, `width` cells of space where a card's rows are all as wide as the card: the one way the pane draws one. */
 export const blankRow = (key: string, width = 1): Row => ({ key, segments: [{ text: spaces(Math.max(1, width)) }] })

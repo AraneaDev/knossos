@@ -12,9 +12,9 @@ describe('the rings, members in columns', () => {
   it('draws three nested rings, the furthest outermost, the component in the middle (56 columns: a 60 column pane)', () => {
     expect(drawn(56).map(rawText)).toEqual([
       "╭─ 3+ hops · 40 ────────── ✓ 37 tested · ▲ 3 untested ─╮",
-      "│ ▲ m Further0  ■ tooling  ▲ C Further1                │",
-      "│ ▲ C Further2               C Further3  ■ tooling     │",
-      "│   m Further4             +35 more                    │",
+      "│ ▲ m Further0  ■ tooling   ▲ C Further1               │",
+      "│ ▲ C Further2                C Further3  ■ tooling    │",
+      "│   m Further4              +35 more                   │",
       "│ ✓ 22 test files  Further0Test.php +21                │",
       "│ ╭─ 2 hops · 1 ────────────────────── ✓ all tested ─╮ │",
       "│ │   m AnExtraordinarilyLongComponentNameThatFills… │ │",
@@ -35,15 +35,15 @@ describe('the rings, members in columns', () => {
   it('lays a ring out in as many columns as its longest name lets the width hold (96 columns: a 100 column pane)', () => {
     expect(drawn(96).map(rawText)).toEqual([
       "╭─ 3+ hops · 40 ────────────────────────────────────────────────── ✓ 37 tested · ▲ 3 untested ─╮",
-      "│ ▲ m Further0  ■ tooling  ▲ C Further1             ▲ C Further2                               │",
-      "│   C Further3  ■ tooling    m Further4               C Further5                               │",
-      "│   C Further6  ■ tooling    C Further7             +32 more                                   │",
+      "│ ▲ m Further0  ■ tooling   ▲ C Further1              ▲ C Further2                             │",
+      "│   C Further3  ■ tooling     m Further4                C Further5                             │",
+      "│   C Further6  ■ tooling     C Further7              +32 more                                 │",
       "│ ✓ 22 test files  Further0Test.php, Further1Test.php, Further2Test.php, Further3Test.php +18  │",
       "│ ╭─ 2 hops · 1 ────────────────────────────────────────────────────────────── ✓ all tested ─╮ │",
       "│ │   m AnExtraordinarilyLongComponentNameThatFillsItsRing::andItsMethod                     │ │",
       "│ │ ✓ 1 test file  LongTest.php                                                              │ │",
       "│ │ ╭─ 1 hop · 4 (1 probable) ───────────────────────────────── ✓ 3 tested · ▲ 1 untested ─╮ │ │",
-      "│ │ │ ▲ C Near0 via make           C Near1          ■ edge    m Near2                      │ │ │",
+      "│ │ │ ▲ C Near0 via make            C Near1          ■ edge     m Near2                    │ │ │",
       "│ │ │   f Near3                                                                            │ │ │",
       "│ │ │ ✓ 2 test files  NearTest.php, FarTest.php                                            │ │ │",
       "│ │ │                                ◉ Importer::run ■ core                                │ │ │",
@@ -56,15 +56,15 @@ describe('the rings, members in columns', () => {
   it('gives a wider pane more columns, and the long-named ring still one (136 columns: a 140 column pane)', () => {
     expect(drawn(136).map(rawText)).toEqual([
       "╭─ 3+ hops · 40 ────────────────────────────────────────────────────────────────────────────────────────── ✓ 37 tested · ▲ 3 untested ─╮",
-      "│ ▲ m Further0  ■ tooling  ▲ C Further1             ▲ C Further2               C Further3  ■ tooling    m Further4                     │",
-      "│   C Further5               C Further6  ■ tooling    C Further7               m Further8               C Further9  ■ tooling          │",
-      "│   C Further10              C Further11            +28 more                                                                           │",
+      "│ ▲ m Further0  ■ tooling   ▲ C Further1              ▲ C Further2                C Further3  ■ tooling     m Further4                 │",
+      "│   C Further5                C Further6  ■ tooling     C Further7                m Further8                C Further9  ■ tooling      │",
+      "│   C Further10               C Further11             +28 more                                                                         │",
       "│ ✓ 22 test files  Further0Test.php, Further1Test.php, Further2Test.php, Further3Test.php, Further4Test.php, Further5Test.php +16      │",
       "│ ╭─ 2 hops · 1 ────────────────────────────────────────────────────────────────────────────────────────────────────── ✓ all tested ─╮ │",
       "│ │   m AnExtraordinarilyLongComponentNameThatFillsItsRing::andItsMethod                                                             │ │",
       "│ │ ✓ 1 test file  LongTest.php                                                                                                      │ │",
       "│ │ ╭─ 1 hop · 4 (1 probable) ───────────────────────────────────────────────────────────────────────── ✓ 3 tested · ▲ 1 untested ─╮ │ │",
-      "│ │ │ ▲ C Near0 via make           C Near1          ■ edge    m Near2                    f Near3                                   │ │ │",
+      "│ │ │ ▲ C Near0 via make            C Near1          ■ edge     m Near2                     f Near3                                │ │ │",
       "│ │ │ ✓ 2 test files  NearTest.php, FarTest.php                                                                                    │ │ │",
       "│ │ │                                                    ◉ Importer::run ■ core                                                    │ │ │",
       "│ │ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │ │",
@@ -76,9 +76,11 @@ describe('the rings, members in columns', () => {
   it("marks the selected member with '›' in the cell before its mark, moving no column or border", () => {
     // The walk is nearest first: Near0 is 0, Near1 is 1, Further0 is 5.
     const marked = (columns: number, selected: number, key: string) => rawText(drawn(columns, selected).find(r => r.key === key)!)
-    expect(marked(96, 0, 'ring-0-names-0')).toBe('│ │ │›▲ C Near0 via make           C Near1          ■ edge    m Near2                      │ │ │')
-    expect(marked(96, 1, 'ring-0-names-0')).toBe('│ │ │ ▲ C Near0 via make        ›  C Near1          ■ edge    m Near2                      │ │ │')
-    expect(marked(136, 5, 'ring-2-names-0')).toBe('│›▲ m Further0  ■ tooling  ▲ C Further1             ▲ C Further2               C Further3  ■ tooling    m Further4                     │')
+    expect(marked(96, 0, 'ring-0-names-0')).toBe('│ │ │›▲ C Near0 via make            C Near1          ■ edge     m Near2                    │ │ │')
+    expect(marked(96, 1, 'ring-0-names-0')).toBe('│ │ │ ▲ C Near0 via make         ›  C Near1          ■ edge     m Near2                    │ │ │')
+    expect(marked(136, 5, 'ring-2-names-0')).toBe('│›▲ m Further0  ■ tooling   ▲ C Further1              ▲ C Further2                C Further3  ■ tooling     m Further4                 │')
+    // After a column whose name and boundary fill its cell, the marker keeps two blank cells from them.
+    expect(marked(136, 6, 'ring-2-names-0')).toContain('■ tooling  ›▲ C Further1')
     expect(marked(56, 1, 'ring-0-names-1')).toBe('│ │ │›  C Near1          ■ edge                    │ │ │')
     // The row is the unmarked one with one cell changed, at every width, for each member that shows unmarked (a hidden one moves the window).
     for (const columns of [44, 56, 96, 136]) {

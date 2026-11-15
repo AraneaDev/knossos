@@ -16,14 +16,14 @@
  * shorten to their minimum, then names are cut with an ellipsis, then the
  * boundary column goes, then the bars go. The numbers always stay.
  */
-import { ACCENT, FAINT, FLASH_BG, HEADING, NO_HUES } from './palette'
+import { FAINT, FLASH_BG, HEADING, NO_HUES } from './palette'
 import type { Hues } from './palette'
 import { RANKING, kindMark, mark } from './marks'
 import { opensFile } from './editor'
 import { boundaryStyle, chip } from './chips'
 import { button, segmentsWidth, tintedRow } from './rows'
 import { cells, compact, fit, grouped, padEnd, padStart, pathParts, placeLeast, placeSegments, spaces } from './text'
-import { GUTTER } from './spacing'
+import { GUTTER, gutter } from './spacing'
 import type { Loc, Preview, Row, Segment } from './types'
 
 export const BAR_MIN = 4
@@ -206,9 +206,7 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
   // The press keeps the whole name as its label; the Button draws only the cells laid out for it (`pressLabel`).
   const named = line.press === undefined ? opensFile(parts.base, line.opens ?? null) : { ...button(line.press, parts.base), press: { id: line.press, label: line.name } }
   const segments: Segment[] = [
-    { text: line.selected ? '›' : ' ', color: ACCENT, bold: true },
-    line.mark ?? (line.hotspotOnly ? mark(RANKING.hotspotOnly) : { text: ' ' }),
-    { text: spaces(MARK - 2) },
+    ...gutter(line.selected === true, line.mark ?? (line.hotspotOnly ? mark(RANKING.hotspotOnly) : undefined)),
     ...((spec.kind ?? 0) > 0 ? [kindMark(line.kind)] : []),
     { text: parts.dir, dim: true },
     line.preview === undefined ? named : { ...named, preview: line.preview },
@@ -234,18 +232,18 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
   return tintedRow(key, kept, line.lit === true, { bg: FLASH_BG })
 }
 
+/** The title of a column counting the files that depend on each row at `tier`: the one name for it, `dependents`, and its short form `deps` on a narrow pane. */
+export const dependentsTitle = (tier: Tier): string => (tier === 'narrow' ? 'deps' : 'dependents')
+
 /**
  * A table with a column counting the files that depend on each row, fitted
- * by `fit` (the column's title in, the spec out): the one name for it,
- * `dependents`, from the medium tier on while the names keep the cells the
- * short form leaves them; else its short form, `deps` (narrow, or a card
- * half a wide pane).
+ * by `fit` (the column's title in, the spec out), titled by the pane's tier
+ * ({@link dependentsTitle}): every table of one pane says it alike, whatever
+ * room its own card has.
  */
 export function withDependents(fit: (title: string) => TableSpec, tier: Tier): { title: string; spec: TableSpec } {
-  const short = { title: 'deps', spec: fit('deps') }
-  if (tier === 'narrow') return short
-  const long = fit('dependents')
-  return long.name >= short.spec.name ? { title: 'dependents', spec: long } : short
+  const title = dependentsTitle(tier)
+  return { title, spec: fit(title) }
 }
 
 /** A number column's width: its title, or its widest figure as the table prints it (`compact` on a narrow pane). */

@@ -37,11 +37,11 @@ import type { Hues } from './palette'
 import { button, clip, wrapGroups, walkedRow } from './rows'
 import { BAR_FULL, bar, TRACK } from './table'
 import { chip, chipWidth, SWATCH } from './chips'
-import { cells, fit, grouped, padEnd, padStart, plural, spaces, wrapWords } from './text'
+import { cells, fit, grouped, padEnd, padStart, plural, spaces } from './text'
 import type { Row, Segment } from './types'
 import type { Openable } from './views'
 import { NOTE, PLACE, REACH, mark } from './marks'
-import { GUTTER } from './spacing'
+import { bodyLine, bodyRow, bodyText, GUTTER, toBody } from './spacing'
 import { countsLine } from './notes-view'
 import { baselineWords } from './baseline'
 
@@ -233,10 +233,10 @@ export function notesLineBlock(data: OverviewData, selected: number, walk: numbe
   return {
     key: 'notes',
     make: (columns): Section => {
-      const tone = counts.missing > 0 ? mark(NOTE.missing, ' ') : counts.stale > 0 ? mark(NOTE.stale, ' ') : counts.flagged > 0 ? mark(NOTE.flagged, ' ') : { text: '' }
+      const tone = counts.missing > 0 ? mark(NOTE.missing) : counts.stale > 0 ? mark(NOTE.stale) : counts.flagged > 0 ? mark(NOTE.flagged) : undefined
       // The mark in the gutter after the marker, the line at the body.
-      const line: Segment[] = [tone.text === '' ? { text: '  ' } : tone, button(`row:${walk}`, countsLine(counts)), { text: '  the Notes tab', dim: true }]
-      return { key: 'notes', title: 'Notes', body: [walkedRow('notes-line', selected === walk, line, columns)] }
+      const line: Segment[] = [button(`row:${walk}`, countsLine(counts)), { text: '  the Notes tab', dim: true }]
+      return { key: 'notes', title: 'Notes', body: [walkedRow('notes-line', selected === walk, line, columns, tone)] }
     },
   }
 }
@@ -352,7 +352,7 @@ export function compositionBlock(data: OverviewData): Block | null {
           body.push(...legendRows(c, columns, 0))
         }
       })
-      return { key: 'composition', title: 'Composition', body: atBody(body) }
+      return { key: 'composition', title: 'Composition', body: toBody(body) }
     },
   }
 }
@@ -375,16 +375,14 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
       const counts = buckets.map(b => grouped(b.components))
       const countWidth = Math.max(...counts.map(cells), cells('components') - 1)
       const flag = ' hubs'
-      const width = Math.max(4, columns - 3 - labelWidth - 1 - 1 - countWidth - cells(flag))
+      const width = Math.max(4, columns - GUTTER - labelWidth - 1 - 1 - countWidth - cells(flag))
       const max = Math.max(0, ...buckets.map(b => b.components))
       const total = buckets.reduce((n, b) => n + b.components, 0)
       const top = buckets.length - 1
-      const head: Row = { key: 'degree-head', segments: [{ text: `   ${padEnd('in-degree', labelWidth + 1 + width)}`, dim: true }, { text: padStart('components', countWidth + 1), dim: true }] }
+      const head = bodyRow('degree-head', [{ text: padEnd('in-degree', labelWidth + 1 + width), dim: true }, { text: padStart('components', countWidth + 1), dim: true }])
       const body = buckets.map((b, i) => {
         const glyphs = bar(b.components, max, data.grow(width))
         const segments: Segment[] = [
-          i === top ? mark(PLACE.hub) : { text: ' ' },
-          { text: ' ' },
           button(`row:${offset + i}`, labels[i]!),
           { text: spaces(labelWidth - cells(labels[i]!) + 1) },
           { text: glyphs, color: heat(i, buckets.length) },
@@ -392,18 +390,15 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
           { text: ` ${padStart(counts[i]!, countWidth)}`, color: HEADING },
           ...(i === top ? [{ text: flag, dim: true }] : []),
         ]
-        return walkedRow(`degree-${i}`, offset + i === selected, segments, columns)
+        return walkedRow(`degree-${i}`, offset + i === selected, segments, columns, i === top ? mark(PLACE.hub) : undefined)
       })
       const note = `${grouped(total)}${data.bucketsPartial ? '+' : ''} components`
       // What the buckets count, so their sum is not read as the whole project.
-      body.push({ key: 'degree-said', segments: [{ text: fit('   tests and external code left out', columns), dim: true }] })
+      body.push(bodyLine('degree-said', 'tests and external code left out', columns))
       return { key: 'concentration', title: 'Dependency concentration', note: noteOf(note), body: [{ ...head, segments: clip(head.segments, columns) }, ...body] }
     },
   }
 }
-
-/** Rows moved in to the body, past the gutter. */
-const atBody = (rows: Row[]): Row[] => rows.map(row => ({ ...row, segments: [{ text: spaces(GUTTER) }, ...row.segments] }))
 
 /** A series as level glyphs, each point `per` cells wide; a flat series lies on the lowest level. */
 function levels(values: number[], per: number): string {
@@ -424,7 +419,7 @@ export function healthBlock(data: OverviewData): Block | null {
   const series = data.health
   // Wrapped, not cut: on a narrow pane the line is all the card says.
   const limitRows = (columns: number): Row[] =>
-    data.healthLimit.flatMap((line, i) => wrapWords(line, Math.max(1, columns - 3)).map((part, j) => ({ key: `health-limit-${i}-${j}`, segments: [{ text: `   ${part}`, dim: true }] })))
+    data.healthLimit.flatMap((line, i) => bodyText(`health-limit-${i}`, line, columns))
   if (series.length === 0 || (series[0]?.values.length ?? 0) < HEALTH_MIN_POINTS) {
     // Nothing to draw over time, but a limit to say: the card says it rather than disappearing.
     return data.healthLimit.length === 0 ? null : { key: 'health', make: (columns): Section => ({ key: 'health', title: 'Health over time', body: limitRows(columns) }) }
@@ -464,9 +459,9 @@ export function healthBlock(data: OverviewData): Block | null {
       const lead = spaces(HEALTH_LABEL + 1)
       const ends = drawnWidth >= 'oldest'.length + 'newest'.length + 3 ? `oldest${'─'.repeat(drawnWidth - 12)}newest` : '─'.repeat(drawnWidth)
       charts.push({ key: 'health-axis', segments: [{ text: lead }, { text: ends.slice(0, 6), dim: true }, { text: ends.slice(6, ends.length - 6), color: FAINT }, { text: ends.slice(ends.length - 6), dim: true }].filter(s => s.text !== '') })
-      const body = atBody(charts)
+      const body = toBody(charts)
       // Two counts of unused code stand on one screen: the row says which one it is.
-      if (series.some(s => s.label === UNREFERENCED)) body.push({ key: 'health-said', segments: [{ text: fit(`   ${UNREFERENCED}: the quality gate's count, wider than the dead-code list`, columns), dim: true }] })
+      if (series.some(s => s.label === UNREFERENCED)) body.push(bodyLine('health-said', `${UNREFERENCED}: the quality gate's count, wider than the dead-code list`, columns))
       body.push(...limitRows(columns))
       const said = plural(points, 'snapshot', 'snapshots')
       return { key: 'health', title: 'Health over time', note: noteOf(said), body }
@@ -504,9 +499,8 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
         const to = chip(f.to, hues, toWidth, {})
         const pad = (s: Segment[], w: number) => [...s, { text: spaces(w - s.reduce((n, x) => n + cells(x.text), 0)) }]
         const glyphs = withBar ? bar(f.edges, max, data.grow(width)) : ''
-        // After the marker, the rest of the gutter: the source's chip starts the body.
+        // The source's chip starts the body.
         const segments: Segment[] = [
-          { text: spaces(GUTTER - 1) },
           ...pad(from, fromWidth),
           { text: ' → ', dim: true },
           ...pad(to, toWidth),
@@ -550,12 +544,12 @@ export function sessionBlock(changes: ChangesInput, look: LookAt | null, selecte
         // Of them, the files no test reaches at all: what a change leaves unchecked.
         ...(tests > 0 && changes.untested > 0 ? [[{ text: '· ', dim: true }, warned(`${REACH.untested.glyph} ${untestedText(changes.untested)}`)]] : []),
       ]
-      body.push(...wrapGroups('session-said', said, columns, 1, 3))
-      const open: Segment[] = [{ text: '  ' }, button('row:0', 'Changes'), { text: '  every file, its dependents and its tests', dim: true }]
+      body.push(...wrapGroups('session-said', said, columns, 1, GUTTER))
+      const open: Segment[] = [button('row:0', 'Changes'), { text: '  every file, its dependents and its tests', dim: true }]
       const copy: Segment[] = look?.command ? [button('tests', 'copy test command', 't')] : []
-      const room = columns - 1 - open.reduce((n, s) => n + cells(s.text), 0) - copy.reduce((n, s) => n + cells(s.text), 0)
+      const room = columns - GUTTER - open.reduce((n, s) => n + cells(s.text), 0) - copy.reduce((n, s) => n + cells(s.text), 0)
       body.push(walkedRow('session-open', selected === 0, room >= 2 ? [...open, { text: spaces(room) }, ...copy] : open, columns))
-      if (room < 2 && copy.length > 0) body.push({ key: 'session-tests', segments: [{ text: '   ' }, ...copy] })
+      if (room < 2 && copy.length > 0) body.push(bodyRow('session-tests', copy))
       return section(body)
     },
   }

@@ -1327,6 +1327,7 @@ js	hooks/lib/diff.spec.ts
 js	hooks/lib/diff.ts
 js	hooks/lib/editor.ts
 js	hooks/lib/empty-state.ts
+js	hooks/lib/entry-place.spec.ts
 js	hooks/lib/envelopes.path.spec.ts
 js	hooks/lib/envelopes.spec.ts
 js	hooks/lib/envelopes.ts
@@ -1389,6 +1390,7 @@ js	hooks/lib/scheduler.ts
 js	hooks/lib/session-changes.ts
 js	hooks/lib/signature.spec.ts
 js	hooks/lib/signature.ts
+js	hooks/lib/spacing-body.spec.ts
 js	hooks/lib/spacing.spec.ts
 js	hooks/lib/spacing.ts
 js	hooks/lib/sparkline.spec.ts

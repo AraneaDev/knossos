@@ -9,10 +9,10 @@
  */
 import type { Block } from './cards'
 import { ACCENT, STATUS_COLOURS } from './palette'
-import { button, dimRow } from './rows'
-import { GUTTER, labelledRows } from './spacing'
+import { button } from './rows'
+import { bodyLine, bodyRow, bodyText, labelledRows } from './spacing'
 import type { Fact } from './spacing'
-import { cells, spaces, wrapWords } from './text'
+import { cells, wrapWords } from './text'
 import type { Row, Segment } from './types'
 import type { NoteInput } from './views'
 import { SEVERITY } from './marks'
@@ -56,14 +56,13 @@ export function notesBlock(name: string, annotations: Annotation[], note: NoteIn
     make: columns => {
       const facts: Fact[] = annotations.map((a, i) => ({ key: `note-${i}`, label: a.kind.replace(/_/g, ' '), numbered: true, lines: width => noteLines(a, width) }))
       const body: Row[] = labelledRows(facts, columns)
-      if (annotations.length === 0) body.push(dimRow('note-none', `${spaces(GUTTER)}No notes on ${name} yet.`, columns))
+      if (annotations.length === 0) body.push(bodyLine('note-none', `No notes on ${name} yet.`, columns))
       if (!notable) return { key: 'notes', title: 'Notes', body }
-      const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, columns - GUTTER)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: spaces(GUTTER) }, { text: line, ...style }] }))
       if (note === null || note.phase === 'failed') {
-        if (note !== null) body.push(...said('note-failed', `${SEVERITY.error.glyph} knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
+        if (note !== null) body.push(...bodyText('note-failed', `${SEVERITY.error.glyph} knossos did not record it: ${note.reason ?? 'it said nothing'}`, columns, { color: STATUS_COLOURS.alert }))
         // The person's own note: an agent's beside it is not theirs to change here.
         const own = annotations.some(a => a.kind === 'note' && a.author !== 'model')
-        body.push({ key: 'note-keys', segments: [{ text: spaces(GUTTER) }, button('note-card', own ? 'change the note' : 'add a note', undefined, { dim: true })] })
+        body.push(bodyRow('note-keys', [button('note-card', own ? 'change the note' : 'add a note', undefined, { dim: true })]))
       }
       // A note under way is taken in the footer (noteFooterRows), where a long detail cannot scroll it away.
       return { key: 'notes', title: 'Notes', body }

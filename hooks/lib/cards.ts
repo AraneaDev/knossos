@@ -473,9 +473,12 @@ function stretched(rows: Row[], width: number, height: number, key: string): Row
  * the wider table) and drawn equally tall: a shorter card is stretched to the tallest one's height, so
  * no column of the row ends half way. The lists share the height the way
  * {@link fitBlocks} shares it, one row at a time each while the whole fits;
- * a list beside a taller card grows for free up to that card's height.
+ * a list beside a taller card grows for free up to that card's height. Each
+ * grid row is as tall as its tallest card and no taller: height left over
+ * stays at the pane's foot, under the last card, never as blank rows between
+ * one grid row and the next.
  */
-export function gridRows(grid: Block[][], width: number, tier: Tier, budget: number, split?: number, fill = false): Row[] {
+export function gridRows(grid: Block[][], width: number, tier: Tier, budget: number, split?: number): Row[] {
   // A collapsed card (an empty list, one line) has no frame to stretch: beside a framed card it would leave blank rows under it,
   // so it stands on a line of its own, just before the line it was on, and never takes a share of the spare height.
   const lines = grid.flatMap(line => {
@@ -504,20 +507,8 @@ export function gridRows(grid: Block[][], width: number, tier: Tier, budget: num
   for (const cap of [LIST_SOFT, Number.POSITIVE_INFINITY]) {
     growLists(limits, i => (blocks[i]!.block.grow === undefined ? limits[i]! : Math.min(blocks[i]!.block.grow!.length, cap)), () => budget - total())
   }
-  // Filling the height: the rows of cards side by side share what is left evenly (the last one alone when there are none),
-  // so the cards end at the pane's foot rather than above blank space, and no one row stands hollow.
-  const spare = fill ? Math.max(0, budget - total()) : 0
-  // Only lines with a framed card can grow: a line of collapsed cards stays one row tall.
-  const framedLine = (n: number): boolean => Array.from({ length: placed[n]!.line.length }, (_, j) => rowsOf(starts[n]! + j)).some(rows => rows.length > 1)
-  const growing = placed.map((p, n) => n).filter(framedLine)
-  const sharing = growing.filter(n => placed[n]!.line.length > 1)
-  const takers = sharing.length > 0 ? sharing : growing.slice(-1)
-  const share = (n: number): number => {
-    const at = takers.indexOf(n)
-    return at < 0 ? 0 : Math.floor(spare / takers.length) + (at < spare % takers.length ? 1 : 0)
-  }
   return placed.flatMap((p, n) => {
-    const height = lineHeight(starts[n]!, p.line.length) + share(n)
+    const height = lineHeight(starts[n]!, p.line.length)
     const cards = p.line.map((block, j) => stretched(rowsOf(starts[n]! + j), p.widths[j]!, height, block.key))
     let joined = cards[0]!
     let used = p.widths[0]!
@@ -530,10 +521,8 @@ export function gridRows(grid: Block[][], width: number, tier: Tier, budget: num
 }
 
 /**
- * A column of cards stretched to `height` rows: its last card grows (blank
- * rows inside its frame, before its bottom edge) so the column ends at the
- * height rather than above blank space. A frameless (narrow) column gets
- * blank rows after it. Taller already, it is left as it is.
+ * A column of cards made `height` rows tall: blank rows after its last
+ * card, at the foot. Taller already, it is left as it is.
  */
 export function fillColumn(rows: Row[], width: number, height: number, tier: Tier, key = 'stretch'): Row[] {
   // Counted as drawn: a diff element takes a row for each of its lines.
@@ -551,8 +540,9 @@ function collapsedAt(block: Block, width: number, count: number, tier: Tier): bo
 
 /**
  * The rows of `arrangement` at `width`, its lists sized to `budget` rows.
- * With `fill`, the cards stretch to end at the budget: the last row of a
- * grid grows, and so does the last card of each column. `as` lays it out at
+ * With `fill`, the rows reach the budget: the height the cards leave is
+ * blank rows under the last of them (under each column's, side by side),
+ * at the pane's foot, and no card grows into it. `as` lays it out at
  * a tier other than its width's (a panel of a wider pane keeps its frames).
  */
 export function arrange(arrangement: Arrangement, width: number, budget: number, fill = false, as?: Tier): Row[] {
@@ -578,8 +568,8 @@ export function arrange(arrangement: Arrangement, width: number, budget: number,
   if (tier === 'wide' && arrangement.rows !== undefined) {
     const above = fitBlocks(top, width, tier, 0)
     const below = fitBlocks(arrangement.bottom ?? [], width, tier, 0)
-    const laid = [...above, ...gridRows(arrangement.rows, width, tier, budget - above.length - below.length, arrangement.split, fill && below.length === 0), ...below]
-    // A grid with no framed card to stretch (every list empty) leaves the height to the cards across the pane.
+    const laid = [...above, ...gridRows(arrangement.rows, width, tier, budget - above.length - below.length, arrangement.split), ...below]
+    // Filling, the height left over goes under the last card, at the pane's foot.
     return fill ? fillColumn(laid, width, budget, tier) : laid
   }
   const right = arrangement.right ?? []

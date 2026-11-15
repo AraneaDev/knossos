@@ -26,10 +26,10 @@ import type { Block } from './cards'
 import { ACCENT, FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
 import type { Hues } from './palette'
 import { absolute, baseName } from './paths'
-import { button, clip, dimRow, inList, segmentsWidth } from './rows'
+import { button, clip, inList, segmentsWidth } from './rows'
 import { chip } from './chips'
-import { GUTTER } from './spacing'
-import { cells, displayName, fit, grouped, plural, spaces, wrapWords } from './text'
+import { bodyLine, bodyText, GUTTER } from './spacing'
+import { cells, displayName, fit, grouped, plural, spaces } from './text'
 import type { Loc, Row, Segment } from './types'
 import { PLACE, REACH, kindMark, mark } from './marks'
 import { busy } from './motion'
@@ -99,8 +99,13 @@ const countOf = (ring: Ring): string => `${grouped(ring.count)}${(ring.probable 
 /** The rows of cells a ring shows its components in at most, as on the rings before their columns: the last cell `+N more` when some do not show. */
 export const MEMBER_ROWS = 3
 
-/** The cells between two columns of a ring. */
-const CELL_GAP = 2
+/**
+ * The cells between two columns of a ring: two blanks, then the one the
+ * marked component's `›` stands in, so the marker keeps a blank cell from the
+ * column before it even where that column's name fills its cell (as a
+ * table's marker keeps the margin before it).
+ */
+const CELL_GAP = 3
 
 /** The cells before a component's name in its cell: the untested mark, a space, the kind letter and its space. */
 const LEAD = 4
@@ -283,8 +288,8 @@ export function ringsBlock(input: RingsInput, selected: number, offset: number, 
     key: 'rings',
     make: columns => {
       const note = noteOf(input.said !== null ? '' : `${grouped(total)}${input.truncated ? '+' : ''} dependents, tests apart${input.testsPartial === true ? ', tests partly searched' : ''}`)
-      if (input.said !== null) return { key: 'rings', title: 'Blast radius', note, body: wrapWords(input.said, Math.max(1, columns - GUTTER)).map((line, i) => dimRow(`rings-said-${i}`, `${spaces(GUTTER)}${line}`, columns)) }
-      if (total === 0) return { key: 'rings', title: 'Blast radius', note, body: [dimRow('rings-none', `${spaces(GUTTER)}Nothing depends on it: a change here reaches no other component.`, columns)] }
+      if (input.said !== null) return { key: 'rings', title: 'Blast radius', note, body: bodyText('rings-said', input.said, columns) }
+      if (total === 0) return { key: 'rings', title: 'Blast radius', note, body: [bodyLine('rings-none', 'Nothing depends on it: a change here reaches no other component.', columns)] }
       const body = columns >= RINGS_MIN ? ringRows(input, columns, selected, offset, hues) : ringLists(input, columns, selected, offset, hues)
       return { key: 'rings', title: 'Blast radius', ...(input.loading ? { subtitle: busy('reading…') } : {}), note, body }
     },

@@ -266,7 +266,7 @@ function fileListBlock(key: string, title: string, note: string, files: { path: 
     make: (columns, limit, scrolled) => {
       const max = Math.max(0, ...files.map(f => f.bar))
       const { rows, window } = windowedTable(`${key}-window`, files, { columns, limit, scrolled }, (listed, start) => {
-        // The last column counts the dependents: `deps` where the whole word would cut the paths.
+        // The last column counts the dependents, named as every table of the pane names it at its width.
         const fit = (last: string) => tableSpec(columns, listed.map(f => f.path), [], [...before, last].map((t, i) => numberWidth(t, listed.map(f => f.values[i] ?? 0), tier)), 56, { tier })
         const { title: last, spec } = withDependents(fit, shown)
         return [

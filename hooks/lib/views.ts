@@ -16,7 +16,7 @@ import type { ComponentDetail, Counterpart, Dashboard, DetailState, Diagnostic, 
 import { ringsBlock, ringsList } from './rings'
 import type { RingsInput } from './rings'
 import { countLabel, detailLines } from './envelopes'
-import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, STATUS_COLOURS } from './palette'
+import { boundaryColour, boundaryLabel, FAINT, NO_HUES, STATUS_COLOURS } from './palette'
 import { DIAGRAM_MIN, neighbourhood } from './diagram'
 import type { Neighbour } from './diagram'
 import type { Hues } from './palette'
@@ -31,6 +31,7 @@ import type { Tier } from './table'
 import { CERTAINTY, REACH, SEVERITY, kindLegend, kindMark, legend, mark } from './marks'
 import { busy } from './motion'
 import { notesBlock } from './notes-card'
+import { bodyRow, gutter } from './spacing'
 
 /**
  * A row the marker can walk to: `name` to show, `canonical` to look it up by,
@@ -145,6 +146,8 @@ const PLACE_SHARE = 0.35
 const PLACE_MIN = 12
 /** The narrowest the main text of an issue row is allowed before the boundary, then the place, give way. */
 const MAIN_MIN = 16
+/** The fewest cells the main text gives up to, past its marks, so that a place keeps its file name and line whole. */
+const MAIN_FLOOR = 12
 
 const SUPERSCRIPT = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹']
 
@@ -309,25 +312,35 @@ export type Entry = { selected?: boolean; mark?: Segment; need: number; marks?: 
 /**
  * Fits issue rows to `columns`, packed to the left like a table: the main
  * text takes what the longest needs, the boundary and the place follow it,
- * and width left over stays at the right edge. As the width shrinks the
- * boundary goes first, then the place; the main text keeps at least
- * {@link MAIN_MIN}.
+ * and width left over stays at the right edge. As the width shrinks a place
+ * gives up its folders (it is cut from its front), then the main text gives
+ * up cells from {@link MAIN_MIN} to {@link MAIN_FLOOR} so the place keeps
+ * its file name and line whole; then the file name is cut, then the
+ * boundary goes, then the place. The marks always stay.
  */
 export function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): EntrySpec {
-  // A place needs its file name and line; more of its path, up to its share, only from width the rest leaves over.
-  const placeWhole = Math.min(Math.max(PLACE_MIN, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
+  // A place needs its file name and line, whatever its share; more of its path, up to its share, only from width the rest leaves over.
+  const fileLeast = Math.max(0, ...entries.map(e => placeLeast(e.place)))
+  const placeWhole = Math.min(Math.max(PLACE_MIN, fileLeast, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
   const placeNeed = Math.min(placeWhole, Math.max(0, ...entries.map(e => (e.whole === true ? cells(e.place) : placeLeast(e.place)))))
   // A boundary is a chip: its swatch and a space before its label.
   const longest = Math.max(0, ...entries.map(e => cells(boundaryLabel(e.boundary ?? null, hues))))
   const boundaryNeed = longest === 0 ? 0 : Math.min(12, longest) + 2
   const mainNeed = Math.max(1, ...entries.map(e => e.need))
   // The marks are not the text: the main text keeps its least beside them, so they outlast the boundary and the place.
-  const least = Math.min(MAIN_MIN + Math.max(0, ...entries.map(e => e.marks ?? 0)), mainNeed)
+  const marks = Math.max(0, ...entries.map(e => e.marks ?? 0))
+  const least = Math.min(MAIN_MIN + marks, mainNeed)
+  const floor = Math.min(MAIN_FLOOR + marks, mainNeed)
   const attempt = (boundary: number, place: number): EntrySpec | null => {
     const room = columns - MARK - (boundary > 0 ? boundary + 1 : 0) - (place > 0 ? place + 1 : 0)
-    // A place is cut from its front, so it gives up cells, down to its own least, before anything goes whole.
-    if (room < least && place > 0 && place - (least - room) >= PLACE_MIN) return attempt(boundary, place - (least - room))
-    return room >= least ? { main: Math.min(room, mainNeed), boundary, place: place > 0 ? Math.min(placeWhole, place + room - Math.min(room, mainNeed)) : 0 } : null
+    if (room >= least) return { main: Math.min(room, mainNeed), boundary, place: place > 0 ? Math.min(placeWhole, place + room - Math.min(room, mainNeed)) : 0 }
+    if (place === 0) return null
+    // Its folders first: a place is cut from its front.
+    if (place > fileLeast) return attempt(boundary, place - Math.min(place - fileLeast, least - room))
+    // Then the main text, down to its floor, so the file name and line stay whole.
+    if (room >= floor) return { main: room, boundary, place }
+    // Then the file name is cut, down to the fewest cells a place is shown in.
+    return place - (floor - room) >= PLACE_MIN ? { main: floor, boundary, place: place - (floor - room) } : null
   }
   return attempt(boundaryNeed, placeNeed) ?? attempt(0, placeNeed) ?? attempt(0, 0) ?? { main: Math.max(1, columns - MARK), boundary: 0, place: 0 }
 }
@@ -337,9 +350,7 @@ export function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Ro
   const main = e.main(spec.main)
   const used = main.reduce((n, s) => n + cells(s.text), 0)
   const segments: Segment[] = [
-    { text: e.selected ? '›' : ' ', color: ACCENT, bold: true },
-    e.mark ?? { text: ' ' },
-    { text: ' ' },
+    ...gutter(e.selected === true, e.mark),
     ...main,
     { text: spaces(spec.main - used) },
   ]
@@ -362,7 +373,7 @@ function pair(a: string, b: string, width: number): [string, string] {
   return [fit(a, aw), fit(b, room - aw)]
 }
 
-const none = (key: string): Row => ({ key, segments: [{ text: '   none', dim: true }] })
+const none = (key: string): Row => bodyRow(key, [{ text: 'none', dim: true }])
 
 /** The fewest rows each list on the Issues tab shows, however short the pane. */
 const ISSUES_MIN = 3
@@ -407,6 +418,8 @@ function violationEntries(violations: ViolationLine[], selected: number, hues: H
     place: v.place,
     loc: v.source.loc ?? null,
     need: cells(v.source.name) + 3 + (v.targetBoundary === null ? 0 : 2) + cells(v.target),
+    // The arrow and the target's swatch are not text to cut: the two names keep their least beside them.
+    marks: 3 + (v.targetBoundary === null ? 0 : 2),
     main: width => {
       // The target's boundary on a swatch before its name: the name stays in the text tone.
       const swatch: Segment[] = v.targetBoundary === null ? [] : [{ text: `${SWATCH} `, color: boundaryColour(v.targetBoundary, hues) ?? FAINT }]
@@ -433,7 +446,7 @@ function diagnosticEntries(items: DiagnosticLine[], offset: number, selected: nu
  * Each dead-code candidate as an entry, the first `offset` into the walk. Its marks, the card's note their legend: how
  * sure the scan is in the gutter, where every issue's mark stands (● probable or a dim ○ possible: something no scan
  * sees may reach it), then what reaches it, ◐ tests only in the warning colour (finished work no product path runs) or
- * a dim ∅ nothing at all, and its kind. Where those would squeeze the names below {@link MAIN_MIN} they go from every
+ * a dim ∅ nothing at all, and its kind. Where those would squeeze the names below {@link MAIN_FLOOR} they go from every
  * row at once, so they never show on some rows and not others.
  */
 function deadEntries(items: DeadLine[], offset: number, selected: number): Entry[] {
@@ -448,7 +461,7 @@ function deadEntries(items: DeadLine[], offset: number, selected: number): Entry
     need: cells(c.name) + MARKS, marks: MARKS,
     main: width => {
       // Too narrow only when the names would be squeezed below their least, or below the longest when all are short.
-      if (width - MARKS < Math.min(MAIN_MIN, longestName)) return [button(`row:${offset + i}`, fit(c.name, width))]
+      if (width - MARKS < Math.min(MAIN_FLOOR, longestName)) return [button(`row:${offset + i}`, fit(c.name, width))]
       const reach = mark(c.testOnly ? REACH.testsOnly : REACH.unused, ' ')
       return [reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
     },
@@ -644,7 +657,7 @@ export function detailArrangement(detail: DetailInput, tier: Tier, hues: Hues = 
     hues,
     (columns, limit) => [
       ...sideSection('used', c.usedBy, 0, columns, limit, tier, hues, selected).body.map(r => ({ ...r, key: `hood-${r.key}` })),
-      { key: 'hood-uses-title', segments: [{ text: `   ${c.uses.title} · ${c.uses.count}`, dim: true }] },
+      bodyRow('hood-uses-title', [{ text: `${c.uses.title} · ${c.uses.count}`, dim: true }]),
       ...sideSection('uses', c.uses, c.usedBy.items.length, columns, limit, tier, hues, selected).body.map(r => ({ ...r, key: `hood-${r.key}` })),
     ],
   )
