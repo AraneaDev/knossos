@@ -18,7 +18,7 @@ final class DoctorInstallation
     /** An installation whose Rust worker announces `$sourceHash`, see {@see self::rustWorker()}. */
     public static function create(?string $sourceHash): string
     {
-        $root = sys_get_temp_dir() . '/knossos-doctor-install-' . uniqid('', true);
+        $root = \Knossos\Tests\Phpunit\Support\Scratch::path('knossos-doctor-install', self::class);
         mkdir($root . '/workers', 0777, true);
         $repository = dirname(__DIR__, 3);
         symlink($repository . '/migrations', $root . '/migrations');

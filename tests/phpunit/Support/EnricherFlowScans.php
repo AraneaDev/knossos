@@ -29,8 +29,8 @@ trait EnricherFlowScans
     protected function enricherFlowProject(bool $requested = true, string $mode = 'ok'): array
     {
         $suffix = bin2hex(random_bytes(6));
-        $root = sys_get_temp_dir() . '/knossos-stale-enricher-flow-' . $suffix;
-        $installation = sys_get_temp_dir() . '/knossos-stale-enricher-flow-install-' . $suffix;
+        $root = self::scratchPath('knossos-stale-enricher-flow') . $suffix;
+        $installation = self::scratchPath('knossos-stale-enricher-flow-install') . $suffix;
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/enricher-flow', $root);
         mkdir($installation, 0o777, true);
         $this->enricherFlowTrees[] = $root;

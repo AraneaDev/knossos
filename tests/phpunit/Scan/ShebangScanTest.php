@@ -129,7 +129,7 @@ final class ShebangScanTest extends KnossosTestCase
      */
     private function tree(array $files): string
     {
-        $root = sys_get_temp_dir() . '/knossos-shebang-scan-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-shebang-scan');
         if (!mkdir($root, 0o755, true) && !is_dir($root)) {
             throw new \RuntimeException('Unable to create fixture root: ' . $root);
         }

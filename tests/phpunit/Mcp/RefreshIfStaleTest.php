@@ -164,7 +164,7 @@ final class RefreshIfStaleTest extends KnossosTestCase
     #[Group('mcp')]
     public function testARefreshOnAGitBackedProjectAnswersFreshAgain(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/mixed', $root);
         try {
             $pdo = $this->freshTestDatabase();

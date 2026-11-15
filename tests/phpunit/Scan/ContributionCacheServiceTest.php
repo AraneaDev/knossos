@@ -18,16 +18,15 @@ use Knossos\Scanner\Worker\WorkerException;
 use Knossos\Scanner\Worker\WorkerLimits;
 use Knossos\Store\SqliteConnection;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('contribution-cache')]
-final class ContributionCacheServiceTest extends TestCase
+final class ContributionCacheServiceTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private string $dir;
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/knossos-ccs-' . bin2hex(random_bytes(6));
+        $this->dir = self::scratchPath('knossos-ccs');
         mkdir($this->dir, 0700, true);
     }
 

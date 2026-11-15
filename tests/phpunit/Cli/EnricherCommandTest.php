@@ -32,7 +32,7 @@ final class EnricherCommandTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/knossos-enricher-cli-' . bin2hex(random_bytes(4));
+        $this->tempDir = self::scratchPath('knossos-enricher-cli');
         mkdir($this->tempDir, 0o755, true);
         $this->savedRootsFile = getenv('KNOSSOS_ROOTS_FILE');
         $this->savedDataDir = getenv('KNOSSOS_DATA_DIR');

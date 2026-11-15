@@ -45,7 +45,7 @@ final class TypescriptNodeModulesVerificationTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
         mkdir($this->root, 0o777, true);
         $this->write('src/a.ts', "import { Dep } from 'dep';\nexport class A extends Dep {}\n");
         $this->write('src/b.ts', "/// <reference path=\"../node_modules/dep/index.d.ts\" />\nexport const b = 1;\n");

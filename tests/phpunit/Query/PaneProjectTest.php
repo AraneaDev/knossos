@@ -91,7 +91,7 @@ final class PaneProjectTest extends KnossosTestCase
      */
     private function database(): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-pane-project-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-pane-project');
         mkdir($root);
         $pdo = SqliteConnection::open($root . '/knossos.sqlite');
         (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();

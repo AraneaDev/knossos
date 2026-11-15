@@ -642,7 +642,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
         if (self::locateGit() === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $repo = sys_get_temp_dir() . '/knossos-stale-git-' . bin2hex(random_bytes(6));
+        $repo = self::scratchPath('knossos-stale-git');
         mkdir($repo, 0o700, true);
         $this->git($repo, ['init', '--quiet']);
 

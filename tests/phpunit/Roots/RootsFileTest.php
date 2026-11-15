@@ -14,7 +14,7 @@ final class RootsFileTest extends KnossosTestCase
     #[Group('discovery')]
     public function testReplaceSwapsOneRootAndKeepsTheRest(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory, 0o700, true);
         try {
             $file = new RootsFile($directory . '/roots.json');
@@ -32,7 +32,7 @@ final class RootsFileTest extends KnossosTestCase
     #[Group('discovery')]
     public function testReplaceWithNothingToRemoveOnlyAdds(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory, 0o700, true);
         try {
             $file = new RootsFile($directory . '/roots.json');
@@ -156,7 +156,7 @@ final class RootsFileTest extends KnossosTestCase
 
     private function directory(): string
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory, 0o700, true);
 
         return $directory;
@@ -174,7 +174,7 @@ final class RootsFileTest extends KnossosTestCase
     #[Group('discovery')]
     public function testAddWaitsForTheLockAndKeepsWhatTheHolderWrote(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory, 0o700, true);
         $path = $directory . '/roots.json';
         $holder = proc_open(

@@ -24,7 +24,7 @@ final class NotesTransferCommandTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/knossos-stale-notes-cli-' . bin2hex(random_bytes(6));
+        $this->tempDir = self::scratchPath('knossos-stale-notes-cli');
         mkdir($this->tempDir, 0o755, true);
     }
 

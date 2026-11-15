@@ -7,11 +7,10 @@ namespace Knossos\Tests\Phpunit\Runtime;
 use Knossos\Runtime\RuntimeFactory;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
 #[Group('runtime-factory')]
-final class RuntimeFactoryTest extends TestCase
+final class RuntimeFactoryTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private static function projectRoot(): string
     {
@@ -41,7 +40,7 @@ final class RuntimeFactoryTest extends TestCase
 
     private function freshTempDir(): string
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-runtime-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-runtime');
         mkdir($this->tempDir, 0777, true);
 
         return $this->tempDir;

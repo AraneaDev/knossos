@@ -95,7 +95,7 @@ final class OneTypeCycleTest extends KnossosTestCase
     #[Group('cli')]
     public function testTheCliTakesWithinType(): void
     {
-        $path = sys_get_temp_dir() . '/knossos-within-type-' . bin2hex(random_bytes(6)) . '.sqlite';
+        $path = self::scratchPath('knossos-within-type') . '.sqlite';
         try {
             $pdo = \Knossos\Store\SqliteConnection::open($path);
             (new \Knossos\Store\MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();

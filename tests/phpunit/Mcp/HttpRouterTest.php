@@ -22,11 +22,8 @@ final class HttpRouterTest extends KnossosTestCase
     public function testHttpRouterEnforcesAuthOriginAndServesInitialize(): void
     {
         $port = self::reserveEphemeralPort();
-        $dataDir = self::makeTempDir('knossos-router-data-');
-        $logFile = tempnam(sys_get_temp_dir(), 'knossos-router-log-');
-        if ($logFile === false) {
-            throw new RuntimeException('Unable to allocate router log file.');
-        }
+        $dataDir = self::scratchDirectory('knossos-router-data');
+        $logFile = self::scratchFile('knossos-router-log');
         $root = self::repositoryRoot();
         $allowedRoot = $root . '/tests/Fixtures/mixed';
 
@@ -120,11 +117,8 @@ final class HttpRouterTest extends KnossosTestCase
     public function testHttpRouterRefusesToServeWithNoAllowedRootsAndNamesTheRootsFile(): void
     {
         $port = self::reserveEphemeralPort();
-        $dataDir = self::makeTempDir('knossos-router-noroots-');
-        $logFile = tempnam(sys_get_temp_dir(), 'knossos-router-log-');
-        if ($logFile === false) {
-            throw new RuntimeException('Unable to allocate router log file.');
-        }
+        $dataDir = self::scratchDirectory('knossos-router-noroots');
+        $logFile = self::scratchFile('knossos-router-log');
         $root = self::repositoryRoot();
 
         $command = [PHP_BINARY];
@@ -201,20 +195,6 @@ final class HttpRouterTest extends KnossosTestCase
         }
 
         return (int) substr($name, $colon + 1);
-    }
-
-    private static function makeTempDir(string $prefix): string
-    {
-        $base = tempnam(sys_get_temp_dir(), $prefix);
-        if ($base === false) {
-            throw new RuntimeException('Unable to allocate a temporary directory.');
-        }
-        unlink($base);
-        if (!mkdir($base, 0700) && !is_dir($base)) {
-            throw new RuntimeException('Unable to create a temporary directory.');
-        }
-
-        return $base;
     }
 
     private static function waitForServer(int $port): void

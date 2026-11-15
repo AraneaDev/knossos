@@ -13,6 +13,7 @@ abstract class KnossosTestCase extends TestCase
     use Support\AmbientRoots;
     use Support\Fixtures;
     use Support\Processes;
+    use Support\ScratchSpace;
     use Support\TempTrees;
     use Support\WorkerClients;
 

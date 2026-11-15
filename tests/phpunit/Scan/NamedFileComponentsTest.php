@@ -25,7 +25,7 @@ final class NamedFileComponentsTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-named-files-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-named-files');
         $files = [
             'composer.json' => "{\"name\": \"demo/named\", \"autoload\": {\"psr-4\": {\"App\\\\\": \"src/\"}}}\n",
             'src/Deploy.php' => "<?php\n\nnamespace App;\n\nfinal class Deploy\n{\n    /** @return list<string> */\n"

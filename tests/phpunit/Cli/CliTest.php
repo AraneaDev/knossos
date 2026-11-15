@@ -72,7 +72,7 @@ final class CliTest extends KnossosTestCase
     #[Group('cli')]
     public function testAValueOptionWrittenWithoutEqualsIsRefusedBeforeAnyDatabaseOpens(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-db-flag-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale-db-flag');
         mkdir($directory);
         try {
             [$exit, , $stderr] = $this->runFixtureCommandOutput([
@@ -95,7 +95,7 @@ final class CliTest extends KnossosTestCase
     #[Group('cli')]
     public function testAnInstallationWithoutDependenciesExitsTwo(): void
     {
-        $installation = sys_get_temp_dir() . '/knossos-stale-no-vendor-' . bin2hex(random_bytes(6));
+        $installation = self::scratchPath('knossos-stale-no-vendor');
         mkdir($installation . '/bin', 0o777, true);
         copy(self::repositoryRoot() . '/bin/knossos', $installation . '/bin/knossos');
         try {
@@ -485,10 +485,7 @@ final class CliTest extends KnossosTestCase
     #[Group('cli')]
     public function testListProjectsCliExposesTheCatalogueWithoutRootsByDefault(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-catalogue-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate catalogue database.');
-        }
+        $path = self::scratchFile('knossos-catalogue');
         try {
             $pdo = SqliteConnection::open($path);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -748,7 +745,7 @@ final class CliTest extends KnossosTestCase
     #[Group('cli')]
     public function testInputLoaderPoliciesAcceptsValidJsonArray(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-policies-');
+        $path = self::scratchFile('knossos-policies');
         file_put_contents($path, json_encode([['policy' => 'allow']]));
 
         $result = (new CliInputLoader())->policies($path);
@@ -769,7 +766,7 @@ final class CliTest extends KnossosTestCase
     #[Group('cli')]
     public function testInputLoaderPoliciesRejectsOversizedFile(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-big-policies-');
+        $path = self::scratchFile('knossos-big-policies');
         file_put_contents($path, str_repeat('x', 1_000_001));
 
         assertThrows(
@@ -782,7 +779,7 @@ final class CliTest extends KnossosTestCase
     #[Group('cli')]
     public function testInputLoaderJsonObjectAcceptsValidObject(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-json-');
+        $path = self::scratchFile('knossos-json');
         file_put_contents($path, json_encode(['key' => 'value']));
 
         $result = (new CliInputLoader())->jsonObject($path);
@@ -794,7 +791,7 @@ final class CliTest extends KnossosTestCase
     #[Group('cli')]
     public function testInputLoaderJsonObjectRejectsList(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-json-list-');
+        $path = self::scratchFile('knossos-json-list');
         file_put_contents($path, json_encode([1, 2, 3]));
 
         assertThrows(
@@ -807,7 +804,7 @@ final class CliTest extends KnossosTestCase
     #[Group('cli')]
     public function testInputLoaderBundleAcceptsValidFile(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-bundle-');
+        $path = self::scratchFile('knossos-bundle');
         $content = gzencode('{"test": true}');
         file_put_contents($path, $content);
 
@@ -820,7 +817,7 @@ final class CliTest extends KnossosTestCase
     #[Group('cli')]
     public function testInputLoaderBundleRejectsOversizedFile(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-big-bundle-');
+        $path = self::scratchFile('knossos-big-bundle');
         file_put_contents($path, str_repeat('x', 10_000_001));
 
         assertThrows(
@@ -834,10 +831,7 @@ final class CliTest extends KnossosTestCase
     public function testArchitectureSummaryJsonEmitsExactlyOneJsonDocument(): void
     {
         $root = self::repositoryRoot();
-        $path = tempnam(sys_get_temp_dir(), 'knossos-architecture-summary-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate architecture-summary database.');
-        }
+        $path = self::scratchFile('knossos-architecture-summary');
         try {
             [$scanExit, $scanOut, $scanErr] = $this->runFixtureCommandOutput([
                 PHP_BINARY, $root . '/bin/knossos', 'scan', $root . '/tests/Fixtures/php-scanner', '--db=' . $path, '--json',

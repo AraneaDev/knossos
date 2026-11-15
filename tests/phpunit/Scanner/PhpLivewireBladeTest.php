@@ -347,7 +347,7 @@ final class PhpLivewireBladeTest extends KnossosTestCase
     /** @param array<string, string> $files */
     private function tempRoot(array $files): string
     {
-        $root = sys_get_temp_dir() . '/knossos-livewire-blade-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-livewire-blade');
         foreach ($files as $path => $contents) {
             is_dir(dirname($root . '/' . $path)) || mkdir(dirname($root . '/' . $path), 0o777, true);
             file_put_contents($root . '/' . $path, $contents);

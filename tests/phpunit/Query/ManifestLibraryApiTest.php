@@ -21,7 +21,7 @@ final class ManifestLibraryApiTest extends KnossosTestCase
 {
     public function testAPublishedLibrarysPublicApiIsNotDeadCode(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-library-api-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-library-api');
         $files = [
             'sdk/composer.json' => '{"name":"acme/sdk","type":"library","autoload":{"psr-4":{"Sdk\\\\":"src/"}}}',
             'sdk/src/Client.php' => "<?php\nnamespace Sdk;\n\nclass Client\n{\n    public function send(): void {}\n\n    protected function hook(): void {}\n\n    private function unusedPrivate(): void {}\n}\n",

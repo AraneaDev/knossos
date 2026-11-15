@@ -17,10 +17,9 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Store\SqliteGraphRepository;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('sqlite-graph-repository')]
-final class SqliteGraphRepositoryTest extends TestCase
+final class SqliteGraphRepositoryTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private static function projectRoot(): string
     {
@@ -35,13 +34,13 @@ final class SqliteGraphRepositoryTest extends TestCase
     protected function setUp(): void
     {
         // Copy project migrations into a temp dir so the test owns the runner.
-        $this->migrationDir = sys_get_temp_dir() . '/knossos-mig-' . uniqid('', true);
+        $this->migrationDir = self::scratchPath('knossos-mig');
         mkdir($this->migrationDir, 0777, true);
         foreach (glob(self::projectRoot() . '/migrations/*.sql') ?: [] as $src) {
             copy($src, $this->migrationDir . '/' . basename($src));
         }
 
-        $this->tempSqlite = sys_get_temp_dir() . '/knossos-graph-' . uniqid('', true) . '.sqlite';
+        $this->tempSqlite = self::scratchPath('knossos-graph') . '.sqlite';
         $this->pdo = SqliteConnection::open($this->tempSqlite);
         (new MigrationRunner($this->pdo, $this->migrationDir))->migrate();
 

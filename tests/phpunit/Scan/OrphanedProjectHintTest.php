@@ -53,7 +53,7 @@ final class OrphanedProjectHintTest extends KnossosTestCase
     public function testAnOldRootThatStillExistsGivesNoHint(): void
     {
         [$pdo, $parent, $root] = $this->checkout(['A']);
-        $otherParent = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $otherParent = self::scratchPath('knossos-stale');
         mkdir($otherParent . '/project', 0o700, true);
         try {
             $this->orphan($pdo, $otherParent . '/project', ['App\\A']);
@@ -147,7 +147,7 @@ final class OrphanedProjectHintTest extends KnossosTestCase
      */
     private function checkout(array $classes): array
     {
-        $parent = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $parent = self::scratchPath('knossos-stale');
         $root = $parent . '/project';
         mkdir($root . '/src', 0o700, true);
         foreach ($classes as $class) {

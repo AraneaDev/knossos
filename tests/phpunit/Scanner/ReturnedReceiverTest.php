@@ -34,7 +34,7 @@ final class ReturnedReceiverTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testEnumCasesInAForeachAndACallOnAConstructedObjectsResultResolve(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-incremental-cases-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-incremental-cases');
         if (!mkdir($root . '/src', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
         }
@@ -120,7 +120,7 @@ final class ReturnedReceiverTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testACallOnAValueReturnedByAnotherFileResolvesToTheDeclaringMethod(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-incremental-returned-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-incremental-returned');
         if (!mkdir($root . '/src', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
         }
@@ -210,7 +210,7 @@ final class ReturnedReceiverTest extends KnossosTestCase
         // does not pay off has to disappear: inventing an external symbol for a
         // member that may not exist would put the inference in the graph as if
         // it were an observation.
-        $root = sys_get_temp_dir() . '/knossos-incremental-returned-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-incremental-returned');
         try {
             if (!mkdir($root . '/src', 0o755, true)) {
                 throw new \RuntimeException('Unable to create fixture tree.');
@@ -273,7 +273,7 @@ final class ReturnedReceiverTest extends KnossosTestCase
     #[Group('rust-scanner')]
     public function testARustCallOnAFunctionsResultAndAnAliasedReceiverResolve(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-incremental-rust-returned-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-incremental-rust-returned');
         if (!mkdir($root . '/src', 0o755, true)) {
             throw new \RuntimeException('Unable to create fixture tree.');
         }

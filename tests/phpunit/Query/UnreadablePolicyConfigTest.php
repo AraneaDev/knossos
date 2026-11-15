@@ -23,7 +23,7 @@ final class UnreadablePolicyConfigTest extends KnossosTestCase
     #[Group('query')]
     public function testThePoliciesCarryTheLoadersMessageWhenTheFileCannotBeRead(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-policies-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-policies');
         mkdir($root);
         try {
             self::assertSame(['policies' => [], 'error' => null], FileViolationQuery::policies($root, null));

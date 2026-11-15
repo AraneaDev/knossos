@@ -335,7 +335,7 @@ trait Fixtures
      */
     public function seedProjectWithFiles(array $relativePaths): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         foreach ($relativePaths as $relativePath) {
             $absolute = $root . '/' . $relativePath;
             $directory = dirname($absolute);
@@ -392,7 +392,7 @@ trait Fixtures
     public function scanTempFixture(string $fixture): array
     {
         $src = self::repositoryRoot() . '/tests/Fixtures/' . $fixture;
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         // Recursively copy the fixture so mtimes can be mutated safely.
         $this->copyTree($src, $root);
         $pdo = $this->freshTestDatabase();

@@ -21,7 +21,7 @@ final class UntypedReceiverTest extends KnossosTestCase
 {
     public function testAMethodNamedByAnUntypedCallIsOnlyPossiblyDeadInEachLanguage(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-untyped-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-untyped');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'src/Mode.php' => "<?php\nfinal class Mode\n{\n    public function phpLabel(): string { return ''; }\n    public function phpUnused(): string { return ''; }\n    public function phpCased(): string { return ''; }\n}\n",

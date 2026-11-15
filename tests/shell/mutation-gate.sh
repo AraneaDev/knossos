@@ -6,13 +6,14 @@
 # exclusion changing). Each case below breaks one of those on a copy of the
 # fixture shards and expects the refusal to say which.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 HERE="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 REPO="$HERE/../.."
 CHECK="${MUTATION_GATE_CHECK:-$REPO/tools/mutation-gate}"
 FIXTURES="$REPO/tests/Fixtures/mutation-gate"
 failures=0
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
 
 # shards NAME: a fresh copy of the four fixture shard logs; prints its path
 shards() {

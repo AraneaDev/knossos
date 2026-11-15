@@ -21,7 +21,7 @@ final class ContractThroughSubtypeTest extends KnossosTestCase
 {
     public function testAnInheritedImplementationOfAnInterfaceIsNotDead(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-contract-subtype-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-contract-subtype');
         mkdir($root . '/src', 0o777, true);
         mkdir($root . '/web', 0o777, true);
         $files = [

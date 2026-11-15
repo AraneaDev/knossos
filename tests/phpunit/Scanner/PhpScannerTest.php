@@ -924,7 +924,7 @@ final class PhpScannerTest extends KnossosTestCase
         // A deeply nested literal would exhaust the native stack during the
         // recursive NameResolver/collector traversal (an uncatchable fatal that
         // corrupts the NDJSON channel). The depth pre-check skips it cleanly.
-        $root = sys_get_temp_dir() . '/knossos-php-deep-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-php-deep');
         if (!mkdir($root, 0o700, true)) {
             throw new \RuntimeException('Unable to create deep PHP fixture.');
         }
@@ -955,7 +955,7 @@ final class PhpScannerTest extends KnossosTestCase
         // A class name carrying a raw ISO-8859-1 byte (0xE9) is valid on ext4 and
         // a legal PHP identifier, but invalid UTF-8. Without the substitute flag,
         // json_encode throws and aborts the whole request mid-stream.
-        $root = sys_get_temp_dir() . '/knossos-php-utf8-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-php-utf8');
         if (!mkdir($root, 0o700, true)) {
             throw new \RuntimeException('Unable to create non-UTF-8 PHP fixture.');
         }
@@ -981,7 +981,7 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testPhpWorkerLabelsFlowInferredCallsProbableAndInvalidatesReassignedVariables(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-php-flow-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-php-flow');
         if (!mkdir($root, 0o700, true)) {
             throw new \RuntimeException('Unable to create flow PHP fixture.');
         }
@@ -1271,7 +1271,7 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testPhpWorkerReportsTheHashOfTheRawBytesItParsed(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'src/Bom.php' => "\xEF\xBB\xBF<?php\nclass Bom {}\n",
@@ -1307,7 +1307,7 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testPhpWorkerReportsInputHashesForEveryFileItRead(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'src/Bom.php' => "\xEF\xBB\xBF<?php\nclass Bom {}\n",
@@ -1340,7 +1340,7 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testEveryContributionReportsAnEmptyReadSet(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/A.php', "<?php\nclass A {}\n");
         file_put_contents($root . '/src/Broken.php', "<?php\nclass {\n");
@@ -1370,8 +1370,8 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testARequestedFileWhoseReadFailsIsReportedAsNull(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
-        $outside = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
+        $outside = self::scratchPath('knossos-stale');
         mkdir($root . '/src/Dir.php', 0o777, true);
         mkdir($outside, 0o777, true);
         file_put_contents($root . '/src/Big.php', "<?php\nclass Big {}\n");
@@ -1411,7 +1411,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
         $probe = new \ReflectionMethod(\KnossosPhpScanner\WorkerServer::class, 'namesPhpInShebang');
-        $missing = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6)) . '/artisan';
+        $missing = self::scratchPath('knossos-stale') . '/artisan';
 
         $error = captureThrows(static fn() => $probe->invoke(null, $missing), \KnossosPhpScanner\UnreadableFileException::class);
 
@@ -1428,7 +1428,7 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testAnExtensionlessPhpScriptSwappedAroundTheProbeFailsVerification(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/bin', 0o777, true);
         $php = "#!/usr/bin/env php\n<?php\nclass Tool {}\n";
         $python = "#!/usr/bin/env python3\nprint('tool')\n";
@@ -1470,7 +1470,7 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testAShebangRefusalOfAStableFileReportsItsContentHash(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/bin', 0o777, true);
         $python = "#!/usr/bin/env python3\nprint('tool')\n";
         file_put_contents($root . '/bin/tool', $python);
@@ -1504,7 +1504,7 @@ final class PhpScannerTest extends KnossosTestCase
     {
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
         $evidence = new ReflectionMethod(\KnossosPhpScanner\WorkerServer::class, 'refusalEvidence');
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root);
         $python = "#!/usr/bin/env python3\nprint('tool')\n";
         file_put_contents($root . '/python', $python);
@@ -1561,7 +1561,7 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testAMapLargerThanOnePartReportsEveryFile(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $directory = 'src/' . str_repeat('d', 250) . '/' . str_repeat('e', 250) . '/' . str_repeat('f', 250);
         mkdir($root . '/' . $directory, 0o777, true);
         $expected = [];
@@ -1589,7 +1589,7 @@ final class PhpScannerTest extends KnossosTestCase
     public function testAScannerReadThatFailsIsAFailedRead(): void
     {
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
-        $missing = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6)) . '/Gone.php';
+        $missing = self::scratchPath('knossos-stale') . '/Gone.php';
 
         $error = captureThrows(static fn() => @(new \KnossosPhpScanner\PhpScanner())->scan(dirname($missing), $missing, 'Gone.php'), \KnossosPhpScanner\UnreadableFileException::class);
 
@@ -1604,7 +1604,7 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testARequestedFileReadThroughALinkIsReportedUnderTheRequestedPath(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/Target.php', "<?php\nclass Target {}\n");
         symlink('Target.php', $root . '/src/Linked.php');
@@ -1803,7 +1803,7 @@ final class PhpScannerTest extends KnossosTestCase
     #[Group('php-scanner')]
     public function testAVisitorsInheritedHooksHaveTheTraverserAsCaller(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-visitor-wiring-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-visitor-wiring');
         mkdir($root . '/src', 0o777, true);
         copy(self::repositoryRoot() . '/tests/Fixtures/php-scanner/src/VisitorWiring.php', $root . '/src/VisitorWiring.php');
 

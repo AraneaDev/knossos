@@ -47,7 +47,7 @@ final class FrameworkHintWarningTest extends KnossosTestCase
     #[Group('scan')]
     public function testEveryEffectiveHintChangesThePreparation(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-hint-plan-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-hint-plan');
         mkdir($root, 0o700, true);
         try {
             $planner = new ScanPlanner($this->freshTestDatabase(), [$root]);
@@ -71,7 +71,7 @@ final class FrameworkHintWarningTest extends KnossosTestCase
      */
     private function scanWithHints(array $frameworks): ResultEnvelope
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-hints-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-hints');
         mkdir($root . '/src', 0o700, true);
         try {
             file_put_contents($root . '/src/A.php', "<?php\nnamespace App;\nfinal class A {}\n");

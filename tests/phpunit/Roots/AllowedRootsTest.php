@@ -142,7 +142,7 @@ final class AllowedRootsTest extends KnossosTestCase
     public function testDescribeFlagsRootsThatDoNotExistOnThisServer(): void
     {
         $real = $this->makeTempDir();
-        $ghost = sys_get_temp_dir() . '/knossos-absent-' . uniqid('', true);
+        $ghost = self::scratchPath('knossos-absent');
         $file = $this->makeTempDir() . '/roots.json';
         file_put_contents($file, json_encode(['roots' => [$real, $ghost]], JSON_THROW_ON_ERROR));
 
@@ -278,7 +278,7 @@ final class AllowedRootsTest extends KnossosTestCase
 
     private function makeTempDir(): string
     {
-        $dir = sys_get_temp_dir() . '/knossos-allowedroots-' . uniqid('', true);
+        $dir = self::scratchPath('knossos-allowedroots');
         mkdir($dir, 0o755, true);
         $this->tempDirs[] = $dir;
 

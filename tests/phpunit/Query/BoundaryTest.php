@@ -13,17 +13,13 @@ use Knossos\Store\MigrationRunner;
 use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class BoundaryTest extends KnossosTestCase
 {
     #[Group('boundary')]
     public function testBoundariesInferAndConfigureMembershipWithPaginatedSearch(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-boundary-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate boundary database.');
-        }
+        $path = self::scratchFile('knossos-boundary');
         $root = self::repositoryRoot() . '/tests/Fixtures/mixed';
         try {
             $pdo = SqliteConnection::open($path);

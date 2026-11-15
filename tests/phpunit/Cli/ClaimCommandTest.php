@@ -33,7 +33,7 @@ final class ClaimCommandTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = (string) realpath(sys_get_temp_dir()) . '/knossos-claim-cmd-' . bin2hex(random_bytes(4));
+        $this->tempDir = self::scratchPath('knossos-claim-cmd');
         $this->home = $this->tempDir . '/home';
         $this->repo = $this->home . '/work/repo';
         mkdir($this->repo . '/.git', 0o755, true);

@@ -27,7 +27,7 @@ final class CreationBriefSubtreeTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
         foreach (['src/App' => ['A', 'B'], 'src/App/One' => ['C', 'D', 'E'], 'src/App/Two' => ['F', 'G', 'H'], 'src/Big' => ['P', 'Q', 'R', 'S', 'T']] as $directory => $names) {
             mkdir($this->root . '/' . $directory, 0o777, true);
             foreach ($names as $name) {

@@ -32,7 +32,7 @@ final class ProjectDiscovererTest extends KnossosTestCase
         // Resolved, because the link tests compare targets against the real
         // root: on macOS /tmp is itself a link to /private/tmp, and an absolute
         // target spelled through it would read as outside the root.
-        $this->base = (string) realpath(sys_get_temp_dir()) . '/knossos-pd-test-' . bin2hex(random_bytes(6));
+        $this->base = self::scratchPath('knossos-pd-test');
         $this->root = $this->base . '/project';
         mkdir($this->root, 0700, true);
     }

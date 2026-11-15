@@ -27,7 +27,7 @@ final class RootGuardContainmentTest extends \Knossos\Tests\Phpunit\KnossosTestC
      */
     private function tempDir(string $leaf = 'root'): string
     {
-        $base = sys_get_temp_dir() . '/knossos-guard-' . bin2hex(random_bytes(6));
+        $base = self::scratchPath('knossos-guard');
         mkdir($base, 0700, true);
         $absolute = $base . '/' . $leaf;
         mkdir($absolute, 0700, true);

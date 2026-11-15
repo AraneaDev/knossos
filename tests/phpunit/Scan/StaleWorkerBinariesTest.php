@@ -22,7 +22,7 @@ final class StaleWorkerBinariesTest extends KnossosTestCase
 
     protected function setUp(): void
     {
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
         mkdir($this->root . '/workers/rust/src', 0o777, true);
         file_put_contents($this->root . '/workers/rust/Cargo.toml', "[package]\nname = \"w\"\n");
         file_put_contents($this->root . '/workers/rust/src/main.rs', "fn main() {}\n");

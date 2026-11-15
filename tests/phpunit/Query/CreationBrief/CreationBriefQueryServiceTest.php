@@ -41,7 +41,7 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
     /** Scan a tree of six services and tests, a knossos.json with a boundary, a deny policy and two gates. */
     private function scanned(bool $withConfiguration = true): CreationBriefQueryService
     {
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
         $this->roots[] = $this->root;
         foreach (self::SERVICES as $name) {
             $this->service($name);
@@ -431,7 +431,7 @@ final class CreationBriefQueryServiceTest extends KnossosTestCase
     /** On the 20,000-node synthetic graph the brief is a few indexed reads. */
     public function testTheBriefOnALargeGraphIsAnsweredQuickly(): void
     {
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
         $this->roots[] = $this->root;
         mkdir($this->root . '/src', 0o777, true);
         [$this->pdo, , $ids] = $this->storeFixture();

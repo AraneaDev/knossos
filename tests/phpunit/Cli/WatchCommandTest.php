@@ -30,7 +30,7 @@ final class WatchCommandTest extends KnossosTestCase
     #[Group('cli')]
     public function testASharedWatcherWithNoDatabaseIsRefusedAndCreatesNone(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory);
         try {
             $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), ':memory:');

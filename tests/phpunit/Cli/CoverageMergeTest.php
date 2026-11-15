@@ -35,7 +35,7 @@ final class CoverageMergeTest extends KnossosTestCase
 
     protected function setUp(): void
     {
-        $this->directory = sys_get_temp_dir() . '/knossos-coverage-merge-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-coverage-merge');
         mkdir($this->directory . '/raw', 0o700, true);
         mkdir($this->directory . '/into', 0o700, true);
         file_put_contents($this->directory . '/files.txt', implode("\n", self::FILES) . "\n");

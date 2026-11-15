@@ -90,7 +90,7 @@ final class LaravelFeatureTestReachTest extends KnossosTestCase
 
     public function testARequestOrAnArtisanCallInAFeatureTestReachesWhatItRuns(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-feature-reach-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-feature-reach');
         foreach (self::FILES as $relative => $contents) {
             if (!is_dir(dirname($root . '/' . $relative))) {
                 mkdir(dirname($root . '/' . $relative), 0o777, true);

@@ -330,7 +330,7 @@ final class SessionCommandTest extends KnossosTestCase
     /** A temp directory named so removeTempTree() will accept it. */
     private function temporaryDirectory(): string
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory, 0o777, true);
 
         return $directory;

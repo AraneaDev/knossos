@@ -189,8 +189,8 @@ final class MemoryLimitTest extends KnossosTestCase
      */
     private function runPhp(array $arguments, array $environment): array
     {
-        $out = tempnam(sys_get_temp_dir(), 'knossos-memory-out');
-        $err = tempnam(sys_get_temp_dir(), 'knossos-memory-err');
+        $out = self::scratchFile('knossos-memory-out');
+        $err = self::scratchFile('knossos-memory-err');
         try {
             $base = getenv();
             unset($base['KNOSSOS_MEMORY_LIMIT']);
@@ -259,9 +259,9 @@ final class MemoryLimitTest extends KnossosTestCase
     private function entryPoint(array $phpOptions, ?string $limit): string
     {
         $root = self::repositoryRoot();
-        $probe = tempnam(sys_get_temp_dir(), 'knossos-memory-probe');
-        $out = tempnam(sys_get_temp_dir(), 'knossos-memory-out');
-        $err = tempnam(sys_get_temp_dir(), 'knossos-memory-err');
+        $probe = self::scratchFile('knossos-memory-probe');
+        $out = self::scratchFile('knossos-memory-out');
+        $err = self::scratchFile('knossos-memory-err');
         try {
             file_put_contents($probe, '<?php register_shutdown_function(static function (): void {'
                 . ' $l = \\Knossos\\Runtime\\MemoryLimit::applied();'

@@ -29,7 +29,7 @@ final class ObjectLiteralImplementationTest extends KnossosTestCase
      */
     public function testMembersOfAnObjectLiteralPassedWhereATypeIsExpectedAreReachedThroughIt(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-contextual-literal-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-contextual-literal');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'package.json' => '{"name":"contextual-literal-fixture"}',
@@ -72,7 +72,7 @@ final class ObjectLiteralImplementationTest extends KnossosTestCase
 
     public function testMembersOfAnObjectLiteralTypedAsAnInterfaceAreNotDeadCode(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-object-literal-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-object-literal');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'package.json' => '{"name":"object-literal-fixture"}',

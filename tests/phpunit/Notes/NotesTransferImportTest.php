@@ -24,7 +24,7 @@ final class NotesTransferImportTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/knossos-stale-notes-' . bin2hex(random_bytes(6));
+        $this->tempDir = self::scratchPath('knossos-stale-notes');
         $this->root = $this->tempDir . '/app';
         mkdir($this->root . '/src', 0o755, true);
         file_put_contents($this->root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');

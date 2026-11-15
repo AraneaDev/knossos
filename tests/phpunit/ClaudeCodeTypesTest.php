@@ -22,7 +22,7 @@ final class ClaudeCodeTypesTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = sys_get_temp_dir() . '/knossos-claude-code-types-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-claude-code-types');
         mkdir($this->directory . '/tools/claude-code-api/claude-code', 0o700, true);
         mkdir($this->directory . '/tools/claude-code-api/claude-code-tools', 0o700, true);
         $this->pin('2.1.287');

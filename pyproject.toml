@@ -28,3 +28,8 @@ strict = true
 warn_unreachable = true
 show_error_codes = true
 files = ["workers/python/bin/worker.py", "workers/python/bin/knossos_python"]
+
+[tool.pytest.ini_options]
+# pytest keeps the tmp_path trees of its last three runs in the temp
+# directory by default; a test's tree is removed once the run is over.
+tmp_path_retention_policy = "none"

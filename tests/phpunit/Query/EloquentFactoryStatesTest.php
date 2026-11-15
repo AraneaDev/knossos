@@ -23,7 +23,7 @@ final class EloquentFactoryStatesTest extends KnossosTestCase
 {
     public function testAFactoryStateAndTheModelAFactoryBuildsAreReachedByTheirCallers(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-factories-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-factories');
         $files = [
             'app/Modules/Shop/Models/Product.php' => <<<'PHP'
                 <?php

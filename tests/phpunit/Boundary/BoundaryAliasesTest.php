@@ -41,7 +41,7 @@ final class BoundaryAliasesTest extends KnossosTestCase
     /** Stored through a real scan: the aliases ride along in matcher_json and membership is untouched. */
     public function testAScanStoresTheAliasesBesideTheMatcher(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-aliases-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-aliases');
         mkdir($root . '/src', 0o777, true);
         try {
             file_put_contents($root . '/composer.json', '{"name":"acme/lib"}');

@@ -105,7 +105,7 @@ final class ComponentDetailServiceTest extends KnossosTestCase
     #[Group('query')]
     public function testANameSharedByTwoComponentsIsAmbiguous(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/' . self::FIXTURE, $root);
         foreach (['One', 'Two'] as $space) {
             mkdir($root . '/src/' . $space, 0o777, true);
@@ -132,7 +132,7 @@ final class ComponentDetailServiceTest extends KnossosTestCase
     public function testAnUnscannedPathReportsUnscanned(): void
     {
         $pdo = $this->freshTestDatabase();
-        $empty = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $empty = self::scratchPath('knossos-stale');
         mkdir($empty);
         try {
             $d = (new ComponentDetailService($pdo))->detail($empty, 'Greeter');
@@ -150,7 +150,7 @@ final class ComponentDetailServiceTest extends KnossosTestCase
     #[Group('query')]
     public function testCounterpartsAreListedMostConnectedFirstAndBounded(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/' . self::FIXTURE, $root);
         for ($i = 0; $i < 10; ++$i) {
             // Caller 0 greets three times, the rest once each: one edge each.

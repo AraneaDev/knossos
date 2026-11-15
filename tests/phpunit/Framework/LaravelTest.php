@@ -18,7 +18,6 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class LaravelTest extends KnossosTestCase
 {
@@ -94,10 +93,7 @@ final class LaravelTest extends KnossosTestCase
     #[Group('laravel')]
     public function testLaravelScanPersistsExplicitPathAndNamingRoleConfidence(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-laravel-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate Laravel database.');
-        }
+        $path = self::scratchFile('knossos-laravel');
         $root = self::repositoryRoot() . '/tests/Fixtures/laravel';
         try {
             $pdo = SqliteConnection::open($path);

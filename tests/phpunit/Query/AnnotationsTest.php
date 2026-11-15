@@ -356,7 +356,7 @@ final class AnnotationsTest extends KnossosTestCase
     public function testAnAnnotationRecordsItsAuthorAndAPersonAndAModelCanAnnotateAlike(): void
     {
         // A database as it stood before authors: every row says 'agent'.
-        $before = sys_get_temp_dir() . '/knossos-migrations-' . bin2hex(random_bytes(6));
+        $before = self::scratchPath('knossos-migrations');
         mkdir($before);
         try {
             foreach (glob(self::repositoryRoot() . '/migrations/*.sql') as $file) {

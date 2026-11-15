@@ -4,12 +4,13 @@
 # verifies, and a tree that runs doctor and scans a project on its own.
 # The build is slow (composer, npm, cargo), so it happens once.
 set -u
+# shellcheck source=tests/shell/lib/scratch.sh
+. "$(dirname -- "$0")/lib/scratch.sh"
 
 HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 ROOT="$HERE/../.."
 failures=0
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
 
 pass() { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }

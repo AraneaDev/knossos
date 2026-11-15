@@ -39,7 +39,7 @@ final class StoreTest extends KnossosTestCase
     #[Group('store')]
     public function testTheIntentionalAnnotationMigrationKeepsEveryRecordedAnnotation(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-annotation-migration-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale-annotation-migration');
         mkdir($directory, 0700);
         foreach (glob(self::repositoryRoot() . '/migrations/0*.sql') ?: [] as $migration) {
             if (!str_starts_with(basename($migration), '020_')) {
@@ -68,7 +68,7 @@ final class StoreTest extends KnossosTestCase
     #[Group('store')]
     public function testOccurrenceEdgeMigrationPreservesLegacyRowsAndPermitsRepeatedRelations(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-edge-migration-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-edge-migration');
         mkdir($directory, 0700);
         copy(self::repositoryRoot() . '/migrations/001_initial_graph.sql', $directory . '/001_initial_graph.sql');
         // The fixture writer persists line_count and language, so the baseline
@@ -118,10 +118,7 @@ final class StoreTest extends KnossosTestCase
     #[Group('store')]
     public function testFileSqliteConnectionsEnableWal(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-store-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate temporary database path.');
-        }
+        $path = self::scratchFile('knossos-store');
 
         try {
             $pdo = SqliteConnection::open($path);
@@ -256,10 +253,7 @@ final class StoreTest extends KnossosTestCase
             ["\n\n\n", 3],
         ];
         foreach ($cases as [$content, $expected]) {
-            $path = tempnam(sys_get_temp_dir(), 'knossos-fp-');
-            if ($path === false) {
-                throw new RuntimeException('Unable to allocate fingerprint fixture.');
-            }
+            $path = self::scratchFile('knossos-fp');
             try {
                 file_put_contents($path, $content);
                 $fingerprint = FileFingerprint::compute($path);
@@ -270,10 +264,7 @@ final class StoreTest extends KnossosTestCase
             }
         }
         // Large bounded file: exactly N newline-terminated physical lines.
-        $large = tempnam(sys_get_temp_dir(), 'knossos-fp-large-');
-        if ($large === false) {
-            throw new RuntimeException('Unable to allocate large fingerprint fixture.');
-        }
+        $large = self::scratchFile('knossos-fp-large');
         try {
             file_put_contents($large, str_repeat("x\n", 5000));
             assertSame(5000, FileFingerprint::compute($large)?->lineCount);
@@ -281,7 +272,7 @@ final class StoreTest extends KnossosTestCase
             @unlink($large);
         }
         // An unreadable path returns null rather than throwing mid-discovery.
-        assertSame(null, FileFingerprint::compute(sys_get_temp_dir() . '/knossos-missing-' . bin2hex(random_bytes(6))));
+        assertSame(null, FileFingerprint::compute(self::scratchPath('knossos-missing')));
     }
 
     /**
@@ -406,7 +397,7 @@ final class StoreTest extends KnossosTestCase
     #[Group('store')]
     public function testEditingAnAppliedMigrationIsRefused(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-migration-immutability-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-migration-immutability');
         mkdir($directory, 0700);
         $migration = $directory . '/001_temporary.sql';
         file_put_contents($migration, "-- a temporary migration\nCREATE TABLE temporary_probe (id TEXT PRIMARY KEY);\n");

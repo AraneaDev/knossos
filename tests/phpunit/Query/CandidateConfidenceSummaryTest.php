@@ -28,7 +28,7 @@ final class CandidateConfidenceSummaryTest extends KnossosTestCase
 
     public function testTheSummaryAndBoundsSplitTheCandidatesByConfidence(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-confidence-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-confidence');
         mkdir($root . '/src', 0o777, true);
         file_put_contents($root . '/src/Mode.php', "<?php\nfinal class Mode\n{\n    public function label(): string { return ''; }\n    public function unused(): string { return ''; }\n    public function retired(): string { return ''; }\n}\n");
         file_put_contents($root . '/src/Loop.php', "<?php\nfinal class Loop\n{\n    public function run(\$mode): string { return \$mode->label(); }\n}\n");

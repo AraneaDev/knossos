@@ -141,7 +141,7 @@ final class SqliteScanLifecycleTest extends KnossosTestCase
     #[Group('store')]
     public function testPruningASnapshotDeletesItsMetrics(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-metrics-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-metrics');
         mkdir($root . '/src', 0o777, true);
         try {
             $pdo = $this->freshTestDatabase();

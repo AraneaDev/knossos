@@ -140,7 +140,7 @@ final class LaravelExecutionFactsTest extends KnossosTestCase
     private function scan(string $source): array
     {
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
-        $root = sys_get_temp_dir() . '/knossos-stale-laravel-execution-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-laravel-execution');
         mkdir($root);
         file_put_contents($root . '/Subject.php', $source);
         try {

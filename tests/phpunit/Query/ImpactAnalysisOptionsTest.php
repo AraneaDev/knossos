@@ -152,7 +152,7 @@ final class ImpactAnalysisOptionsTest extends KnossosTestCase
      */
     public function testAFrameworkHookIsDependedOnByWhatUsesItsClass(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-impact-hook-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-impact-hook');
         $files = [
             'app/Models/Order.php' => '<?php namespace App\\Models; use Database\\Factories\\OrderFactory; use Illuminate\\Database\\Eloquent\\Model;'
                 . ' final class Order extends Model { protected static function newFactory(): OrderFactory { return OrderFactory::new(); } public function total(): int { return 0; } }',

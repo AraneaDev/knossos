@@ -70,7 +70,7 @@ final class SqliteTransactionsBusyTest extends KnossosTestCase
 
     private static function databasePath(): string
     {
-        return sys_get_temp_dir() . '/knossos-busy-' . bin2hex(random_bytes(6)) . '.sqlite';
+        return self::scratchPath('knossos-busy') . '.sqlite';
     }
 
     private static function removeDatabase(string $path): void

@@ -7,10 +7,9 @@ namespace Knossos\Tests\Phpunit\Configuration;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Discovery\DiscoveryException;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 #[Group('project-configuration-loader')]
-final class ProjectConfigurationLoaderTest extends TestCase
+final class ProjectConfigurationLoaderTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     private string $tempDir;
 
@@ -28,7 +27,7 @@ final class ProjectConfigurationLoaderTest extends TestCase
 
     private function freshProjectRoot(): string
     {
-        $this->tempDir = sys_get_temp_dir() . '/knossos-project-' . uniqid('', true);
+        $this->tempDir = self::scratchPath('knossos-project');
         mkdir($this->tempDir, 0777, true);
 
         return $this->tempDir;
@@ -42,7 +41,7 @@ final class ProjectConfigurationLoaderTest extends TestCase
      */
     private static function isolatedRoot(string $filename, string $contents): string
     {
-        $root = sys_get_temp_dir() . '/knossos-bound-' . uniqid('', true);
+        $root = self::scratchPath('knossos-bound');
         mkdir($root, 0o777, true);
         file_put_contents($root . '/' . $filename, $contents);
         register_shutdown_function(static function () use ($root, $filename): void {
@@ -582,7 +581,7 @@ JSON;
 
     public function testLoaderAcceptsDeadCodeSuppressions(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-config-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-config');
         mkdir($root, 0755, true);
         try {
             file_put_contents(
@@ -599,7 +598,7 @@ JSON;
 
     public function testLoaderRejectsNonStringSuppressions(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-config-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-config');
         mkdir($root, 0755, true);
         try {
             file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'dead_code_suppressions' => [42]]));
@@ -615,7 +614,7 @@ JSON;
 
     public function testLoaderReadsDiagnosticSuppressionsAndRejectsMalformedOnes(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-config-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-config');
         mkdir($root, 0755, true);
         try {
             file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'diagnostic_suppressions' => [

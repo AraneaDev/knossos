@@ -30,7 +30,7 @@ final class PhpWorkerMemoryLimitTest extends KnossosTestCase
     /** Start the worker with this memory_limit, close its input, and read back the limit it ended under. */
     private function limitTheWorkerRunsUnder(string $limit): string
     {
-        $directory = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-stale');
         mkdir($directory, 0o700, true);
         try {
             $record = $directory . '/limit.txt';

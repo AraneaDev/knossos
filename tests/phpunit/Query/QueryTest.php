@@ -214,10 +214,7 @@ final class QueryTest extends KnossosTestCase
     #[Group('query')]
     public function testScanAndQueryServicesAnswerMixedLanguageArchitectureQuestions(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-query-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate query database.');
-        }
+        $path = self::scratchFile('knossos-query');
         $root = self::repositoryRoot() . '/tests/Fixtures/mixed';
         try {
             $pdo = SqliteConnection::open($path);
@@ -433,10 +430,7 @@ final class QueryTest extends KnossosTestCase
     #[Group('query')]
     public function testMcpStdioLifecycleListsToolsAndContainsValidationErrors(): void
     {
-        $path = tempnam(sys_get_temp_dir(), 'knossos-');
-        if ($path === false) {
-            throw new RuntimeException('Unable to allocate MCP database.');
-        }
+        $path = self::scratchFile('knossos');
         $root = self::repositoryRoot() . '/tests/Fixtures/mixed';
         $process = null;
         try {

@@ -22,7 +22,7 @@ final class DoctorServiceTest extends KnossosTestCase
     protected function setUp(): void
     {
         $this->pdo = SqliteConnection::open(':memory:');
-        $this->installationRoot = sys_get_temp_dir() . '/knossos-doctor-' . uniqid('', true);
+        $this->installationRoot = self::scratchPath('knossos-doctor');
         mkdir($this->installationRoot, 0777, true);
     }
 
@@ -247,13 +247,13 @@ final class DoctorServiceTest extends KnossosTestCase
 
     public function testRunDataWritablePassesForWritableTempDir(): void
     {
-        // sys_get_temp_dir() is always writable.
-        $service = new DoctorService($this->pdo, $this->installationRoot, sys_get_temp_dir() . '/knossos-test.sqlite');
+        // A scratch path's directory is always writable.
+        $service = new DoctorService($this->pdo, $this->installationRoot, $database = self::scratchPath('knossos-test') . '.sqlite');
 
         $check = $this->findCheck($service->run(), 'data.writable');
 
         assertSame('ok', $check['status']);
-        assertSame(sys_get_temp_dir(), $check['detail']);
+        assertSame(dirname($database), $check['detail']);
     }
 
     public function testRunDataWritableFailsForNonWritableDir(): void

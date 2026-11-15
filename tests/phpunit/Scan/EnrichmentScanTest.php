@@ -40,10 +40,10 @@ final class EnrichmentScanTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-enrichment-scan-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-enrichment-scan');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/endpoint-routes', $this->root);
         $this->requestEnrichers(['fixture']);
-        $this->installation = sys_get_temp_dir() . '/knossos-stale-enrichment-install-' . bin2hex(random_bytes(6));
+        $this->installation = self::scratchPath('knossos-stale-enrichment-install');
         mkdir($this->installation, 0o777, true);
         $this->install();
         $this->setMode('ok');

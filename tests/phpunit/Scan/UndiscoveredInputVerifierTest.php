@@ -27,8 +27,8 @@ final class UndiscoveredInputVerifierTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
-        $this->outside = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
+        $this->outside = self::scratchPath('knossos-stale');
         mkdir($this->root . '/node_modules/dep', 0o777, true);
         mkdir($this->outside, 0o777, true);
         file_put_contents($this->root . '/' . self::DEP, "export declare const dep: 1;\n");

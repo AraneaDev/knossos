@@ -157,7 +157,7 @@ final class ScannerSdkTest extends KnossosTestCase
     #[Group('scanner-sdk')]
     public function testConformanceArgumentAnchorRewritesOnlyArgumentsThatLookLikePaths(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-anchor-test-' . bin2hex(random_bytes(8));
+        $directory = self::scratchPath('knossos-anchor-test');
         mkdir($directory);
         mkdir($directory . '/sub');
         touch($directory . '/worker.php');

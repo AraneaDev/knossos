@@ -26,7 +26,7 @@ final class NotesTransferExportTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/knossos-stale-notes-' . bin2hex(random_bytes(6));
+        $this->tempDir = self::scratchPath('knossos-stale-notes');
         mkdir($this->tempDir, 0o755, true);
         $this->pdo = SqliteConnection::open(':memory:');
         (new MigrationRunner($this->pdo, self::repositoryRoot() . '/migrations'))->migrate();

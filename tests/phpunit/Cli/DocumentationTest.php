@@ -178,7 +178,7 @@ final class DocumentationTest extends KnossosTestCase
      */
     private function checkDocumentationTree(array $files, array $without = []): array
     {
-        $tree = sys_get_temp_dir() . '/knossos-doc-check-' . bin2hex(random_bytes(6));
+        $tree = self::scratchPath('knossos-doc-check');
         try {
             foreach (array_diff(['docs', 'skills', 'plugins'], $without) as $directory) {
                 if (!is_dir($tree . '/' . $directory) && !mkdir($tree . '/' . $directory, 0o777, true) && !is_dir($tree . '/' . $directory)) {
@@ -305,7 +305,7 @@ final class DocumentationTest extends KnossosTestCase
         assertSame(0, $exit, $errors);
         assertContains('Skill copies are current.', $output);
 
-        $root = sys_get_temp_dir() . '/knossos-stale-skill-copies-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-skill-copies');
         mkdir($root . '/skills/graph', 0o700, true);
         mkdir($root . '/plugins/knossos/skills/knossos', 0o700, true);
         try {
@@ -454,7 +454,7 @@ final class DocumentationTest extends KnossosTestCase
      */
     private function checkExternalLinkWithFakeCurl(array $statuses, bool $retryAfter = true): array
     {
-        $directory = sys_get_temp_dir() . '/knossos-fake-curl-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-fake-curl');
         mkdir($directory, 0o777, true);
         $script = $directory . '/curl';
         $header = $retryAfter ? 'Retry-After: 0\r\n' : '';
@@ -470,7 +470,7 @@ final class DocumentationTest extends KnossosTestCase
         $previous = getenv('KNOSSOS_CURL');
         putenv('KNOSSOS_CURL=' . $script);
         try {
-            $tree = sys_get_temp_dir() . '/knossos-doc-check-' . bin2hex(random_bytes(6));
+            $tree = self::scratchPath('knossos-doc-check');
             foreach (['docs', 'skills', 'plugins'] as $root) {
                 mkdir($tree . '/' . $root, 0o777, true);
             }
@@ -572,7 +572,7 @@ final class DocumentationTest extends KnossosTestCase
     #[Group('documentation')]
     public function testGeneratedReferenceCheckRefusesAStaleCopy(): void
     {
-        $docs = sys_get_temp_dir() . '/knossos-reference-' . bin2hex(random_bytes(6));
+        $docs = self::scratchPath('knossos-reference');
         mkdir($docs, 0o700, true);
         try {
             foreach (['cli.md', 'mcp-tools.md', 'api.md'] as $page) {
@@ -619,7 +619,7 @@ final class DocumentationTest extends KnossosTestCase
      */
     private function lintMarkdownTree(array $files): array
     {
-        $tree = sys_get_temp_dir() . '/knossos-lint-md-' . bin2hex(random_bytes(6));
+        $tree = self::scratchPath('knossos-lint-md');
         mkdir($tree, 0o700, true);
         try {
             copy(self::repositoryRoot() . '/.markdownlint-cli2.jsonc', $tree . '/.markdownlint-cli2.jsonc');
@@ -645,7 +645,7 @@ final class DocumentationTest extends KnossosTestCase
      */
     private function checkApiTree(array $files): array
     {
-        $tree = sys_get_temp_dir() . '/knossos-api-doc-' . bin2hex(random_bytes(6));
+        $tree = self::scratchPath('knossos-api-doc');
         try {
             foreach (glob(self::repositoryRoot() . '/workers/typescript/src/*.js') ?: [] as $module) {
                 $files['workers/typescript/src/' . basename($module)] = (string) file_get_contents($module);

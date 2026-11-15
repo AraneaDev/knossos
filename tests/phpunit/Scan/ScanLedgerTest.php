@@ -261,7 +261,7 @@ final class ScanLedgerTest extends KnossosTestCase
     #[Group('query')]
     public function testConcurrentRecordersCannotCorruptAMerge(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root);
         $database = $root . '/knossos.sqlite';
         try {
@@ -363,7 +363,7 @@ final class ScanLedgerTest extends KnossosTestCase
     #[Group('query')]
     public function testTheActiveSnapshotAndTheEntriesAreReadAsOneMoment(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root);
         $path = $root . '/knossos.sqlite';
         try {

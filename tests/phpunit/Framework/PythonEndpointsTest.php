@@ -309,7 +309,7 @@ final class PythonEndpointsTest extends KnossosTestCase
      */
     private function scanSource(array $files): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-python-endpoints-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale-python-endpoints');
         foreach ($files as $path => $contents) {
             @mkdir(dirname($root . '/' . $path), 0o777, true);
             file_put_contents($root . '/' . $path, $contents);

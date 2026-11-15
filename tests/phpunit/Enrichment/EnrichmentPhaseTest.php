@@ -23,7 +23,7 @@ final class EnrichmentPhaseTest extends KnossosTestCase
 {
     public function testAFailingCarryOverBecomesTheEnrichersDiagnostic(): void
     {
-        $installation = sys_get_temp_dir() . '/knossos-stale-phase-' . bin2hex(random_bytes(6));
+        $installation = self::scratchPath('knossos-stale-phase');
         mkdir($installation);
         try {
             file_put_contents($installation . '/enrichers.json', '{"enrichers": [{"name": "fixture", "command": ["unused"]}]}');

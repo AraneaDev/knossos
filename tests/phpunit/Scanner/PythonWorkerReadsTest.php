@@ -23,7 +23,7 @@ final class PythonWorkerReadsTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-python-worker-reads-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-python-worker-reads');
         mkdir($this->root, 0o777, true);
         $this->root = (string) realpath($this->root);
     }

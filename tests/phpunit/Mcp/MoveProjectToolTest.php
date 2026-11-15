@@ -105,7 +105,7 @@ final class MoveProjectToolTest extends KnossosTestCase
             'INSERT INTO annotations(project_id, canonical_name, kind, value, author, created_at, updated_at) ' .
             "VALUES (:project, 'App\\A', 'note', 'v', 'model', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
         )->execute(['project' => $oldId]);
-        $newRoot = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $newRoot = self::scratchPath('knossos-stale');
         mkdir($newRoot . '/src', 0o700, true);
         file_put_contents($newRoot . '/src/A.php', "<?php\nnamespace App;\nfinal class A {}\n");
 

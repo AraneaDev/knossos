@@ -67,7 +67,7 @@ final class CliArgumentsTest extends KnossosTestCase
     #[Group('documentation')]
     public function testWriteJsonReportCreatesTheDirectoryAndWritesPrettyJson(): void
     {
-        $directory = sys_get_temp_dir() . '/knossos-report-' . bin2hex(random_bytes(6));
+        $directory = self::scratchPath('knossos-report');
         $path = $directory . '/nested/report.json';
         $code = 'require ' . var_export(self::guardTool('lib/cli-arguments.php'), true) . ';'
             . ' writeJsonReport(' . var_export($path, true) . ', ["path" => "a/b", "n" => 1], "test report");';
@@ -87,8 +87,7 @@ final class CliArgumentsTest extends KnossosTestCase
     #[Group('documentation')]
     public function testWriteJsonReportRefusesADirectoryItCannotMake(): void
     {
-        $blocker = tempnam(sys_get_temp_dir(), 'knossos-blocker-');
-        self::assertIsString($blocker);
+        $blocker = self::scratchFile('knossos-blocker');
         $code = 'require ' . var_export(self::guardTool('lib/cli-arguments.php'), true) . ';'
             . ' try { writeJsonReport(' . var_export($blocker . '/report.json', true) . ', [], "test report"); }'
             . ' catch (RuntimeException $e) { echo $e->getMessage(); }';

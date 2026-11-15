@@ -34,7 +34,7 @@ final class CreationBriefReadingTest extends KnossosTestCase
      */
     private function scanned(string $suffix = 'Service', string $command = 'make cs'): array
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         $this->roots[] = $root;
         mkdir($root . '/src/Query', 0o777, true);
         foreach (['A', 'B', 'C', 'D', 'E', 'F'] as $name) {
@@ -75,7 +75,7 @@ final class CreationBriefReadingTest extends KnossosTestCase
     public function testASymlinkedDirectoryOutsideTheRootIsNotFollowed(): void
     {
         [$root, , $projectId, $service] = $this->scanned();
-        $outside = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $outside = self::scratchPath('knossos-stale');
         $this->roots[] = $outside;
         mkdir($outside);
         symlink($outside, $root . '/linked');

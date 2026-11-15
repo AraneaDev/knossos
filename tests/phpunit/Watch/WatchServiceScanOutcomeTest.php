@@ -29,7 +29,7 @@ final class WatchServiceScanOutcomeTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-watch-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-watch');
         mkdir($this->root . '/src', 0o700, true);
         file_put_contents($this->root . '/src/A.php', "<?php\n");
     }

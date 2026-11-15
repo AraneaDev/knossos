@@ -61,7 +61,7 @@ final class FileContextToolTest extends KnossosTestCase
     public function testALinkToAnotherProjectsFileIsNotAnsweredForThisOne(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture('turn-brief');
-        $other = sys_get_temp_dir() . '/knossos-stale-other-' . bin2hex(random_bytes(4));
+        $other = self::scratchPath('knossos-stale-other');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $other);
         try {
             (new ProjectScanService($pdo, self::repositoryRoot(), [$other]))->scan($other);

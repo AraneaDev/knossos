@@ -14,7 +14,6 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class RustFrameworksTest extends KnossosTestCase
 {
@@ -24,11 +23,8 @@ final class RustFrameworksTest extends KnossosTestCase
         if (!is_file(self::rustWorkerBinary())) {
             self::markTestSkipped('The Rust worker binary is not built.');
         }
-        $root = sys_get_temp_dir() . '/knossos-rust-frameworks-' . bin2hex(random_bytes(6));
-        $database = tempnam(sys_get_temp_dir(), 'knossos-rust-frameworks-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate Rust framework database.');
-        }
+        $root = self::scratchPath('knossos-rust-frameworks');
+        $database = self::scratchFile('knossos-rust-frameworks');
         mkdir($root . '/src', 0o700, true);
         file_put_contents($root . '/Cargo.toml', <<<'TOML'
 [package]
@@ -78,7 +74,7 @@ RUST);
         if (!is_file(self::rustWorkerBinary())) {
             self::markTestSkipped('The Rust worker binary is not built.');
         }
-        $root = sys_get_temp_dir() . '/knossos-rust-route-worker-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-rust-route-worker');
         mkdir($root . '/src', 0o700, true);
         file_put_contents($root . '/src/routes.rs', <<<'RUST'
 #[get("/ping")]
@@ -129,7 +125,7 @@ RUST);
         if (!is_file(self::rustWorkerBinary())) {
             self::markTestSkipped('The Rust worker binary is not built.');
         }
-        $root = sys_get_temp_dir() . '/knossos-stale-rust-template-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-rust-template');
         mkdir($root . '/src', 0o700, true);
         mkdir($root . '/web', 0o700, true);
         file_put_contents($root . '/Cargo.toml', "[package]\nname = \"users\"\nversion = \"0.1.0\"\n\n[dependencies]\naxum = \"0.7\"\n");
@@ -160,7 +156,7 @@ RUST);
         if (!is_file(self::rustWorkerBinary())) {
             self::markTestSkipped('The Rust worker binary is not built.');
         }
-        $root = sys_get_temp_dir() . '/knossos-stale-rust-nest-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-rust-nest');
         mkdir($root . '/src', 0o700, true);
         mkdir($root . '/web', 0o700, true);
         file_put_contents($root . '/Cargo.toml', "[package]\nname = \"users\"\nversion = \"0.1.0\"\n\n[dependencies]\naxum = \"0.7\"\n");

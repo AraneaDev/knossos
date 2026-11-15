@@ -81,7 +81,7 @@ final class WebCommandTest extends KnossosTestCase
      */
     private function runWith(?string $version, int $exit = 0, array $positionals = [], array $options = []): array
     {
-        $bin = sys_get_temp_dir() . '/knossos-stale-web-' . bin2hex(random_bytes(4));
+        $bin = self::scratchPath('knossos-stale-web');
         mkdir($bin);
         $calls = $bin . '/calls';
         if ($version !== null) {

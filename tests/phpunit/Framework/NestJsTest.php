@@ -14,7 +14,6 @@ use Knossos\Store\SqliteConnection;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\ScanLimits;
 use PHPUnit\Framework\Attributes\Group;
-use RuntimeException;
 
 final class NestJsTest extends KnossosTestCase
 {
@@ -43,10 +42,7 @@ final class NestJsTest extends KnossosTestCase
         assertSame(2, count(array_filter($edges, fn(EdgeFact $edge): bool => in_array($edge->attributes['nestjs_module_field'] ?? null, ['controllers', 'providers'], true))));
         assertSame(1, count(array_filter($edges, fn(EdgeFact $edge): bool => ($edge->attributes['nestjs_module_field'] ?? null) === 'exports')));
 
-        $database = tempnam(sys_get_temp_dir(), 'knossos-nest-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate NestJS database.');
-        }
+        $database = self::scratchFile('knossos-nest');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -72,7 +68,7 @@ final class NestJsTest extends KnossosTestCase
     #[Group('nestjs')]
     public function testACallerReachesAControllerBehindTheGlobalPrefix(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-nest-prefix-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-nest-prefix');
         $files = [
             'package.json' => "{\"name\": \"api\", \"private\": true, \"dependencies\": {\"@nestjs/common\": \"10.0.0\", \"@nestjs/core\": \"10.0.0\"}}\n",
             'src/main.ts' => "import { NestFactory } from '@nestjs/core';\nimport { AppModule } from './app.module';\n"
@@ -117,7 +113,7 @@ final class NestJsTest extends KnossosTestCase
     #[Group('nestjs')]
     public function testTheGlobalPrefixIsReportedAsWrittenOrAsUnknown(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-nest-settings-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-nest-settings');
         $files = [
             'src/main.ts' => "import { NestFactory } from '@nestjs/core';\ndeclare const AppModule: object;\n"
                 . "async function bootstrap(): Promise<void> {\n    const app = await NestFactory.create(AppModule);\n"

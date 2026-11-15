@@ -89,7 +89,7 @@ final class QueryCommandContractTest extends KnossosTestCase
         $budgets = self::temporaryJson(['new_cycles' => 0]);
         // The project argument is resolved before any option is read, so it
         // has to name a project; one row is enough, with no snapshot behind it.
-        $database = sys_get_temp_dir() . '/knossos-stale-bounds-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $database = self::scratchPath('knossos-stale-bounds') . '.sqlite';
         (new RuntimeFactory(self::repositoryRoot()))->database($database)
             ->exec("INSERT INTO projects (id, name, root_realpath, created_at, updated_at) VALUES ('p1', 'p1', '/p1', 'now', 'now')");
         $checked = 0;
@@ -151,7 +151,7 @@ final class QueryCommandContractTest extends KnossosTestCase
         foreach (ToolCatalog::definitions(false) as $definition) {
             $schemas[$definition['name']] = (array) ($definition['inputSchema']['properties'] ?? []);
         }
-        $database = sys_get_temp_dir() . '/knossos-stale-defaults-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $database = self::scratchPath('knossos-stale-defaults') . '.sqlite';
         [, $repository, $ids] = $this->storeFixture(null, (new RuntimeFactory(self::repositoryRoot()))->database($database));
         $repository->completeScan($ids['project'], $ids['scan']);
         $positionals = [$ids['project'], 'App\\Checkout', 'App\\InvoiceService'];
@@ -207,7 +207,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     #[\PHPUnit\Framework\Attributes\DataProvider('invalidValueOptions')]
     public function testEachValueOptionReachesTheQuery(string $command, int $arity, array $options, string $message): void
     {
-        $database = sys_get_temp_dir() . '/knossos-stale-values-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $database = self::scratchPath('knossos-stale-values') . '.sqlite';
         [, $repository, $ids] = $this->storeFixture(null, (new RuntimeFactory(self::repositoryRoot()))->database($database));
         $repository->completeScan($ids['project'], $ids['scan']);
         try {
@@ -338,7 +338,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     public function testEachMirroredFlagReachesTheQuery(string $command, array $arguments, array $options, \Closure $expected): void
     {
         assertSame([], array_values(array_diff(array_keys($options), (new QueryCommand())->allowedOptions($command))));
-        $database = sys_get_temp_dir() . '/knossos-stale-flags-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $database = self::scratchPath('knossos-stale-flags') . '.sqlite';
         $pdo = (new RuntimeFactory(self::repositoryRoot()))->database($database);
         [, $repository, $ids] = $this->storeFixture(null, $pdo);
         self::addMemberOnlyDependant($repository, $ids);
@@ -404,7 +404,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     #[\PHPUnit\Framework\Attributes\DataProvider('outOfBoundsValues')]
     public function testTheCliRefusesWhatTheToolRefuses(string $command, array $arguments, array $options, string $message): void
     {
-        $database = sys_get_temp_dir() . '/knossos-stale-cli-bounds-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $database = self::scratchPath('knossos-stale-cli-bounds') . '.sqlite';
         [, $repository, $ids] = $this->storeFixture(null, (new RuntimeFactory(self::repositoryRoot()))->database($database));
         $repository->completeScan($ids['project'], $ids['scan']);
         try {
@@ -432,7 +432,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     {
         assertSame(true, in_array('ranking-mode', (new QueryCommand())->allowedOptions('suggest-location'), true));
 
-        $base = sys_get_temp_dir() . '/knossos-stale-ranking-' . bin2hex(random_bytes(6));
+        $base = self::scratchPath('knossos-stale-ranking');
         $root = $base . '/project';
         $database = $base . '/data/knossos.sqlite';
 
@@ -554,7 +554,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     #[Group('cli')]
     public function testCheckArchitectureExitsOneOnlyOnAViolation(): void
     {
-        $database = sys_get_temp_dir() . '/knossos-stale-check-exit-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $database = self::scratchPath('knossos-stale-check-exit') . '.sqlite';
         $pdo = (new RuntimeFactory(self::repositoryRoot()))->database($database);
         [, $repository, $ids] = $this->storeFixture(null, $pdo);
         $boundary = \Knossos\Store\StableId::boundary($ids['project'], 'Core', 'explicit');
@@ -602,7 +602,7 @@ final class QueryCommandContractTest extends KnossosTestCase
      */
     private function withScannedFixture(\Closure $test): void
     {
-        $base = sys_get_temp_dir() . '/knossos-stale-switches-' . bin2hex(random_bytes(6));
+        $base = self::scratchPath('knossos-stale-switches');
         $root = $base . '/project';
         $database = $base . '/data/knossos.sqlite';
         try {
@@ -629,7 +629,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     /** Write a JSON value to a temporary file and return its path. */
     private static function temporaryJson(mixed $value): string
     {
-        $path = sys_get_temp_dir() . '/knossos-contract-' . bin2hex(random_bytes(6)) . '.json';
+        $path = self::scratchPath('knossos-contract') . '.json';
         file_put_contents($path, json_encode($value, JSON_THROW_ON_ERROR));
 
         return $path;
@@ -643,7 +643,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     #[Group('cli')]
     public function testAnUnpinnedQueryFindsTheGraphNearestItsArgumentAndCreatesNone(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-nearest-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale-nearest');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
         $root = (string) realpath($root);
         mkdir($root . '/.knossos', 0700);
@@ -688,7 +688,7 @@ final class QueryCommandContractTest extends KnossosTestCase
     public function testAQueryCommandTakesAPathAsWellAsAnId(): void
     {
         [, $projectId, $root] = $this->scanTempFixture('turn-brief');
-        $database = sys_get_temp_dir() . '/knossos-stale-cli-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $database = self::scratchPath('knossos-stale-cli') . '.sqlite';
         try {
             (new ProjectScanService((new RuntimeFactory(self::repositoryRoot()))->database($database), self::repositoryRoot(), [$root]))->scan($root);
             $context = new CliCommandContext(new CliOptionParser(), new CliInputLoader(), new RuntimeFactory(self::repositoryRoot()), $database);

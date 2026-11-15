@@ -49,7 +49,7 @@ final class NotesServiceTest extends KnossosTestCase
      */
     public function testANoteOnAMovedComponentCarriesTheSuggestedComponent(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-notes-suggest-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-notes-suggest');
         mkdir($root . '/src/Old', 0o777, true);
         mkdir($root . '/src/New', 0o777, true);
         file_put_contents($root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');
@@ -84,7 +84,7 @@ final class NotesServiceTest extends KnossosTestCase
      */
     public function testSuggestionsPastTheirBudgetAreLeftOutAndFoundLater(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-notes-budget-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-notes-budget');
         mkdir($root . '/src/Old', 0o777, true);
         mkdir($root . '/src/New', 0o777, true);
         file_put_contents($root . '/composer.json', '{"name":"app/app","autoload":{"psr-4":{"App\\\\":"src/"}}}');

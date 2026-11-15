@@ -249,7 +249,7 @@ final class FlowProfilesTest extends KnossosTestCase
     /** Important 2: the CLI's text output and the MCP tool both say how many branches a conflict cut off. */
     public function testCutBranchesReachTheCliTextAndTheMcpSummary(): void
     {
-        $database = sys_get_temp_dir() . '/knossos-stale-flow-profiles-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $database = self::scratchPath('knossos-stale-flow-profiles') . '.sqlite';
         $runtime = new RuntimeFactory(self::repositoryRoot());
         try {
             $this->pdo = $runtime->database($database);

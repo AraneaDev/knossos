@@ -22,7 +22,7 @@ final class ContributionOrderTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-order-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-order');
         mkdir($this->root . '/src', 0o777, true);
         file_put_contents($this->root . '/composer.json', '{"name": "app/order"}' . "\n");
         file_put_contents($this->root . '/src/A.php', "<?php\nnamespace App;\nclass Foo {}\n");

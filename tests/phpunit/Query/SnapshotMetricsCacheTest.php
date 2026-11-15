@@ -108,7 +108,7 @@ final class SnapshotMetricsCacheTest extends KnossosTestCase
     #[Group('query')]
     public function testAStoreNeverWaitsForALockedDatabase(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-metrics-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale-metrics');
         mkdir($root);
         try {
             $path = $root . '/knossos.sqlite';

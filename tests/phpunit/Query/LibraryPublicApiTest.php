@@ -21,7 +21,7 @@ final class LibraryPublicApiTest extends KnossosTestCase
 {
     public function testWhatAPublicPackagesEntryReExportsIsNotDeadCode(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-public-api-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-public-api');
         mkdir($root . '/packages/core/src', 0o777, true);
         mkdir($root . '/packages/app/src', 0o777, true);
         $files = [
@@ -63,7 +63,7 @@ final class LibraryPublicApiTest extends KnossosTestCase
      */
     public function testAnEntryInTheBuildOutputPublishesItsSourceTwin(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-public-dist-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-public-dist');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'package.json' => '{"name":"@acme/sdk","main":"dist/t.js","module":"dist/esm.mjs","types":"types/index.d.ts"}',

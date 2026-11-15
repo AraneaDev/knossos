@@ -26,7 +26,7 @@ final class MemberDeclaredInTest extends KnossosTestCase
         if (!is_file(self::rustWorkerBinary())) {
             self::markTestSkipped('The Rust worker binary is not built.');
         }
-        $root = sys_get_temp_dir() . '/knossos-stale-declared-in-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale-declared-in');
         mkdir($root . '/src', 0o700, true);
         file_put_contents($root . '/Cargo.toml', "[package]\nname = \"apart\"\nversion = \"0.1.0\"\n");
         file_put_contents($root . '/src/lib.rs', "mod state;\nmod routes;\n");

@@ -273,7 +273,7 @@ final class QualityDepsKeyTest extends KnossosTestCase
      */
     private function inSandbox(callable $test): void
     {
-        $sandbox = sys_get_temp_dir() . '/knossos-deps-key-' . bin2hex(random_bytes(6));
+        $sandbox = self::scratchPath('knossos-deps-key');
         try {
             $inputs = array_values(array_filter(explode("\n", $this->runKeyScript(self::repositoryRoot(), ['--inputs'])), static fn(string $line): bool => $line !== ''));
             mkdir($sandbox . '/tools', 0o777, true);

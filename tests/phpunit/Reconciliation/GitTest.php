@@ -112,8 +112,8 @@ final class GitTest extends KnossosTestCase
         if ($git === null) {
             self::markTestSkipped('git is not available on this host.');
         }
-        $root = sys_get_temp_dir() . '/knossos-git-' . bin2hex(random_bytes(6));
-        $plain = sys_get_temp_dir() . '/knossos-git-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-git');
+        $plain = self::scratchPath('knossos-git');
         if (!mkdir($root . '/src', 0700, true) || !mkdir($plain, 0700, true)) {
             throw new RuntimeException('Unable to create Git fixtures.');
         }

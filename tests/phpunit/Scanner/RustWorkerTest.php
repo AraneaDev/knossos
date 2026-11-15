@@ -45,7 +45,7 @@ final class RustWorkerTest extends KnossosTestCase
 
     public function testScanningARustFileProducesDecodableFacts(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-rust-e2e-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-rust-e2e');
         mkdir($root . '/src', 0o700, true);
         file_put_contents($root . '/src/lib.rs', "pub struct Engine;\n\nimpl Engine {\n    pub fn start(&self) {}\n}\n");
         $client = $this->rustWorkerClient();
@@ -69,7 +69,7 @@ final class RustWorkerTest extends KnossosTestCase
 
     public function testRustWorkerReportsTheHashOfTheRawBytesItParsed(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'src/bom.rs' => "\xEF\xBB\xBFpub fn bom() {}\n",
@@ -105,7 +105,7 @@ final class RustWorkerTest extends KnossosTestCase
      */
     public function testRustWorkerReportsInputHashesForEveryFileItRead(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         $files = [
             'src/bom.rs' => "\xEF\xBB\xBFpub fn bom() {}\n",
@@ -141,7 +141,7 @@ final class RustWorkerTest extends KnossosTestCase
      */
     public function testARequestedFileWhoseReadFailsIsReportedAsNull(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root . '/src/dir.rs', 0o777, true);
         file_put_contents($root . '/src/big.rs', "pub fn big() {}\n");
         try {

@@ -11,11 +11,10 @@ use Knossos\Discovery\EntryPointResolver;
 use Knossos\Discovery\ProjectDiscoverer;
 use Knossos\Discovery\ProjectUnit;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 /** The cross-unit entry-point passes, asked with units built by hand. */
 #[Group('discovery')]
-final class EntryPointResolverTest extends TestCase
+final class EntryPointResolverTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     /**
      * A declaration file in an `outDir` stands for the source it describes:
@@ -179,7 +178,7 @@ final class EntryPointResolverTest extends TestCase
     /** An ignored page is never read, so it adds no entry point and reports nothing. */
     public function testAnIgnoredPageAddsNothing(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-html-ignored-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-html-ignored');
         mkdir($root . '/frontend', 0700, true);
         try {
             file_put_contents($root . '/frontend/index.html', "<script src=\"./app.js\"></script>\n<script src=\"./missing.js\"></script>\n");

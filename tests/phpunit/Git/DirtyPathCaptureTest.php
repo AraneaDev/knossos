@@ -127,7 +127,7 @@ final class DirtyPathCaptureTest extends KnossosTestCase
     #[Group('git')]
     public function testAFailedListingRecordsNothingRatherThanACleanTree(): void
     {
-        $log = sys_get_temp_dir() . '/knossos-dirty-breadcrumb-' . bin2hex(random_bytes(6)) . '.log';
+        $log = self::scratchPath('knossos-dirty-breadcrumb') . '.log';
         $previous = ini_set('error_log', $log);
         try {
             $set = (new DirtyPathResolver($this->failingRunner()))->resolve('/tmp/knossos-dirty', self::HEAD, []);

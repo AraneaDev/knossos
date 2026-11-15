@@ -60,8 +60,7 @@ final class DriftOracleSpecialFileTest extends KnossosTestCase
     #[Group('query')]
     public function testTheHelperPathHashesARegularFileLikeDiscoveryDoes(): void
     {
-        $file = tempnam(sys_get_temp_dir(), 'knossos-stale-');
-        self::assertIsString($file);
+        $file = self::scratchFile('knossos-stale');
         file_put_contents($file, "<?php\necho 1;\n");
         try {
             $expected = FileFingerprint::contentHashOf($file);
@@ -85,7 +84,7 @@ final class DriftOracleSpecialFileTest extends KnossosTestCase
         if (!function_exists('posix_mkfifo')) {
             self::markTestSkipped('posix_mkfifo is not available.');
         }
-        $fifo = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $fifo = self::scratchPath('knossos-stale');
         if (!posix_mkfifo($fifo, 0o644)) {
             self::markTestSkipped('The filesystem cannot hold a named pipe.');
         }

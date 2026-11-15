@@ -17,7 +17,7 @@ final class TreeFingerprintTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale');
         mkdir($this->root . '/src/new', 0o700, true);
         file_put_contents($this->root . '/src/a.ts', "export const a = 1;\n");
         file_put_contents($this->root . '/package.json', '{"name":"web"}');

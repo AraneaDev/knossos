@@ -40,7 +40,7 @@ final class ProjectDatabaseLocatorTest extends KnossosTestCase
     #[Group('cli')]
     public function testASubdirectoryResolvesToTheProjectDatabaseAbove(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-locator-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale-locator');
         mkdir($root . '/.knossos', 0700, true);
         mkdir($root . '/src/deep', 0700, true);
         touch($root . '/.knossos/knossos.sqlite');
@@ -55,7 +55,7 @@ final class ProjectDatabaseLocatorTest extends KnossosTestCase
     #[Group('cli')]
     public function testAnUnscannedDirectoryGetsItsOwnNonexistentPath(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-locator-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale-locator');
         mkdir($root, 0700, true);
         try {
             $found = (new ProjectDatabaseLocator())->locate($root, [], $this->context());
@@ -70,7 +70,7 @@ final class ProjectDatabaseLocatorTest extends KnossosTestCase
     #[Group('cli')]
     public function testAnExplicitDatabaseWins(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-locator-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale-locator');
         mkdir($root, 0700, true);
         try {
             $locator = new ProjectDatabaseLocator();
@@ -97,7 +97,7 @@ final class ProjectDatabaseLocatorTest extends KnossosTestCase
     #[Group('cli')]
     public function testTheHomeDatabaseServesOnlyAProjectItHoldsUnlessNothingIsNearer(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-locator-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale-locator');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/turn-brief', $root);
         $root = (string) realpath($root);
         $home = getenv('HOME') . '/.knossos/knossos.sqlite';

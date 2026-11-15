@@ -88,7 +88,7 @@ final class SessionGatesManifestTest extends KnossosTestCase
 
     private function root(): string
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root);
 
         return $root;

@@ -155,7 +155,7 @@ final class ScanPlannerDefaultsTest extends KnossosTestCase
 
     private static function emptyRoot(): string
     {
-        $root = sys_get_temp_dir() . '/knossos-planner-defaults-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-planner-defaults');
         mkdir($root, 0o755, true);
 
         return $root;

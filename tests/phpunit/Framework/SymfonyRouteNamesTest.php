@@ -203,7 +203,7 @@ final class SymfonyRouteNamesTest extends KnossosTestCase
             }
             PHP,
         ];
-        $root = sys_get_temp_dir() . '/knossos-stale-symfony-names-' . bin2hex(random_bytes(4));
+        $root = self::scratchPath('knossos-stale-symfony-names');
         foreach ($files as $path => $contents) {
             @mkdir(dirname($root . '/' . $path), 0o777, true);
             file_put_contents($root . '/' . $path, $contents);

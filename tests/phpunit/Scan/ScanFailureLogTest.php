@@ -15,7 +15,7 @@ final class ScanFailureLogTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->directory = sys_get_temp_dir() . '/knossos-failure-log-' . bin2hex(random_bytes(6));
+        $this->directory = self::scratchPath('knossos-failure-log');
         mkdir($this->directory, 0o700, true);
     }
 

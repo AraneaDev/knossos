@@ -28,7 +28,7 @@ final class GitListingRunnerTest extends KnossosTestCase
      */
     public function testAListingRunnerReadsAnAnswerPastTheDefaultCeiling(): void
     {
-        $dir = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(8));
+        $dir = self::scratchPath('knossos-stale');
         mkdir($dir, 0o700, true);
         $fakeGit = $dir . '/git';
         file_put_contents($fakeGit, "#!/bin/sh\nhead -c 3000000 /dev/zero\n");

@@ -21,7 +21,7 @@ final class RootsCommandTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/knossos-roots-' . bin2hex(random_bytes(4));
+        $this->tempDir = self::scratchPath('knossos-roots');
         mkdir($this->tempDir, 0o755, true);
     }
 
@@ -87,7 +87,7 @@ final class RootsCommandTest extends KnossosTestCase
         // Granted from the working directory but not under it, so the roots
         // file is merely in the wrong place rather than inside the project
         // being granted, which is refused outright instead.
-        $granted = sys_get_temp_dir() . '/knossos-granted-' . bin2hex(random_bytes(4));
+        $granted = self::scratchPath('knossos-granted');
         mkdir($granted, 0o755, true);
         try {
             // No database path at all, so the runtime falls back to <cwd>/.knossos,
@@ -221,7 +221,7 @@ final class RootsCommandTest extends KnossosTestCase
         if ($alias === '..') {
             $granted = $this->tempDir . '/../' . basename($this->tempDir);
         } else {
-            $granted = sys_get_temp_dir() . '/knossos-link-' . bin2hex(random_bytes(4));
+            $granted = self::scratchPath('knossos-link');
             symlink($this->tempDir, $granted);
         }
 

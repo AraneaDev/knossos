@@ -26,7 +26,7 @@ final class TypescriptGlobalSetTest extends KnossosTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->root = sys_get_temp_dir() . '/knossos-stale-ts-global-' . bin2hex(random_bytes(6));
+        $this->root = self::scratchPath('knossos-stale-ts-global');
         mkdir($this->root, 0o777, true);
         if (trim((string) @shell_exec('command -v node 2>/dev/null')) === '') {
             self::markTestSkipped('node is not on PATH.');

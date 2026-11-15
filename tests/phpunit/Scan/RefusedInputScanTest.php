@@ -22,8 +22,8 @@ final class RefusedInputScanTest extends KnossosTestCase
     #[Group('scan')]
     public function testAStableLayoutWithRefusedImportsScansFresh(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
-        $outside = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
+        $outside = self::scratchPath('knossos-stale');
         mkdir($root . '/src', 0o777, true);
         mkdir($root . '/pkg', 0o777, true);
         mkdir($outside, 0o777, true);
@@ -62,7 +62,7 @@ final class RefusedInputScanTest extends KnossosTestCase
     #[Group('scan')]
     public function testAStableLayoutWithInRootLinksScansFresh(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         foreach (['src', 'lib', 'deep/dir', 'packages/lib', 'node_modules', 'pkg', 'real', 'pdeep/dir'] as $directory) {
             mkdir($root . '/' . $directory, 0o777, true);
         }

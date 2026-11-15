@@ -7,7 +7,6 @@ namespace Knossos\Tests\Phpunit\Configuration;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 /**
  * The published schema and the loader must accept the same keys.
@@ -23,7 +22,7 @@ use PHPUnit\Framework\TestCase;
  * then refuses to load.
  */
 #[Group('configuration')]
-final class ProjectConfigurationSchemaAgreementTest extends TestCase
+final class ProjectConfigurationSchemaAgreementTest extends \Knossos\Tests\Phpunit\KnossosTestCase
 {
     /** @return array<string, array{list<string>, string}> */
     public static function sections(): array
@@ -150,7 +149,7 @@ final class ProjectConfigurationSchemaAgreementTest extends TestCase
         $schemaAccepts = preg_match('~' . $roots['propertyNames']['pattern'] . '~u', $prefix) === 1
             && preg_match('~' . $roots['additionalProperties']['pattern'] . '~u', $folder) === 1;
 
-        $root = sys_get_temp_dir() . '/knossos-web-roots-agreement-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-web-roots-agreement');
         mkdir($root, 0o755, true);
         try {
             file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'web_roots' => [$prefix => $folder]], JSON_THROW_ON_ERROR));
@@ -195,7 +194,7 @@ final class ProjectConfigurationSchemaAgreementTest extends TestCase
         $pattern = (string) preg_replace('/\\\\u([0-9A-Fa-f]{4})/', '\\x{$1}', $schema['properties']['gates']['items']['properties']['command']['pattern']);
         $schemaAccepts = preg_match('~' . $pattern . '~u', $command) === 1;
 
-        $root = sys_get_temp_dir() . '/knossos-stale-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-stale');
         mkdir($root, 0o755, true);
         try {
             file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'gates' => [['name' => 'g', 'command' => $command]]], JSON_THROW_ON_ERROR));

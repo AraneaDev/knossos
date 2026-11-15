@@ -24,15 +24,12 @@ final class WatchTest extends KnossosTestCase
     #[Group('watch')]
     public function testWatchOrchestrationDebouncesIncrementalChangesRecoversOverflowAndCancels(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-watch-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-watch');
         if (!mkdir($root . '/src', 0o700, true)) {
             throw new RuntimeException('Unable to create watch fixture.');
         }
         file_put_contents($root . '/src/A.php', "<?php\nfinal class A {}\n");
-        $database = tempnam(sys_get_temp_dir(), 'knossos-watch-db-');
-        if ($database === false) {
-            throw new RuntimeException('Unable to allocate watch database.');
-        }
+        $database = self::scratchFile('knossos-watch-db');
         try {
             $pdo = SqliteConnection::open($database);
             (new MigrationRunner($pdo, self::repositoryRoot() . '/migrations'))->migrate();
@@ -85,7 +82,7 @@ final class WatchTest extends KnossosTestCase
     #[Group('watch')]
     public function testWatchModeRetriesTransientScanFailuresAndStopsCleanlyOnFatalOnes(): void
     {
-        $root = sys_get_temp_dir() . '/knossos-watch-fail-' . bin2hex(random_bytes(6));
+        $root = self::scratchPath('knossos-watch-fail');
         if (!mkdir($root . '/src', 0o700, true)) {
             throw new RuntimeException('Unable to create watch fixture.');
         }
