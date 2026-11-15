@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.49.0](https://github.com/AraneaDev/knossos/compare/v0.48.0...v0.49.0) (2026-11-15)
+
+
+### Features
+
+* one spacing and wording system for the pane ([#501](https://github.com/AraneaDev/knossos/issues/501)) ([9502ea8](https://github.com/AraneaDev/knossos/commit/9502ea8f61e06d48be3542fca992aa11bb9023c4))
+* run Knossos from a container image with --mode=container ([#499](https://github.com/AraneaDev/knossos/issues/499)) ([7d2e684](https://github.com/AraneaDev/knossos/commit/7d2e684d41f0d7a68ee70d1a69a57883e63608c9))
+
+
+### Fixes
+
+* count inferred boundaries beside declared ones in the pane ([#506](https://github.com/AraneaDev/knossos/issues/506)) ([330f385](https://github.com/AraneaDev/knossos/commit/330f38500c00af8caabb71006d7c9b713542f72b))
+
 ## [0.48.0](https://github.com/AraneaDev/knossos/compare/v0.47.0...v0.48.0) (2026-11-14)
 
 
