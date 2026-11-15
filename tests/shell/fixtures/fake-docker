@@ -177,7 +177,7 @@ case $command in
                             esac
                         done
                         mkdir -p "$dir/hooks/scripts"
-                        printf "KNOSSOS_INSTALLED_DATA_DIR='%s'\nKNOSSOS_INSTALLED_BIN='%s'\nFROM_IMAGE='%s'\n" "$data" "$bin" "$image" > "$dir/hooks/scripts/lib.sh"
+                        printf "KNOSSOS_INSTALLED_DATA_DIR='%s'\nKNOSSOS_INSTALLED_ROOTS_FILE='__KNOSSOS_ROOTS_FILE__'\nKNOSSOS_INSTALLED_BIN='%s'\nFROM_IMAGE='%s'\n" "$data" "$bin" "$image" > "$dir/hooks/scripts/lib.sh"
                         ;;
                     *) echo "ran: $*" ;;
                 esac

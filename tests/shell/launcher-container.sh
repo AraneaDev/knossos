@@ -1102,6 +1102,19 @@ if grep -qF "[-e] [KNOSSOS_ROOTS_FILE=$TRUSTED]" "$FAKE_DOCKER_STATE/calls" && !
 else
     fail "graph roots.json named: $(calls)"
 fi
+# ... and a person who named it is told, once, that its own entries are ignored.
+out=$(cd "$WORK/wide/p1" && KNOSSOS_ROOTS_FILE="$DATA/roots.json" env -u KNOSSOS_DATA_DIR "$LAUNCHER" version 2>&1 >/dev/null </dev/null)
+if [ "$out" = "knossos: $DATA/roots.json lists 1 root(s) that the allow-list of this container install, $TRUSTED, does not, such as $WORK/wide; container mode ignores that file, so add each with knossos allow-root <path> --execute." ]; then
+    pass "naming the graph's roots.json with entries the host's list lacks says they are ignored and how to add them"
+else
+    fail "ignored entries notice: $out"
+fi
+out=$(cd "$WORK/wide/p1" && KNOSSOS_ROOTS_FILE="$DATA/roots.json" env -u KNOSSOS_DATA_DIR "$LAUNCHER" dashboard "$WORK/wide/p1" --json 2>&1 >/dev/null </dev/null)
+if [ -z "$out" ]; then pass 'the notice is never given on what the hooks run, which stay silent on stderr'; else fail "notice on a hook command: $out"; fi
+printf '{"roots": ["%s"]}\n' "$WORK/wide" > "$TRUSTED"
+out=$(cd "$WORK/wide/p1" && KNOSSOS_ROOTS_FILE="$DATA/roots.json" env -u KNOSSOS_DATA_DIR "$LAUNCHER" version 2>&1 >/dev/null </dev/null)
+if [ -z "$out" ]; then pass 'no notice when the host list has every entry'; else fail "notice with nothing ignored: $out"; fi
+printf '{"roots": []}\n' > "$TRUSTED"
 rm -f "$DATA/roots.json"
 mkdir -p "$DATA/sub"
 refused "a caller's KNOSSOS_ROOTS_FILE in the graph directory" "KNOSSOS_ROOTS_FILE ($DATA/sub/roots.json) lies in the graph directory $DATA, which a container can write; unset it to use the list the installer keeps in $INSTALL/roots.json, or point it at a file outside every directory a container can write." \

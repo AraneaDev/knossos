@@ -34,7 +34,8 @@ final readonly class NotesTransferService
      * place, so a failure never leaves a half-written file behind.
      *
      * @return array{file: string, total: int, by_author: array{user: int, model: int}, replaced: bool}
-     * @throws InvalidArgumentException NOTES_FILE_NOT_NOTES when a file in the way is not a notes file
+     * @throws InvalidArgumentException NOTES_FILE_NOT_NOTES when a file in the way is not a notes file, and
+     *         NOTES_FILE_WRITE_FAILED when the project is read-only in a container install
      * @throws \JsonException when a stored basis is not valid JSON
      * @throws RuntimeException when the file cannot be written
      */
@@ -54,6 +55,7 @@ final readonly class NotesTransferService
             'knossos_version' => Version::CURRENT,
         ], $rows);
 
+        clearstatcache(true, $file);
         $replaced = file_exists($file);
         // Only a previous notes file may be replaced; anything else is somebody's data.
         if ($replaced) {
@@ -65,10 +67,30 @@ final readonly class NotesTransferService
         $temp = $file . '.tmp-' . bin2hex(random_bytes(4));
         if (@file_put_contents($temp, $text . "\n") === false || !@rename($temp, $file)) {
             @unlink($temp);
+            if (self::readOnlyInContainer($file)) {
+                // A request this server cannot serve, said as such, so the MCP tool shows it.
+                throw new InvalidArgumentException('NOTES_FILE_WRITE_FAILED: could not write ' . $file
+                    . ': in container mode the project is read-only; run `knossos export-notes` from a terminal instead, which writes the file through the host.');
+            }
             throw new RuntimeException('NOTES_FILE_WRITE_FAILED: could not write ' . $file . '.');
         }
 
         return ['file' => $file, 'total' => count($rows), 'by_author' => $byAuthor, 'replaced' => $replaced];
+    }
+
+    /**
+     * Whether a write failed because this runs in a container install's container, where the project is read-only.
+     *
+     * `KNOSSOS_CONTAINER_INSTALL_DIR` is the variable the container launcher
+     * sets in every container ({@see \Knossos\Install\Installation::CONTAINER_VARIABLE}).
+     * The CLI and the pane export through the host there, into a scratch
+     * directory that is writable; only the MCP tool writes into the project.
+     */
+    private static function readOnlyInContainer(string $file): bool
+    {
+        $install = getenv('KNOSSOS_CONTAINER_INSTALL_DIR');
+
+        return is_string($install) && $install !== '' && !is_writable(dirname($file));
     }
 
     /**
@@ -133,6 +155,8 @@ final readonly class NotesTransferService
             }
             $path = $real;
         }
+        // A server reads the same file again after it changed: never a size PHP's stat cache kept.
+        clearstatcache(true, $path);
         $size = @filesize($path);
         if ($size === false || $size > self::MAX_BYTES) {
             throw new InvalidArgumentException('NOTES_FILE_TOO_LARGE: ' . $file . ' is over ' . (self::MAX_BYTES / 1024 / 1024) . ' MB.');

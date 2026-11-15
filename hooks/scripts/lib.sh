@@ -8,9 +8,13 @@
 # A checkout that was never installed still holds the placeholder, which counts as unknown.
 KNOSSOS_INSTALLED_DATA_DIR='__KNOSSOS_DATA_DIR__'
 case $KNOSSOS_INSTALLED_DATA_DIR in __*__) KNOSSOS_INSTALLED_DATA_DIR='' ;; esac
+# Set by a container install to the allow-list its host keeps,
+# <install dir>/roots.json; empty otherwise, which means the one beside the graph.
+KNOSSOS_INSTALLED_ROOTS_FILE='__KNOSSOS_ROOTS_FILE__'
+case $KNOSSOS_INSTALLED_ROOTS_FILE in __*__) KNOSSOS_INSTALLED_ROOTS_FILE='' ;; esac
 if [ -n "$KNOSSOS_INSTALLED_DATA_DIR" ]; then
     : "${KNOSSOS_DATA_DIR:=$KNOSSOS_INSTALLED_DATA_DIR}"
-    : "${KNOSSOS_ROOTS_FILE:=$KNOSSOS_INSTALLED_DATA_DIR/roots.json}"
+    : "${KNOSSOS_ROOTS_FILE:=${KNOSSOS_INSTALLED_ROOTS_FILE:-$KNOSSOS_INSTALLED_DATA_DIR/roots.json}}"
     export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
 fi
 

@@ -310,7 +310,11 @@ KNOSSOS_DATA_DIR="${KNOSSOS_DATA_DIR:-$(dirname -- "$INSTALL_DIR")}"
 # and the file there is never read. A caller's KNOSSOS_ROOTS_FILE anywhere
 # else is checked below.
 ROOTS_GIVEN=${KNOSSOS_ROOTS_FILE:-}
-case $ROOTS_GIVEN in '' | "$(dirname -- "$INSTALL_DIR")/roots.json" | "${KNOSSOS_DATA_DIR%/}/roots.json") ROOTS_GIVEN='' ;; esac
+ROOTS_MAPPED=''
+case $ROOTS_GIVEN in
+    '') ;;
+    "$(dirname -- "$INSTALL_DIR")/roots.json" | "${KNOSSOS_DATA_DIR%/}/roots.json") ROOTS_MAPPED=$ROOTS_GIVEN; ROOTS_GIVEN='' ;;
+esac
 KNOSSOS_ROOTS_FILE=${ROOTS_GIVEN:-$INSTALL_DIR/roots.json}
 export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
 
@@ -910,6 +914,34 @@ enricher_run() {
     [ "$status" -ne 125 ] || image_gone
     exit "$status"
 }
+
+# The caller named the graph's roots.json, which stands for the host's list:
+# should that file still list roots the host's list lacks (a list kept there
+# by hand, or by an older install), say once that they are ignored and how
+# to add them. Not for what the plugin's hooks and the MCP server run, which
+# say nothing on stderr. Only a plain, small file is read: every container
+# can write it, and a FIFO there must not hang the call.
+HOOK_COMMANDS=' serve session-brief record-scan-failure rescan watch turn-brief dashboard component-detail file-detail file-context graph-search branch-diff churn blast-radius path-between annotate notes note-adopt note-move note-check note-confirm notes-export notes-import allow-root claim autostart session-changes session-head session-diff boundary-couplings '
+case $HOOK_COMMANDS in *" ${1-} "*) ROOTS_MAPPED='' ;; esac
+if [ -n "$ROOTS_MAPPED" ] && [ -f "$ROOTS_MAPPED" ] && [ ! -L "$ROOTS_MAPPED" ] \
+    && [ -n "$(find "$ROOTS_MAPPED" -prune -type f -size -1048576c 2>/dev/null)" ]; then
+    ignored=0
+    first=''
+    while IFS= read -r unlisted; do
+        [ -n "$unlisted" ] || continue
+        normalise "$unlisted"
+        unlisted=$normalised
+        listed "$unlisted" && continue
+        ignored=$((ignored + 1))
+        [ -n "$first" ] || first=$unlisted
+    done <<ENTRIES
+$(KNOSSOS_ROOTS_FILE=$ROOTS_MAPPED; roots)
+ENTRIES
+    if [ "$ignored" -gt 0 ]; then
+        printf 'knossos: %s lists %s root(s) that the allow-list of this container install, %s, does not, such as %s; container mode ignores that file, so add each with knossos allow-root <path> --execute.\n' \
+            "$ROOTS_MAPPED" "$ignored" "$ROOTS_FILE_REAL" "$first" >&2
+    fi
+fi
 
 EFFECT='A server configured with that roots file re-reads it per request, so %s with no restart.'
 case ${1-} in

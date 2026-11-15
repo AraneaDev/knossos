@@ -321,7 +321,29 @@ write_plugin() {
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
         --mount "type=bind,source=$INSTALL/plugin,target=$INSTALL/plugin" \
         --entrypoint "$IN_IMAGE/bin/knossos" "$1" \
-        install-agent-plugin --execute --no-register "--plugin-dir=$INSTALL/plugin" "--bin=$LAUNCHER" "--data-dir=$2" </dev/null
+        install-agent-plugin --execute --no-register "--plugin-dir=$INSTALL/plugin" "--bin=$LAUNCHER" "--data-dir=$2" </dev/null \
+        && name_host_roots
+}
+
+# name_host_roots: the plugin's hooks name the allow-list the host keeps,
+# <install>/roots.json, as the MCP registration does, rather than the
+# roots.json beside the graph, which the launcher would only map to it. The
+# line is filled in here, on the host, in a lib.sh from an image that has it.
+name_host_roots() {
+    lib="$INSTALL/plugin/hooks/scripts/lib.sh"
+    if [ ! -f "$lib" ] || [ -L "$lib" ]; then return 0; fi
+    quoted=$(printf '%s' "$INSTALL/roots.json" | sed "s/'/'\\\\''/g")
+    if cp -p "$lib" "$lib.tmp" \
+        && ROOTS_LINE="KNOSSOS_INSTALLED_ROOTS_FILE='$quoted'" awk '
+            $0 == "KNOSSOS_INSTALLED_ROOTS_FILE='"'"'__KNOSSOS_ROOTS_FILE__'"'"'" { print ENVIRON["ROOTS_LINE"]; next }
+            { print }
+        ' "$lib" > "$lib.tmp" \
+        && mv -f "$lib.tmp" "$lib"; then
+        return 0
+    fi
+    rm -f "$lib.tmp"
+    echo "could not name $INSTALL/roots.json in $lib" >&2
+    return 1
 }
 
 # The graph directory the plugin's hooks were given, so a refresh keeps one

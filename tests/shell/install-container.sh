@@ -187,8 +187,9 @@ else
     fail "plugin run: $(grep install-agent-plugin "$FAKE_DOCKER_STATE/calls")"
 fi
 LIB="$DATA2/install/plugin/hooks/scripts/lib.sh"
-if grep -qxF "KNOSSOS_INSTALLED_BIN='$LAUNCHER2'" "$LIB" 2>/dev/null && grep -qxF "KNOSSOS_INSTALLED_DATA_DIR='$DATA2'" "$LIB"; then
-    pass "the plugin's lib.sh names the launcher and the install directory"
+if grep -qxF "KNOSSOS_INSTALLED_BIN='$LAUNCHER2'" "$LIB" 2>/dev/null && grep -qxF "KNOSSOS_INSTALLED_DATA_DIR='$DATA2'" "$LIB" \
+    && grep -qxF "KNOSSOS_INSTALLED_ROOTS_FILE='$DATA2/install/roots.json'" "$LIB"; then
+    pass "the plugin's lib.sh names the launcher, the graph and the host's allow-list in the install directory"
 else
     fail "lib.sh: $(cat "$LIB" 2>&1)"
 fi
