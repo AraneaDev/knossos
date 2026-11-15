@@ -3985,6 +3985,8 @@ describe('knossos mod', () => {
 
 describe('the live watcher', () => {
   const READY = { event: 'ready', project_id: 'p1', snapshot_id: 's1', files: 3, scanned: false }
+  /** The rows a sentence is wrapped across (`key-0`, `key-1`, ...), read on as a person reads them: one line after another. */
+  const sentence = async (ui: Awaited<ReturnType<typeof mountPane>>, key: string, said: string[] = []): Promise<string> => { for (let row = await ui.find({ key: `${key}-0` }); row !== undefined; row = await ui.find({ key: `${key}-${said.length}` })) said.push(String(row.text).trim()); return said.join(' ') }
 
   test('starts once a dashboard of a scanned project is stored, and the header says live', async ($, on) => {
     const w = world(on, { dashboard: [{ stdout: paneDashboard() }], watch: [[READY]] })
@@ -4304,10 +4306,10 @@ describe('the live watcher', () => {
     await w.clock.advance(100)
     const ui = await mountPane($)
     await ui.press({ key: 'tab:changes' })
-    const rows = (await ui.findAll({ type: 'Text' })).map(t => t.text).join('').replace(/\s+/g, ' ')
+    const said = await sentence(ui, 'changes-fallback')
     const date = String.raw`\d{4}-\d{2}-\d{2} \d{2}:\d{2}`
-    expect(rows).toMatch(new RegExp(`The scan record does not reach back to when this session began \\(${date}\\)\\. It lists every change since ${date}, the oldest point it still holds\\.`))
-    expect(rows).toMatch(new RegExp(`since ${date}`))
+    expect(said).toMatch(new RegExp(`^The scan record does not reach back to when this session began \\(${date}\\)\\. It lists every change since ${date}, the oldest point it still holds\\.$`))
+    expect(titled((await ui.find({ key: 'changes-head' }))?.text)).toMatch(new RegExp(`since ${date}`))
     // The files since that point are listed, each with its origin, instead of nothing.
     expect((await ui.find({ key: 'change-0' }))?.text).toMatch(/Router\.php/)
     expect((await ui.find({ key: 'change-1' }))?.text).toMatch(/app\.php.*outside/)
@@ -4323,8 +4325,7 @@ describe('the live watcher', () => {
     await w.clock.advance(100)
     const ui = await mountPane($)
     await ui.press({ key: 'tab:changes' })
-    const rows = (await ui.findAll({ type: 'Text' })).map(t => t.text).join('').replace(/\s+/g, ' ')
-    expect(rows).toMatch(/The scan record does not reach back to when this session began \(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\), so only what its turns reported is listed\./)
+    expect(await sentence(ui, 'changes-fallback')).toMatch(/^The scan record does not reach back to when this session began \(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\), so only what its turns reported is listed\.$/)
     await ui.unmount()
   })
 
@@ -4830,19 +4831,18 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
       expect(await tall.find({ key: 'bar' })).toBeUndefined()
       await tall.unmount()
       // Shorter than what it draws: the bar is drawn over the window's last rows, and says the graph's state once the header is out of view.
-      const short = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 0, bodyRows: 16 } } })
-      // The lists shrink to the height; the key list, which stands in for the tab, does not.
+      // Hubs at 60 draws 17 rows, each card's column head among them: it fits; the key list, which stands in for the tab, does not.
+      const short = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 0, bodyRows: 17 } } })
       expect(await short.find({ key: 'bar' })).toBeUndefined()
       await short.press({ key: 'keys' })
       const bar = await short.find({ key: 'bar' })
       // While the key list is shown the bar offers only closing it: one row.
-      expect(bar?.props).toMatchObject({ position: 'absolute', top: 15 })
+      expect(bar?.props).toMatchObject({ position: 'absolute', top: 16 })
       expect(bar?.text).not.toContain('fresh')
       await short.unmount()
-      const scrolled = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 6, bodyRows: 16 } } })
-      // The key list is still open: the view outlives the mount.
-      // Its state joins the bar's last row.
-      expect((await scrolled.find({ key: 'bar' }))?.props).toMatchObject({ position: 'absolute', top: 21 })
+      const scrolled = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 6, bodyRows: 17 } } })
+      // The key list is still open: the view outlives the mount. Its state joins the bar's last row.
+      expect((await scrolled.find({ key: 'bar' }))?.props).toMatchObject({ position: 'absolute', top: 22 })
       expect((await scrolled.find({ key: 'bar' }))?.text).toContain('fresh 1s')
       await scrolled.press({ key: 'keys' })
       await scrolled.unmount()
@@ -4932,7 +4932,7 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     expect(titled((await ui.find({ key: 'coupling-head' }))?.text)).toMatch(/^Http → Core +14 edges$/)
     await w.clock.settle()
     expect(w.couplingRuns()).toEqual([['sh', expect.stringMatching(/knossos-run\.sh$/), 'boundary-couplings', ROOT, '--from=Http', '--to=Core']])
-    expect((await ui.find({ key: 'coupling-0' }))?.text).toMatch(/Router::route +──► Kernel +9$/)
+    expect((await ui.find({ key: 'coupling-0' }))?.text?.trimEnd()).toBe('    Router::route ──► Kernel  9')
     // Read once for this cell of this graph, however often the pane is drawn again.
     await ui.press({ key: 'keys' })
     await ui.press({ key: 'keys' })
