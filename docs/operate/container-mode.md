@@ -10,8 +10,8 @@ installer's container mode. To run the image yourself with `docker run`, see
 The [installer](../get-started/installation.md#install-from-a-release) picks
 container mode when the host lacks the native runtimes and a container runtime
 answers. You can also ask for it with `--mode=container`. It needs Docker or
-Podman with its daemon running, and `curl` and `sh`. It needs no PHP, Node or
-Python on the host.
+Podman with its daemon running, `curl`, `sh`, and `sha256sum` or `shasum`. It
+needs no PHP, Node or Python on the host.
 
 You install the same way and use the same `knossos` command, the same MCP
 registration and the same plugin. The difference is where the code runs:
@@ -19,8 +19,14 @@ inside a container of the release image, `ghcr.io/araneadev/knossos:<version>`,
 which the installer pulls, checks (it must start and pass `doctor`), and
 records in `install.json` by digest.
 
-Not tested yet: macOS and Podman. The launcher is written for both, and the
-checks were run against Docker on Linux.
+Not tested yet: macOS (Docker Desktop) and Podman. The launcher is written for
+both, and every check was run against Docker on Linux only. Two things are
+untried there and are where to look first if calls are refused. The launcher
+compares each mount source that `docker inspect` reports with the physical
+path it asked for, and a runtime that reports a bind source in its own form
+would make every call fail with `does not have the mounts that were checked`.
+And a path holding a double quote is passed to `--mount` as a quoted CSV
+field, which only Docker has read so far.
 
 ## How a call works
 
@@ -32,17 +38,25 @@ and the allow-list, then runs the command in the container for that project:
   needs it and reused by every call after it. Two projects get two containers,
   and two installations never share one.
 - **Stopped after 30 idle minutes.** Idle means no call for 30 minutes and no
-  command still running in it, so a running MCP server or watcher keeps it
-  alive. A stopped container is removed, and the next call starts a new one.
+  call still running in it, so a running MCP server or watcher keeps it
+  alive. A process that a command leaves behind does not. A stopped container
+  is removed, and the next call starts a new one. A call that arrives in the
+  moment the container stops fails once; run it again.
 - **`knossos stop`** stops the container of the project you are in, or of
   `knossos stop <project directory>`. `knossos stop --all` stops every
   container of this installation. Both run on the host and start nothing.
+  Stopping a container ends every call running in it: a scan stops part way
+  (the last complete graph stays), and a running `knossos serve` or watcher
+  ends, so Claude Code shows the server as disconnected. Two stops at once both
+  succeed, since a container that is already gone is what a stop asks for.
 - **The network is off**, and the container runs as your user and group, with
   `HOME=/tmp`.
 
 The project, the data directory and the directory of a roots file you named are
-mounted at the same absolute path inside as outside, so a path means the same
-thing in both and the project keeps the id a native install would give it.
+mounted at their physical paths, the same inside as outside, so a path means
+the same thing in both and the project keeps the id a native install would
+give it. Through a symlink, the path inside is the physical one, not the one
+you typed: `~/work`, a link to `/data/work`, is `/data/work` in the container.
 
 An update or a rollback changes the image `install.json` names. The next call
 starts a container from it. See [updating](updating.md#in-container-mode).
@@ -64,7 +78,10 @@ The install directory holds the allow-list (`roots.json`), the enricher list
 ### What this protects
 
 - **Your project stays as it is.** It is mounted read-only, so nothing in a
-  container can plant a git hook, an editor task or an agent setting in it.
+  container can plant a git hook, an editor task or an agent setting in it. A
+  project inside the data directory is refused, since every other container
+  could write it there, and so is a data directory that holds anything
+  Knossos did not put there (see [refusals](#refusals)).
 - **The host's own files stay out of reach.** The install directory with the
   allow-list, the enricher list, the plugin and the install record is read-only
   to every container, and the launcher checks at every call that it is the
@@ -136,6 +153,31 @@ container. Messages begin with `knossos:`.
   `KNOSSOS_DATA_DIR (<path>) lies in the graph directory <dir>, which a container can write; pick a data directory outside <dir>.`
   A container of that installation could swap a directory there for a link, so
   nothing is created or mounted through it.
+- **A data directory that holds other things.** Every container can write the
+  graph directory, so a new one must be empty, not exist yet, or hold only
+  what Knossos puts in one (the database and its files, `scan-failures.jsonl`,
+  `roots.json`, `enrichers.json`, `pane-autostart.json`, `watch/`,
+  `backups/`, `mcp-serve.log`, `install/` and `.knossos-files.*`).
+  `KNOSSOS_DATA_DIR (<path>) holds <entry>, which is not something Knossos puts in a graph directory, and every container would be able to write all of it; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install).`
+  A native install's data directory is refused the same way, since the host
+  runs its release and plugin:
+  `KNOSSOS_DATA_DIR (<path>) holds a native Knossos install (<entry>), ...`.
+  The check runs the first time a directory is used as a graph; the installer
+  checks the one you install into.
+- **A project inside a graph directory.**
+  `the project root <path> lies in the graph directory <dir>, which every container of that graph can write, so it would not stay read-only; keep projects outside the Knossos data directory, or pick another --data-dir.`
+- **A roots file, `TMPDIR` or a file to write or read inside a graph
+  directory.**
+  `KNOSSOS_ROOTS_FILE (<path>) lies in the graph directory <dir>, which a container can write; ...`,
+  `TMPDIR (<path>) lies in the graph directory <dir>, ...`, and for an `--out`,
+  `<path> lies in the graph directory <dir>, which a container can write; write it somewhere else.`
+  The host never opens a file there by a name a container could have changed.
+  `knossos stop` applies the same check to the roots file.
+- **A folder that was once a graph directory.** Each graph directory the
+  launcher has used is recorded in `<data dir>/install/containers/graph-<hash>`,
+  and every refusal that names one says which record file it is. If that
+  folder no longer is a graph directory, remove the record file to lift the
+  refusal.
 - **A roots file inside the project.**
   `KNOSSOS_ROOTS_FILE (<path>) lies inside the project root <root>, whose files the scanned project controls; unset it to use the list the installer keeps in <install dir>/roots.json.`
 - **`HOME` unset.**
@@ -154,6 +196,13 @@ container. Messages begin with `knossos:`.
   `the install directory <dir> is not the one the installer created; re-run the installer to fix it.`
   The launcher compares the inode it recorded at install time and trusts
   nothing in a directory put in its place.
+- **An update while a call starts.**
+  `Knossos was updated while this call started its container, so that container was removed; run the command again.`
+  The call read the record of the image before the update, so its container
+  is removed rather than used.
+
+A refused call creates nothing: the data directory and the directory of a
+roots file are made only after every check has passed.
 
 ## Commands that work differently
 

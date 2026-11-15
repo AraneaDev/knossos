@@ -89,8 +89,9 @@ curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install
 Run it from the project you want to scan first. It downloads the latest release, checks it
 against the release's `SHA256SUMS`, writes a `knossos` launcher to `~/.local/bin`, allows the
 current project, installs the Claude Code plugin and registers the MCP server. It runs Knossos
-natively when the host has PHP 8.3 or newer, Node 24 or newer and Python 3.11 or newer, and in a
-container when it has Docker or Podman instead. [Installation](docs/get-started/installation.md)
+natively when the host has PHP 8.3 or newer with the mbstring, PDO and PDO SQLite extensions,
+Node 24 or newer, Python 3.11 or newer, Git, `tar` and `sha256sum` or `shasum`, and in a container
+when it has Docker or Podman instead. [Installation](docs/get-started/installation.md)
 covers what it decides and how to override it, and
 [Updating](docs/operate/updating.md) covers `knossos self-update`.
 
@@ -98,8 +99,8 @@ Start a new session. The brief appears at its start, and `/knossos` opens the pa
 
 ### From a checkout
 
-To develop Knossos, or to run it from source, you need PHP 8.3 or newer with JSON, PDO and PDO
-SQLite, Node 24 or newer, Python 3.11 or newer, Composer 2 and Git. Cargo 1.82 or newer is
+To develop Knossos, or to run it from source, you need PHP 8.3 or newer with JSON, mbstring, PDO
+and PDO SQLite, Node 24 or newer, Python 3.11 or newer, Composer 2 and Git. Cargo 1.82 or newer is
 optional and adds Rust scanning. Clone the repository, then run the installer from the project
 you want to scan first:
 
@@ -301,9 +302,11 @@ processes through the [scanner SDK](docs/reference/scanner-sdk.md).
 
 - Scanning never installs dependencies, executes project code or boots a framework. Workers are
   supervised and resource-capped, and their output is untrusted until it passes validation.
-- The allow-list is a security boundary. `serve` refuses to start without a root, and Knossos
-  never writes the roots file during normal operation: only the installers and
-  `knossos allow-root --execute` do, so widening it stays a deliberate act on disk.
+- The allow-list is a security boundary. `serve` refuses to start without a root, and no MCP tool
+  writes the roots file: only the installers, `knossos allow-root --execute`,
+  `knossos claim --execute` (which `/knossos` runs when you start it in a folder, and which never
+  grants `/` or your home folder without asking) and `knossos move-project --execute` do, so
+  widening it stays a deliberate act on disk.
 - The database is derived and rebuildable, and source mounts stay read-only.
 - The Git-backed tools run `git` with repository-controlled hooks, pagers and drivers forced off.
 - MCP stdio is the recommended transport. The loopback-only HTTP profile has its own

@@ -22,7 +22,7 @@ Facts that static analysis cannot prove are labelled with their confidence and o
 
 ## Install
 
-You need PHP 8.3 or newer with the JSON, mbstring, PDO and PDO SQLite extensions, Node 24 or newer, Python 3.11 or newer and Git, and `knossos doctor` fails without any of them. This installs the latest release:
+A native install needs PHP 8.3 or newer with the JSON, mbstring, PDO and PDO SQLite extensions, Node 24 or newer, Python 3.11 or newer and Git, and `knossos doctor` fails without any of them. On a host with Docker or Podman instead, the installer runs Knossos in a container. This installs the latest release:
 
 ```sh
 curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install.sh | sh

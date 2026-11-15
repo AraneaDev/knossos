@@ -17,25 +17,34 @@ curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install
 
 It needs `curl` and `sh`, and one of two things on the host:
 
-- **Native mode**: PHP 8.3 or newer, Node 24 or newer and Python 3.11 or newer.
-  The release runs on the host. Release tarballs exist for Linux and macOS,
-  on x86_64 and arm64.
+- **Native mode**: PHP 8.3 or newer with the JSON, mbstring, PDO and PDO
+  SQLite extensions, Node 24 or newer, Python 3.11 or newer and Git, which is
+  what `knossos doctor` checks, and `tar` and `sha256sum` or `shasum` to unpack
+  and check the release. The release runs on the host. Release tarballs exist
+  for Linux and macOS, on x86_64 and arm64.
 - **Container mode**: Docker or Podman with its daemon running. The release
   runs in a container, one per project, and the host needs none of the
   runtimes above. See [container mode](../operate/container-mode.md).
 
 ### What the installer decides
 
-Without `--mode`, it uses native mode when all three runtimes are present at
-their minimum version, and container mode when they are not and `docker` or
-`podman` answers `info`. Docker is tried before Podman. When the runtimes are
-missing it prints what is missing and says it is using container mode:
+Without `--mode`, it uses native mode when everything native mode needs is
+there: each runtime at its minimum version, the PHP extensions, Git, `tar` and
+a checksum tool. A host that would fail `knossos doctor` never gets native
+mode. When something is missing and `docker` or `podman` answers `info`, it
+uses container mode. Docker is tried before Podman. It prints what is missing
+and says it is using container mode:
 
 ```text
 This host cannot run Knossos natively. Missing:
-  - PHP 8.3 or newer (php not found)
+  - the PHP extension(s) mbstring, pdo_sqlite (not loaded by php)
 Using container mode: docker is available.
 ```
+
+When something is missing and no container runtime answers, it stops before
+it writes anything, names each missing item, and says what you can do:
+install them, or install Docker or Podman and run it again with
+`--mode=container`. `--mode=native` on such a host stops the same way.
 
 Pass options after `sh -s --`, or download the script and run it:
 
@@ -47,7 +56,7 @@ curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `--mode=native\|container` | Skip the detection. A forced mode that the host cannot run stops with the reason.                                                |
 | `--version=V`              | Install this release instead of the latest.                                                                                      |
-| `--data-dir=DIR`           | The install directory, which also holds the graph. Default `~/.knossos`.                                                         |
+| `--data-dir=DIR`           | The data directory. Default `~/.knossos`. See [what it writes](#what-it-writes) for what goes where in each mode.                |
 | `--bin-dir=DIR`            | Where the `knossos` launcher goes. Default `~/.local/bin`.                                                                       |
 | `--no-plugin`              | Skip the Claude Code plugin and the MCP registration.                                                                            |
 | `--no-roots`               | Do not allow the current directory.                                                                                              |
@@ -58,7 +67,7 @@ The environment variables of the installer:
 
 | Variable                   | Default                                | Meaning                                                              |
 | -------------------------- | -------------------------------------- | -------------------------------------------------------------------- |
-| `KNOSSOS_DATA_DIR`         | `~/.knossos`                           | The install directory, when `--data-dir` is not given.               |
+| `KNOSSOS_DATA_DIR`         | `~/.knossos`                           | The data directory, when `--data-dir` is not given.                  |
 | `KNOSSOS_ROOTS_FILE`       | native: `<data dir>/roots.json`        | The roots file, when `--data-dir` is not given.                      |
 | `KNOSSOS_BIN_DIR`          | `~/.local/bin`                         | Where the launcher goes.                                             |
 | `KNOSSOS_ALLOW_ROOT`       | the directory you ran the installer in | The project to allow.                                                |
@@ -70,7 +79,10 @@ The environment variables of the installer:
 
 Piped from `/` or your home directory, with no terminal, the installer allows
 no project, because nothing says which one you meant. It tells you, and
-`knossos allow-root <path> --execute` adds one later. It does not scan the
+`knossos allow-root <path> --execute` adds one later. In container mode it
+never allows `/`, your home directory or a directory above it, even from a
+terminal or through `KNOSSOS_ALLOW_ROOT`, because container mode never mounts
+them; it says so and grants nothing. It does not scan the
 project it allows: start Knossos there (`/knossos` in a session, or `knossos`
 in the folder) and that scans it.
 
@@ -95,6 +107,10 @@ container can only read, and the graph stays in `<data dir>`:
   changes.
 - `<data dir>/install/settings`, the enricher list, and `containers/`, the
   launcher's own records.
+
+Every container can write `<data dir>`, so in container mode the data
+directory must be new, empty, or hold only what Knossos puts there; see
+[a data directory that holds other things](#a-data-directory-that-holds-other-things).
 
 In both modes, the launcher is one file, `~/.local/bin/knossos` by default, and
 it is what the MCP registration and the plugin's hooks call. If its directory
@@ -280,9 +296,11 @@ roots file are all empty, it exits with `KNOSSOS_INVALID_ARGUMENT`. Grant the
 narrowest tree that works.
 
 Anything able to write the roots file can widen what Knossos reads, which is why
-the grant is a file you inspect and no tool the caller can invoke on itself.
-Knossos never writes it during normal operation; only `tools/install` and
-`knossos allow-root --execute` do. Keep it owned by the user running the server.
+the grant is a file you inspect and no MCP tool writes it. Only the installers,
+`knossos allow-root --execute`, `knossos claim --execute` and
+`knossos move-project --execute` write it. `/knossos` runs `claim` when you
+start it in a folder, and `claim` never grants `/` or your home folder without
+asking. Keep it owned by the user running the server.
 If the boundary must be fixed, omit the file and pass `--allow-root` only.
 
 ## Codex and other MCP clients
@@ -299,7 +317,9 @@ with `error:`.
 
 | Message                                                                                                                 | Cause and what to do                                                                                                                                                                                            |
 | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `install the runtimes listed above (or Docker or Podman, with its daemon running) and run the installer again`          | A runtime is missing or too old, and no container runtime answers. Install what the list names, or start Docker or Podman.                                                                                      |
+| `install what is listed above and run the installer again, or install Docker or Podman ...`                             | Native mode lacks something (a runtime, a PHP extension, Git, `tar` or a checksum tool), and no container runtime answers. Install what the list names, or install Docker or Podman and use `--mode=container`. |
+| `install what is listed above and run the installer again, or re-run it with --mode=container: docker is available`     | You passed `--mode=native` on a host that lacks something native mode needs. Install it, or use `--mode=container`.                                                                                             |
+| `the data directory <dir> holds <entry>, which is not something Knossos puts in a data directory, ...`                  | Container mode gives every container the data directory read-write, so it must not hold anything of yours. Choose an empty directory with `--data-dir` or `KNOSSOS_DATA_DIR`.                                   |
 | `docker is installed, but its daemon is not running (docker info failed): start it and run the installer again`         | The binary exists and the daemon does not answer. Start the daemon.                                                                                                                                             |
 | `container mode needs Docker or Podman, with its daemon running; neither was found`                                     | You passed `--mode=container` on a host without either.                                                                                                                                                         |
 | `<dir> holds a native install (...); remove those entries or pick another --data-dir, or re-run with --force-clean ...` | You are installing container mode over a native install in the same data directory, or the reverse. The message lists the entries. Pick another `--data-dir`, or `--force-clean` removes exactly those entries. |
@@ -350,9 +370,33 @@ For the refusals container mode itself gives at run time (a project in your
 home directory, a data directory inside a project), see
 [container mode](../operate/container-mode.md#refusals).
 
+### A data directory that holds other things
+
+In container mode, every container can write the data directory, so a
+directory that holds anything of yours is refused, by the installer and by the
+launcher when `KNOSSOS_DATA_DIR` names a new one. `~/code`, for example, would
+give every scanned project write access to each repository in it, git hooks
+included. Accepted is a directory that does not exist yet, an empty one, or
+one that holds only what Knossos itself puts in a data directory:
+
+- `knossos.sqlite`, with `-wal`, `-shm`, `-journal` and `.migrate.lock` beside it
+- `scan-failures.jsonl`, with its `.lock` and temporary copies
+- `roots.json`, `enrichers.json` and `pane-autostart.json`, each with its
+  lock or temporary file
+- `watch/`, `backups/` and `mcp-serve.log`
+- `install/`, the install directory of a container install, and the
+  launcher's scratch directories, `.knossos-files.*`
+
+The entries a native install keeps there (`install.json`, `versions/`,
+`current`, `plugin/`, `previous-version`, `update-check.json` and the
+self-update lock) are refused as well: the host runs the release and the plugin
+from them. The installer names them and offers `--force-clean`. The graph
+directory of an existing container install is not checked again, since its
+containers can write it already.
+
 ## Native runtimes
 
-You need PHP 8.3 or newer with JSON, PDO and PDO SQLite, Node 24 or newer,
+You need PHP 8.3 or newer with JSON, mbstring, PDO and PDO SQLite, Node 24 or newer,
 Python 3.11 or newer, Composer 2 and Git. Each is a floor. `doctor` reports a
 version below it and does not cap the ones above. Install the locked
 dependencies without running project scripts:

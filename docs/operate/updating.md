@@ -56,9 +56,22 @@ container, because code in a container cannot replace its own image. It pulls
 `ghcr.io/araneadev/knossos:<version>`, checks that the image starts and passes
 `doctor`, and records it in `install.json` by digest. Then it stops the running
 containers of this installation, so the next call starts one from the new
-image, and rewrites the launcher and the plugin out of that image. It needs the
-Docker or Podman daemon running. One previous image is kept for a rollback and
-the one before it is removed.
+image, and rewrites the launcher and the plugin out of that image. It stops
+them again once `install.json` names the new image, in case a call started one
+from the old image in between, and a call that finds the image changed while
+it started its container removes that container and asks you to run the
+command again. It needs the Docker or Podman daemon running. One previous image
+is kept for a rollback and the one before it is removed.
+
+Stopping a container ends what runs in it. A call in flight during an update
+fails, and so does one during `knossos stop`: a scan stops part way, and a
+running `knossos serve` or watcher ends, and Claude Code then shows the MCP
+server as disconnected. A scan cut off this way leaves the last complete graph
+in place. Update when nothing is running, and restart Claude Code afterwards,
+which an update needs anyway.
+
+If the plugin step of an update fails, the plugin is put back as it was, with
+`install.json` and the launcher.
 
 Release images carry version tags only, never `latest`: an update pulls the
 version it found.
