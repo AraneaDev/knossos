@@ -28,7 +28,7 @@ import type { Hues } from './palette'
 import { absolute, baseName } from './paths'
 import { button, clip, inList, segmentsWidth } from './rows'
 import { chip } from './chips'
-import { apart, atBody, bodyIndent, bodyLine, bodyText, GUTTER, PART_GAP } from './spacing'
+import { apart, atBody, bodyIndent, bodyLine, bodyText, GUTTER, moreText, PART_GAP } from './spacing'
 import { cells, displayName, fit, grouped, plural, spaces } from './text'
 import type { Loc, Row, Segment } from './types'
 import { PLACE, REACH, kindMark, mark } from './marks'
@@ -125,7 +125,7 @@ function memberGrid(ring: Ring, at: number, room: number, selected: number, hues
   // One width for every cell of the ring, from all it lists, so the columns hold still while the marker walks them.
   const chipWidth = Math.max(0, ...chips.map(segmentsWidth))
   const longest = Math.max(0, ...members.map(m => cells(m.name) + cells(viaOf(m))))
-  const need = Math.max(cells(`+${grouped(ring.count)} more`), LEAD + longest + (chipWidth > 0 ? 1 + chipWidth : 0))
+  const need = Math.max(cells(moreText(ring.count)), LEAD + longest + (chipWidth > 0 ? 1 + chipWidth : 0))
   const width = Math.max(1, Math.min(room, need))
   const per = Math.max(1, Math.floor((room + CELL_GAP) / (width + CELL_GAP)))
   const slots = per * MEMBER_ROWS
@@ -151,7 +151,7 @@ function memberGrid(ring: Ring, at: number, room: number, selected: number, hues
   const more = ring.count - shown.length
   if (more > 0) {
     const next = window.end < members.length ? at + window.end : window.start > 0 ? at + window.start - 1 : null
-    const text = fit(`+${grouped(more)} more`, width)
+    const text = fit(moreText(more), width)
     pieces.push([next === null ? { text, dim: true } : button(`more:${next}`, text, undefined, { dim: true })])
   }
   // Each line opens with the cell before its first mark, and every cell after the first has one in its gap: the marked

@@ -12,7 +12,7 @@ import { ACCENT, boundaryLabel, HEADING, NO_HUES, STATUS_COLOURS } from './palet
 import type { Hues } from './palette'
 import { button, clip, segmentsWidth, tinted, wrapGroups } from './rows'
 import { numberWidth, tableHead, tableRow, tableSpec, withDependents } from './table'
-import { apart, atBody, bodyRow, bodyText, groupGap, gutter, GUTTER, labelledRows } from './spacing'
+import { apart, atBody, bodyRow, bodyText, groupGap, gutter, GUTTER, labelledRows, moreText } from './spacing'
 import { chip } from './chips'
 import { cells, grouped, padEnd, padStart, plural, spaces, wrapWords } from './text'
 import type { Loc, Row, Segment } from './types'
@@ -178,7 +178,7 @@ export function reachRows(key: string, lead: string, boundaries: string[], colum
     const named = boundaries.slice(0, shown)
     const out: Segment[][] = lead === '' ? [] : [[{ text: lead, dim: true }]]
     if (named.length > 0) out.push([{ text: 'reaching', dim: true }], ...named.map(b => chip(b, hues)))
-    if (boundaries.length > named.length) out.push([{ text: `+${boundaries.length - named.length} more`, dim: true }])
+    if (boundaries.length > named.length) out.push([{ text: moreText(boundaries.length - named.length), dim: true }])
     return out
   }
   const shown = [REACH_SHOWN, 2, 1].find(n => wrapGroups(key, groups(n), columns, 1, GUTTER).length === 1) ?? REACH_SHOWN

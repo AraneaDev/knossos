@@ -20,7 +20,7 @@ import { noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { clip, inList, notListedRow, wrapGroups } from './rows'
+import { clip, inList, moreListedRow, wrapGroups } from './rows'
 import { displayName, grouped, plural, shortName } from './text'
 import { placeText } from './paths'
 import { changedRows, findingRows, labelOf } from './branch-rows'
@@ -31,6 +31,8 @@ import { locIn } from './views'
 import type { Openable } from './views'
 import { CARD_ICON, CHANGE, SEVERITY, mark } from './marks'
 import { busy } from './motion'
+import { dependentsTitle } from './table'
+import type { Tier } from './table'
 import { countLabel } from './envelopes'
 import { unreadablePolicies, unreadableText } from './policies'
 
@@ -206,7 +208,7 @@ function verdictRows(input: BranchInput, selected: number, columns: number, limi
   // The verdict's mark in the gutter, over the findings' marks.
   const head: Row = { key: 'branch-verdict', segments: clip([...gutter(false, mark(SEVERITY.warn)), { text: looked, color: STATUS_COLOURS.warn, bold: true }], columns) }
   const { rows } = windowedTable('branch-findings-window', input.findings, { columns, limit, local: inList(selected, input.findings.length), walk: 0 }, (shown, start) => findingRows(shown, start, selected, columns, hues))
-  const rest = input.unlisted.flatMap(u => notListedRow(`branch-unlisted-${u.kind}`, u.count, 0, columns, { kind: WORST[u.kind].many }))
+  const rest = input.unlisted.flatMap(u => moreListedRow(`branch-unlisted-${u.kind}`, u.count, 0, columns, { kind: WORST[u.kind].many }))
   const stopped: Row[] = input.partial ? [bodyLine('branch-partial', 'the policy check stopped at its edge or time limit: more violations may be new', columns)] : []
   return [head, ...rows, ...rest, ...stopped]
 }
@@ -216,7 +218,7 @@ function verdictRows(input: BranchInput, selected: number, columns: number, limi
  * one column at every width, the list of what changed growing into the
  * rows the pane has.
  */
-export function branchArrangement(input: BranchInput, selected: number, hues: Hues = NO_HUES): Arrangement {
+export function branchArrangement(input: BranchInput, selected: number, hues: Hues = NO_HUES, tier: Tier = 'medium'): Arrangement {
   const head: Block = {
     key: 'branch',
     ...(input.findings.length === 0 ? {} : { grow: { length: input.findings.length, min: FINDINGS_MIN } }),
@@ -237,10 +239,10 @@ export function branchArrangement(input: BranchInput, selected: number, hues: Hu
     key: 'branch-changed',
     grow: { length: walk.length, min: CHANGED_MIN },
     make: (columns, limit, scrolled) => {
-      const total = `${plural(changed.count, 'file', 'files')}  +${grouped(changed.added)} ${CHANGE.removed.glyph}${grouped(changed.deleted)} · reach ${grouped(changed.reach)}${changed.truncated ? ' · first 300 listed' : ''}`
+      const total = `${plural(changed.count, 'file', 'files')}  +${grouped(changed.added)} ${CHANGE.removed.glyph}${grouped(changed.deleted)} → ${grouped(changed.reach)} ${dependentsTitle(tier)}${changed.truncated ? ' · first 300 listed' : ''}`
       const section = (body: Row[]): Section => ({ key: 'branch-changed', title: 'What changed', glyph: CARD_ICON['branch-files'], note: noteOf(changed.count === 0 ? 'none' : total), body })
       if (walk.length === 0) return section([])
-      const { rows, window } = windowedTable('branch-changed-window', walk, { columns, limit, local: inList(selected - at0, walk.length), scrolled, walk: at0 }, (shown, start) => changedRows(changed.groups, shown, start, at0, selected, columns, hues))
+      const { rows, window } = windowedTable('branch-changed-window', walk, { columns, limit, local: inList(selected - at0, walk.length), scrolled, walk: at0 }, (shown, start) => changedRows(changed.groups, shown, start, at0, selected, columns, hues, dependentsTitle(tier)))
       return { ...section(rows), window }
     },
   }

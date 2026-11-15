@@ -710,7 +710,7 @@ describe('the issues tab', () => {
   it('lists violations, diagnostics, dead code, the complexity hotspots and the files over budget, each with its place', () => {
     const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
     expect(text).toMatch(/Policy violations +✗ 7/)
-    expect(text).toContain('›✗ ArchitectureQueryService::fileMetrics → ■ FactCollector ArchitectureQueryService.php:191')
+    expect(text).toContain('›✗ ArchitectureQueryService::fileMetrics → ■ FactCollector ■ core …hitectureQueryService.php:191')
     expect(text).toContain('+6 more')
     expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
@@ -718,7 +718,7 @@ describe('the issues tab', () => {
     // The note is the legend for the two marks before each name.
     expect(text).toMatch(/Dead code +55 · ● 12 probable · ◐ 9 tests only · first 2/)
     // How sure the scan is (● probable, ○ possible) in the gutter, where every issue's mark stands, then what reaches it (◐ tests only, ∅ nothing).
-    expect(text).toContain('\n ○ ∅ m FactCollector::beforeTraverse ■ php-worker …rs/php/src/FactCollector.php:108\n')
+    expect(text).toContain('\n ○ ∅ m FactCollector::beforeTraverse ■ php-worker …/php/src/FactCollector.php:108\n')
     expect(text).toMatch(/● ◐ f helper/)
     expect(text).not.toContain('◇')
     expect(text).toMatch(/Complexity hotspots +lines × dependents/)
@@ -740,7 +740,7 @@ describe('the issues tab', () => {
   it("gives way in order: the place's folders, the name to its floor, the file name, then the boundary, then the place", () => {
     const dead = (columns: number) => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), 'dead-0')!)
     // The certainty in the gutter and two marks of four cells stay where the boundary and the place have gone.
-    const at = { 110: 'FactCollector::beforeTraverse ■ php-worker workers/php/src/FactCollector.php:108', 100: 'FactCollector::beforeTraverse ■ php-worker …rs/php/src/FactCollector.php:108', 90: 'FactCollector::beforeTraverse ■ php-worker …php/src/FactCollector.php:108', 70: 'FactCollector::beforeTrav… ■ php-worker FactCollector.php:108', 60: 'FactCollector::… ■ php-worker FactCollector.php:108', 50: 'FactCollect… ■ php-worker …lector.php:108', 40: 'FactCollect… …Collector.php:108', 30: 'FactCollector::befor…' }
+    const at = { 110: 'FactCollector::beforeTraverse ■ php-worker workers/php/src/FactCollector.php:108', 100: 'FactCollector::beforeTraverse ■ php-worker …/php/src/FactCollector.php:108', 90: 'FactCollector::beforeTraverse ■ php-worker …/src/FactCollector.php:108', 70: 'FactCollector::beforeTrav… ■ php-worker FactCollector.php:108', 60: 'FactCollector::… ■ php-worker FactCollector.php:108', 50: 'FactCollect… ■ php-worker …lector.php:108', 40: 'FactCollect… …Collector.php:108', 30: 'FactCollector::befor…' }
     for (const [columns, said] of Object.entries(at)) expect(dead(Number(columns))).toBe(` ○ ∅ m ${said}`)
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)
@@ -1009,7 +1009,7 @@ describe('the detail view', () => {
     expect(raw.indexOf('│ DashboardService ')).toBeLessThan(raw.indexOf('BoundaryLabels'))
     expect(raw).toContain('▾')
     const text = textOf(paneRows(detailPane(), 40))
-    expect(text.indexOf('Used by · 19')).toBeLessThan(text.indexOf('Uses · 2'))
+    expect([/Dependencies\n *\n +used by +edges\n/.test(text), text.indexOf('   used by ') < text.indexOf('   uses ')]).toEqual([true, true]) // too narrow for its note: each side named by its table's head
     expect(text).toMatch(/BoundaryLabels +■ core +[━╸·]+ +4/)
   })
   it('makes every neighbour pressable, used by first, marks the one j and k reach, and offers back beside the list keys', () => {
@@ -1039,7 +1039,7 @@ describe('the detail view', () => {
     const old = detailAnswer({ used_by: { count: 1, truncated: false, names: ['Kernel'] }, uses: { count: 0, truncated: false, names: [] } })
     expect(paneRows(detailPane(old), 60).map(rawText).join('\n')).toMatch(/│ Kernel +├─+╮/)
     const text = textOf(paneRows(detailPane(old), 40))
-    expect(text).toMatch(/Used by +1\n *\n› {2}Kernel/)
+    expect(text).toMatch(/Dependencies\n *\n +used by\n› {2}Kernel\n +uses\n +none\n/)
     expect(text).not.toMatch(/█/)
   })
 })
@@ -1068,7 +1068,7 @@ describe('tables packed to the left', () => {
     const place = row(rows, 'dead-0')!.segments.find(seg => seg.press?.id.startsWith('file:'))
     expect(place?.press).toMatchObject({ id: 'file:/work/Knossos-MCP/workers/php/src/FactCollector.php' })
     expect([place?.text, place?.dim]).toEqual(['FactCollector.php:108', undefined]) // the one form of a place: the folder dim, the file and line bright, the file opens it
-    expect(row(rows, 'dead-0')!.segments.find(seg => seg.text === '…php/src/')?.dim).toBe(true)
+    expect(row(rows, 'dead-0')!.segments.find(seg => seg.text === '…/src/')?.dim).toBe(true)
     expect(rows.some(r => r.segments.some(seg => 'link' in seg))).toBe(false)
     // A hotspot or a file over budget is a row: it opens as the file's detail, and `e` opens it at its longest function.
     expect(row(rows, 'hot-0')!.segments.find(seg => seg.press)?.press).toEqual({ id: 'row:5', label: 'workers/typescript/src/scanner.js' })
@@ -1587,7 +1587,7 @@ describe('the pane with no graph', () => {
     }
     // A read on its way spins; a failed one with none on its way is still.
     expect(emptyRows('loading', null, 90)[0]?.segments[1]?.text).toBe(busy('Reading the graph…'))
-    expect(emptyRows('retrying', null, 90).map(plainText).join(' ')).toBe(`${busy('Reading the graph…')} Knossos did not answer the last read; asking again.`)
+    expect(emptyRows('retrying', null, 90).map(plainText).join(' ')).toBe(`${busy('Reading the graph…')}    Knossos did not answer the last read; asking again.`)
     expect(emptyRows('unreadable', null, 90).map(plainText).join(' ')).toMatch(/^Could not read the graph .*asks again shortly\.$/)
     expect(emptyRows('unreadable', null, 90).some(r => r.segments.some(s => isBusy(s.text)))).toBe(false)
   })

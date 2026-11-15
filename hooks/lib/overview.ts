@@ -510,7 +510,7 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
         ]
         return walkedRow(`flow-${i}`, offset + i === selected, segments, columns)
       })
-      const note = `${flows.length} of ${grouped(data.flowEdges)}${data.flowsPartial ? '+' : ''} deps`
+      const note = `${flows.length} of ${grouped(data.flowEdges)}${data.flowsPartial ? '+' : ''} edges`
       return section(body, note)
     },
   }

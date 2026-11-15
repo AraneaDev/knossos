@@ -4,7 +4,7 @@ import { arrange } from './cards'
 import { NO_HUES } from './palette'
 import { findRow, rawText } from './__tests__/plain-text'
 import { tierOf } from './table'
-import { issuesArrangement, issuesInput } from './views'
+import { issuesArrangement, issuesInput, issuesWalk } from './views'
 
 const dash = {
   status: 'ok', path: '/work/p', project_root: '/work/p', project_id: 'p1', snapshot_id: 's1', freshness: { state: 'fresh', age_seconds: 1, drift_files: 0 },
@@ -21,24 +21,38 @@ const drawn = (columns: number) => {
 }
 
 describe('an issue row gives up its cells in the order its kind asks', () => {
-  it('keeps both names of a policy row first: the boundary chip goes, then the folders, then the file name is cut from its front', () => {
+  it('keeps both names of a policy row first: the folders go, then the file name is cut from its front, then the boundary chip', () => {
     expect(drawn(60)[0]).toBe(' ›✗ ArchitectureQueryServic… → ■ FactCollector …ice.php:191')
-    expect(drawn(100)[0]).toBe('  ›✗ ArchitectureQueryService::fileMetrics → ■ FactCollector ArchitectureQueryService.php:191')
+    expect(drawn(100)[0]).toBe('  ›✗ ArchitectureQueryService::fileMetrics → ■ FactCollector ■ core …hitectureQueryService.php:191')
     expect(drawn(140)[0]).toBe('  ›✗ ArchitectureQueryService::fileM… → ■ FactCollector …ice.php:191')
   })
 
   it('keeps the place of a row of one name: its folders go first, then the name to its floor, then the file name', () => {
     expect(drawn(60).slice(1)).toEqual([
-      "  ✗ TS2307 Cannot find module '@scope… …t/src/scanner.ts:14",
+      "  ✗ TS2307 Cannot find module '@scope… …/src/scanner.ts:14",
       '  ○ ∅ m FactCollector::… ■ php-worker FactCollector.php:108',
     ])
     expect(drawn(100).slice(1)).toEqual([
-      "   ✗ TS2307 Cannot find module '@scope/missing' or its correspo… …ers/typescript/src/scanner.ts:14",
-      '   ○ ∅ m FactCollector::beforeTraverse ■ php-worker …rs/php/src/FactCollector.php:108',
+      "   ✗ TS2307 Cannot find module '@scope/missing' or its correspo… …/typescript/src/scanner.ts:14",
+      '   ○ ∅ m FactCollector::beforeTraverse ■ php-worker …/php/src/FactCollector.php:108',
     ])
     expect(drawn(140).slice(1)).toEqual([
-      "   ✗ TS2307 Cannot find module '@scope/miss… …ript/src/scanner.ts:14",
+      "   ✗ TS2307 Cannot find module '@scope/miss… …/src/scanner.ts:14",
       '   ○ ∅ m FactCollector::beforeTraverse ■ php-worker workers/php/src/FactCollector.php:108',
     ])
+  })
+})
+
+describe('the Issues cards stacked', () => {
+  it('stand in the order the marker walks them: violations, diagnostics, dead code, hotspots, then the files over budget', () => {
+    const full = {
+      ...dash,
+      complexity_hotspots: [{ path: 'src/Big.php', language: 'php', lines: 900, dependent_files: 3, score: 2700 }],
+      over_budget: { source: 'maintainability-budgets.json', max_function_lines: 205, total: 1, files: [{ path: 'src/Long.php', functions: 1, longest: 260, line: 4 }] },
+    } as unknown as Dashboard
+    const titles = (columns: number) => arrange(issuesArrangement(issuesInput(full), 0, tierOf(columns), NO_HUES), columns, 1000).filter(r => r.key.endsWith('-head')).map(r => r.key.slice(0, -5))
+    expect(titles(60)).toEqual(['policy', 'diag', 'dead', 'hotspots', 'budget'])
+    expect(titles(100)).toEqual(['policy', 'diag', 'dead', 'hotspots', 'budget'])
+    expect(issuesWalk(issuesInput(full))).toMatchObject({ violations: { offset: 0 }, diagnostics: { offset: 1 }, dead: { offset: 2 }, hotspots: { offset: 3 }, budget: { offset: 4 } })
   })
 })

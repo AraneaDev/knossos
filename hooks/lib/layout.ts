@@ -443,7 +443,7 @@ function tabArrangement(input: PaneInput, selected: number, tier: Tier): Arrange
   if (input.tab === 'hubs') return hubsArrangement(input, selected, tier)
   if (input.tab === 'issues') return issuesArrangement(input.issues, selected, tier, input.hues)
   if (input.tab === 'cycles') return cyclesArrangement(input.cycles, tier, input.hues, selected)
-  if (input.tab === 'branch') return branchArrangement(input.branch, selected, input.hues)
+  if (input.tab === 'branch') return branchArrangement(input.branch, selected, input.hues, tier)
   if (input.tab === 'churn') return churnArrangement(input.churn, selected, tier, input.hues)
   if (input.tab === 'notes') return notesArrangement(input.notes, selected, input.hues)
   return boundariesArrangement(input.boundaries, tier, input.hues, selected, input.target, input.couplings, input.lit)

@@ -20,7 +20,7 @@ import { button, segmentsWidth, tintedRow } from './rows'
 import { chip } from './chips'
 import { cells, displayName, fit, placeSegments, plural, spaces } from './text'
 import { placeText } from './paths'
-import { atBody, bodyText, gutter, GUTTER, toBody } from './spacing'
+import { atBody, bodyText, gutter, GUTTER } from './spacing'
 import type { Loc, Row, Segment } from './types'
 import { locIn } from './views'
 import type { Openable } from './views'
@@ -171,8 +171,8 @@ export function routeArrangement(input: RouteInput, selected: number, hues: Hues
   if (route === undefined) return { left: [head] }
   const drawn: Block = {
     key: 'route-drawn',
-    // The boxes stand at the body, under the list of routes; a pane too narrow for them lists the route, its marker in the gutter.
-    make: columns => ({ key: 'route-drawn', title: input.routes.length > 1 ? `Route ${input.index + 1}` : 'Route', note: noteOf(plural(route.hops.length, 'hop', 'hops')), glyph: CARD_ICON.route, body: columns - GUTTER >= DIAGRAM_MIN ? toBody(routeRows(route, columns - GUTTER, selected, hues)) : routeRows(route, columns, selected, hues) }),
+    // The boxes start on the card's margin, as every diagram does; a pane too narrow for them lists the route, its marker in the gutter.
+    make: columns => ({ key: 'route-drawn', title: input.routes.length > 1 ? `Route ${input.index + 1}` : 'Route', note: noteOf(plural(route.hops.length, 'hop', 'hops')), glyph: CARD_ICON.route, body: routeRows(route, columns, selected, hues) }),
   }
   const others: Block = {
     key: 'route-others',

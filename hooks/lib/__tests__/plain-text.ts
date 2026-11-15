@@ -1,4 +1,5 @@
 import { GLYPHS } from '../cards'
+import { spaces } from '../text'
 import type { Row } from '../types'
 
 /** A card title's kind glyph and the space after it: what a spec reading the title's words leaves out. */
@@ -18,7 +19,7 @@ export const plainText = (row: Row): string => {
   const text = rawText(row)
   // A card's top edge stands on the margin either side: the margin says nothing.
   const top = /^ *(╭─|──) (.*?)( ─╮| ──|─╮|──) *$/.exec(text)
-  if (top !== null) return top[2]!.replace(GLYPH, '').replace(/ ─+( |$)/, (run, after: string) => ' '.repeat(run.length - after.length) + after).trimEnd()
+  if (top !== null) return top[2]!.replace(GLYPH, '').replace(/ ─+( |$)/, (run, after: string) => spaces(run.length - after.length) + after).trimEnd()
   if (row.inset !== undefined) {
     const body = text.slice(row.inset).trimEnd()
     // The stat tiles' band draws a frame of its own on the margin: its `│ ` and ` │` say nothing either.

@@ -27,7 +27,7 @@ import { numberWidth, tableHead, tableRow, tableSpec } from './table'
 import { SWATCH } from './chips'
 import { cells, displayName, fit, grouped, padEnd, placeSegments, spaces } from './text'
 import { placeText } from './paths'
-import { atBody, bodyIndent, bodyLine, gutter, GUTTER, labelledRows, toBody } from './spacing'
+import { atBody, bodyIndent, bodyLine, gutter, GUTTER, labelledRows, moreText } from './spacing'
 import type { Fact } from './spacing'
 import type { Row, Segment } from './types'
 import type { TableSpec, Tier } from './table'
@@ -220,7 +220,7 @@ function legendRows(input: BoundariesInput, columns: number): Row[] {
   const crossed = input.forbidden.some((row, from) => row.some((f, to) => f && (input.cells[from]?.[to] ?? 0) > 0))
   const steps: Segment[] = SHADES.map((s, i) => ({ text: s.repeat(2), color: ACCENT, cell: { glyph: TILE, fg: HEAT_KEYS[i]! } }))
   const groups: Segment[][] = [
-    [{ text: 'fewer ', dim: true }, ...steps, { text: ' more deps', dim: true }],
+    [{ text: 'fewer ', dim: true }, ...steps, { text: ' more edges', dim: true }],
     [{ text: '·', color: FAINT }, { text: ' none', dim: true }],
     [{ text: '×', color: STATUS_COLOURS.alert }, { text: ' forbidden', dim: true }],
   ]
@@ -330,7 +330,7 @@ function focusSection(input: BoundariesInput, index: number, columns: number, hu
     lines: width => {
       for (let shown = groups.length; shown >= 0; shown--) {
         const rest = groups.length - shown
-        const rows = wrapGroups(key, [...groups.slice(0, shown), ...(rest === 0 ? [] : [[{ text: `+${rest} more`, dim: true }]])], width, 2)
+        const rows = wrapGroups(key, [...groups.slice(0, shown), ...(rest === 0 ? [] : [[{ text: moreText(rest), dim: true }]])], width, 2)
         if (rows.length <= FOCUS_ROWS || shown === 0) return rows.map(r => r.segments)
       }
       return []
@@ -366,7 +366,7 @@ export const BOUNDARY_AXES = 100
 /** The heat map as a card: the map (each cell `scale` rows tall when it fits), and its key when `legend`; null without a map to draw. */
 export function heatSection(input: BoundariesInput | null, columns: number, hues: Hues = NO_HUES, legend = true, scale = 1, marked: HeatCell | null = null): Section | null {
   if (input === null || input.boundaries.length === 0) return null
-  const note = [`${input.boundaries.length}${input.more ? '+' : ''} boundaries`, `${input.edges} deps`].join(' · ')
+  const note = [`${input.boundaries.length}${input.more ? '+' : ''} boundaries`, `${input.edges} edges`].join(' · ')
   return { key: legend ? 'bounds' : 'map', title: legend ? 'Boundaries' : 'Boundary map', note: noteOf(note), body: [...heatRows(input, columns, hues, scale, marked), ...(legend ? legendRows(input, columns) : [])] }
 }
 
@@ -411,15 +411,16 @@ export function couplingSection(input: BoundariesInput, cell: HeatCell, view: Co
   const forbidden = input.forbidden[cell.from]?.[cell.to] ?? false
   const note: Segment[] = [
     { text: `${grouped(count)}${view?.truncated === true ? '+' : ''}`, color: forbidden ? STATUS_COLOURS.alert : HEADING },
-    { text: count === 1 ? ' dep' : ' deps', dim: true },
+    { text: count === 1 ? ' edge' : ' edges', dim: true },
     ...(forbidden ? [{ text: ' · forbidden', color: STATUS_COLOURS.alert }] : []),
   ]
   const title = `${from.label} → ${to.label}`
   // The two boundaries drawn, the dependencies between them on the arrow; under them the component pairs behind it.
   const node = (b: BoundaryLine) => ({ key: b.name, label: b.label, ...(boundaryColour(b.name, hues) === undefined ? {} : { color: boundaryColour(b.name, hues)! }) })
-  const said = `${grouped(count)}${view?.truncated === true ? '+' : ''} ${count === 1 ? 'dep' : 'deps'}`
+  const said = `${grouped(count)}${view?.truncated === true ? '+' : ''} ${count === 1 ? 'edge' : 'edges'}`
   // The two boxes at the body, so they line up with the pairs listed under them.
-  const body: Row[] = toBody(pairDiagram(node(from), node(to), said, Math.max(1, columns - GUTTER), forbidden, 'coupling-pair').rows)
+  // The two boxes on the card's margin, as every diagram starts; the pairs under them at the body.
+  const body: Row[] = pairDiagram(node(from), node(to), said, columns, forbidden, 'coupling-pair').rows
   // A line that says how the pairs stand runs on under the boxes; the pairs listed are another kind of block, after a blank row.
   if (view?.phase === 'done' && view.items.length > 0) body.push(blank('coupling-gap'))
   if (view === null || view.phase === 'loading') body.push(bodyLine('coupling-loading', busy('reading the couplings…'), columns))
@@ -493,7 +494,7 @@ export function boundariesArrangement(input: BoundariesInput | null, tier: Tier,
   const heat = heatBlock(input, hues, true, true, cell)
   const listed = input.boundaries.length > HEAT_MAX
   // Without the map, the table's note carries what the map's would.
-  const note = listed ? `${input.boundaries.length}${input.more ? '+' : ''} boundaries · ${input.edges} deps across` : 'deps across'
+  const note = listed ? `${input.boundaries.length}${input.more ? '+' : ''} boundaries · ${input.edges} edges across` : 'edges across'
   const per: Block = {
     key: 'bounds-list',
     grow: { length: input.boundaries.length, min: PER_MIN },

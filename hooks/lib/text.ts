@@ -66,12 +66,12 @@ export function fitStart(text: string, width: number): string {
 
 /**
  * A path fitted to `width` cells as its directory and its file name, for
- * drawing in two tones. A path that does not fit is cut in the middle of
- * its directory, never in the file name: whole folders first (the first
- * one, `…`, then as many of the last as fit: `src/…/Query/`; then `…` and
- * the folder the file is in; then the first folder and `…`), then the
- * directory's own middle; a file name wider than the whole width alone is
- * cut at its end.
+ * drawing in two tones: the pane's one way to cut a file's path, in a name
+ * column and in a place column alike. A path that does not fit gives up
+ * whole folders from its front, put as one `…/` (`…/nested/Service0.php`);
+ * past the last folder, the file name alone; and only a file name wider
+ * than the whole width is cut, from its front, keeping its end. A folder is
+ * never cut in its middle, and the path never has a hole in it.
  */
 export function pathParts(path: string, width: number): { dir: string; base: string } {
   const cut = path.lastIndexOf('/') + 1
@@ -79,15 +79,12 @@ export function pathParts(path: string, width: number): { dir: string; base: str
   const base = path.slice(cut)
   if (width <= 0) return { dir: '', base: '' }
   if (cells(path) <= width) return { dir, base }
-  const room = width - cells(base)
-  if (room < 2) return { dir: '', base: fit(base, width) }
-  return { dir: middleCut(dir, room), base }
-}
-
-/** A path fitted to `width` cells as one text, cut as {@link pathParts} cuts it: where one tone is all there is. */
-export const pathText = (path: string, width: number): string => {
-  const { dir, base } = pathParts(path, width)
-  return dir + base
+  const folders = dir.split('/').filter(f => f !== '')
+  for (let kept = folders.length - 1; kept >= 0; kept--) {
+    const shown = `…/${folders.slice(folders.length - kept).map(f => `${f}/`).join('')}`
+    if (cells(shown) + cells(base) <= width) return { dir: shown, base }
+  }
+  return { dir: '', base: fitStart(base, width) }
 }
 
 /** A path as two segments fitted to `width`: its directory dim, its file name in `style` (opening the file's detail when `loc` is given). */
@@ -98,19 +95,19 @@ export function pathSegments(path: string, width: number, loc: Loc | null = null
 
 /**
  * A place (`path:line`, maybe ` · ` and what recorded it) in `width` cells
- * as a table or list cell shows one: cut from the front, so the file name
- * stays (the file name alone when the cells hold no `…/` before it); its folder
- * dim, its file name and line bright (opening the file when `loc` is given),
- * anything after ` · ` dim.
+ * as a table or list cell shows one: its path cut as {@link pathParts} cuts
+ * any path, so the file name and line stay; what follows ` · ` stays while
+ * it fits beside the file name, and goes first. Its folder dim, its file
+ * name and line bright (opening the file when `loc` is given), anything
+ * after ` · ` dim.
  */
 export function placeSegments(place: string, width: number, loc: Loc | null = null): Segment[] {
-  const file = fileOf(place)
-  // One cell more than the file name holds only `…` against it, which says nothing a folder would: the file name alone.
-  const text = cells(place) <= width ? place : width - cells(file) === 0 || width - cells(file) === 1 ? file : fitStart(place, width)
-  const said = text.indexOf(' · ')
-  const where = said < 0 ? text : text.slice(0, said)
-  const cut = where.lastIndexOf('/') + 1
-  return [{ text: where.slice(0, cut), dim: true }, opensFile(where.slice(cut), loc), { text: said < 0 ? '' : text.slice(said), dim: true }].filter(s => s.text !== '')
+  const at = place.indexOf(' · ')
+  const where = at < 0 ? place : place.slice(0, at)
+  const said = at < 0 ? '' : place.slice(at)
+  const kept = said !== '' && placeLeast(where) + cells(said) <= width ? said : ''
+  const { dir, base } = pathParts(where, width - cells(kept))
+  return [{ text: dir, dim: true }, opensFile(base, loc), { text: kept, dim: true }].filter(s => s.text !== '')
 }
 
 /** A place's file name and line, and what follows them. */
@@ -122,24 +119,8 @@ const fileOf = (place: string): string => {
 /** The fewest cells a place keeps its file name and line whole in. */
 export const placeLeast = (place: string): number => cells(fileOf(place).split(' · ')[0]!)
 
-/** A directory (ending in `/`) in at most `room` cells, cut in its middle: by whole folders while they fit, else by characters. */
-function middleCut(dir: string, room: number): string {
-  const folders = dir.split('/').filter(f => f !== '')
-  // The first folder, `…`, then the last `kept` folders, as many as fit.
-  for (let kept = folders.length - 2; kept >= 1; kept--) {
-    const text = `${folders[0]}/…/${folders.slice(folders.length - kept).map(f => `${f}/`).join('')}`
-    if (cells(text) <= room) return text
-  }
-  // The folder the file is in says more than the first one.
-  const last = folders.at(-1)
-  if (last !== undefined && folders.length > 1 && cells(`…/${last}/`) <= room) return `…/${last}/`
-  if (folders.length > 1 && cells(`${folders[0]}/…/`) <= room) return `${folders[0]}/…/`
-  if (room < 4) return '…/'
-  const chars = split(dir)
-  const left = Math.ceil((room - 1) / 2)
-  const right = room - 1 - left
-  return `${head(chars, left)}…${right > 0 ? tail(chars, right) : ''}`
-}
+/** The cells a tab is drawn as, in a hunk's text line and a note's sketch alike: spelled as spaces, a line measures as it draws. */
+export const TAB_CELLS = 4
 
 export const spaces = (n: number): string => ' '.repeat(Math.max(0, n))
 export const padEnd = (text: string, width: number): string => text + spaces(width - cells(text))

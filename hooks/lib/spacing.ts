@@ -30,8 +30,6 @@ export const NARROW_MARGIN = 1
 export const GUTTER = 3
 /** Where a card's body starts, from the pane's edge. */
 export const BODY = MARGIN + GUTTER
-/** The blank rows above a card's title and below it: inside a card, only before a block of a different kind ({@link groupGap}). */
-export const CARD_GAP_ROWS = 1
 /** The cells between two cards side by side, rule end to rule start, so two rules never read as one. */
 export const GRID_GAP = 4
 /** The cells between a fact's label and its value, past the longest label. */
@@ -121,9 +119,11 @@ export function trimBlanks(rows: readonly Row[]): Row[] {
  * hubs`); cut to `width`, dim.
  */
 export function moreRow(n: number, key: string, width = Number.POSITIVE_INFINITY, kind?: string): Row {
-  const said = `+${grouped(n)} more${kind === undefined ? '' : ` ${kind}`}`
-  return { key, segments: [{ text: spaces(GUTTER) }, { text: fit(said, Math.max(1, width - GUTTER)), dim: true }] }
+  return { key, segments: [{ text: spaces(GUTTER) }, { text: fit(moreText(n, kind), Math.max(1, width - GUTTER)), dim: true }] }
 }
+
+/** What is not shown, as the pane says it: `+N more`, its count in groups of three, then what was left out when `kind` names it. */
+export const moreText = (n: number, kind?: string): string => `+${grouped(n)} more${kind === undefined ? '' : ` ${kind}`}`
 
 /** One labelled fact: its row key, its one-word label, and its value as lines no wider than the width it is given; `numbered`, every row keyed `key-N` from 0. */
 export type Fact = { key: string; label: string; lines: (width: number) => Segment[][]; numbered?: true }

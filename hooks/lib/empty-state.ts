@@ -5,10 +5,10 @@
  */
 import type { AllowState, Dashboard, RefreshState, RescanState, TurnBrief } from '../../types'
 import { HEADING, STATUS_COLOURS } from './palette'
-import { blank, button, dimRow, wrapGroups } from './rows'
-import { bodyLine, bodyText, GUTTER, marginOf, onMargin, PART_GAP } from './spacing'
+import { blank, button, wrapGroups } from './rows'
+import { bodyLine, bodyRow, bodyText, GUTTER, marginOf, onMargin, PART_GAP } from './spacing'
 import { tierOf } from './table'
-import { fit, wrapWords } from './text'
+import { fit } from './text'
 import type { Row, Segment } from './types'
 import { busy } from './motion'
 import { SEVERITY } from './marks'
@@ -109,7 +109,9 @@ const NO_GRAPH: Record<NoGraph, { head: string; why: string; busy?: true }> = {
  * one to ask: the offer is to scan it directly. While a rescan runs
  * (`scanning`) the pane says so, with its spinner, and offers nothing: the
  * graph it waits for lands on its own. A rescan that failed (`failure`, its
- * reason) says so, and why, in place of the state it left behind.
+ * reason) says so, and why, in place of the state it left behind. Laid out
+ * as a card is: the heading on the margin, the rest at the body, so every
+ * key on the screen stands in one column.
  */
 export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: number, host?: 'web', scanning = false, failure: string | null = null): Row[] {
   const tier = tierOf(columns)
@@ -121,7 +123,7 @@ function emptyBody(state: NoGraph, allow: AllowInput | null, width: number, host
   if (scanning) {
     return [
       { key: 'empty-head', segments: [{ text: fit(busy('Scanning the project…'), width), bold: true, color: HEADING }] },
-      ...wrapWords('Knossos is scanning this project; the graph appears here when it is done.', width).map((line, i) => dimRow(`empty-${i}`, line, width)),
+      ...bodyText('empty', 'Knossos is scanning this project; the graph appears here when it is done.', width),
     ]
   }
   const named = NO_GRAPH[state]
@@ -129,9 +131,9 @@ function emptyBody(state: NoGraph, allow: AllowInput | null, width: number, host
   const { head: heading, why, busy: spins } = failure === null || allow !== null ? named : { head: 'The scan failed', why: failure, busy: undefined }
   const head: Row[] = [
     { key: 'empty-head', segments: [{ text: fit(spins === true ? busy(heading) : heading, width), bold: true, color: HEADING }] },
-    ...wrapWords(why, width).map((line, i) => dimRow(`empty-${i}`, line, width)),
+    ...bodyText('empty', why, width),
   ]
   if (allow !== null) return [...head, blank('gap-empty'), ...allowBody(allow, width)]
   if (state !== 'unscanned') return head
-  return [...head, blank('gap-empty'), { key: 'empty-action', segments: [host === 'web' ? button('scan', 'scan it', 'q', { dim: false }) : button('scan-ask', 'ask Claude to scan it', 'q', { dim: false })] }]
+  return [...head, blank('gap-empty'), bodyRow('empty-action', [host === 'web' ? button('scan', 'scan it', 'q', { dim: false }) : button('scan-ask', 'ask Claude to scan it', 'q', { dim: false })])]
 }

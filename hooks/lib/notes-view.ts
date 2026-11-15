@@ -11,7 +11,7 @@
  * missing name has no detail to open.
  */
 import type { NoteCounts, Notes, NotesAsk, NotesFilter, NotesImport, NotesState } from '../../types'
-import { moreRows, noteOf, shownOf, windowOf } from './cards'
+import { moreRows, NOTE_ROOM, noteOf, shownOf, windowOf } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { CARD_ICON, NOTE, SEVERITY, mark } from './marks'
 import { ACCENT, boundaryLabel, NO_HUES, STATUS_COLOURS } from './palette'
@@ -280,7 +280,10 @@ export function notesArrangement(input: NotesInput, selected: number, hues: Hues
       const items = notesItems(input)
       const narrowed = [...(input.filter === 'all' ? [] : [`showing ${input.filter}`]), ...(input.text === '' || input.filtering ? [] : [`narrowed to "${input.text}"`])]
       if (narrowed.length > 0) head.push(bodyLine('notes-narrowed', `${narrowed.join(' · ')} · ${plural(items.length, 'note', 'notes')}`, columns))
-      const note = noteOf(`${countsLine(input.counts)}${input.truncated ? ' · the first 2,000' : ''}`)
+      // Whose notes they are after the counts, where the top edge has room for both.
+      const counted = `${countsLine(input.counts)}${input.truncated ? ' · the first 2,000' : ''}`
+      const whose = `${counted} · yours and the model's`
+      const note = noteOf(cells(title) + cells(whose) + NOTE_ROOM <= columns ? whose : counted)
       if (items.length === 0) {
         const empty = input.counts.total === 0 ? "No notes yet: m on a component's detail writes one, and the model's land here as it records them." : 'No note matches.'
         return { key: 'notes', title, note, body: [...head, ...bodyText('notes-none', empty, columns)] }
@@ -308,7 +311,7 @@ export function notesArrangement(input: NotesInput, selected: number, hues: Hues
         body.push(entryRow(`notes-${i}`, entries[i]!, spec, hues))
       }
       body.push(...moreRows('notes-window', window, walk.length, columns, 0))
-      return { key: 'notes', title, subtitle: "yours and the model's", note, body, window: shownOf(window, walk.length) }
+      return { key: 'notes', title, note, body, window: shownOf(window, walk.length) }
     },
   }
   const marked = markedNote(input, selected)

@@ -10,7 +10,7 @@
  * searching and keeps the last matches.
  */
 import type { SearchState } from '../../types'
-import { moreRows, noteOf } from './cards'
+import { moreRows, noteOf, windowOf } from './cards'
 import type { Block } from './cards'
 import { boundaryLabel, NO_HUES } from './palette'
 import type { Hues } from './palette'
@@ -20,7 +20,7 @@ import { button, clip } from './rows'
 import { tableRow, tableSpec } from './table'
 import { cells, displayName, fit } from './text'
 import { placeText } from './paths'
-import { apart, bodyLine, bodyRow, bodyText, gutter, GUTTER, PART_GAP } from './spacing'
+import { apart, bodyLine, bodyRow, bodyText, groupGap, gutter, GUTTER, PART_GAP } from './spacing'
 import type { Loc, Row } from './types'
 import type { Tier } from './table'
 import { locIn } from './views'
@@ -93,21 +93,22 @@ export function finderBlock(finder: FinderInput, selected: number, tier: Tier, h
       else if (!finder.searching && finder.results.length === 0) said('find-none', `Nothing matches "${finder.query.trim()}".`)
       const list = finder.results
       if (list.length > 0) {
-        // The marked match in the middle of what the card holds, wherever it is in the list.
-        const n = Math.max(1, limit)
-        const start = list.length <= n ? 0 : Math.max(0, Math.min(selected - Math.floor(n / 2), list.length - n))
-        const shown = list.slice(start, start + n)
-        const spec = tableSpec(columns, shown.map(f => f.name), shown.map(f => boundaryLabel(f.boundary, hues)), [], undefined, { tier, kinds: tier === 'narrow' ? [] : shown.map(f => f.kind), places: tier === 'narrow' ? [] : shown.map(f => f.place) })
+        // The marked match in the middle of what the card holds, wherever it is in the list: a window, as every list's, started half the card above it.
+        const { start, end } = windowOf(list.length, limit, selected, Math.max(0, selected - Math.floor(Math.max(1, limit) / 2)))
+        const shown = list.slice(start, end)
+        // The finder draws no bar: its names and places take the row.
+        const spec = tableSpec(columns, shown.map(f => f.name), shown.map(f => boundaryLabel(f.boundary, hues)), [], undefined, { tier, bar: false, kinds: tier === 'narrow' ? [] : shown.map(f => f.kind), places: tier === 'narrow' ? [] : shown.map(f => f.place) })
         shown.forEach((f, j) => {
           const i = start + j
-          rows.push(tableRow(`found-${i}`, { name: f.name, boundary: f.boundary, values: [], max: 0, kind: f.kind, place: f.place, placeLoc: f.loc, path: f.file, press: `row:${i}`, selected: i === selected }, { ...spec, bar: 0 }, hues))
+          rows.push(tableRow(`found-${i}`, { name: f.name, boundary: f.boundary, values: [], max: 0, kind: f.kind, place: f.place, placeLoc: f.loc, path: f.file, press: `row:${i}`, selected: i === selected }, spec, hues))
         })
         // What is above and below, each a press that moves the marker onto the nearest match it counts, then the hint.
         const cut = moreRows('found-more', { start, end: start + shown.length }, list.length, columns, 0)[0]
         if (cut !== undefined) rows.push({ key: 'found-more', segments: clip([...cut.segments, { text: ' · type more to narrow', dim: true }], columns) })
       }
       if (finder.notes.length > 0) {
-        rows.push(bodyLine('found-notes', 'Notes on names the graph no longer holds:', columns))
+        // Another kind of block than the matches: after one blank row.
+        rows.push(groupGap('found-notes-gap'), bodyLine('found-notes', 'Notes on names the graph no longer holds:', columns))
         finder.notes.forEach((n, i) => {
           const who = n.author === 'user' ? 'you' : 'model'
           const room = Math.max(1, columns - GUTTER - cells(n.label) - cells(who) - 2 * PART_GAP)

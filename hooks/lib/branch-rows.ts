@@ -12,7 +12,7 @@
 import { boundaryColour, FAINT, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { button, clip, segmentsWidth, tintedRow } from './rows'
-import { bar, barRange, tierOf } from './table'
+import { bar, barRange, dependentsTitle, tierOf } from './table'
 import { chip, SWATCH } from './chips'
 import { cells, fit, grouped, padEnd, padStart, pathParts, placeSegments, plural, spaces } from './text'
 import { apart, bodyIndent, gutter, GUTTER, nest, NEST, PART_GAP } from './spacing'
@@ -20,8 +20,8 @@ import type { Row, Segment } from './types'
 import { CARD_ICON, CHANGE, SEVERITY, mark } from './marks'
 import type { BranchFile, BranchFinding, BranchGroup, BranchLine } from './branch'
 
-/** The cells a group's reach takes at its row's end, and the column title over it. */
-export const REACH_CELLS = 6
+/** The fewest cells the dependents column at a group's row end takes. */
+const REACH_CELLS = 6
 
 /** The fewest cells a bar is drawn in: narrower, it gives way. */
 const BAR_MIN = 4
@@ -126,7 +126,7 @@ export const labelOf = (g: Pick<BranchGroup, 'name' | 'outside'>): string => (g.
  * dependents in the same columns). Narrow, the bar gives way first, then the
  * file count; the reach the list is sorted by always shows.
  */
-export function changedRows(groups: BranchGroup[], shown: ChangedRow[], start: number, at0: number, selected: number, columns: number, hues: Hues): Row[] {
+export function changedRows(groups: BranchGroup[], shown: ChangedRow[], start: number, at0: number, selected: number, columns: number, hues: Hues, title = dependentsTitle('medium')): Row[] {
   const room = Math.max(1, columns - GUTTER)
   const name = Math.min(24, Math.max(8, Math.floor(columns / 4)), widest(groups.map(labelOf)))
   const lines = shown.map(r => (r.kind === 'group' ? r.g : r.f))
@@ -134,7 +134,9 @@ export function changedRows(groups: BranchGroup[], shown: ChangedRow[], start: n
   const deleted = widest(lines.map(l => `${CHANGE.removed.glyph}${grouped(l.deleted)}`))
   const files = widest(groups.map(g => plural(g.count, 'file', 'files')))
   const lead = 2 + name
-  const tail = 2 + added + 1 + deleted + 2 + REACH_CELLS
+  // The files a change reaches are its dependents: the column says so as every table does, as wide as its title.
+  const reach = Math.max(REACH_CELLS, cells(title), widest(groups.map(g => grouped(g.reach))), widest(shown.flatMap(r => (r.kind === 'file' ? [grouped(r.f.dependents)] : []))))
+  const tail = 2 + added + 1 + deleted + 2 + reach
   // The bar's share of the row as a table's, the files beside it while the bar keeps its least.
   const range = barRange(columns, tierOf(columns))
   const withFiles = room - lead - (1 + files) - tail - 1 >= BAR_MIN
@@ -143,15 +145,15 @@ export function changedRows(groups: BranchGroup[], shown: ChangedRow[], start: n
   const most = Math.max(1, ...groups.map(g => g.added + g.deleted))
   // Where the files' column ends: a file's path runs to it, under its boundary's name.
   const pathEnd = lead + (barWidth > 0 ? 1 + barWidth : 0) + (withFiles ? 1 + files : 0)
-  const figures = (l: { added: number; deleted: number }, reach: string): Segment[] => [
+  const figures = (l: { added: number; deleted: number }, dependents: string): Segment[] => [
     apart(),
     { text: padStart(`+${grouped(l.added)}`, added), color: STATUS_COLOURS.ok },
     { text: ` ${padStart(`${CHANGE.removed.glyph}${grouped(l.deleted)}`, deleted)}`, color: STATUS_COLOURS.alert },
     apart(),
-    { text: padStart(reach, REACH_CELLS) },
+    { text: padStart(dependents, reach) },
   ]
-  // The reach column's title over the figures it heads, keyed apart from the card's own top edge.
-  const head: Row = { key: 'branch-changed-cols', segments: [bodyIndent(pathEnd + tail - REACH_CELLS), { text: padStart('reach', REACH_CELLS), dim: true }] }
+  // The dependents column's title over the figures it heads, keyed apart from the card's own top edge.
+  const head: Row = { key: 'branch-changed-cols', segments: [bodyIndent(pathEnd + tail - reach), { text: padStart(title, reach), dim: true }] }
   return [
     head,
     ...shown.map((r, n): Row => {

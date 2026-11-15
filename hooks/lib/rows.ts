@@ -7,7 +7,7 @@
  */
 import { SECONDARY, SELECTED_BG } from './palette'
 import { cells, fit, spaces } from './text'
-import { blankRow, gutter, moreRow } from './spacing'
+import { blankRow, gutter, moreRow, PART_GAP } from './spacing'
 import type { Row, Segment } from './types'
 
 export const rowWidth = (row: Row): number => row.segments.reduce((n, s) => n + cells(s.text), 0)
@@ -105,7 +105,7 @@ export function clip(segments: Segment[], columns: number): Segment[] {
  * Groups of segments wrapped onto rows: each group stays whole on one row,
  * `gap` apart, and a group wider than a row is clipped to it.
  */
-export function wrapGroups(key: string, groups: Segment[][], columns: number, gap = 2, indent = 0): Row[] {
+export function wrapGroups(key: string, groups: Segment[][], columns: number, gap = PART_GAP, indent = 0): Row[] {
   const rows: Row[] = []
   let line: Segment[] = []
   let used = 0
@@ -136,7 +136,7 @@ export const dimRow = (key: string, text: string, columns: number): Row => ({ ke
  * ({@link moreRow}): none when it holds them all. With a `kind` it says what
  * was left out: `+1,204 more hubs`.
  */
-export const notListedRow = (key: string, count: number, shown: number, columns: number, options: { kind?: string } = {}): Row[] => (count <= shown ? [] : [moreRow(count - shown, key, columns, options.kind)])
+export const moreListedRow = (key: string, count: number, shown: number, columns: number, options: { kind?: string } = {}): Row[] => (count <= shown ? [] : [moreRow(count - shown, key, columns, options.kind)])
 
 /** The marker's index in a list `length` long (`local`, its place counted from the list's first item), or -1 when it is not in the list. */
 export const inList = (local: number, length: number): number => (local >= 0 && local < length ? local : -1)

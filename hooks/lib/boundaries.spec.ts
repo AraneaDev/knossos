@@ -182,8 +182,8 @@ describe('the marked boundary', () => {
 describe('boundaryRows', () => {
   it('lists each boundary with its letter, components, in and out under the map, with a legend', () => {
     const rows = boundaryRows(boundariesInput(dash()), 60)
-    expect(plainText(row(rows, 'bounds-head')!)).toMatch(/^Boundaries +4 boundaries · 28,112 deps$/)
-    expect(textOf(rows)).toContain(`fewer ${SHADES.map(s => s.repeat(2)).join('')} more deps`)
+    expect(plainText(row(rows, 'bounds-head')!)).toMatch(/^Boundaries +4 boundaries · 28,112 edges$/)
+    expect(textOf(rows)).toContain(`fewer ${SHADES.map(s => s.repeat(2)).join('')} more edges`)
     // The legend is part of the grid, so the terminal draws its swatches as the same tiles.
     expect(rows.filter(r => r.key.startsWith('heat-legend')).every(r => r.raster === 'heat')).toBe(true)
     expect(plainText(row(rows, 'bounds-cols')!)).toMatch(/boundary +comps +in +out$/)
@@ -269,12 +269,12 @@ describe('the marked heat map cell', () => {
     for (const columns of WIDTHS) {
       const section = couplingSection(input, { from: 0, to: 1 }, couplingView({ phase: 'done', answer }), columns)!
       expect(section.title).toBe('tests → core')
-      expect(section.note!.map(n => n.text).join('')).toBe('10,779 deps')
+      expect(section.note!.map(n => n.text).join('')).toBe('10,779 edges')
       for (const r of section.body) expect(rowWidth(r), `${columns} ${r.key}`).toBeLessThanOrEqual(columns)
     }
     const section = couplingSection(input, { from: 0, to: 1 }, couplingView({ phase: 'done', answer }), 80)!
     // The two boundaries drawn at the body, the dependencies on the arrow between them.
-    expect(rawText(section.body[1]!)).toMatch(/^ {3}│ tests ├─+ 10,779 deps ─+►│ core │$/)
+    expect(rawText(section.body[1]!)).toMatch(/^│ tests ├─+ 10,779 edges ─+►│ core │$/)
     // Under them the pairs behind it, in columns: the sources padded, an arrow, the targets, the counts.
     expect(plainText(section.body[4]!)).toMatch(/^ {3}ScanTest::scan +──► StableId +812$/)
     expect(plainText(section.body[5]!)).toMatch(/^ {3}Fixtures +──► SqliteConnection::open +97$/)

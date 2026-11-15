@@ -26,6 +26,7 @@
  */
 import { ACCENT, FAINT, HEADING, SELECTED_BG, STATUS_COLOURS } from './palette'
 import { cells, fit, padEnd, spaces } from './text'
+import { GUTTER } from './spacing'
 import type { Press, Row, Segment } from './types'
 
 /** The narrowest a diagram is drawn: below it, a view says the same as text. */
@@ -378,7 +379,7 @@ export type Coupling = { source: string; target: string; edges: string }
  * an arrow, every target, the counts right-aligned at the end. Names are cut
  * only as far as the width needs, the source and target sharing the cut.
  */
-export function pairColumns(items: Coupling[], width: number, sourceStyle: Style, targetStyle: Style, indent = 3, key = 'pairs'): Row[] {
+export function pairColumns(items: Coupling[], width: number, sourceStyle: Style, targetStyle: Style, indent = GUTTER, key = 'pairs'): Row[] {
   const { sw, tw, count } = pairWidths(items, width, indent)
   return items.map((item, i) => {
     const target = fit(item.target, tw)
@@ -415,7 +416,7 @@ function pairWidths(items: Coupling[], width: number, indent: number): { sw: num
 }
 
 /** Where {@link pairColumns} starts its targets' column, from the row's start: past the indent, the sources and the arrow. */
-export const pairTargetAt = (items: Coupling[], width: number, indent = 3): number => indent + pairWidths(items, width, indent).sw + cells(PAIR_ARROW)
+export const pairTargetAt = (items: Coupling[], width: number, indent = GUTTER): number => indent + pairWidths(items, width, indent).sw + cells(PAIR_ARROW)
 
 // ---------------------------------------------------------------- a neighbourhood
 

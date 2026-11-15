@@ -21,7 +21,7 @@ describe('a place in an issue row', () => {
     // 58 columns: the inner width of a 60 column pane. The name keeps more than its floor, the file name is whole.
     expect(rows.map(e => plainText({ key: 'x', segments: entryRow('x', e, entrySpec(58, rows), NO_HUES).segments }))).toEqual([
       '   ○ ∅ FactCollector::… ■ php-worker FactCollector.php:108',
-      '   ○ ∅ helper           ■ core       …Support/helper.php:4',
+      '   ○ ∅ helper           ■ core       …/helper.php:4',
     ])
     // Wider, the name is whole and the place takes back its folders, up to its share of the row.
     expect(entrySpec(80, rows)).toEqual({ main: 33, boundary: 12, place: 28 })

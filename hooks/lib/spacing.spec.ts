@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { arrange, cardInner, cardRows, stackRows } from './cards'
 import type { Block, Section } from './cards'
 import { plainText, rawText } from './__tests__/plain-text'
-import { notListedRow, rowWidth } from './rows'
+import { moreListedRow, rowWidth } from './rows'
 import { BODY, blankRow, GRID_GAP, GUTTER, isBlank, labelledRows, MARGIN, marginOf, moreRow, trimBlanks, wrapValue } from './spacing'
 import type { Fact } from './spacing'
 import { MARK, tierOf } from './table'
@@ -48,7 +48,7 @@ describe('what a list does not show', () => {
     expect(rawText(moreRow(3, 'x', 40, 'hubs'))).toBe('   +3 more hubs')
     expect(rowWidth(moreRow(1_000_000, 'x', 8))).toBeLessThanOrEqual(8)
     // The rows a list ends in say it the same way.
-    expect(notListedRow('x', 12, 5, 40)).toEqual([moreRow(7, 'x', 40)])
+    expect(moreListedRow('x', 12, 5, 40)).toEqual([moreRow(7, 'x', 40)])
   })
 })
 

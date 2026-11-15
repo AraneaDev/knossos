@@ -140,7 +140,7 @@ describe('a file detail', () => {
     expect(raw).toContain('│ +12 more')
     expect(raw).toMatch(/─ 2 ─+►│ Container\.php/)
     expect(raw).toMatch(/►│ Router\.php ├/)
-    expect(text).toMatch(/Declares +3 components\n *\n +used by\n/)
+    expect(text).toMatch(/Declares +3 components\n *\n +component +used by\n/)
     expect(plainText(row(rows, 'comp-1')!)).toMatch(/^ {3}Router::dispatch +━+·* +4$/)
     expect(plainText(row(rows, 'comps-more')!)).toBe('   +1 more')
     // Below fifty columns the two lists as tables.
@@ -148,9 +148,9 @@ describe('a file detail', () => {
     expect(plainText(row(narrow, 'dep-0')!)).toMatch(/^› {2}…?[a-zA-Z/]*Kernel\.php +■ Core +━+ +6$/)
     expect(plainText(row(narrow, 'deps-more')!)).toBe('   +12 more')
     expect(plainText(row(narrow, 'use-0')!)).toMatch(/Container\.php +■ Core/)
-    // The two lists of one kind run on: no blank row between the first and the second's heading.
+    // The two lists of one kind run on: no blank row between the first and the second's head, which names it and what its figures count.
     const more = narrow.findIndex(r => r.key === 'deps-more')
-    expect(narrow.slice(more + 1, more + 3).map(r => [r.key, plainText(r)])).toEqual([['uses-title', '   Depends on · 1 file'], ['use-0', plainText(row(narrow, 'use-0')!)]])
+    expect(narrow.slice(more + 1, more + 3).map(r => [r.key, plainText(r)])).toEqual([['use-cols', '   depends on                    edges'], ['use-0', plainText(row(narrow, 'use-0')!)]])
   })
 
   it('walks the dependents, then what it depends on (each a file), then the components, by the indexes their presses carry', () => {
@@ -196,7 +196,7 @@ describe('a file detail', () => {
     const alone = answer({ dependents: { count: 0, truncated: false, boundaries: [], items: [] } })
     expect(paneRows(pane({ view: { inspect: SHOWN }, state: done(alone) }), 90).map(rawText).join('\n')).toContain('nothing uses it')
     const text = textOf(paneRows(pane({ view: { inspect: SHOWN }, state: done(alone) }), 40))
-    expect(text).toMatch(/Depended on by +0 · edges\n/)
+    expect(text).toMatch(/Dependencies\n *\n +depended on by\n +none: no other file depends on it\n +depends on +edges\n/)
     expect(text).toContain('none: no other file depends on it')
   })
 
@@ -307,5 +307,34 @@ describe('the scope of every count', () => {
     const changes = textOf(paneRows(pane({ session, turn: last, view: { tab: 'changes' } }), 90))
     expect(changes).toMatch(/Changes this session +2 turns/)
     expect(changes).toMatch(/Tests that reach these changes +2 · nearest first/)
+  })
+})
+
+describe("the Declares card's head", () => {
+  it('heads its first column and its figures, as every table does', () => {
+    const rows = (columns: number) => {
+      const body = paneRows(pane({ view: { inspect: SHOWN }, state: done(answer()) }), columns, 60)
+      return ['comps-cols', 'comp-0', 'comp-1', 'comps-more'].map(k => rawText(findRow(body, k)!).trimEnd())
+    }
+    expect([60, 100, 140].map(rows)).toEqual([
+      [
+        '    component                       used by',
+        '    Router           ━━━━━━━━━━━━━━      12',
+        '    Router::dispatch ━━━━╸·········       4',
+        '    +1 more',
+      ],
+      [
+        '     component                                 used by',
+        '     Router           ━━━━━━━━━━━━━━━━━━━━━━━━      12',
+        '     Router::dispatch ━━━━━━━━················       4',
+        '     +1 more',
+      ],
+      [
+        '     component                                       used by',
+        '     Router           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━      12',
+        '     Router::dispatch ━━━━━━━━━━····················       4',
+        '     +1 more',
+      ],
+    ])
   })
 })

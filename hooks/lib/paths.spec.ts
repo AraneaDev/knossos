@@ -24,7 +24,7 @@ describe('the one form of a place', () => {
       { text: 'DashboardService.php:28', press: { id: 'file:/w/src/Query/DashboardService.php', label: 'DashboardService.php:28' } },
     ])
     expect(placeSegments('src/Query/DashboardService.php:28', 26).map(s => [s.text, s.dim === true])).toEqual([
-      ['…y/', true],
+      ['…/', true],
       ['DashboardService.php:28', false],
     ])
     // Cut into the file name, all of it is the file: there is no folder left to dim.

@@ -266,8 +266,8 @@ describe('bars', () => {
   it('give a place its file name and line whole, and more of its path only from width left over', () => {
     const places = ['src/Query/ArchitectureQueryService.php:22']
     const spec = (columns: number) => tableSpec(columns, ['ArchitectureQueryService'], ['core'], [3, 3, 5], undefined, { tier: 'medium', places }).place
-    // Its least is the file and line, from the width they showed at alone; the rest of the path from width left over, up to the column's cap.
-    expect([88, 90, 106, 108, 110, 130].map(spec)).toEqual([undefined, 31, 32, 34, 36, 36])
+    // Its least is the file and line, from the width they showed at alone; the rest of the path from width left over, up to all of it.
+    expect([88, 90, 106, 108, 110, 130].map(spec)).toEqual([undefined, 31, 32, 34, 36, 41])
   })
 })
 

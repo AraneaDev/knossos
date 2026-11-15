@@ -18,7 +18,7 @@
  */
 import { FAINT, FLASH_BG, HEADING, NO_HUES } from './palette'
 import type { Hues } from './palette'
-import { RANKING, kindMark, mark } from './marks'
+import { KIND_CELLS, RANKING, kindMark, mark } from './marks'
 import { opensFile } from './editor'
 import { boundaryStyle, chip } from './chips'
 import { button, segmentsWidth, tintedRow } from './rows'
@@ -64,8 +64,6 @@ const NAME_MAX = 32
 const BOUNDARY_MAX = 12
 /** The widest a file column grows. */
 const PLACE_MAX = 36
-/** The cells a kind mark takes before a name: its letter and a space. */
-const KIND_CELLS = 2
 /** The selection marker, the row's mark (the hotspot mark, or one the row names) and a space: the card's gutter, before the body. */
 export const MARK = GUTTER
 
@@ -89,9 +87,10 @@ export type TableSpec = { name: number; boundary: number; bar: number; numbers: 
 /**
  * What a table may add beyond names and numbers: the pane's tier (its bar
  * shares), each row's file, each row's kind, and whether its numbers are
- * compact (narrow, unless the table is a detail's, whose figures stay whole).
+ * compact (narrow, unless the table is a detail's, whose figures stay whole),
+ * and `bar: false` for a table that draws none (its names take the room).
  */
-export type TableOptions = { tier?: Tier; places?: string[]; kinds?: string[]; compact?: boolean }
+export type TableOptions = { tier?: Tier; places?: string[]; kinds?: string[]; compact?: boolean; bar?: false }
 
 /**
  * Fits a table to `columns` (see the module docblock for the order things
@@ -109,13 +108,15 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
   const compacted = (options.compact ?? options.tier === 'narrow') ? { compact: true as const } : {}
   const longest = Math.max(1, ...names.map(cells))
   // From the medium tier on a whole name wins over a longer gauge; narrow, names stop at their cap so the bars still compare.
-  const nameNeed = (options.tier ?? 'narrow') === 'narrow' ? Math.min(nameMax, longest) : longest
+  // With no bar to compare there is nothing to stop names for.
+  const barred = options.bar !== false
+  const nameNeed = (options.tier ?? 'narrow') === 'narrow' && barred ? Math.min(nameMax, longest) : longest
   // A boundary is a chip: its swatch and a space before its label.
   const boundaryLongest = Math.max(0, ...boundaries.map(cells))
   const boundaryNeed = boundaryLongest === 0 ? 0 : Math.min(BOUNDARY_MAX, boundaryLongest) + 2
-  const placeNeed = Math.min(PLACE_MAX, Math.max(0, ...(options.places ?? []).map(cells)))
-  // A place is cut from its front: it needs its file name and line whole, and takes more of its path only from width left over.
-  const placeFloor = Math.min(placeNeed, Math.max(0, ...(options.places ?? []).map(placeLeast)))
+  const placeLongest = Math.max(0, ...(options.places ?? []).map(cells))
+  // A place is cut from its front: it needs its file name and line whole, and takes more of its path, up to all of it, only from width the row leaves over.
+  const placeFloor = Math.min(PLACE_MAX, placeLongest, Math.max(0, ...(options.places ?? []).map(placeLeast)))
   // A kind is a two-cell mark before the name (its letter and a space), so a table with kinds always has room for it.
   const kindNeed = (options.kinds ?? []).length > 0 ? KIND_CELLS : 0
   // Beside a file or kind column a name may stop at the typical one's width: the few longest are cut rather than the column lost.
@@ -125,7 +126,11 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
     const fixed = MARK + numbers.reduce((n, w) => n + 1 + w, 0) + (place > 0 ? place + 1 : 0) + kind
     const avail = columns - fixed - (boundary > 0 ? boundary + 1 : 0)
     const placed = { ...(place > 0 ? { place } : {}), ...(kind > 0 ? { kind } : {}), ...compacted }
-    if (!withBar) return avail >= Math.min(NAME_MIN, nameNeed) ? { name: Math.min(avail, nameNeed), boundary, bar: 0, numbers, ...placed } : null
+    if (!withBar) {
+      const name = Math.min(avail, nameNeed)
+      if ((place > 0 || kind > 0) && name < typical) return null
+      return name >= Math.min(NAME_MIN, nameNeed) ? { name, boundary, bar: 0, numbers, ...placed } : null
+    }
     const barWidth = Math.min(range.max, Math.max(range.min, avail - 1 - nameNeed))
     // Room the bar may not take goes to a name past its cap: a whole name says more than a longer gauge.
     const name = Math.min(Math.max(nameNeed, Math.min(longest, avail - 1 - barWidth)), avail - 1 - barWidth)
@@ -133,11 +138,12 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
     if ((place > 0 || kind > 0) && name < typical) return null
     return name >= Math.min(NAME_MIN, nameNeed) ? { name, boundary, bar: barWidth, numbers, ...placed } : null
   }
-  const placed = placeFloor > 0 ? attempt(true, true, placeFloor, kindNeed) : null
-  if (placed !== null) return { ...placed, place: Math.min(placeNeed, placeFloor + Math.max(0, columns - specWidth(placed))) }
+  const placed = placeFloor > 0 ? attempt(true, barred, placeFloor, kindNeed) : null
+  if (placed !== null) return { ...placed, place: Math.min(placeLongest, placeFloor + Math.max(0, columns - specWidth(placed))) }
   return (
-    attempt(true, true, 0, kindNeed) ??
-    attempt(false, true, 0, kindNeed) ??
+    (barred ? attempt(true, true, 0, kindNeed) : null) ??
+    (barred ? attempt(false, true, 0, kindNeed) : null) ??
+    (barred ? null : attempt(true, false, 0, kindNeed)) ??
     attempt(false, false, 0) ?? { name: Math.max(1, columns - MARK - numbers.reduce((n, w) => n + 1 + w, 0)), boundary: 0, bar: 0, numbers, ...compacted }
   )
 }

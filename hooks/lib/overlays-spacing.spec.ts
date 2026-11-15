@@ -101,10 +101,10 @@ describe("the finder on the pane's spacing", () => {
   it('sets the field and the matches at the body, the marker and a gone name note mark in the gutter, each place in the one form', () => {
     const at: Record<number, string[]> = {
       60: ['    find: dash', '    DashboardService::cycle ■ core', ' ›  src/Query/Dashboard.php', '    Notes on names the graph no longer holds:', '  ▲ DashboardLegacy  you  Replaced in 0.40.'],
-      100: ['     find: dash', '     m DashboardService::cycle ■ core …ply/nested/DashboardService.php:40', '  ›    src/Query/Dashboard.php', '     Notes on names the graph no longer holds:', '   ▲ DashboardLegacy  you  Replaced in 0.40.'],
+      100: ['     find: dash', '     m DashboardService::cycle ■ core src/Query/deeply/nested/DashboardService.php:40', '  ›    src/Query/Dashboard.php', '     Notes on names the graph no longer holds:', '   ▲ DashboardLegacy  you  Replaced in 0.40.'],
       140: [
         '     find: dash',
-        '     m DashboardService::cycle ■ core …eply/nested/DashboardService.php:40',
+        '     m DashboardService::cycle ■ core src/Query/deeply/nested/DashboardService.php:40',
         '  ›    src/Query/Dashboard.php',
         '     Notes on names the graph no longer holds:',
         '   ▲ DashboardLegacy  you  Replaced in 0.40.',
@@ -187,25 +187,25 @@ describe("the route explorer on the pane's spacing", () => {
         '  ▲ No route from BriefCommand::answer to StableId within 6',
         ' ›1 BriefCommand::answer → TurnBriefService::brie… · 2 hops',
         '  2 BriefCommand::answer → StableId::scan · 1 hop',
-        '    ╭─────────────────────────╮',
-        '    │ BriefCommand::answer    │  ■ core',
-        '                 │ calls · src/Deep/Directory/File0.php:10',
+        ' ╭─────────────────────────╮',
+        ' │ BriefCommand::answer    │  ■ core',
+        '              │ calls · src/Deep/Directory/File0.php:10',
       ],
       100: [
         '   ▲ No route from BriefCommand::answer to StableId within 6 hops; StableId reaches',
         '  ›1 BriefCommand::answer → TurnBriefService::brief → StableId::scan · 2 hops',
         '   2 BriefCommand::answer → StableId::scan · 1 hop',
-        '     ╭─────────────────────────╮',
-        '     │ BriefCommand::answer    │  ■ core',
-        '                  │ calls · src/Deep/Directory/File0.php:10',
+        '  ╭─────────────────────────╮',
+        '  │ BriefCommand::answer    │  ■ core',
+        '               │ calls · src/Deep/Directory/File0.php:10',
       ],
       140: [
         '   ▲ No route from BriefCommand::answer to StableId within 6 hops; StableId reaches BriefCommand::answer: 2 routes, the strongest first.',
         '  ›1 BriefCommand::answer → TurnBriefService::brief → StableId::scan · 2 hops',
         '   2 BriefCommand::answer → StableId::scan · 1 hop',
-        '     ╭─────────────────────────╮',
-        '     │ BriefCommand::answer    │  ■ core',
-        '                  │ calls · src/Deep/Directory/File0.php:10',
+        '  ╭─────────────────────────╮',
+        '  │ BriefCommand::answer    │  ■ core',
+        '               │ calls · src/Deep/Directory/File0.php:10',
       ],
     }
     for (const w of WIDTHS)
@@ -247,9 +247,9 @@ describe("the key list, the screens and the footer's note on the pane's spacing"
       reason: null,
     }
     const at: Record<number, string[]> = {
-      60: [' No architecture graph yet', ' Knossos has not scanned this project, so there is nothing', ' to draw.', '', '  ▲ /home/me/project is not an allowed root', '    a: allow root'],
-      100: ['  No architecture graph yet', '  Knossos has not scanned this project, so there is nothing to draw.', '', '   ▲ /home/me/project is not an allowed root', '     a: allow root'],
-      140: ['  No architecture graph yet', '  Knossos has not scanned this project, so there is nothing to draw.', '', '   ▲ /home/me/project is not an allowed root', '     a: allow root'],
+      60: [' No architecture graph yet', '    Knossos has not scanned this project, so there is', '    nothing to draw.', '', '  ▲ /home/me/project is not an allowed root', '    a: allow root'],
+      100: ['  No architecture graph yet', '     Knossos has not scanned this project, so there is nothing to draw.', '', '   ▲ /home/me/project is not an allowed root', '     a: allow root'],
+      140: ['  No architecture graph yet', '     Knossos has not scanned this project, so there is nothing to draw.', '', '   ▲ /home/me/project is not an allowed root', '     a: allow root'],
     }
     for (const w of WIDTHS) {
       const rows = emptyRows('unscanned', offer, w)

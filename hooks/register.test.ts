@@ -3191,7 +3191,7 @@ describe('knossos mod', () => {
     await w.clock.settle()
     const term = await mountPane($, 'terminal')
     await term.press({ key: 'tab:boundaries' })
-    expect(titled((await term.find({ key: 'bounds-head' }))?.text)).toMatch(/^Boundaries +3 boundaries · 232 deps$/)
+    expect(titled((await term.find({ key: 'bounds-head' }))?.text)).toMatch(/^Boundaries +3 boundaries · 232 edges$/)
     const grid = await term.find({ type: 'Raster' })
     expect(grid?.key).toBe('raster-heat')
     // The axis letters, each boundary's cells (one row each, or two or three when the pane has rows to spare) and the legend's two rows.
@@ -4929,7 +4929,7 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     const ui = await mountPane($)
     await ui.press({ key: 'tab:boundaries' })
     // Http depends on Core most: that cell is marked and read, never inside the render.
-    expect(titled((await ui.find({ key: 'coupling-head' }))?.text)).toMatch(/^Http → Core +14 deps$/)
+    expect(titled((await ui.find({ key: 'coupling-head' }))?.text)).toMatch(/^Http → Core +14 edges$/)
     await w.clock.settle()
     expect(w.couplingRuns()).toEqual([['sh', expect.stringMatching(/knossos-run\.sh$/), 'boundary-couplings', ROOT, '--from=Http', '--to=Core']])
     expect((await ui.find({ key: 'coupling-0' }))?.text).toMatch(/Router::route +──► Kernel +9$/)

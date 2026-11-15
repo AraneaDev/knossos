@@ -12,7 +12,7 @@ import { ACCENT, STATUS_COLOURS } from './palette'
 import { button } from './rows'
 import { apart, bodyLine, bodyRow, bodyText, LABEL_GAP, labelledRows } from './spacing'
 import type { Fact } from './spacing'
-import { cells, padEnd, spaces, wrapWords } from './text'
+import { cells, padEnd, spaces, TAB_CELLS, wrapWords } from './text'
 import type { Row, Segment } from './types'
 import type { NoteInput } from './views'
 import { SEVERITY } from './marks'
@@ -23,9 +23,6 @@ type Annotation = { kind: string; value: string; author?: string }
 
 /** The label of the note's field in the footer: the kind a note is recorded as. */
 const FIELD_LABEL = 'note'
-
-/** The cells a tab in a note's sketch is drawn as. */
-const TAB_CELLS = 4
 
 /** Who wrote a note, before its text when it was not the person: `(agent)`, dim. */
 const AGENT = '(agent)'

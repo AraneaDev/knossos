@@ -13,8 +13,8 @@
  */
 import type { DiffFold, DiffState, Inspected, SessionDiff, SessionRev } from '../../types'
 import { button } from './rows'
-import { fit, grouped, placeSegments, plural, spaces } from './text'
-import { bodyLine, bodyRow, bodyText, GUTTER } from './spacing'
+import { fit, placeSegments, plural, spaces, TAB_CELLS } from './text'
+import { bodyLine, bodyRow, bodyText, GUTTER, moreText } from './spacing'
 import type { Row, Segment } from './types'
 import type { Block, Section } from './cards'
 import { CHANGE } from './marks'
@@ -221,9 +221,9 @@ function pressRow(key: string, id: string, label: string, columns: number): Row 
   return bodyRow(key, [button(id, fit(label, Math.max(1, columns - GUTTER)), undefined, { dim: true })])
 }
 
-/** What a hunk folds away, and the hunks after the page, said as the pane says what it does not show. */
-const moreLines = (n: number): string => `+${grouped(n)} more ${n === 1 ? 'line' : 'lines'}`
-const moreChanges = (n: number): string => `+${grouped(n)} more ${n === 1 ? 'change' : 'changes'} further down the file`
+/** What a hunk folds away, and the hunks after the page, said as the pane says what it does not show ({@link moreText}). */
+const moreLines = (n: number): string => moreText(n, n === 1 ? 'line' : 'lines')
+const moreChanges = (n: number): string => `${moreText(n, n === 1 ? 'change' : 'changes')} further down the file`
 
 /** One hunk as a page draws it: its element's text, the lines folded away, and those the element's limit cut. */
 export type DrawnHunk = { index: number; source: string; more: number; cut: number }
@@ -276,9 +276,6 @@ export function diffPage(view: Extract<DiffView, { phase: 'diff' }>): { start: n
   }
   return { start, end: start + drawn.length, before, drawn }
 }
-
-/** The cells a tab in a hunk's text line is drawn as. */
-const TAB_CELLS = 2
 
 /** Hunks and lines per hunk a text diff shows: it stands in a panel beside a list, where room is short. */
 const TEXT_HUNKS = 4

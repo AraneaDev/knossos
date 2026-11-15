@@ -129,7 +129,7 @@ describe('the Branch tab: did it break anything', () => {
 describe('the Branch tab: what changed', () => {
   it('totals the touched files, then a row per boundary, the most reaching first, the files outside the graph last', () => {
     const t = text(answer({}, 4))
-    expect(t).toMatch(/What changed +7 files +\+45 −6 · reach 61/)
+    expect(t).toMatch(/What changed +7 files +\+45 −6 → 61 dependents/)
     const lines = t.split('\n').filter(l => /[▸▾] [■·] /.test(l))
     expect(lines.map(l => l.match(/(http|core|outside the graph)/)?.[1])).toEqual(['core', 'http', 'outside the graph'])
     expect(t).toMatch(/core .*2 files +\+22 −2 +40/)
@@ -206,7 +206,7 @@ describe('the Branch tab on the pane', () => {
 
   it('totals the lines of every touched file, those past the listed ones too', () => {
     const files = { ...touched(2), added: 900, deleted: 40, truncated: true, count: 400 }
-    expect(text(answer({ files }))).toMatch(/What changed +400 files +\+900 −40 · reach 61/)
+    expect(text(answer({ files }))).toMatch(/What changed +400 files +\+900 −40 → 61 dependents/)
   })
 })
 

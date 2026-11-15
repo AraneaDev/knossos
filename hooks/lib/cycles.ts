@@ -38,7 +38,7 @@ import { chip, SWATCH } from './chips'
 import { cells, displayName, fit, lastSegment, plural } from './text'
 import type { Row, Segment } from './types'
 import type { Tier } from './table'
-import { bodyLine, gutter, GUTTER } from './spacing'
+import { bodyLine, gutter, GUTTER, moreText } from './spacing'
 import type { Openable } from './views'
 import { CARD_ICON } from './marks'
 
@@ -268,7 +268,7 @@ function cycleSection(input: CyclesInput, index: number, offset: number, local: 
   const shown = shownOf(cycle, index, input, columns, tier, local)
   const nodes: DiagramNode[] = shown.map((s): DiagramNode => {
     if (s.kind === 'fold') return { key: 'fold', label: `… ${s.hidden} more …`, dim: true, press: { id: `fold:${index}:${offset + s.first}`, label: `… ${s.hidden} more …` }, selected: local === cycle.nodes.length }
-    if (s.kind === 'unlisted') return { key: 'unlisted', label: `+${s.count} more`, dim: true }
+    if (s.kind === 'unlisted') return { key: 'unlisted', label: moreText(s.count), dim: true }
     const node = cycle.nodes[s.j]!
     const colour = coloured ? boundaryColour(node.boundary, hues) : undefined
     return { key: `m${s.j}`, label: node.name, ...(colour === undefined ? {} : { color: colour }), press: { id: `row:${offset + s.j}`, label: node.name }, selected: s.j === local }

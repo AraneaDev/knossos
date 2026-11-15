@@ -7,7 +7,7 @@ import { paneInput } from './pane-input'
 import { paneLayout } from './layout'
 import { nextFilter, NOTES_FILTERS } from './notes-view'
 import { ACCENT } from './palette'
-import { plainText } from './__tests__/plain-text'
+import { plainText, rawText } from './__tests__/plain-text'
 
 const ROOT = '/work/app'
 const d = { status: 'ok', path: ROOT, project_root: ROOT, project_id: 'p1', snapshot_id: 's1', freshness: { state: 'fresh', age_seconds: 1, drift_files: 0 }, hubs: [], hubs_truncated: false, hubs_truncation_reasons: [], hotspots: [], dead_code_candidates: 0, dead_code_truncated: false, cycles: { count: 0, truncated: false, truncation_reasons: [], largest: [] }, trend: [], fan_in: [], fan_in_truncated: false } as Dashboard
@@ -259,5 +259,16 @@ describe('the import card', () => {
     const keys = paneLayout(pane(state(answer()), view({ notesImport: i })), 120, 60).body.flatMap(r => r.segments)
     expect(keys.some(s => s.press?.id === 'notes-no')).toBe(true)
     expect(keys.some(s => s.press?.id === 'notes-yes')).toBe(false)
+  })
+})
+
+describe("the Notes card's title", () => {
+  it('ends in its counts, then whose notes they are where the rule has room for both', () => {
+    const titled = (columns: number) => rawText(paneLayout(pane(state(answer())), columns, 60).body.find(r => r.key === 'notes-head')!).trimEnd()
+    expect([60, 100, 140].map(titled)).toEqual([
+      ' ── ✎ Notes ── 4 notes · 1 missing · 1 stale · 1 flagged ──',
+      "  ── ✎ Notes ──────────────── 4 notes · 1 missing · 1 stale · 1 flagged · yours and the model's ──",
+      "  ── ✎ Notes ──────────────────────────────────────────────────────── 4 notes · 1 missing · 1 stale · 1 flagged · yours and the model's ──",
+    ])
   })
 })
