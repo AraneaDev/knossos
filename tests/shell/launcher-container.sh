@@ -1324,6 +1324,25 @@ reset_docker
 if [ ! -e "$OLD_RECORD" ] && [ "$status" -eq 0 ] && [ "$(cat "$OLD_GRAPH/brief.md" 2>/dev/null)" = b ]; then pass 'a record whose directory is gone is dropped, and that path is ordinary again'; else fail "stale record: $status, $(ls "$INSTALL/containers")"; fi
 rm -rf "$OLD_GRAPH"
 
+# ---- only a real container install's record makes a directory a graph -------------------
+
+# A repository that happens to hold install/containers and install/install.json.
+LOOKALIKE="$WORK/lookalike repo"
+mkdir -p "$LOOKALIKE/install/containers"
+printf '{"name": "some-package", "scripts": {"install": "make"}}\n' > "$LOOKALIKE/install/install.json"
+reset_docker
+(cd "$PROJECT" && TMPDIR="$WORK/tmp" FAKE_EXEC_WRITE=c kn export-agent-brief "$PROJECT" "--out=$LOOKALIKE/brief.md" </dev/null >/dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$(cat "$LOOKALIKE/brief.md" 2>/dev/null)" = c ]; then pass 'a folder with install/containers and an install.json that is no Knossos record is not a graph'; else fail "lookalike treated as a graph: $status"; fi
+printf '{"mode": "container", "layout": "separate"}\n' > "$LOOKALIKE/install/install.json"
+refused 'a folder holding a container install record' "$LOOKALIKE/brief2.md lies in the graph directory $LOOKALIKE" \
+    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" export-agent-brief "$1" "--out=$3/brief2.md" </dev/null' _ "$PROJECT" "$LAUNCHER" "$LOOKALIKE"
+rm -f "$LOOKALIKE/install/install.json"
+mkfifo "$LOOKALIKE/install/install.json"
+reset_docker
+out=$(cd "$PROJECT" && TMPDIR="$WORK/tmp" FAKE_EXEC_WRITE=d timeout 20 env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" export-agent-brief "$PROJECT" "--out=$LOOKALIKE/brief3.md" </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass 'an install.json that is a FIFO is never opened'; else fail "fifo record: $status, $out"; fi
+rm -rf "$LOOKALIKE"
+
 # allow-root: validated and written on the host; no container runs for it.
 mkdir -p "$WORK/second project"
 reset_docker

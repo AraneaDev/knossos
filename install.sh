@@ -19,6 +19,8 @@
 # mode is chosen when the host has the runtimes, else container mode when a
 # container runtime answers.
 #
+# --no-plugin skips both the plugin and the MCP registration, in either mode.
+#
 # Environment:
 #   KNOSSOS_DATA_DIR      install directory, which also holds the graph, when
 #                         --data-dir is not given              (default: ~/.knossos)
@@ -66,6 +68,11 @@ usage() {
 usage: install.sh [--mode=native|container] [--version=V] [--data-dir=DIR]
                   [--bin-dir=DIR] [--no-plugin] [--no-roots] [--dry-run]
                   [--force-clean]
+
+  --no-plugin    skip the Claude Code plugin and the MCP server registration
+                 with it: no plugin is written and claude is never called
+  --no-roots     do not add the directory the installer runs from to the roots file
+  --force-clean  remove the other mode's entries from the data directory first
 USAGE
 }
 
@@ -545,20 +552,37 @@ other_mode_entries() {
     printf '%s' "${found# }"
 }
 
-# graph_holding DIR: the nearest of DIR and the directories above it that is
-# the graph directory of a container install, told by its layout alone
-# (install/ holding containers/ and install.json; nothing in it is read), or
-# nothing. Every container of that install can write everything below it.
+# is_container_graph DIR: whether DIR is the graph directory of a Knossos
+# container install: DIR/install (not a link) holds containers/ and an
+# install.json that is a plain file of at most 64 KB recording "mode":
+# "container" and "layout": "separate". A repository that merely has those
+# names is not one. Only that install.json is read, and only once the layout
+# is there.
+is_container_graph() {
+    record="${1%/}/install/install.json"
+    [ ! -L "${1%/}/install" ] && [ -d "${1%/}/install/containers" ] && [ ! -L "$record" ] && [ -f "$record" ] || return 1
+    [ -n "$(find "$record" -prune -type f -size -65537c 2>/dev/null)" ] || return 1
+    text=$(dd bs=65536 count=1 < "$record" 2>/dev/null | tr -d ' \t\r\n') || return 1
+    case $text in *'"mode":"container"'*) ;; *) return 1 ;; esac
+    case $text in *'"layout":"separate"'*) return 0 ;; esac
+    return 1
+}
+
+# graph_holding DIR: the outermost of / and the directories below it down to
+# DIR that is a container install's graph directory (is_container_graph), or
+# nothing. Asked from the top down, so nothing inside a graph directory, where
+# a container could have put anything, is ever read.
 graph_holding() {
-    at=$1
+    at=/
+    rest=${1#/}
     while :; do
-        if [ ! -L "${at%/}/install" ] && [ -d "${at%/}/install/containers" ] && [ -f "${at%/}/install/install.json" ]; then
+        if is_container_graph "$at"; then
             printf '%s' "$at"
             return 0
         fi
-        [ "$at" != / ] || return 1
-        at=${at%/*}
-        at=${at:-/}
+        [ -n "$rest" ] || return 1
+        at="${at%/}/${rest%%/*}"
+        case $rest in */*) rest=${rest#*/} ;; *) rest='' ;; esac
     done
 }
 
@@ -568,10 +592,23 @@ graph_holding() {
 # installer would then create, write, run and (with --force-clean) remove
 # through it, and the launcher would mount where it leads. With `itself`,
 # PATH may be that graph directory (installing over it again). `{graph}` in
-# ADVICE stands for that graph directory. The path is
-# walked from / one directory at a time, each step from the directory the
-# walk stands in, so the check sees what is there; a missing directory ends
-# the walk, as nothing below it exists yet.
+# ADVICE stands for that graph directory. The path is walked from / one
+# directory at a time, each step from the directory the walk stands in, so
+# the check sees what is there.
+#
+# What this catches at install time: every existing directory on the way,
+# and every link a container could have planted, since such a link lies in a
+# graph directory and the walk refuses before it steps out of one. What it
+# leaves to the launcher: the walk ends at the first component that does not
+# exist, or is a link that leads nowhere. Nothing below it exists, and a
+# container cannot plant anything outside its graph, so no container can have
+# put it there. A dangling link of your own as the data directory is not
+# caught by this walk; `mkdir -p` then refuses to create through it (GNU
+# coreutils: "File exists"), after the image checks, so nothing is written.
+# Should any directory appear there by other means, the walk runs again on
+# the directory as created, before anything is written into it. The launcher
+# refuses such a data directory at every call as well (its walk never creates
+# through a link).
 refuse_in_graph() {
     (
         CDPATH=''
@@ -770,6 +807,7 @@ install_container() {
     DATA_DIR=$(CDPATH='' cd -P -- "$DATA_DIR" && pwd -P) || die "could not enter $DATA_DIR"
     # Again on the directory as created, should a link have moved it.
     refuse_writable_layout
+    refuse_in_graph "$DATA_DIR" --data-dir "pick a --data-dir outside {graph}." itself
     CINSTALL="$DATA_DIR/install"
     # The allow-list of a container install is the host's, in the install
     # directory, where no container can write it: the launcher chooses a
@@ -1108,6 +1146,8 @@ main() {
         done < "$TMP/listing"
 
         mkdir -p "$DATA_DIR/versions"
+        # Again on the directory as created, should a link have moved it.
+        refuse_in_graph "$DATA_DIR" --data-dir "pick a --data-dir outside {graph}." itself
         # A name of its own per process, so two installers never share a directory.
         PARTIAL="$DATA_DIR/versions/$VERSION.partial.$$"
         remove_partial

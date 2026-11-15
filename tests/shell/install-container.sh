@@ -29,7 +29,7 @@ fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }
 # a fake docker and a stub claude, and nothing else: no php, node or python3.
 BARE="$WORK/bare path"
 mkdir -p "$BARE"
-for tool in sh env uname mktemp date cut sed cat rm mkdir mv ln cp dirname sort tail head wc chmod ls find grep tr awk id readlink sha256sum shasum cksum touch sleep kill stat; do
+for tool in sh env uname mktemp date cut sed cat rm mkdir mv ln cp dirname sort tail head wc chmod ls find grep tr awk id readlink sha256sum shasum cksum touch sleep kill stat dd; do
     found=$(command -v "$tool" 2>/dev/null || true)
     case $found in /*) ln -s "$found" "$BARE/$tool" ;; esac
 done
@@ -281,6 +281,27 @@ if [ "$status" -ne 0 ] && [ -f "$WORK/victim/install.json" ] && [ -d "$WORK/vict
 else
     fail "force-clean through a planted link: $status, $out, $(ls -A "$WORK/victim")"
 fi
+# A dangling link of yours that leads into such a graph: mkdir -p will not
+# create through it, so the install stops before anything is written there.
+ln -s "$HELD/made through" "$WORK/my dangling"
+reset_docker
+out=$(cid "$WORK" "$WORK/my dangling" "$WORK/held-bin" --no-plugin --no-roots); status=$?
+if [ "$status" -ne 0 ] && [ ! -e "$HELD/made through" ] && [ ! -e "$WORK/held-bin/knossos" ]; then
+    pass 'a dangling link of your own into a graph directory is refused before anything is written there'
+else
+    fail "dangling link into a graph: $status, $out"
+fi
+rm -rf "$WORK/my dangling" "$HELD/made through"
+# A repository that merely holds install/containers and an install.json is no graph.
+LOOK="$WORK/look alike"
+mkdir -p "$LOOK/install/containers"
+printf '{"name": "pkg", "mode": "development"}\n' > "$LOOK/install/install.json"
+reset_docker
+out=$(cid "$WORK" "$LOOK/data" "$WORK/look-bin" --no-plugin --no-roots); status=$?
+if [ "$status" -eq 0 ] && [ -f "$LOOK/data/install/install.json" ]; then pass 'a folder with that layout but no container install record does not block a data directory below it'; else fail "lookalike: $status, $out"; fi
+rm -rf "$LOOK" "$WORK/look-bin"
+# --help says that --no-plugin also skips the MCP registration.
+case $(sh "$INSTALL_SH" --help) in *'--no-plugin    skip the Claude Code plugin and the MCP server registration'*) pass '--help says what --no-plugin skips' ;; *) fail '--help does not say that --no-plugin skips the registration' ;; esac
 mkdir -p "$HELD/tmp"
 reset_docker
 out=$(cd "$WORK" && TMPDIR="$HELD/tmp" PATH="$BARE" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 \

@@ -392,10 +392,21 @@ graph_note() {
     printf ' %s records that this installation used %s as a graph directory; if it no longer is one, remove that file to lift this refusal.' "$note_file" "$1"
 }
 
-# looks_like_graph DIR: whether DIR holds a container install's install
-# directory, told by its layout alone: nothing in it is read.
+# looks_like_graph DIR: whether DIR holds a Knossos container install's
+# install directory: install/ (not a link) with containers/ in it and an
+# install.json that is a plain file of at most 64 KB recording "mode":
+# "container" and "layout": "separate". Only a directory that already has that
+# layout is read, and only its install.json: callers ask from the top down, so
+# a directory in a container's reach is never read (an install directory is
+# read-only to every container).
 looks_like_graph() {
-    [ ! -L "${1%/}/install" ] && [ -d "${1%/}/install/containers" ] && [ -f "${1%/}/install/install.json" ]
+    [ ! -L "${1%/}/install" ] && [ -d "${1%/}/install/containers" ] && [ ! -L "${1%/}/install/install.json" ] \
+        && [ -f "${1%/}/install/install.json" ] || return 1
+    [ -n "$(find "${1%/}/install/install.json" -prune -type f -size -65537c 2>/dev/null)" ] || return 1
+    record_text=$(dd bs=65536 count=1 < "${1%/}/install/install.json" 2>/dev/null | tr -d ' \t\r\n') || return 1
+    case $record_text in *'"mode":"container"'*) ;; *) return 1 ;; esac
+    case $record_text in *'"layout":"separate"'*) return 0 ;; esac
+    return 1
 }
 
 # writer_of DIR [strict]: prints the graph directory that holds DIR, and
@@ -415,20 +426,19 @@ writer_of() {
     done <<GRAPHS
 $GRAPH_DIRS
 GRAPHS
-    above=$1
-    if [ "${2-}" = strict ]; then
-        [ "$above" != / ] || return 1
-        above=${above%/*}
-        above=${above:-/}
-    fi
+    # From / down to DIR (above it only, with strict), so the first graph
+    # found is the outermost and nothing below it is read.
+    above=/
+    rest=${1#/}
     while :; do
+        if [ "${2-}" = strict ] && [ "$above" = "$1" ]; then return 1; fi
         if ! too_wide "$above" >/dev/null && looks_like_graph "$above"; then
             printf '%s' "$above"
             return 0
         fi
-        [ "$above" != / ] || return 1
-        above=${above%/*}
-        above=${above:-/}
+        [ -n "$rest" ] || return 1
+        above="${above%/}/${rest%%/*}"
+        case $rest in */*) rest=${rest#*/} ;; *) rest='' ;; esac
     done
 }
 
