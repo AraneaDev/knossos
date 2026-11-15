@@ -85,6 +85,18 @@ If the server it attached to stops, the terminals attached to it notice, and
 one of them takes the project over while the others attach to that one. Until
 then the pane shows `Reconnecting to the server...`.
 
+A server that is there but does not answer is waited on for a few seconds,
+and the pane says what it waits for. The usual case is a pane suspended with
+`Ctrl-Z` in another terminal while it holds the project:
+
+```text
+Knossos in another terminal (pid 48213) is suspended. Resume it there with fg, or wait a few seconds and this one takes over.
+```
+
+Once the wait is over the new pane takes the project over. When the suspended
+pane is resumed, its server sees that another holds the project, closes, and
+the pane joins that server, so the two show the same pane again.
+
 The server's log never reaches the screen. It goes to a file beside the
 project's lock in the data directory (`web/<name>.log`), and when it holds
 anything, `knossos` names the file as it exits. A message logged while the

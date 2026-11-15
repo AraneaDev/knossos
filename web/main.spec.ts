@@ -1,26 +1,18 @@
-import { execFileSync, spawn } from 'node:child_process'
-import type { ChildProcessWithoutNullStreams } from 'node:child_process'
-import { chmodSync, existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { chmodSync, existsSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
-import { markedPluginRoot, scratch } from './fixtures/helpers'
+import { describe, expect, it } from 'vitest'
+import { markedPluginRoot, scratch, spawnFixture } from './fixtures/helpers'
 import { browserCommands, openBrowser } from './browser'
 import { lockFile } from './lock'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const running: ChildProcessWithoutNullStreams[] = []
-
-afterEach(() => {
-  for (const child of running.splice(0)) if (child.exitCode === null) child.kill('SIGKILL')
-})
-
 /** `node web/main.ts` for `dir`, not opening a browser, and its output as it comes. */
 function main(dir: string, env: Record<string, string>, extra: string[] = []) {
-  const child = spawn(process.execPath, [join(HERE, 'main.ts'), dir, '--no-open', ...extra], { env: { ...process.env, ...env } })
-  running.push(child)
+  const child = spawnFixture(process.execPath, [join(HERE, 'main.ts'), dir, '--no-open', ...extra], { env: { ...process.env, ...env } })
   let out = ''
   child.stdout.setEncoding('utf8').on('data', (text: string) => (out += text))
   child.stderr.setEncoding('utf8').on('data', (text: string) => (out += text))
@@ -92,6 +84,27 @@ describe('knossos web', () => {
     expect(second.out()).toContain(`Knossos web pane for ${realpathSync(dir)} is already running: ${url}`)
     first.child.kill('SIGTERM')
     expect(await first.exited).toBe(0)
+  })
+
+  it('stops once another server took the project over, and leaves that one its lock', { timeout: 30_000 }, async () => {
+    const dir = scratch()
+    const data = scratch()
+    const env = { KNOSSOS_DATA_DIR: data, KNOSSOS_WEB_PLUGIN_ROOT: markedPluginRoot(String(50_000 + Math.floor(Math.random() * 9_999))) }
+    const first = main(dir, env)
+    await first.line(/Press Ctrl-C/)
+    // Set aside while the second starts, the lock then names the second, as a take-over that found the first one stale leaves it.
+    const aside = `${lockFile(data, dir)}.aside`
+    renameSync(lockFile(data, dir), aside)
+    const second = main(dir, env)
+    await second.line(/Press Ctrl-C/)
+    rmSync(aside)
+    const lock = readFileSync(lockFile(data, dir), 'utf8')
+    expect(await first.exited).toBe(0)
+    expect(first.out()).toContain(`Another server took over the pane for ${realpathSync(dir)}; this one stops.`)
+    expect(readFileSync(lockFile(data, dir), 'utf8')).toBe(lock)
+    expect(second.child.exitCode).toBeNull()
+    second.child.kill('SIGTERM')
+    expect(await second.exited).toBe(0)
   })
 
   it('keeps its address across starts: the same token, and the same port while it is free', { timeout: 30_000 }, async () => {

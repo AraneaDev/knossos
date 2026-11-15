@@ -16,6 +16,21 @@ import { mod } from './state'
 const CLAIM_TIMEOUT_MS = 20_000
 
 /**
+ * The deliberate start under way, counted outside the mod's state: a reset starts the state over, and a count kept
+ * there would start over with it and let a start from before the reset pass for the current one.
+ */
+let run = 0
+
+/**
+ * Ends the deliberate start under way, for a server that stops: an answer that arrives later acts on nothing (no
+ * first scan for a server that is gone), and a later start in the same process is not held off by it.
+ */
+export function endDeliberately(): void {
+  run++
+  mod.deliberate.claiming = false
+}
+
+/**
  * Claims the folder the session is in and, when that put it on the roots
  * list or it is listed and knossos says it was never scanned, scans it. Every other answer (a folder
  * to ask about, a setup to fix, silence, a refusal) scans nothing and raises
@@ -25,8 +40,11 @@ const CLAIM_TIMEOUT_MS = 20_000
 export async function startDeliberately(io: Port): Promise<void> {
   if (mod.deliberate.claiming) return
   mod.deliberate.claiming = true
+  const mine = ++run
   try {
     const { stdout, refusal } = await wrapperAnswer(io, 'claim', ['--execute'], CLAIM_TIMEOUT_MS)
+    // Ended while the claim ran: its server stopped, and what the answer says is no longer its to act on.
+    if (mine !== run) return
     // The wrapper refused (no roots file known, say): the person is told why nothing was added.
     if (refusal !== null) {
       const root = await io.session.root().catch(() => '')
@@ -48,6 +66,6 @@ export async function startDeliberately(io: Port): Promise<void> {
   } catch {
     // A torn-down session fails quietly.
   } finally {
-    mod.deliberate.claiming = false
+    if (mine === run) mod.deliberate.claiming = false
   }
 }

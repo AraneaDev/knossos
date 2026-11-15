@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createPage,
     focusStep,
+    movedTo,
     pageId,
     pressOfKey,
     pressOrder,
@@ -223,14 +224,17 @@ describe("the event stream", () => {
             on: {
                 toast: (e) => seen.push(["toast", e.text]),
                 focus: (e) => seen.push(["focus", e.key]),
+                moved: (e) => seen.push(["moved", e.port]),
             },
         });
         p.connect();
         FakeSource.opened[0].emit({ type: "toast", text: "hi" });
+        FakeSource.opened[0].emit({ type: "moved", port: 41234 });
         FakeSource.opened[0].emit({ type: "focus", key: "tab:hubs" });
         FakeSource.opened[0].emit({ type: "scroll", key: "row:3" });
         expect(seen).toEqual([
             ["toast", "hi"],
+            ["moved", 41234],
             ["focus", "tab:hubs"],
         ]);
         expect(p.focused).toBe("tab:hubs");
@@ -240,6 +244,22 @@ describe("the event stream", () => {
         expect([0, 1, 2, 3, 4, 10].map(retryDelay)).toEqual([
             500, 1000, 2000, 4000, 5000, 5000,
         ]);
+    });
+});
+
+describe("movedTo", () => {
+    it("keeps the page's address but for the port, its token and view with it", () => {
+        expect(movedTo(41234, "http://127.0.0.1:40000/?t=abc#pane")).toBe(
+            "http://127.0.0.1:41234/?t=abc#pane",
+        );
+        expect(movedTo(41234, "http://localhost:40000/?t=abc")).toBe(
+            "http://localhost:41234/?t=abc",
+        );
+    });
+
+    it("goes nowhere for a port that is not one", () => {
+        for (const port of [0, -1, 65536, 1.5, "41234", null, undefined])
+            expect(movedTo(port, "http://127.0.0.1:40000/?t=abc")).toBeNull();
     });
 });
 

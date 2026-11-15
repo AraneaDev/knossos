@@ -90,9 +90,18 @@ The lock is a file in Knossos's data directory (`KNOSSOS_DATA_DIR`, by default
 `~/.knossos`), under `web/`, holding the server's process id and port. A lock
 left behind by a server that was killed is taken over by the next start: its
 process is gone, or its process id now belongs to another program and its
-address answers nothing. A server that stops on a failure of its own still
-ends its watcher and removes its lock. A second Ctrl-C while it stops makes it
-stop at once.
+address answers nothing. A server that is alive but does not answer (a
+terminal pane suspended with `Ctrl-Z`, or one that hangs) is waited on for a
+few seconds, with a line saying what the start waits for, and then taken over.
+A server that finds another holding the project closes: its terminal says so,
+
+```text
+Another server took over the pane for /home/you/code/shop; this one stops.
+```
+
+and a browser tab on it moves to the other server's address by itself. A
+server that stops on a failure of its own still ends its watcher and removes
+its lock. A second Ctrl-C while it stops makes it stop at once.
 
 ## The same address every time
 

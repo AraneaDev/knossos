@@ -1,12 +1,14 @@
-import { spawn, spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import type { RequestListener } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { scratch } from './fixtures/helpers'
-import { addressOf, claim, identity, lockFile } from './lock'
+import { HAS_PROC, scratch, spawnFixture } from './fixtures/helpers'
+import { PANE_HEADER, PATIENCE_MS, addressOf, claim, identity, lockFile } from './lock'
+import type { Silent } from './lock'
 
 const LOCK = join(dirname(fileURLToPath(import.meta.url)), 'lock.ts')
 const TOKEN = 'ab'.repeat(24)
@@ -15,6 +17,19 @@ const TOKEN = 'ab'.repeat(24)
 function deadPid(): number {
   const ended = spawnSync(process.execPath, ['-e', ''])
   return ended.pid!
+}
+
+/** An HTTP server on a free port answering with `handler`; `close` also drops the connections it never answered. */
+async function serve(handler: RequestListener): Promise<{ port: number; close(): void }> {
+  const server = createServer(handler)
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  return {
+    port: (server.address() as AddressInfo).port,
+    close: () => {
+      server.closeAllConnections()
+      server.close()
+    },
+  }
 }
 
 /** Whatever runs as the lock's removal guard is taken, once: the moment between a start's read of a lock and its removal. */
@@ -43,7 +58,7 @@ vi.mock('node:fs', async importOriginal => {
  */
 function claimer(data: string, root: string, at: number): { kind: Promise<string>; done(): void } {
   const code = `import(${JSON.stringify(LOCK)}).then(async m => { while (Date.now() < ${at}); const c = await m.claim(${JSON.stringify(data)}, ${JSON.stringify(root)}, ${JSON.stringify(TOKEN)}); console.log(c.kind); process.stdin.resume().on('end', () => process.exit(0)) })`
-  const child = spawn(process.execPath, ['-e', code])
+  const child = spawnFixture(process.execPath, ['-e', code])
   let out = ''
   const kind = new Promise<string>(resolve => {
     child.stdout.on('data', (chunk: Buffer) => {
@@ -116,7 +131,7 @@ describe('claim', () => {
     // Another start holds the removal guard for a moment, as it would while deciding whether the lock is stale.
     const guard = `${file}.removing`
     writeFileSync(guard, '1')
-    const remover = spawn('sh', ['-c', `sleep 0.2; rm -f '${guard}'`])
+    const remover = spawnFixture('sh', ['-c', `sleep 0.2; rm -f '${guard}'`])
     const started = Date.now()
     got.record(1234)
     expect(Date.now() - started).toBeGreaterThanOrEqual(150)
@@ -180,6 +195,39 @@ describe('claim', () => {
     got.release()
   })
 
+  it('names another holder only when the lock names another live process and a pane server answers at its port', async () => {
+    const data = scratch()
+    const root = scratch()
+    const got = await claim(data, root, TOKEN)
+    if (got.kind !== 'mine') throw new Error('not mine')
+    const file = lockFile(data, root)
+    got.record(1234)
+    expect(await got.holder()).toBeNull()
+    // Missing, or not yet written whole: a rewrite under way, not another holder.
+    rmSync(file)
+    expect(await got.holder()).toBeNull()
+    writeFileSync(file, '')
+    expect(await got.holder()).toBeNull()
+    const pane = await serve((_req, res) => void res.writeHead(200, { [PANE_HEADER]: '1' }).end('page'))
+    const closed = await serve(() => undefined)
+    closed.close()
+    try {
+      // Named for a process that is gone: no one else holds it.
+      writeFileSync(file, JSON.stringify({ pid: deadPid(), port: pane.port }))
+      expect(await got.holder()).toBeNull()
+      // Named for a live process that serves nothing at its port (a pid used again): no evidence of another holder.
+      writeFileSync(file, JSON.stringify({ pid: process.ppid, port: closed.port }))
+      expect(await got.holder()).toBeNull()
+      // Named for another live process with a pane server at its port: that one took the project over.
+      writeFileSync(file, JSON.stringify({ pid: process.ppid, port: pane.port }))
+      expect(await got.holder()).toBe(pane.port)
+      // And asking changed nothing.
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ pid: process.ppid, port: pane.port })
+    } finally {
+      pane.close()
+    }
+  })
+
   it('keeps the token out of the lock, and the lock and its directory to their owner', async () => {
     const data = scratch()
     const root = scratch()
@@ -201,22 +249,107 @@ describe('claim', () => {
     expect(statSync(join(data, 'web')).mode & 0o777).toBe(0o700)
   })
 
-  it("finds a live server's lock, and its address from the port and the project's token, when the server there answers", async () => {
+  it("finds a live server's lock, and its address from the port and the project's token, when a pane server answers there", async () => {
     const data = scratch()
     const root = scratch()
     const asked: string[] = []
-    const server = createServer((req, res) => {
+    const server = await serve((req, res) => {
       asked.push(req.url ?? '')
-      res.writeHead(200).end('page')
+      res.writeHead(200, { [PANE_HEADER]: '1' }).end('page')
     })
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-    const port = (server.address() as AddressInfo).port
     try {
       mkdirSync(join(data, 'web'), { recursive: true })
       // The parent of this process is alive for as long as the spec runs.
-      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port }))
-      expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: addressOf(port, TOKEN) })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
+      expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: addressOf(server.port, TOKEN) })
       expect(asked).toEqual([`/?t=${TOKEN}`])
+    } finally {
+      server.close()
+    }
+  })
+
+  it('keeps a live server that is slow to answer: two panes taking over at once under load stay on one server', { timeout: 20_000 }, async () => {
+    for (const delay of [400, 1_000, 1_500]) {
+      const data = scratch()
+      const root = scratch()
+      // Busy, as a pane's own server is right after it started on a loaded machine: it answers, but after the first tries gave up.
+      const server = await serve((_req, res) => void setTimeout(() => res.writeHead(200, { [PANE_HEADER]: '1' }).end('page'), delay))
+      try {
+        mkdirSync(join(data, 'web'), { recursive: true })
+        writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
+        expect(await claim(data, root, TOKEN)).toEqual({ kind: 'running', url: addressOf(server.port, TOKEN) })
+        expect(JSON.parse(readFileSync(lockFile(data, root), 'utf8'))).toEqual({ pid: process.ppid, port: server.port })
+      } finally {
+        server.close()
+      }
+    }
+  })
+
+  it('takes over a live holder whose server never answers, once the bounded wait is over, and says once what it waits for', { timeout: 20_000 }, async () => {
+    const data = scratch()
+    const root = scratch()
+    // Accepts, never answers: a server whose event loop is stuck.
+    const server = await serve(() => undefined)
+    try {
+      mkdirSync(join(data, 'web'), { recursive: true })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
+      const told: Silent[] = []
+      const started = Date.now()
+      const got = await claim(data, root, TOKEN, holder => told.push(holder))
+      expect(got.kind).toBe('mine')
+      expect(Date.now() - started).toBeGreaterThanOrEqual(PATIENCE_MS.reduce((a: number, b: number) => a + b, 0) - 100)
+      expect(told).toEqual([{ pid: process.ppid, stopped: false }])
+    } finally {
+      server.close()
+    }
+  })
+
+  it.skipIf(!HAS_PROC)('tells a holder that is suspended, and takes it over once the bounded wait is over', { timeout: 20_000 }, async () => {
+    const data = scratch()
+    const root = scratch()
+    // A pane server in a process of its own, stopped as a pane suspended with Ctrl-Z is: the kernel still accepts, nothing answers.
+    const holder = spawnFixture(process.execPath, ['-e', `const s = require('node:http').createServer((q, r) => r.writeHead(200, { '${PANE_HEADER}': '1' }).end('page')); s.listen(0, '127.0.0.1', () => console.log(s.address().port))`])
+    const port = await new Promise<number>(resolve => holder.stdout.once('data', (chunk: Buffer) => resolve(Number(String(chunk).trim()))))
+    process.kill(holder.pid!, 'SIGSTOP')
+    try {
+      mkdirSync(join(data, 'web'), { recursive: true })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: holder.pid, port }))
+      const told: Silent[] = []
+      expect((await claim(data, root, TOKEN, h => told.push(h))).kind).toBe('mine')
+      expect(told).toEqual([{ pid: holder.pid, stopped: true }])
+    } finally {
+      process.kill(holder.pid!, 'SIGCONT')
+    }
+  })
+
+  it('tells a pane server from another program on the port: the marker, or the page of a server from before it', async () => {
+    const cases: [Record<string, string>, string, 'mine' | 'running'][] = [
+      [{}, 'it works', 'mine'],
+      [{}, '<script type="module">await import(`/static/app.mjs${location.search}`)</script>', 'running'],
+      [{ [PANE_HEADER]: '1' }, '', 'running'],
+    ]
+    for (const [headers, body, kind] of cases) {
+      const data = scratch()
+      const root = scratch()
+      const server = await serve((_req, res) => void res.writeHead(200, headers).end(body))
+      try {
+        mkdirSync(join(data, 'web'), { recursive: true })
+        writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
+        expect((await claim(data, root, TOKEN)).kind).toBe(kind)
+      } finally {
+        server.close()
+      }
+    }
+  })
+
+  it("takes over a lock whose pid is alive but whose port answers as another project's server: a pid used again after a restart", async () => {
+    const data = scratch()
+    const root = scratch()
+    const server = await serve((_req, res) => void res.writeHead(403, { [PANE_HEADER]: '1' }).end())
+    try {
+      mkdirSync(join(data, 'web'), { recursive: true })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
+      expect((await claim(data, root, TOKEN)).kind).toBe('mine')
     } finally {
       server.close()
     }

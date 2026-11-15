@@ -1,6 +1,6 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fixturePluginRoot, scratch } from './fixtures/helpers'
+import { fixturePluginRoot, HAS_PROC, markedPluginRoot, scratch } from './fixtures/helpers'
 import { hostProject } from './host'
 import { addressOf, claim as realClaim, identity as realIdentity, lockFile } from './lock'
 
@@ -48,6 +48,8 @@ afterEach(async () => {
   vi.restoreAllMocks()
   for (const hosted of started.splice(0)) {
     if (hosted.kind !== 'mine') continue
+    // Start-up writes into the data directory: it is waited for, so nothing lands there once the test has removed it.
+    await hosted.ready
     await hosted.close()
     hosted.release()
   }
@@ -89,6 +91,29 @@ describe('hostProject', () => {
       failing.record = false
     }
     expect(existsSync(lockFile(data, root))).toBe(false)
+  })
+
+  // The watcher is looked for in /proc; a system without one cannot say, so the test does not run there.
+  it.skipIf(!HAS_PROC)('starts no watcher for a server it stopped because the lock was lost', async () => {
+    const root = scratch()
+    const data = scratch()
+    const mark = String(70_000 + Math.floor(Math.random() * 9_999))
+    failing.record = true
+    try {
+      await expect(hostProject({ root, dataDir: data, pluginRoot: markedPluginRoot(mark), editor: null, port: null })).rejects.toThrow('disk full')
+    } finally {
+      failing.record = false
+    }
+    // Long enough for a start-up left running to load the dashboard and start its watcher, a `sleep <mark>`.
+    await new Promise(resolve => setTimeout(resolve, 1_500))
+    const watching = readdirSync('/proc').filter(pid => {
+      try {
+        return /^\d+$/.test(pid) && readFileSync(`/proc/${pid}/cmdline`, 'utf8') === `sleep\0${mark}\0`
+      } catch {
+        return false
+      }
+    })
+    expect(watching).toEqual([])
   })
 
   it('starts the server and holds the lock when none runs', async () => {
