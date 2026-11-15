@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { TABS } from "../../hooks/lib/chrome.ts";
+import { topRow } from "../../hooks/lib/cards.ts";
+import { ringsBlock, ringsInput } from "../../hooks/lib/rings.ts";
+import { rawText } from "../../hooks/lib/__tests__/plain-text.ts";
 import {
     checkStill,
     keepPartial,
@@ -16,6 +19,7 @@ import {
     COMMAND_LIST,
     COMMAND_LISTED,
     NEVER_SHOWN,
+    RINGS_LOADED,
     SHOTS,
     STEP_KINDS,
     THIS_SESSION,
@@ -117,6 +121,80 @@ describe("SHOTS", () => {
     it("shoots the light theme for the overview and the hubs detail", () => {
         expect(SHOTS["overview-light"].theme).toBe("light");
         expect(SHOTS["hubs-detail-light"].theme).toBe("light");
+    });
+});
+
+describe("RINGS_LOADED", () => {
+    const NAME = "App\\Result\\Envelope";
+    const answer = {
+        status: "ok",
+        component: {
+            name: "Envelope",
+            canonical_name: NAME,
+            kind: "class",
+            boundary: "core",
+        },
+        truncated: true,
+        rings: [1, 2, 3].map((hop) => ({
+            hop,
+            count: 40 * hop,
+            tested: 40 * hop,
+            items: [
+                {
+                    name: `Caller${hop}`,
+                    canonical_name: `App\\Caller${hop}`,
+                    kind: "class",
+                    path: null,
+                    boundary: "core",
+                    tested: true,
+                },
+            ],
+            tests: { count: 1, items: [{ path: "tests/CallerTest.php", hop }] },
+        })),
+    };
+    // The card's top edge as the pane draws it at the hero's pane width.
+    const title = (state) =>
+        rawText(
+            topRow(
+                ringsBlock(ringsInput(state, NAME, "/work"), 0, 0).make(94),
+                94,
+            ),
+        );
+    it("matches the blast radius title only once the rings have loaded", () => {
+        const re = new RegExp(RINGS_LOADED);
+        expect(
+            re.test(
+                title({ name: NAME, snapshot: "s1", phase: "done", answer }),
+            ),
+        ).toBe(true);
+        expect(
+            re.test(
+                title({
+                    name: NAME,
+                    snapshot: "s1",
+                    phase: "loading",
+                    answer: null,
+                }),
+            ),
+        ).toBe(false);
+        // Loaded once, read again for a newer snapshot: the count follows `reading…`, and the page may still grow.
+        expect(
+            re.test(
+                title({ name: NAME, snapshot: "s1", phase: "loading", answer }),
+            ),
+        ).toBe(false);
+    });
+    it("is waited for before every End, so End scrolls the page the rings make", () => {
+        for (const [name, shot] of entries) {
+            shot.steps.forEach((step, i) => {
+                if (step.do !== "press" || step.key !== "End") return;
+                // The last step before it that waits on the screen, as a beat or as a key's sync.
+                const before = shot.steps
+                    .slice(0, i)
+                    .findLast((s) => s.do === "wait" || s.until !== undefined);
+                expect(before?.match ?? before?.until, name).toBe(RINGS_LOADED);
+            });
+        }
     });
 });
 
