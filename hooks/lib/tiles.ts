@@ -163,10 +163,9 @@ export function tileRows(stats: Stat[], width: number, tier: Tier): Row[] {
 export function tilesBlock(stats: Stat[], tier: Tier): Block {
   return {
     key: 'tiles',
-    // The band frames itself: `inner` is the card's inner width, so the band spans the whole card.
+    // The band frames itself, inside the pane's margin: `inner` is the width between the margins.
     make: (inner): Section | null => {
-      const width = tier === 'narrow' ? inner : inner + 4
-      const rows = tileRows(stats, width, tier)
+      const rows = tileRows(stats, inner, tier)
       return rows.length === 0 ? null : { key: 'tiles', title: '', bare: true, body: rows }
     },
   }

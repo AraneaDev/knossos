@@ -1296,6 +1296,7 @@ js	hooks/engine.d.ts
 js	hooks/lib/__tests__/joins.ts
 js	hooks/lib/__tests__/pane.ts
 js	hooks/lib/__tests__/plain-text.ts
+js	hooks/lib/__tests__/ring-fixture.ts
 js	hooks/lib/__tests__/tabs.ts
 js	hooks/lib/activity.spec.ts
 js	hooks/lib/activity.ts
@@ -1308,10 +1309,12 @@ js	hooks/lib/band.ts
 js	hooks/lib/baseline.ts
 js	hooks/lib/boundaries.spec.ts
 js	hooks/lib/boundaries.ts
+js	hooks/lib/branch-rows.ts
 js	hooks/lib/branch.spec.ts
 js	hooks/lib/branch.ts
 js	hooks/lib/cards.spec.ts
 js	hooks/lib/cards.ts
+js	hooks/lib/changes-branch-notes-spacing.spec.ts
 js	hooks/lib/changes.spec.ts
 js	hooks/lib/changes.ts
 js	hooks/lib/chips.ts
@@ -1329,6 +1332,7 @@ js	hooks/lib/diff.spec.ts
 js	hooks/lib/diff.ts
 js	hooks/lib/editor.ts
 js	hooks/lib/empty-state.ts
+js	hooks/lib/entry-place.spec.ts
 js	hooks/lib/envelopes.path.spec.ts
 js	hooks/lib/envelopes.spec.ts
 js	hooks/lib/envelopes.ts
@@ -1345,6 +1349,8 @@ js	hooks/lib/gauge.ts
 js	hooks/lib/glyphs.spec.ts
 js	hooks/lib/hover.spec.ts
 js	hooks/lib/hover.ts
+js	hooks/lib/indents.spec.ts
+js	hooks/lib/issues-places.spec.ts
 js	hooks/lib/layout.spec.ts
 js	hooks/lib/layout.ts
 js	hooks/lib/live.spec.ts
@@ -1354,12 +1360,14 @@ js	hooks/lib/marks.spec.ts
 js	hooks/lib/marks.ts
 js	hooks/lib/motion.spec.ts
 js	hooks/lib/motion.ts
+js	hooks/lib/notes-card.ts
 js	hooks/lib/notes-tree.spec.ts
 js	hooks/lib/notes-tree.ts
 js	hooks/lib/notes-view.spec.ts
 js	hooks/lib/notes-view.ts
 js	hooks/lib/notes.spec.ts
 js	hooks/lib/notes.ts
+js	hooks/lib/overlays-spacing.spec.ts
 js	hooks/lib/overview.spec.ts
 js	hooks/lib/overview.ts
 js	hooks/lib/palette.spec.ts
@@ -1378,6 +1386,7 @@ js	hooks/lib/printable.spec.ts
 js	hooks/lib/printable.ts
 js	hooks/lib/raster.spec.ts
 js	hooks/lib/raster.ts
+js	hooks/lib/rings-columns.spec.ts
 js	hooks/lib/rings.spec.ts
 js	hooks/lib/rings.ts
 js	hooks/lib/route.spec.ts
@@ -1387,9 +1396,15 @@ js	hooks/lib/rows.ts
 js	hooks/lib/scheduler.spec.ts
 js	hooks/lib/scheduler.ts
 js	hooks/lib/session-changes.ts
+js	hooks/lib/signature.spec.ts
+js	hooks/lib/signature.ts
+js	hooks/lib/spacing-body.spec.ts
+js	hooks/lib/spacing.spec.ts
+js	hooks/lib/spacing.ts
 js	hooks/lib/sparkline.spec.ts
 js	hooks/lib/sparkline.ts
 js	hooks/lib/table.ts
+js	hooks/lib/tabs-spacing.spec.ts
 js	hooks/lib/test-commands.ts
 js	hooks/lib/text.ts
 js	hooks/lib/themes.spec.ts
@@ -1439,6 +1454,7 @@ js	hooks/mod/render.band.spec.ts
 js	hooks/mod/render.pane.spec.ts
 js	hooks/mod/render.segments.spec.ts
 js	hooks/mod/render.tsx
+js	hooks/mod/rings.pane.spec.ts
 js	hooks/mod/session-baseline.ts
 js	hooks/mod/session.command.spec.ts
 js	hooks/mod/session.end-session.spec.ts

@@ -5,8 +5,10 @@
  */
 import type { AllowState, Dashboard, RefreshState, RescanState, TurnBrief } from '../../types'
 import { HEADING, STATUS_COLOURS } from './palette'
-import { blank, button, dimRow, wrapGroups } from './rows'
-import { fit, wrapWords } from './text'
+import { blank, button, wrapGroups } from './rows'
+import { bodyLine, bodyRow, bodyText, GUTTER, marginOf, onMargin, PART_GAP } from './spacing'
+import { tierOf } from './table'
+import { fit } from './text'
 import type { Row, Segment } from './types'
 import { busy } from './motion'
 import { SEVERITY } from './marks'
@@ -14,7 +16,7 @@ import { SEVERITY } from './marks'
 /** A refused root the pane offers to allow: the root, the roots file it would join, and where the action stands. */
 export type AllowInput = { root: string; rootsFile: string | null; phase: AllowState['phase']; reason: string | null }
 
-/** The widest the empty pane's prose runs: a line of text past it is hard to read. */
+/** The widest the empty pane's prose runs, past its margin: a line of text past it is hard to read. */
 export const CONTENT_MAX = 100
 
 /**
@@ -41,9 +43,14 @@ export function allowInput(brief: TurnBrief | null, rescan: RescanState, allow: 
  * anything itself: `a` only asks, and only `y` on the question allows.
  */
 export function allowRows(allow: AllowInput, columns: number): Row[] {
-  const lines = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] =>
-    wrapWords(text, Math.max(1, columns - 3)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: i === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', ...style }, { text: line, ...style }] }))
-  const answers = (groups: Segment[][]) => wrapGroups('allow-keys', groups, columns, 2, 3)
+  const tier = tierOf(columns)
+  return onMargin(allowBody(allow, Math.max(1, columns - 2 * marginOf(tier))), tier)
+}
+
+/** {@link allowRows} before the margin, `columns` wide: its mark in the gutter, what it says and its keys at the body. */
+function allowBody(allow: AllowInput, columns: number): Row[] {
+  const lines = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => bodyText(key, text, columns, style, { text: SEVERITY.warn.glyph, ...style })
+  const answers = (groups: Segment[][]) => wrapGroups('allow-keys', groups, columns, PART_GAP, GUTTER)
   if (allow.phase === 'confirming') {
     const where = allow.rootsFile === null ? 'the roots file knossos reads' : allow.rootsFile
     return [
@@ -51,13 +58,8 @@ export function allowRows(allow: AllowInput, columns: number): Row[] {
       ...answers([[button('allow-yes', 'allow', 'y', { dim: false })], [button('allow-no', 'cancel', 'n', { dim: true })]]),
     ]
   }
-  if (allow.phase === 'running') return [dimRow('allow-running', `   allowing ${allow.root}…`, columns)]
-  if (allow.phase === 'done') {
-    return wrapWords(`${SEVERITY.ok.glyph} ${allow.root} allowed · scanning it now`, columns).map((line, i) => ({
-      key: `allow-done-${i}`,
-      segments: [{ text: line, color: STATUS_COLOURS.ok }],
-    }))
-  }
+  if (allow.phase === 'running') return [bodyLine('allow-running', `allowing ${allow.root}…`, columns)]
+  if (allow.phase === 'done') return bodyText('allow-done', `${allow.root} allowed · scanning it now`, columns, { color: STATUS_COLOURS.ok }, { text: SEVERITY.ok.glyph, color: STATUS_COLOURS.ok })
   const said = allow.phase === 'failed' ? `allow-root failed${allow.reason ? `: ${allow.reason}` : ''} · ${allow.root}` : `${allow.root} is not an allowed root`
   return [
     ...lines('allow-offer', said, { color: allow.phase === 'failed' ? STATUS_COLOURS.alert : STATUS_COLOURS.warn }),
@@ -107,14 +109,21 @@ const NO_GRAPH: Record<NoGraph, { head: string; why: string; busy?: true }> = {
  * one to ask: the offer is to scan it directly. While a rescan runs
  * (`scanning`) the pane says so, with its spinner, and offers nothing: the
  * graph it waits for lands on its own. A rescan that failed (`failure`, its
- * reason) says so, and why, in place of the state it left behind.
+ * reason) says so, and why, in place of the state it left behind. Laid out
+ * as a card is: the heading on the margin, the rest at the body, so every
+ * key on the screen stands in one column.
  */
 export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: number, host?: 'web', scanning = false, failure: string | null = null): Row[] {
-  const width = Math.max(1, Math.min(CONTENT_MAX, columns))
+  const tier = tierOf(columns)
+  return onMargin(emptyBody(state, allow, Math.max(1, Math.min(CONTENT_MAX, columns - 2 * marginOf(tier))), host, scanning, failure), tier)
+}
+
+/** {@link emptyRows} before the margin, `width` wide. */
+function emptyBody(state: NoGraph, allow: AllowInput | null, width: number, host: 'web' | undefined, scanning: boolean, failure: string | null): Row[] {
   if (scanning) {
     return [
       { key: 'empty-head', segments: [{ text: fit(busy('Scanning the project…'), width), bold: true, color: HEADING }] },
-      ...wrapWords('Knossos is scanning this project; the graph appears here when it is done.', width).map((line, i) => dimRow(`empty-${i}`, line, width)),
+      ...bodyText('empty', 'Knossos is scanning this project; the graph appears here when it is done.', width),
     ]
   }
   const named = NO_GRAPH[state]
@@ -122,9 +131,9 @@ export function emptyRows(state: NoGraph, allow: AllowInput | null, columns: num
   const { head: heading, why, busy: spins } = failure === null || allow !== null ? named : { head: 'The scan failed', why: failure, busy: undefined }
   const head: Row[] = [
     { key: 'empty-head', segments: [{ text: fit(spins === true ? busy(heading) : heading, width), bold: true, color: HEADING }] },
-    ...wrapWords(why, width).map((line, i) => dimRow(`empty-${i}`, line, width)),
+    ...bodyText('empty', why, width),
   ]
-  if (allow !== null) return [...head, blank('gap-empty'), ...allowRows(allow, width)]
+  if (allow !== null) return [...head, blank('gap-empty'), ...allowBody(allow, width)]
   if (state !== 'unscanned') return head
-  return [...head, blank('gap-empty'), { key: 'empty-action', segments: [host === 'web' ? button('scan', 'scan it', 'q', { dim: false }) : button('scan-ask', 'ask Claude to scan it', 'q', { dim: false })] }]
+  return [...head, blank('gap-empty'), bodyRow('empty-action', [host === 'web' ? button('scan', 'scan it', 'q', { dim: false }) : button('scan-ask', 'ask Claude to scan it', 'q', { dim: false })])]
 }

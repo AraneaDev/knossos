@@ -38,6 +38,7 @@ import { chip, SWATCH } from './chips'
 import { cells, displayName, fit, lastSegment, plural } from './text'
 import type { Row, Segment } from './types'
 import type { Tier } from './table'
+import { bodyLine, gutter, GUTTER, moreText } from './spacing'
 import type { Openable } from './views'
 import { CARD_ICON } from './marks'
 
@@ -217,14 +218,14 @@ export function cyclesArrangement(input: CyclesInput, tier: Tier, hues: Hues = N
       const note = shown === 0 ? (within > 0 ? counted : empty) : `${counted}${whole ? '' : ` · ${shown} shown`} · largest first`
       const section = (body: Row[]): Section => ({ key: 'cycles', title: shown > 1 ? 'All cycles' : 'Cycles', note: noteOf(note), body })
       // A search cut short has not shown there are none, so it does not say so.
-      if (shown === 0) return section([{ key: 'cycles-none', segments: [{ text: stopped.length > 0 ? '   Search stopped early; none found before it did.' : '   No dependency cycles.', dim: true }] }])
+      if (shown === 0) return section([bodyLine('cycles-none', stopped.length > 0 ? 'Search stopped early; none found before it did.' : 'No dependency cycles.', columns)])
       // The line over the cycles inside one type takes a row of the window, once they are in it.
       const reach = windowOf(shown, limit, marked?.index ?? -1, scrolled)
       const window = inside >= 0 && reach.end > inside ? windowOf(shown, limit - 1, marked?.index ?? -1, scrolled) : reach
       const rows = input.cycles.slice(window.start, window.end).flatMap((cycle, n) => {
         const i = window.start + n
         const line = cycleLine(cycle, i, offsets[i]!, marked?.index === i, columns, hues)
-        return i === Math.max(inside, window.start) && cycle.type !== undefined ? [{ key: 'cycles-within', segments: clip([{ text: '   Within one type', dim: true }], columns) }, line] : [line]
+        return i === Math.max(inside, window.start) && cycle.type !== undefined ? [bodyLine('cycles-within', 'Within one type', columns), line] : [line]
       })
       return { ...section([...rows, ...moreRows('cycles-window', window, shown, columns, i => offsets[i] ?? 0)]), window: windowShown(window, shown) }
     },
@@ -238,7 +239,7 @@ export function cyclesArrangement(input: CyclesInput, tier: Tier, hues: Hues = N
 /** A cycle's line in the list: the marker, its name (a press that marks its first member), its size and its boundary. */
 function cycleLine(cycle: CycleLine, i: number, offset: number, on: boolean, columns: number, hues: Hues): Row {
   const home = homeBoundary(cycle)
-  const head: Segment[] = [{ text: on ? '›' : ' ', color: ACCENT, bold: true }, { text: '  ' }, button(`mark:${offset}`, nameOf(cycle, i)), { text: ` · ${plural(cycle.size, 'member', 'members')}`, dim: true }]
+  const head: Segment[] = [...gutter(on), button(`mark:${offset}`, nameOf(cycle, i)), { text: ` · ${plural(cycle.size, 'member', 'members')}`, dim: true }]
   if (home !== null) head.push({ text: ' · ', dim: true }, ...chip(home, hues))
   const others = boundariesOf(cycle).filter(b => b !== home)
   if (others.length > 0) head.push({ text: ` +${others.length} ${others.length === 1 ? 'boundary' : 'boundaries'}`, dim: true })
@@ -260,14 +261,14 @@ function cycleSection(input: CyclesInput, index: number, offset: number, local: 
   if (coloured) {
     const groups: Segment[][] = spans.filter(b => boundaryColour(b, hues) !== undefined).map(b => chip(b, hues))
     if (crossings > 0) groups.push([{ text: CROSSING.across, color: STATUS_COLOURS.warn }, { text: ' crosses a boundary', dim: true }])
-    legend.push(...wrapGroups('cycle-legend', groups, columns, 2), blank('cycle-legend-gap'))
+    legend.push(...wrapGroups('cycle-legend', groups, columns, 2, GUTTER), blank('cycle-legend-gap'))
   }
   const section = (body: Row[]): Section => ({ key: 'cycle-diagram', title: cycle.type === undefined ? `Cycle ${index + 1}` : lastSegment(cycle.type), note, body: [...legend, ...body] })
   if (columns < DIAGRAM_MIN) return section(chainRows(cycle, offset, local, columns, hues, coloured))
   const shown = shownOf(cycle, index, input, columns, tier, local)
   const nodes: DiagramNode[] = shown.map((s): DiagramNode => {
     if (s.kind === 'fold') return { key: 'fold', label: `… ${s.hidden} more …`, dim: true, press: { id: `fold:${index}:${offset + s.first}`, label: `… ${s.hidden} more …` }, selected: local === cycle.nodes.length }
-    if (s.kind === 'unlisted') return { key: 'unlisted', label: `+${s.count} not listed`, dim: true }
+    if (s.kind === 'unlisted') return { key: 'unlisted', label: moreText(s.count), dim: true }
     const node = cycle.nodes[s.j]!
     const colour = coloured ? boundaryColour(node.boundary, hues) : undefined
     return { key: `m${s.j}`, label: node.name, ...(colour === undefined ? {} : { color: colour }), press: { id: `row:${offset + s.j}`, label: node.name }, selected: s.j === local }
@@ -284,13 +285,13 @@ const crosses = (a: CycleNode, b: CycleNode | undefined): boolean => b !== undef
 
 /** The chain wrapped to the width, then a member a row (the marked one tinted, each a press), closing with the way back. */
 function chainRows(cycle: CycleLine, offset: number, local: number, columns: number, hues: Hues, coloured: boolean): Row[] {
-  const chain = wrapGroups('chain', chainGroups(cycle, Math.max(1, columns - 4), hues, coloured), columns, 1)
+  const chain = wrapGroups('chain', chainGroups(cycle, Math.max(1, columns - GUTTER - 1), hues, coloured), columns, 1, GUTTER)
   const name = Math.max(1, Math.min(Math.max(1, ...cycle.nodes.map(n => cells(n.name))), columns - MARK))
   const spec = { name, boundary: 0, bar: 0, numbers: [] }
   const members = cycle.nodes.map((node, j) =>
     tableRow(`member-${j}`, { name: node.name, boundary: node.boundary, values: [], max: 0, press: `row:${offset + j}`, selected: j === local, mark: { text: j === 0 ? '┌' : '│', color: FAINT } }, spec, coloured ? hues : NO_HUES),
   )
-  const close: Row = { key: 'member-close', segments: [{ text: ' ' }, { text: cycle.more > 0 ? '┆' : '└', color: FAINT }, { text: cycle.more > 0 ? ` … +${cycle.more} more` : ` ${CARD_ICON.cycles} back to ${fit(cycle.nodes[0]?.name ?? '', Math.max(1, columns - 12))}`, dim: true }] }
+  const close: Row = { key: 'member-close', segments: [...gutter(false, { text: cycle.more > 0 ? '┆' : '└', color: FAINT }), { text: cycle.more > 0 ? `… +${cycle.more} more` : `${CARD_ICON.cycles} back to ${fit(cycle.nodes[0]?.name ?? '', Math.max(1, columns - 12))}`, dim: true }] }
   return [...chain, blank('chain-gap'), ...members, close]
 }
 

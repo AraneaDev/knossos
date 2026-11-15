@@ -16,21 +16,22 @@ import type { ComponentDetail, Counterpart, Dashboard, DetailState, Diagnostic, 
 import { ringsBlock, ringsList } from './rings'
 import type { RingsInput } from './rings'
 import { countLabel, detailLines } from './envelopes'
-import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, STATUS_COLOURS } from './palette'
+import { boundaryColour, boundaryLabel, FAINT, NO_HUES, STATUS_COLOURS } from './palette'
 import { DIAGRAM_MIN, neighbourhood } from './diagram'
 import type { Neighbour } from './diagram'
 import type { Hues } from './palette'
-import { absolute, placeOf } from './paths'
-import { blank, button, dimRow, inList, notListedRow, segmentsWidth, tintedRow } from './rows'
-import { MARK, numberWidth, tableHead, tableRow, tableSpec } from './table'
+import { absolute, placeText } from './paths'
+import { button, dimRow, inList, moreListedRow, segmentsWidth, tintedRow } from './rows'
+import { MARK, numberWidth, tableHead, tableRow, tableSpec, withDependents } from './table'
 import { chip, SWATCH } from './chips'
-import { cells, displayName, fit, fitStart, grouped, shortName, spaces, wrapWords } from './text'
+import { cells, displayName, fit, grouped, placeLeast, placeSegments, shortName, spaces, wrapWords } from './text'
 import { unreadablePolicies, unreadableText } from './policies'
-import { opensFile } from './editor'
 import type { Loc, Row, Segment } from './types'
 import type { Tier } from './table'
 import { CERTAINTY, REACH, SEVERITY, kindLegend, kindMark, legend, mark } from './marks'
 import { busy } from './motion'
+import { notesBlock } from './notes-card'
+import { bodyRow, gutter, moreText } from './spacing'
 
 /**
  * A row the marker can walk to: `name` to show, `canonical` to look it up by,
@@ -141,8 +142,12 @@ export type FileView = {
 
 /** The share of a row a place (`file:line`) may take before it is cut from the front. */
 const PLACE_SHARE = 0.35
+/** The fewest cells a place is cut to before its column goes. */
+const PLACE_MIN = 12
 /** The narrowest the main text of an issue row is allowed before the boundary, then the place, give way. */
 const MAIN_MIN = 16
+/** The fewest cells the main text gives up to, past its marks, so that a place keeps its file name and line whole. */
+const MAIN_FLOOR = 12
 
 const SUPERSCRIPT = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹']
 
@@ -180,7 +185,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
               source: { name: shortName(v.source), canonical: v.source, boundary: v.source_boundary, loc: locIn(root, v.path, v.line) },
               target: shortName(v.target),
               targetBoundary: v.target_boundary,
-              place: placeOf(v.path, v.line),
+              place: placeText(v.path, v.line),
             })),
           },
     diagnostics:
@@ -190,7 +195,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
             errors: diagnostics.errors,
             warnings: diagnostics.warnings,
             infos: diagnostics.infos,
-            items: diagnostics.items.map(x => ({ severity: x.severity, text: `${x.code} ${x.message}`, path: x.path, place: placeOf(x.path, x.line), where: diagnosticWhere(x), loc: locIn(root, x.path, x.line) })),
+            items: diagnostics.items.map(x => ({ severity: x.severity, text: `${x.code} ${x.message}`, path: x.path, place: placeText(x.path, x.line), where: diagnosticWhere(x), loc: locIn(root, x.path, x.line) })),
           },
     deadCode: {
       total: countLabel(d.dead_code_candidates, d.dead_code_truncated),
@@ -200,7 +205,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
         name: displayName(c),
         canonical: c.canonical_name,
         boundary: c.boundary,
-        place: placeOf(c.path, c.line),
+        place: placeText(c.path, c.line),
         loc: locIn(root, c.path, c.line),
         testOnly: c.reachability === 'test_only',
         certainty: c.confidence,
@@ -298,27 +303,68 @@ export function detailList(detail: DetailInput): Openable[] {
 
 /** An issue row's columns: its main text, then the boundary, then the place. */
 export type EntrySpec = { main: number; boundary: number; place: number }
-/** One issue row: `need` is how wide its main text is uncut; `loc` makes its place a link. */
-export type Entry = { selected?: boolean; mark?: Segment; need: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; loc?: Loc | null }
+/**
+ * One issue row: `need` is how wide its main text is uncut, `marks` the cells of it its marks take; `loc` makes its
+ * place a link, and `whole` asks the place's share for its whole path, not only its file name (its folders tell it apart).
+ */
+export type Entry = { selected?: boolean; mark?: Segment; need: number; marks?: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; whole?: true; loc?: Loc | null; /** Two names in its main text (a source and a target): the names win the row ({@link namesFirst}). */ names?: 2 }
 
 /**
  * Fits issue rows to `columns`, packed to the left like a table: the main
  * text takes what the longest needs, the boundary and the place follow it,
- * and width left over stays at the right edge. As the width shrinks the
- * boundary goes first, then the place; the main text keeps at least
- * {@link MAIN_MIN}.
+ * and width left over stays at the right edge. As the width shrinks a place
+ * gives up its folders (it is cut from its front), then the main text gives
+ * up cells from {@link MAIN_MIN} to {@link MAIN_FLOOR} so the place keeps
+ * its file name and line whole; then the file name is cut, then the
+ * boundary goes, then the place. The marks always stay.
  */
 export function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUES): EntrySpec {
-  const placeNeed = Math.min(Math.max(12, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
+  // A place needs its file name and line, whatever its share; more of its path, up to its share, only from width the rest leaves over.
+  const fileLeast = Math.max(0, ...entries.map(e => placeLeast(e.place)))
+  const placeWhole = Math.min(Math.max(PLACE_MIN, fileLeast, Math.floor(columns * PLACE_SHARE)), Math.max(0, ...entries.map(e => cells(e.place))))
+  const placeNeed = Math.min(placeWhole, Math.max(0, ...entries.map(e => (e.whole === true ? cells(e.place) : placeLeast(e.place)))))
   // A boundary is a chip: its swatch and a space before its label.
   const longest = Math.max(0, ...entries.map(e => cells(boundaryLabel(e.boundary ?? null, hues))))
   const boundaryNeed = longest === 0 ? 0 : Math.min(12, longest) + 2
   const mainNeed = Math.max(1, ...entries.map(e => e.need))
+  // The marks are not the text: the main text keeps its least beside them, so they outlast the boundary and the place.
+  const marks = Math.max(0, ...entries.map(e => e.marks ?? 0))
+  const least = Math.min(MAIN_MIN + marks, mainNeed)
+  const floor = Math.min(MAIN_FLOOR + marks, mainNeed)
   const attempt = (boundary: number, place: number): EntrySpec | null => {
     const room = columns - MARK - (boundary > 0 ? boundary + 1 : 0) - (place > 0 ? place + 1 : 0)
-    return room >= Math.min(MAIN_MIN, mainNeed) ? { main: Math.min(room, mainNeed), boundary, place } : null
+    if (room >= least) return { main: Math.min(room, mainNeed), boundary, place: place > 0 ? Math.min(placeWhole, place + room - Math.min(room, mainNeed)) : 0 }
+    if (place === 0) return null
+    // Its folders first: a place is cut from its front.
+    if (place > fileLeast) return attempt(boundary, place - Math.min(place - fileLeast, least - room))
+    // Then the main text, down to its floor, so the file name and line stay whole.
+    if (room >= floor) return { main: room, boundary, place }
+    // Then the file name is cut, down to the fewest cells a place is shown in.
+    return place - (floor - room) >= PLACE_MIN ? { main: floor, boundary, place: place - (floor - room) } : null
   }
+  if (entries.some(e => e.names === 2)) return namesFirst(columns, { main: mainNeed, floor, boundary: boundaryNeed, place: placeWhole })
   return attempt(boundaryNeed, placeNeed) ?? attempt(0, placeNeed) ?? attempt(0, 0) ?? { main: Math.max(1, columns - MARK), boundary: 0, place: 0 }
+}
+
+/**
+ * Fits rows of two names (a source and a target), where the names are what a
+ * reader scans for and win the row. As it narrows, and only as far as the
+ * row needs: the place gives up its folders, then its file name is cut from
+ * the front, keeping its end and its line, down to {@link PLACE_MIN}; then
+ * the boundary chip after the names goes; only then do the names give up
+ * cells, evenly, to their floor, and past it the place goes.
+ */
+function namesFirst(columns: number, need: { main: number; floor: number; boundary: number; place: number }): EntrySpec {
+  const chip = need.boundary > 0 ? need.boundary + 1 : 0
+  const least = Math.min(PLACE_MIN, need.place)
+  // What the place keeps beside the names whole, with the chip or without it.
+  const placeBeside = (chipCells: number) => Math.min(need.place, columns - MARK - need.main - chipCells - 1)
+  if (need.place === 0) return chip > 0 && columns - MARK - chip >= need.main ? { main: need.main, boundary: need.boundary, place: 0 } : { main: Math.max(1, Math.min(need.main, columns - MARK)), boundary: 0, place: 0 }
+  if (chip > 0 && placeBeside(chip) >= least) return { main: need.main, boundary: need.boundary, place: placeBeside(chip) }
+  if (placeBeside(0) >= least) return { main: need.main, boundary: 0, place: placeBeside(0) }
+  const room = columns - MARK - least - 1
+  if (room >= need.floor) return { main: room, boundary: 0, place: least }
+  return { main: Math.max(1, Math.min(need.main, columns - MARK)), boundary: 0, place: 0 }
 }
 
 /** One issue row, its columns fitted by {@link entrySpec}; the marked one on the selection's tint. */
@@ -326,9 +372,7 @@ export function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Ro
   const main = e.main(spec.main)
   const used = main.reduce((n, s) => n + cells(s.text), 0)
   const segments: Segment[] = [
-    { text: e.selected ? '›' : ' ', color: ACCENT, bold: true },
-    e.mark ?? { text: ' ' },
-    { text: ' ' },
+    ...gutter(e.selected === true, e.mark),
     ...main,
     { text: spaces(spec.main - used) },
   ]
@@ -337,7 +381,7 @@ export function entryRow(key: string, e: Entry, spec: EntrySpec, hues: Hues): Ro
     segments.push({ text: ' ' }, ...chipped, { text: spaces(spec.boundary - segmentsWidth(chipped)) })
   }
   // Places are left-aligned: a column of file names reads down its left edge.
-  if (spec.place > 0) segments.push({ text: ' ' }, opensFile(fitStart(e.place, spec.place), e.loc ?? null, { dim: true }))
+  if (spec.place > 0) segments.push({ text: ' ' }, ...placeSegments(e.place, spec.place, e.loc ?? null))
   const kept = segments.filter(s => s.text !== '')
   return tintedRow(key, kept, e.selected === true)
 }
@@ -351,7 +395,7 @@ function pair(a: string, b: string, width: number): [string, string] {
   return [fit(a, aw), fit(b, room - aw)]
 }
 
-const none = (key: string): Row => ({ key, segments: [{ text: '   none', dim: true }] })
+const none = (key: string): Row => bodyRow(key, [{ text: 'none', dim: true }])
 
 /** The fewest rows each list on the Issues tab shows, however short the pane. */
 const ISSUES_MIN = 3
@@ -396,6 +440,9 @@ function violationEntries(violations: ViolationLine[], selected: number, hues: H
     place: v.place,
     loc: v.source.loc ?? null,
     need: cells(v.source.name) + 3 + (v.targetBoundary === null ? 0 : 2) + cells(v.target),
+    // The arrow and the target's swatch are not text to cut: the two names keep their least beside them.
+    marks: 3 + (v.targetBoundary === null ? 0 : 2),
+    names: 2,
     main: width => {
       // The target's boundary on a swatch before its name: the name stays in the text tone.
       const swatch: Segment[] = v.targetBoundary === null ? [] : [{ text: `${SWATCH} `, color: boundaryColour(v.targetBoundary, hues) ?? FAINT }]
@@ -411,6 +458,7 @@ function diagnosticEntries(items: DiagnosticLine[], offset: number, selected: nu
     selected: offset + i === selected,
     mark: mark(x.severity === 'error' ? SEVERITY.error : x.severity === 'warning' ? SEVERITY.warn : SEVERITY.note),
     place: x.where,
+    whole: true,
     loc: x.loc,
     need: cells(x.text),
     main: width => [button(`row:${offset + i}`, fit(x.text, width))],
@@ -418,27 +466,27 @@ function diagnosticEntries(items: DiagnosticLine[], offset: number, selected: nu
 }
 
 /**
- * Each dead-code candidate as an entry, the first `offset` into the walk. Two marks before the name, the card's note
- * their legend: how sure the scan is, ● probable or a dim ○ possible (something no scan sees may reach it), then what
- * reaches it, ◆ tests only in the warning colour (finished work no product path runs) or a dim ∅ nothing at all. Where
- * even the marks would squeeze the names below {@link MAIN_MIN} they go from every row at once, so they never show on
- * some rows and not others.
+ * Each dead-code candidate as an entry, the first `offset` into the walk. Its marks, the card's note their legend: how
+ * sure the scan is in the gutter, where every issue's mark stands (● probable or a dim ○ possible: something no scan
+ * sees may reach it), then what reaches it, ◐ tests only in the warning colour (finished work no product path runs) or
+ * a dim ∅ nothing at all, and its kind. Where those would squeeze the names below {@link MAIN_FLOOR} they go from every
+ * row at once, so they never show on some rows and not others.
  */
 function deadEntries(items: DeadLine[], offset: number, selected: number): Entry[] {
-  const MARKS = 6
+  const MARKS = 4
   const longestName = Math.max(1, ...items.map(c => cells(c.name)))
   return items.map((c, i) => ({
     selected: offset + i === selected,
+    mark: mark(c.certainty === 'probable' ? CERTAINTY.probable : CERTAINTY.possible),
     boundary: c.boundary,
     place: c.place,
     loc: c.loc ?? null,
-    need: cells(c.name) + MARKS,
+    need: cells(c.name) + MARKS, marks: MARKS,
     main: width => {
       // Too narrow only when the names would be squeezed below their least, or below the longest when all are short.
-      if (width - MARKS < Math.min(MAIN_MIN, longestName)) return [button(`row:${offset + i}`, fit(c.name, width))]
-      const certainty = mark(c.certainty === 'probable' ? CERTAINTY.probable : CERTAINTY.possible, ' ')
+      if (width - MARKS < Math.min(MAIN_FLOOR, longestName)) return [button(`row:${offset + i}`, fit(c.name, width))]
       const reach = mark(c.testOnly ? REACH.testsOnly : REACH.unused, ' ')
-      return [certainty, reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
+      return [reach, kindMark(c.kind), button(`row:${offset + i}`, fit(c.name, width - MARKS))]
     },
   }))
 }
@@ -458,7 +506,7 @@ function policyBlock(policy: IssuesInput['policy'], entries: Entry[], selected: 
     grow: { length: entries.length, min: ISSUES_MIN },
     make: (columns, limit, scrolled) => {
       const { body, window } = listedEntries('pol', entries, hues, { columns, limit, local: selected < part.length ? selected : -1, walk: part.offset, scrolled })
-      if (policy?.evaluated === true) body.push(...notListedRow('pol-more', policy.count, entries.length, columns))
+      if (policy?.evaluated === true) body.push(...moreListedRow('pol-more', policy.count, entries.length, columns))
       return { key: 'policy', title: 'Policy violations', note: policyVerdict(policy), body, empty: 'none', ...(window === undefined ? {} : { window }) }
     },
   }
@@ -478,7 +526,7 @@ function diagBlock(d: IssuesInput['diagnostics'], entries: Entry[], selected: nu
             : legend([[SEVERITY.error, d.errors], [SEVERITY.warn, d.warnings], [SEVERITY.note, d.infos]])
       const { body, window } = listedEntries('diag', entries, hues, { columns, limit, local: localTo(part, selected), walk: part.offset, scrolled })
       // Only the first errors and warnings come listed; notes are counted, never listed.
-      if (d !== null) body.push(...notListedRow('diag-more', d.errors + d.warnings, d.items.length, columns))
+      if (d !== null) body.push(...moreListedRow('diag-more', d.errors + d.warnings, d.items.length, columns))
       return { key: 'diag', title: 'Diagnostics', note: noteOf(counts), body, empty: 'none', ...(window === undefined ? {} : { window }) }
     },
   }
@@ -513,8 +561,8 @@ function hotBlock(list: IssuesInput['hotspots'], selected: number, part: IssuesW
       const max = Math.max(0, ...list.map(f => f.score))
       const { rows, window } = windowedTable('hot-window', list, { columns, limit, local: localTo(part, selected), scrolled, walk: part.offset }, (shown, start) => {
         // The bar draws the score (lines times dependents); the two figures it is made of stand beside it.
-        const spec = tableSpec(columns, shown.map(f => f.path), [], [numberWidth('lines', shown.map(f => f.lines), tier), numberWidth('deps', shown.map(f => f.dependents), tier)], 56, { tier })
-        const head: Row[] = list.length === 0 ? [] : [tableHead('hot-cols', spec, { name: 'file', boundary: '', numbers: ['lines', 'deps'] })]
+        const { title, spec } = withDependents(t => tableSpec(columns, shown.map(f => f.path), [], [numberWidth('lines', shown.map(f => f.lines), tier), numberWidth(t, shown.map(f => f.dependents), tier)], 56, { tier }), tier)
+        const head: Row[] = list.length === 0 ? [] : [tableHead('hot-cols', spec, { name: 'file', boundary: '', numbers: ['lines', title] })]
         return [
           ...head,
           ...shown.map((f, n) => {
@@ -549,7 +597,7 @@ function budgetBlock(budget: IssuesInput['budget'], selected: number, part: Issu
           }),
         ]
       })
-      const body = [...rows, ...notListedRow('budget-more', budget.total, budget.files.length, columns)]
+      const body = [...rows, ...moreListedRow('budget-more', budget.total, budget.files.length, columns)]
       return { key: 'budget', title, note: [mark(SEVERITY.warn, ` ${grouped(budget.total)}`), { text: ` ${rule}`, dim: true }], body, empty: 'none', window }
     },
   }
@@ -568,7 +616,8 @@ export function issuesArrangement(issues: IssuesInput, selected: number, tier: T
   const dead = deadBlock(issues.deadCode, deadEntries(issues.deadCode.items, walk.dead.offset, selected), selected, walk.dead, hues)
   const hot = hotBlock(issues.hotspots, selected, walk.hotspots, tier, hues)
   const budget = budgetBlock(issues.budget, selected, walk.budget, tier, hues)
-  return { left: [policy, diag, budget], right: [dead, hot], rows: issueGrid([policy, diag, dead, hot, budget]) }
+  // Stacked, the cards stand in the order the marker walks them, as the wide grid reads them.
+  return { left: [policy, diag, budget], right: [dead, hot], order: [policy, diag, dead, hot, budget], rows: issueGrid([policy, diag, dead, hot, budget]) }
 }
 
 /**
@@ -586,24 +635,30 @@ export function issueGrid(blocks: Block[]): Block[][] {
   return [...chunks(empty, per), ...chunks(listed, 2)]
 }
 
-/** One side of the detail ("used by" or "uses") as a card: a small table `limit` rows long around the marker. */
-function sideSection(prefix: string, side: Side, offset: number, columns: number, limit: number, tier: Tier, hues: Hues, selected = -1): Section {
+/**
+ * One side of the detail ("used by" or "uses") as rows of the narrow
+ * neighbourhood: a small table `limit` rows long around the marker, under a
+ * head that names the side in its first column and what the figures count
+ * over them, as every table heads its columns.
+ */
+function sideRows(prefix: string, side: Side, offset: number, columns: number, limit: number, tier: Tier, hues: Hues, selected = -1): Row[] {
   const counted = side.items.some(i => i.edges > 0)
   // Bars that are all one length compare nothing: the counts say it alone.
   const flat = side.items.length > 1 && side.items.every(i => i.edges === side.items[0]!.edges)
   const boundaries = side.items.map(i => boundaryLabel(i.boundary, hues))
+  const named = side.title.toLowerCase()
   const spec = counted
-    ? { ...tableSpec(columns, side.items.map(i => i.name), boundaries, [numberWidth('', side.items.map(i => i.edges))], undefined, { tier, compact: false }), ...(flat ? { bar: 0 } : {}) }
-    : { ...tableSpec(columns, side.items.map(i => i.name), boundaries, []), bar: 0 }
-  const section = (body: Row[]): Section => ({ key: prefix, title: side.title, subtitle: side.count, note: noteOf(counted ? 'edges' : ''), body })
-  if (side.items.length === 0) return section([none(`${prefix}-none`)])
+    ? { ...tableSpec(columns, [named, ...side.items.map(i => i.name)], boundaries, [numberWidth('edges', side.items.map(i => i.edges))], undefined, { tier, compact: false }), ...(flat ? { bar: 0 } : {}) }
+    : { ...tableSpec(columns, [named, ...side.items.map(i => i.name)], boundaries, []), bar: 0 }
+  const head = tableHead(`${prefix}-cols`, spec, { name: named, boundary: '', numbers: counted ? ['edges'] : [] })
+  if (side.items.length === 0) return [head, none(`${prefix}-none`)]
   const max = Math.max(0, ...side.items.map(i => i.edges))
   const { rows } = windowedTable(`${prefix}-window`, side.items, { columns, limit, local: inList(selected - offset, side.items.length), walk: offset }, (shown, start) =>
     shown.map((item, n) =>
       tableRow(`${prefix}-${start + n}`, { name: item.name, boundary: item.boundary, values: counted ? [item.edges] : [], max, press: `rel:${offset + start + n}`, selected: offset + start + n === selected }, spec, hues),
     ),
   )
-  return section([...rows, ...notListedRow(`${prefix}-more`, Number.parseInt(side.count, 10), side.items.length, columns)])
+  return [head, ...rows, ...moreListedRow(`${prefix}-more`, Number.parseInt(side.count, 10), side.items.length, columns)]
 }
 
 /**
@@ -631,79 +686,13 @@ export function detailArrangement(detail: DetailInput, tier: Tier, hues: Hues = 
     selected,
     hues,
     (columns, limit) => [
-      ...sideSection('used', c.usedBy, 0, columns, limit, tier, hues, selected).body.map(r => ({ ...r, key: `hood-${r.key}` })),
-      blank('hood-sides-gap'),
-      { key: 'hood-uses-title', segments: [{ text: `   ${c.uses.title} · ${c.uses.count}`, dim: true }] },
-      ...sideSection('uses', c.uses, c.usedBy.items.length, columns, limit, tier, hues, selected).body.map(r => ({ ...r, key: `hood-${r.key}` })),
+      ...sideRows('used', c.usedBy, 0, columns, limit, tier, hues, selected).map(r => ({ ...r, key: `hood-${r.key}` })),
+      ...sideRows('uses', c.uses, c.usedBy.items.length, columns, limit, tier, hues, selected).map(r => ({ ...r, key: `hood-${r.key}` })),
     ],
   )
   const rings: Block[] = detail.rings === undefined || detail.rings === null ? [] : [ringsBlock(detail.rings, selected, c.usedBy.items.length + c.uses.items.length, hues)]
   const notes: Block[] = c.annotations.length === 0 && detail.notable !== true ? [] : [notesBlock(c.name, c.annotations, detail.note ?? null, detail.notable === true)]
   return { top: [head], left: [hood], bottom: [...rings, ...notes, ...diff] }
-}
-
-/**
- * The component's notes as a card: each annotation by its kind, and, on a
- * component's own detail, the way to add one (`m`) and where that stands:
- * the field to type it in, knossos checking it, the question before it is
- * recorded (`y` records, `n` drops it; what it replaces said), recording,
- * or why knossos refused it. Nothing is written until the person says yes.
- */
-function notesBlock(name: string, annotations: { kind: string; value: string; author?: string }[], note: NoteInput | null, notable: boolean): Block {
-  return {
-    key: 'notes',
-    make: columns => {
-      const width = Math.max(1, columns - MARK)
-      const body: Row[] = annotations.flatMap((a, i) => {
-        // Each line of the note on its own, so a short ASCII sketch keeps its shape: a line that fits stays as written,
-        // spacing and all; only a longer one is wrapped.
-        const [first = '', ...rest] = a.value.split('\n')
-        const lines = [
-          ...wrapWords(`${a.kind.replace(/_/g, ' ')}${a.author === 'model' ? ' (agent)' : ''}: ${first}`, width),
-          ...rest.flatMap(line => {
-            // A tab would count as one cell and draw as several: spelled as spaces, the line measures as it draws.
-            const kept = line.replace(/\t/g, '    ').replace(/\s+$/, '')
-            return kept === '' ? [] : cells(kept) <= width ? [kept] : wrapWords(kept, width)
-          }),
-        ]
-        return lines.map((line, j) => ({ key: `note-${i}-${j}`, segments: [{ text: spaces(MARK) }, { text: line }] }))
-      })
-      if (annotations.length === 0) body.push(dimRow('note-none', `   No notes on ${name} yet.`, columns))
-      if (!notable) return { key: 'notes', title: 'Notes', body }
-      const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, columns - MARK)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: spaces(MARK) }, { text: line, ...style }] }))
-      if (note === null || note.phase === 'failed') {
-        if (note !== null) body.push(blank('note-gap'), ...said('note-failed', `${SEVERITY.error.glyph} knossos did not record it: ${note.reason ?? 'it said nothing'}`, { color: STATUS_COLOURS.alert }))
-        // The person's own note: an agent's beside it is not theirs to change here.
-        const own = annotations.some(a => a.kind === 'note' && a.author !== 'model')
-        body.push(blank('note-keys-gap'), { key: 'note-keys', segments: [{ text: spaces(MARK) }, button('note-card', own ? 'change the note' : 'add a note', undefined, { dim: true })] })
-      }
-      // A note under way is taken in the footer (noteFooterRows), where a long detail cannot scroll it away.
-      return { key: 'notes', title: 'Notes', body }
-    },
-  }
-}
-
-/**
- * A note under way on the component `name`, as the footer draws it: the
- * field while it is typed, a line while knossos checks or records it, and
- * the question with its answers before it is recorded. `width` is the
- * footer's inner width. The answers' keys are left to a question that holds
- * y and n meanwhile (`keys` false).
- */
-export function noteFooterRows(name: string, note: NoteInput, width: number): Row[] {
-  const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, width)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: line, ...style }] }))
-  if (note.phase === 'editing') {
-    return [
-      { key: 'note-field', segments: [{ text: 'note: ', dim: true }, { text: note.value, field: { id: 'note', value: note.value, placeholder: `what to remember about ${name}` } }] },
-      ...said('note-field-keys', 'Enter checks it with knossos; nothing is written yet.', { dim: true }),
-    ]
-  }
-  if (note.phase === 'previewing' || note.phase === 'saving') return said('note-busy', busy(note.phase === 'saving' ? 'recording…' : 'checking with knossos…'), { dim: true })
-  const replaces = note.previous === null ? '' : ` It replaces: "${note.previous}"`
-  return [
-    ...said('note-ask', `Record this note on ${name}? "${note.value}"${replaces}`, { color: ACCENT }),
-    { key: 'note-answers', segments: [button('note-yes', 'record', note.keys ? 'y' : undefined, { dim: false }), { text: '   ' }, button('note-no', 'cancel', note.keys ? 'n' : undefined, { dim: true })] },
-  ]
 }
 
 /** One neighbour as the neighbourhood draws it: its name, boundary, edge count and the press that opens it. */
@@ -723,13 +712,15 @@ const HOOD_MIN = 3
  * `fallback`'s rows (the two lists as tables) instead.
  */
 export function hoodBlock(centre: { name: string; boundary: string | null }, usedBy: HoodSide, uses: HoodSide, selected: number, hues: Hues, fallback: (columns: number, limit: number) => Row[]): Block {
-  const note = noteOf(usedBy.items.some(i => i.edges > 0) || uses.items.some(i => i.edges > 0) ? 'edges' : '')
-  const subtitle = `used by ${usedBy.count} · uses ${uses.count}`
+  // The counts at the right of the title, then what the figures on the arrows count.
+  const edges = usedBy.items.some(i => i.edges > 0) || uses.items.some(i => i.edges > 0) ? ' · edges' : ''
+  const note = noteOf(`used by ${usedBy.count} · uses ${uses.count}${edges}`)
   return {
     key: 'hood',
     grow: { length: Math.max(usedBy.items.length, uses.items.length) + 1, min: HOOD_MIN },
     make: (columns, limit) => {
-      if (columns < DIAGRAM_MIN) return { key: 'hood', title: usedBy.title, subtitle: String(usedBy.count), note, body: fallback(columns, limit) }
+      // Too narrow to draw: the two sides as tables, each headed by its name, the counts in the note as the drawing has them.
+      if (columns < DIAGRAM_MIN) return { key: 'hood', title: 'Dependencies', note: noteOf(`used by ${usedBy.count} · uses ${uses.count}`), body: fallback(columns, limit) }
       const side = (s: HoodSide): Neighbour[] => {
         const pressed = s.items.findIndex(i => pressIndex(i.press) === selected)
         const room = s.items.length > limit || s.count > s.items.length ? Math.max(1, limit - 1) : limit
@@ -745,13 +736,13 @@ export function hoodBlock(centre: { name: string; boundary: string | null }, use
         // The box presses to the nearest one it hides that the detail lists, below the window or else above it, as the
         // line under a cut list does; past the list there is nothing to go to.
         const next = s.items[window.end] ?? (window.start > 0 ? s.items[window.start - 1] : undefined)
-        const label = `+${hidden} more`
+        const label = moreText(hidden)
         const box = { key: `${s.title}-more`, label, dim: true, ...(next === undefined ? {} : { press: { id: `more:${pressIndex(next.press)}`, label } }) }
         return hidden > 0 ? [...shown, { node: box, edge: '' }] : shown
       }
       const colour = boundaryColour(centre.boundary, hues)
       const drawn = neighbourhood({ key: 'centre', label: centre.name, ...(colour === undefined ? {} : { color: colour }) }, side(usedBy), side(uses), columns, { usedBy: 'nothing uses it', uses: 'uses nothing' }, 'hood')
-      return { key: 'hood', title: 'Dependencies', subtitle, note, body: drawn.rows }
+      return { key: 'hood', title: 'Dependencies', note, body: drawn.rows }
     },
   }
 }

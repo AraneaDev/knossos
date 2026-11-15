@@ -19,10 +19,10 @@ function normalise(path: string): string {
 /** A path's last part: the file's own name. */
 export const baseName = (path: string): string => path.slice(path.lastIndexOf('/') + 1)
 
-/** A file and line as the pane prints a place: the file's own name, then the line. */
-export function placeOf(path: string | null, line: number | null): string {
+/** A file and line as the pane's one form of a place says it: the path from the project root, then the line (see `placeSegments` in `text.ts`). */
+export function placeText(path: string | null, line: number | null): string {
   if (path === null) return ''
-  return line === null ? baseName(path) : `${baseName(path)}:${line}`
+  return line === null ? path : `${path}:${line}`
 }
 
 /** A project-relative path made absolute under `root`; an absolute path is kept. */

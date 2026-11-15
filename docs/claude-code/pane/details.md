@@ -93,8 +93,9 @@ strongest first.` When only the other direction has a route, the pane draws
   with its hop count. A press on one draws it.
 - **Route 1** draws the chosen route as boxes down the pane, each framed in its
   boundary's colour with the boundary beside it. Each hop is an arrow labelled
-  with its kind and the file and line it is written at (`calls ·
-ServeCommand.php:33`). A hop that is only probable says so, and a hop no edge
+  with its kind and the file and line it is written at, its path from the
+  project root cut from the front where the row is short (`calls ·
+src/Cli/ServeCommand.php:33`). A hop that is only probable says so, and a hop no edge
   holds, a call to an interface method landing on the method that implements
   it, is drawn dotted and labelled `implemented_by · probable · derived`.
 
@@ -159,11 +160,11 @@ the commits made during the session and the working tree alike.
 - A hunk longer than 40 lines is folded with how many lines are left out.
   Past twelve hunks, or about 24,000 characters, the rest are counted instead.
   Lines longer than 200 characters are cut.
-- `N more lines` under a folded hunk is a button: pressing it shows the whole
+- `+N more lines` under a folded hunk is a button: pressing it shows the whole
   hunk. A hunk longer than the diff element takes (10,000 characters) shows
-  as much as fits and ends in `N more lines: too long to draw here, e opens the
+  as much as fits and ends in `+N more lines: too long to draw here, e opens the
 file`.
-- `N more changes further down the file` is a button too: it shows the next
+- `+N more changes further down the file` is a button too: it shows the next
   hunks in place of these, and `N earlier changes` above them goes back. The
   detail shows at most twelve hunks, or about 24,000 characters, at a time.
 - What you opened is kept while the detail shows that file. Opening the file

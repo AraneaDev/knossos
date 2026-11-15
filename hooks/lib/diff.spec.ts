@@ -131,14 +131,14 @@ describe('the change as rows', () => {
 
   it('folds a long hunk with how many lines it leaves out, and says when the diff was cut', () => {
     const rows = diffRows(viewOf(answer({ diff: long(HUNK_LINES + 7), truncated: true })), 60)
-    expect(text(rows.find(r => r.key === 'diff-more-0')!).trim()).toBe('7 more lines')
+    expect(text(rows.find(r => r.key === 'diff-more-0')!).trim()).toBe('+7 more lines')
     expect(text(rows.find(r => r.key === 'diff-cut')!)).toContain('cut here')
   })
 
   it('shows the first hunks and counts the rest', () => {
     const rows = diffRows(viewOf(answer({ diff: many })), 90)
     expect(rows.filter(r => r.code !== undefined)).toHaveLength(HUNKS_SHOWN)
-    expect(text(rows.find(r => r.key === 'diff-hunks-more')!).trim()).toBe('3 more changes further down the file')
+    expect(text(rows.find(r => r.key === 'diff-hunks-more')!).trim()).toBe('+3 more changes further down the file')
   })
 
   it('keeps the hunks it draws within one total, as large as session-diff answers, and counts the rest', () => {
@@ -149,7 +149,7 @@ describe('the change as rows', () => {
     const drawn = rows.filter(r => r.code !== undefined)
     expect(drawn.reduce((sum, r) => sum + (r.code?.source.length ?? 0), 0)).toBeLessThanOrEqual(DIFF_TEXT_MAX)
     expect(drawn.length).toBeGreaterThan(0)
-    expect(text(rows.find(r => r.key === 'diff-hunks-more')!).trim()).toBe(`${14 - drawn.length} more changes further down the file`)
+    expect(text(rows.find(r => r.key === 'diff-hunks-more')!).trim()).toBe(`+${14 - drawn.length} more changes further down the file`)
   })
 
   it('weighs the hunks it draws as the engine does, serialized, so quotes and backslashes count twice', () => {
@@ -218,7 +218,7 @@ describe('a change opened further', () => {
   const opened = (diff: string, open: number[], from = 0): DiffView => diffView(SHOWN, done(answer({ diff })), { status: 'ok', rev: REV }, { name: SHOWN.name, rev: REV, snapshot: 's1', open, from })!
   const press = (rows: Row[], key: string): string | undefined => rows.find(r => r.key === key)?.segments.find(s => s.press !== undefined)?.press?.id
 
-  it('"N more lines" is a press that opens that hunk, and the opened hunk shows every line', () => {
+  it('"+N more lines" is a press that opens that hunk, and the opened hunk shows every line', () => {
     const diff = long(HUNK_LINES + 7)
     expect(press(diffRows(viewOf(answer({ diff })), 80), 'diff-more-0')).toBe('diff-more:0')
     const rows = diffRows(opened(diff, [0]), 80)
@@ -226,7 +226,7 @@ describe('a change opened further', () => {
     expect(rows.find(r => r.key === 'diff-more-0')).toBeUndefined()
   })
 
-  it('"N more changes" is a press that shows the next hunks, and the hunks before them are a press back', () => {
+  it('"+N more changes" is a press that shows the next hunks, and the hunks before them are a press back', () => {
     const diff = hunks(HUNKS_SHOWN + 5, 2)
     expect(press(diffRows(viewOf(answer({ diff })), 80), 'diff-hunks-more')).toBe(`diff-from:${HUNKS_SHOWN}`)
     const next = diffRows(opened(diff, [], HUNKS_SHOWN), 80)
@@ -244,7 +244,7 @@ describe('a change opened further', () => {
       const drawn = rows.filter(r => r.code !== undefined)
       expect(drawn.reduce((sum, r) => sum + JSON.stringify(r.code?.source ?? '').length, 0)).toBeLessThanOrEqual(DIFF_TEXT_MAX)
       // The first hunk is cut by the element's own limit: the rest is the file's to show.
-      expect(text(rows.find(r => r.key === 'diff-more-0')!)).toMatch(/^\s*\d+ more lines: too long to draw here, e opens the file$/)
+      expect(text(rows.find(r => r.key === 'diff-more-0')!)).toMatch(/^\s*\+\d+ more lines: too long to draw here, e opens the file$/)
       expect(press(rows, 'diff-more-0')).toBeUndefined()
       expect(press(rows, 'diff-hunks-more')).toBe(`diff-from:${drawn.length}`)
     }

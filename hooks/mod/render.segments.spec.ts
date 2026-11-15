@@ -218,15 +218,15 @@ describe('drawPane: a field', () => {
     }
 
     it('never gives a field fewer than one cell, even when its label fills the row', async () => {
-        // An empty query at nine columns: the label `   find: ` takes all nine, and the field still gets one cell.
-        const tree = await drawPane(fakePort(finder('')), elements as never, 'terminal', { bodyColumns: 9 }, spies())
+        // An empty query at eleven columns: the card's margin either side and the label `   find: ` take all eleven, and the field still gets one cell.
+        const tree = await drawPane(fakePort(finder('')), elements as never, 'terminal', { bodyColumns: 11 }, spies())
         const drawn = children(rowOf(tree, 'find-row'))
-        expect(wordsOf(drawn[0]!)).toBe('   find: ')
+        expect(wordsOf(drawn[0]!)).toBe('    find: ')
         const boxes = drawn.filter(n => n.type === 'Box' && children(n).some(c => c.type === 'Input'))
         expect(boxes).toHaveLength(1)
         expect(boxes[0]!.props.width).toBe(1)
         // A cell wider, the field takes that cell and no more.
-        const wider = children(rowOf(await drawPane(fakePort(finder('')), elements as never, 'terminal', { bodyColumns: 11 }, spies()), 'find-row'))
+        const wider = children(rowOf(await drawPane(fakePort(finder('')), elements as never, 'terminal', { bodyColumns: 12 }, spies()), 'find-row'))
         expect(wider.find(n => n.type === 'Box')!.props.width).toBe(2)
     })
 

@@ -154,5 +154,12 @@ describe('the neighbourhood', () => {
   })
   it('says what a side holds when it holds nothing', () => {
     expect(text(neighbourhood({ key: 'c', label: 'Leaf' }, [], [], 120, empty).rows)).toMatch(/nothing uses it .*│ Leaf │ +uses nothing/)
+    // Stacked, the line stands against the centre box, with no blank row between: a card holds no blank row it does not need.
+    const below = text(neighbourhood({ key: 'c', label: 'Leaf' }, side(1, 'u'), [], 50, empty).rows).split('\n')
+    expect(below.at(-1)!.trim()).toBe('uses nothing')
+    expect(below.at(-2)!.trim()).toMatch(/^╰─+╯$/)
+    const above = text(neighbourhood({ key: 'c', label: 'Leaf' }, [], side(1, 'd'), 50, empty).rows).split('\n')
+    expect(above[0]!.trim()).toBe('nothing uses it')
+    expect(above[1]!.trim()).toMatch(/^╭─+╮$/)
   })
 })

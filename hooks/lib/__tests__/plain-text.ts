@@ -1,4 +1,5 @@
 import { GLYPHS } from '../cards'
+import { spaces } from '../text'
 import type { Row } from '../types'
 
 /** A card title's kind glyph and the space after it: what a spec reading the title's words leaves out. */
@@ -16,10 +17,15 @@ export const rawText = (row: Row): string => row.segments.map(s => s.text).join(
  */
 export const plainText = (row: Row): string => {
   const text = rawText(row)
-  const top = /^(╭─|──) (.*?)( ─╮| ──|─╮|──)$/.exec(text)
-  if (top !== null) return top[2]!.replace(GLYPH, '').replace(/ ─+( |$)/, (run, after: string) => ' '.repeat(run.length - after.length) + after).trimEnd()
-  if (row.inset !== undefined) return text.slice(row.inset).trimEnd()
-  // What draws a frame of its own (the stat tiles' band) still has `│ ` and ` │` to take off.
+  // A card's top edge stands on the margin either side: the margin says nothing.
+  const top = /^ *(╭─|──) (.*?)( ─╮| ──|─╮|──) *$/.exec(text)
+  if (top !== null) return top[2]!.replace(GLYPH, '').replace(/ ─+( |$)/, (run, after: string) => spaces(run.length - after.length) + after).trimEnd()
+  if (row.inset !== undefined) {
+    const body = text.slice(row.inset).trimEnd()
+    // The stat tiles' band draws a frame of its own on the margin: its `│ ` and ` │` say nothing either.
+    return row.key.startsWith('tiles-') && body.startsWith('│ ') && body.endsWith('│') ? body.slice(2, -1).trimEnd() : body
+  }
+  // What draws a frame of its own still has `│ ` and ` │` to take off.
   if (text.startsWith('│ ') && text.endsWith('│')) return text.slice(2, -1).trimEnd()
   // A marked row is tinted to the card's edge: the spaces that carry the tint say nothing.
   return row.tint === undefined ? text : text.trimEnd()

@@ -207,7 +207,7 @@ const hubDetail = (theme) =>
             wait(
                 "hub detail",
                 // Both on screen, in either order: the detail beside the list starts at its own height.
-                String.raw`^(?=[\s\S]*${marked(FIXTURE.hub)})(?=[\s\S]*Dependencies · used by)`,
+                String.raw`^(?=[\s\S]*${marked(FIXTURE.hub)})(?=[\s\S]*Dependencies ─+ used by)`,
                 { fixture: "hub" },
             ),
         ],
@@ -349,7 +349,7 @@ export const SHOTS = {
         { do: "type", text: FIXTURE.hub },
         wait("target found", marked(FIXTURE.hub), { fixture: "hub" }),
         { do: "send", keys: ["Enter"] },
-        wait("route drawn", String.raw`Route 1 · \d+ hops?`),
+        wait("route drawn", String.raw`Route 1 ─+ \d+ hops?`),
     ]),
     rings: pane("rings", [
         ...openHub(),
@@ -359,7 +359,7 @@ export const SHOTS = {
     "note-on-detail": pane("note-on-detail", [
         ...openHub(),
         press("End"),
-        press("m", String.raw`note: `),
+        press("m", String.raw`Enter checks it with knossos`),
         { do: "focus", field: true },
         {
             do: "type",

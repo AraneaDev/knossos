@@ -10,8 +10,9 @@
 import type { SessionChanges, TouchStatus } from '../../types'
 import { ACCENT, boundaryLabel, HEADING, NO_HUES, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
-import { blank, button, clip, dimRow, segmentsWidth, tinted, wrapGroups } from './rows'
-import { numberWidth, tableHead, tableRow, tableSpec } from './table'
+import { button, clip, segmentsWidth, tinted, wrapGroups } from './rows'
+import { numberWidth, tableHead, tableRow, tableSpec, withDependents } from './table'
+import { apart, atBody, bodyRow, bodyText, groupGap, gutter, GUTTER, labelledRows, moreText } from './spacing'
 import { chip } from './chips'
 import { cells, grouped, padEnd, padStart, plural, spaces, wrapWords } from './text'
 import type { Loc, Row, Segment } from './types'
@@ -122,13 +123,13 @@ export function timelineRow(input: Pick<ChangesInput, 'timeline' | 'earlier'>, c
   if (scans.length === 0) return null
   const own = scans.filter(t => t.origin === 'session').length
   const counts: Segment[] = [
-    { text: '  ' },
+    apart(),
     { text: grouped(own), color: ACCENT },
     { text: ' this session', dim: true },
     ...(own === scans.length ? [] : [{ text: ' · ', dim: true }, { text: grouped(scans.length - own), color: HEADING }, { text: ' outside', dim: true }]),
   ]
-  const lead: Segment = { text: '   scans ', dim: true }
-  const room = Math.max(1, columns - cells(lead.text) - segmentsWidth(counts))
+  const lead: Segment = { text: 'scans ', dim: true }
+  const room = Math.max(1, columns - GUTTER - cells(lead.text) - segmentsWidth(counts))
   const cut = input.earlier || scans.length > room
   const shown = scans.slice(-Math.max(1, cut ? room - 1 : room))
   const dots: Segment[] = shown.map(t => (t.origin === 'session' ? { text: TIMELINE_DOT, color: ACCENT } : { text: TIMELINE_DOT, dim: true }))
@@ -139,7 +140,7 @@ export function timelineRow(input: Pick<ChangesInput, 'timeline' | 'earlier'>, c
     else out.push(d)
     return out
   }, [])
-  return { key: 'changes-timeline', segments: clip([lead, ...(cut ? [{ text: '…', dim: true }] : []), ...runs, ...(columns - cells(lead.text) - shown.length - (cut ? 1 : 0) >= segmentsWidth(counts) ? counts : [])], columns) }
+  return { key: 'changes-timeline', segments: clip(atBody([lead, ...(cut ? [{ text: '…', dim: true }] : []), ...runs, ...(columns - GUTTER - cells(lead.text) - shown.length - (cut ? 1 : 0) >= segmentsWidth(counts) ? counts : [])]), columns) }
 }
 
 /** One scan on the timeline. */
@@ -177,11 +178,11 @@ export function reachRows(key: string, lead: string, boundaries: string[], colum
     const named = boundaries.slice(0, shown)
     const out: Segment[][] = lead === '' ? [] : [[{ text: lead, dim: true }]]
     if (named.length > 0) out.push([{ text: 'reaching', dim: true }], ...named.map(b => chip(b, hues)))
-    if (boundaries.length > named.length) out.push([{ text: `+${boundaries.length - named.length} more`, dim: true }])
+    if (boundaries.length > named.length) out.push([{ text: moreText(boundaries.length - named.length), dim: true }])
     return out
   }
-  const shown = [REACH_SHOWN, 2, 1].find(n => wrapGroups(key, groups(n), columns, 1, 3).length === 1) ?? REACH_SHOWN
-  return wrapGroups(key, groups(shown), columns, 1, 3)
+  const shown = [REACH_SHOWN, 2, 1].find(n => wrapGroups(key, groups(n), columns, 1, GUTTER).length === 1) ?? REACH_SHOWN
+  return wrapGroups(key, groups(shown), columns, 1, GUTTER)
 }
 
 /** A one-cell mark for how a file stands: `+` added, `−` deleted, `~` changed. */
@@ -212,7 +213,7 @@ export function changesArrangement(input: ChangesInput, selected: number, tier: 
 /** The changed files' card, its list `limit` rows long around the marker. */
 function filesSection(input: ChangesInput, selected: number, columns: number, limit: number, tier: Tier, hues: Hues, lit: ReadonlySet<string>, scrolled?: number, host?: 'web'): Section {
   const rows: Row[] = []
-  const said = (key: string, text: string) => wrapWords(text, Math.max(1, columns - 3)).forEach((line, i) => rows.push(dimRow(`${key}-${i}`, `   ${line}`, columns)))
+  const said = (key: string, text: string) => rows.push(...bodyText(key, text, columns))
   const words = baselineWords(host)
   const title = words.list
   const timeline = timelineRow(input, columns)
@@ -235,7 +236,7 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
   const origin = input.sinceStart && input.files.some(f => f.origin !== undefined) && columns > ORIGIN_WIDTH + 20 ? ORIGIN_WIDTH + 1 : 0
   // How many tests reach each file, when that is known: a file none reaches is marked in the warning tone.
   const tested = input.files.some(f => f.tests !== null) && columns - origin > TESTS_WIDTH + 24 ? TESTS_WIDTH + 1 : 0
-  const spec = tableSpec(columns - origin - tested, input.files.map(f => f.path), input.files.map(f => boundaryLabel(f.boundary)), [numberWidth('deps', input.files.map(f => f.dependents), tier)], PATH_MAX, { tier })
+  const { title: dependents, spec } = withDependents(t => tableSpec(columns - origin - tested, input.files.map(f => f.path), input.files.map(f => boundaryLabel(f.boundary)), [numberWidth(t, input.files.map(f => f.dependents), tier)], PATH_MAX, { tier }), tier)
   const max = Math.max(0, ...input.files.map(f => f.dependents))
   // The file marks the card shows, counted: the note is their legend, where it fits beside the title. A note too
   // long for the top edge is dropped whole, so the legend gives way first and what the note says otherwise stays.
@@ -249,15 +250,19 @@ function filesSection(input: ChangesInput, selected: number, columns: number, li
   rows.push(...reachRows('changes-reach', `${plural(input.files.length, 'file', 'files')} → ${grouped(deps)} dependents`, input.boundaries, columns, hues))
   if (input.violations > 0) {
     // The violations are listed on Issues: the press opens it on the first.
-    rows.push({ key: 'changes-policy', segments: [{ text: '   ' }, button('stat:policy', `${SEVERITY.error.glyph} ${plural(input.violations, 'policy violation', 'policy violations')} introduced`, undefined, { color: STATUS_COLOURS.alert })] })
+    rows.push({ key: 'changes-policy', segments: [...gutter(false, mark(SEVERITY.error)), button('stat:policy', `${plural(input.violations, 'policy violation', 'policy violations')} introduced`, undefined, { color: STATUS_COLOURS.alert })] })
   }
   // The count is a press that lists only those files; while it does, it says so, and a row offers every file back.
   if (input.untested > 0) {
-    const count: Segment[] = [button('untested-row', `${REACH.untested.glyph} ${untestedText(input.untested)}`, undefined, { color: STATUS_COLOURS.warn })]
-    rows.push(...wrapGroups('changes-untested', input.untestedOnly ? [count, [{ text: '· showing only these', dim: true }]] : [count], columns, 1, 3))
-    if (input.untestedOnly) rows.push({ key: 'changes-all', segments: [{ text: '   ' }, button('untested-all', 'show all files', undefined, { dim: true })] })
+    const count: Segment[] = [button('untested-row', untestedText(input.untested), undefined, { color: STATUS_COLOURS.warn })]
+    // The warning's mark in the gutter, as every mark of the card stands; its words at the body.
+    const said = wrapGroups('changes-untested', input.untestedOnly ? [count, [{ text: '· showing only these', dim: true }]] : [count], columns - GUTTER, 1)
+    rows.push(...said.map((row, i) => ({ ...row, segments: i === 0 ? [...gutter(false, mark(REACH.untested)), ...row.segments] : atBody(row.segments) })))
+    if (input.untestedOnly) rows.push(bodyRow('changes-all', [button('untested-all', 'show all files', undefined, { dim: true })]))
   }
-  const head = tableHead('changes-cols', spec, { name: 'file', boundary: 'boundary', numbers: ['deps'] })
+  // The table is a block of another kind than the verdict above it: one blank row between.
+  rows.push(groupGap('changes-gap'))
+  const head = tableHead('changes-cols', spec, { name: 'file', boundary: 'boundary', numbers: [dependents] })
   rows.push({
     ...head,
     segments: [...head.segments, ...(tested === 0 ? [] : [{ text: ` ${padStart('tests', TESTS_WIDTH)}`, dim: true }]), ...(origin === 0 ? [] : [{ text: ` ${padEnd('from', ORIGIN_WIDTH)}`, dim: true }])],
@@ -300,9 +305,9 @@ function testsSection(input: ChangesInput, columns: number, limit: number, hues:
   const title = 'Tests that reach these changes'
   if (input.tests.length === 0) {
     // With some file's reach known, the files none reaches are listed on their own by the press.
-    const said = `${REACH.untested.glyph} no test reaches these changes`
+    const said = 'no test reaches these changes'
     const warn: Segment = input.untested > 0 ? button('untested-none', said, undefined, { color: STATUS_COLOURS.warn }) : { text: said, color: STATUS_COLOURS.warn }
-    return { key: 'tests', title, body: [{ key: 'tests-none', segments: [{ text: '   ' }, warn] }] }
+    return { key: 'tests', title, body: [{ key: 'tests-none', segments: [...gutter(false, mark(REACH.untested)), warn] }] }
   }
   const listed = windowedTable('tests-more', input.tests, { columns, limit, scrolled }, (shown, start) => {
     const spec = { ...tableSpec(columns, shown.map(t => t.path), [], [numberWidth('hops', shown.map(t => t.distance))], PATH_MAX), bar: 0 }
@@ -310,10 +315,10 @@ function testsSection(input: ChangesInput, columns: number, limit: number, hues:
   })
   const rows: Row[] = [...listed.rows]
   if (input.command !== null) {
-    rows.push(blank('gap-command'))
-    wrapWords(input.command, Math.max(1, columns - 5)).forEach((line, i) =>
-      rows.push({ key: `command-${i}`, segments: [{ text: i === 0 ? '   $ ' : '     ', dim: true }, { text: line, color: HEADING }] }),
-    )
+    // The command line is a block of another kind than the table: one blank row, then the command by its label.
+    const command = input.command
+    rows.push(groupGap('gap-command'), ...labelledRows([{ key: 'command', label: 'run', numbered: true, lines: width => wrapWords(command, width).map(line => [{ text: line, color: HEADING }]) }], columns))
   }
-  return { key: 'tests', title, subtitle: count, note: noteOf('nearest first'), body: rows, window: listed.window }
+  // How many at the right of the title, with the order they come in.
+  return { key: 'tests', title, note: noteOf(`${count} · nearest first`), body: rows, window: listed.window }
 }

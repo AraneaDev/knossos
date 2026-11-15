@@ -26,6 +26,7 @@
  */
 import { ACCENT, FAINT, HEADING, SELECTED_BG, STATUS_COLOURS } from './palette'
 import { cells, fit, padEnd, spaces } from './text'
+import { GUTTER } from './spacing'
 import type { Press, Row, Segment } from './types'
 
 /** The narrowest a diagram is drawn: below it, a view says the same as text. */
@@ -378,10 +379,31 @@ export type Coupling = { source: string; target: string; edges: string }
  * an arrow, every target, the counts right-aligned at the end. Names are cut
  * only as far as the width needs, the source and target sharing the cut.
  */
-export function pairColumns(items: Coupling[], width: number, sourceStyle: Style, targetStyle: Style, indent = 3, key = 'pairs'): Row[] {
-  const arrow = ' ──► '
+export function pairColumns(items: Coupling[], width: number, sourceStyle: Style, targetStyle: Style, indent = GUTTER, key = 'pairs'): Row[] {
+  const { sw, tw, count } = pairWidths(items, width, indent)
+  return items.map((item, i) => {
+    const target = fit(item.target, tw)
+    return {
+      key: `${key}-${i}`,
+      segments: [
+        { text: spaces(indent) },
+        { text: padEnd(fit(item.source, sw), sw), ...sourceStyle },
+        { text: PAIR_ARROW, color: FAINT },
+        { text: target, ...targetStyle },
+        { text: spaces(tw - cells(target) + 2 + count - cells(item.edges)) },
+        { text: item.edges, color: HEADING },
+      ],
+    }
+  })
+}
+
+/** The arrow between a pair's two names. */
+const PAIR_ARROW = ' ──► '
+
+/** The widths {@link pairColumns} gives a pair's source, its target and its count in `width`, past `indent`. */
+function pairWidths(items: Coupling[], width: number, indent: number): { sw: number; tw: number; count: number } {
   const count = Math.max(1, ...items.map(i => cells(i.edges)))
-  const room = Math.max(4, width - indent - cells(arrow) - 2 - count)
+  const room = Math.max(4, width - indent - cells(PAIR_ARROW) - 2 - count)
   let sw = Math.max(1, ...items.map(i => cells(i.source)))
   let tw = Math.max(1, ...items.map(i => cells(i.target)))
   if (sw + tw > room) {
@@ -390,21 +412,11 @@ export function pairColumns(items: Coupling[], width: number, sourceStyle: Style
     else if (tw <= half) sw = room - tw
     else [sw, tw] = [half, room - half]
   }
-  return items.map((item, i) => {
-    const target = fit(item.target, tw)
-    return {
-      key: `${key}-${i}`,
-      segments: [
-        { text: spaces(indent) },
-        { text: padEnd(fit(item.source, sw), sw), ...sourceStyle },
-        { text: arrow, color: FAINT },
-        { text: target, ...targetStyle },
-        { text: spaces(tw - cells(target) + 2 + count - cells(item.edges)) },
-        { text: item.edges, color: HEADING },
-      ],
-    }
-  })
+  return { sw, tw, count }
 }
+
+/** Where {@link pairColumns} starts its targets' column, from the row's start: past the indent, the sources and the arrow. */
+export const pairTargetAt = (items: Coupling[], width: number, indent = GUTTER): number => indent + pairWidths(items, width, indent).sw + cells(PAIR_ARROW)
 
 // ---------------------------------------------------------------- a neighbourhood
 
@@ -497,14 +509,16 @@ function sideBySide(centre: DiagramNode, usedBy: Neighbour[], uses: Neighbour[],
 
 function stacked(centre: DiagramNode, usedBy: Neighbour[], uses: Neighbour[], width: number, ew: number, longest: number, empty: Empty, key: string): { rows: Row[]; canvas: Canvas } {
   // Two columns of boxes either side of one spine: the users left of it, what it uses right of it.
-  const nw = Math.max(5, Math.min(boxWidth(Math.min(NEIGHBOUR_MAX, longest)), Math.floor((width - 2 * ew - 1) / 2)))
+  // Box, edge to the spine, edge to the box, box: two boxes and two edges fill the width, the spine standing on the first edge's end.
+  const nw = Math.max(5, Math.min(boxWidth(Math.min(NEIGHBOUR_MAX, longest)), Math.floor((width - 2 * ew) / 2)))
   const spine = nw + ew
   const rx = spine + ew
   const cw = Math.min(width, boxWidth(Math.min(LABEL_MAX, cells(centre.label))))
   const cx = Math.max(0, Math.min(width - cw, spine - Math.floor(cw / 2)))
-  const upper = usedBy.length === 0 ? 1 : columnHeight(usedBy.length) + 1
+  // A side with nothing on it is one line of text against the centre box, with no blank row between: it says, it draws nothing.
+  const upper = usedBy.length === 0 ? 0 : columnHeight(usedBy.length) + 1
   const cy = upper + 1
-  const lower = uses.length === 0 ? 2 : 1 + columnHeight(uses.length)
+  const lower = uses.length === 0 ? 1 : 1 + columnHeight(uses.length)
   const height = cy + 3 + lower
   const c = canvas(Math.max(1, width), height)
   const spineAt = Math.min(Math.max(cx + 1, spine), cx + cw - 2)
@@ -520,7 +534,7 @@ function stacked(centre: DiagramNode, usedBy: Neighbour[], uses: Neighbour[], wi
     })
     line(c, [[spineAt, 1], [spineAt, cy - 1]], usedBy.some(nb => nb.node.selected) ? { color: ACCENT } : { color: FAINT }, true)
   }
-  if (uses.length === 0) write(c, Math.max(0, spineAt - Math.floor(cells(empty.uses) / 2)), cy + 4, [{ text: fit(empty.uses, width), dim: true }])
+  if (uses.length === 0) write(c, Math.max(0, spineAt - Math.floor(cells(empty.uses) / 2)), cy + 3, [{ text: fit(empty.uses, width), dim: true }])
   else {
     const ys = uses.map((_, i) => cy + 4 + i * (3 + NEIGHBOUR_GAP))
     line(c, [[spineAt, cy + 2], [spineAt, ys[ys.length - 1]! + 1]], uses.some(nb => nb.node.selected) ? { color: ACCENT } : { color: FAINT })

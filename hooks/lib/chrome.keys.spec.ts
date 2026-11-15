@@ -15,7 +15,8 @@ const DOCS = fileURLToPath(new URL('../../docs/claude-code/pane/index.md', impor
 function paneRows(): [string, string][] {
   const section = keysBlock().make(10_000, 10_000)
   expect(section).not.toBeNull()
-  const body = section!.body as { segments: { text: string }[] }[]
+  // The key rows; the note under them, after a blank row, is no key.
+  const body = (section!.body as { key: string; segments: { text: string }[] }[]).filter(row => row.key.startsWith('help-'))
   return body.map(row => [row.segments[1]!.text.trim(), row.segments[2]!.text] as [string, string]).filter(([key]) => key !== '')
 }
 
