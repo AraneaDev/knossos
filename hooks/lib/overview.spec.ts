@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Dashboard, KnossosView, SessionChanges } from '../../types'
-import { cardRows } from './cards'
+import { cardInner, cardRows } from './cards'
 import { changesInput, lookAtOf } from './changes'
 import { NO_CHANGES } from './session-changes'
 import { listFor } from './pane-list'
@@ -104,7 +104,7 @@ const VIEW: KnossosView = { inspect: null, isBandHidden: false, tab: 'overview',
 /** The rows a card draws at `columns`, framed as the pane frames it at that width's tier. */
 function rowsOf(block: { make: (inner: number, limit: number) => import('./cards').Section | null }, columns: number): Row[] {
   const tier = tierOf(columns)
-  const section = block.make(tier === 'narrow' ? columns : columns - 4, 0)
+  const section = block.make(cardInner(columns, tier), 0)
   return section === null ? [] : cardRows(section, columns, tier)
 }
 

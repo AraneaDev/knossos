@@ -34,8 +34,8 @@ describe('tiers', () => {
   it('switch at 80 and past 130', () => {
     expect([40, 79, 80, 100, 130, 131, 200].map(tierOf)).toEqual(['narrow', 'narrow', 'medium', 'medium', 'medium', 'wide', 'wide'])
   })
-  it('frame medium and wide cards, and leave a narrow card its every column', () => {
-    expect(cardInner(60, 'narrow')).toBe(60)
+  it('lay every card on the margin either side: two cells, one when narrow', () => {
+    expect(cardInner(60, 'narrow')).toBe(58)
     expect(cardInner(100, 'medium')).toBe(96)
     expect(cardInner(140, 'wide')).toBe(136)
   })
@@ -45,35 +45,35 @@ describe('cards', () => {
   const section: Section = { key: 's', title: 'Most depended on', subtitle: 'sorted by in', note: [{ text: 'all in core · in', dim: true }], body: [line('s-0', 'StableId'), line('s-1', '›  ArchitectureQueryService')] }
 
   for (const columns of WIDTHS) {
-    it(`exactly fill ${columns} columns with their edges, framed or not by the tier`, () => {
+    it(`exactly fill ${columns} columns with their edges, on the margin at every tier`, () => {
       const tier = tierOf(columns)
+      const margin = tier === 'narrow' ? 1 : 2
       const rows = cardRows(section, columns, tier)
       expect(rowWidth(rows[0]!)).toBe(columns)
-      if (tier === 'narrow') {
-        // A top rule with the title in it, nothing at the sides and no bottom edge.
-        expect(rawText(rows[0]!)).toMatch(/^── Most depended/)
-        expect(rawText(rows[1]!).trim()).toBe('')
-        expect(rawText(rows[2]!)).toBe('StableId')
-        expect(rows).toHaveLength(4)
-      } else {
-        // The same rule, a blank row, the rows two cells in and as wide as the card, nothing closing it.
-        expect(rawText(rows[0]!)).toMatch(/^── Most depended on .*──$/)
-        expect(rawText(rows[1]!).trim()).toBe('')
-        for (const r of rows.slice(1)) expect(rowWidth(r), r.key).toBe(columns)
-        for (const r of rows.slice(2)) expect(rawText(r)).toMatch(/^ {2}\S/)
-        expect(rows).toHaveLength(4)
-      }
+      // The rule on the margin either side, a blank row, the rows on the margin and as wide as the card, nothing closing it.
+      expect(rawText(rows[0]!)).toMatch(new RegExp(`^ {${margin}}── Most depende.*── {${margin}}$`))
+      expect(rawText(rows[1]!).trim()).toBe('')
+      for (const r of rows.slice(1)) expect(rowWidth(r), r.key).toBe(columns)
+      for (const r of rows.slice(2)) expect(rawText(r)).toMatch(new RegExp(`^ {${margin}}\\S`))
+      expect(rows[2]!.inset).toBe(margin)
+      expect(rows).toHaveLength(4)
     })
   }
 
   it('set the note against the right corner, and give way: subtitle, then the title is cut, then the note', () => {
-    expect(rawText(topRow(section, 100))).toMatch(/^── Most depended on · sorted by in ─+ all in core · in ──$/)
-    expect(rawText(topRow(section, 44))).toMatch(/^── Most depended on ─+ all in core · in ──$/)
-    expect(rawText(topRow(section, 40))).toBe('── Most depended… ── all in core · in ──')
-    expect(rawText(topRow(section, 34))).toMatch(/^── Most depended on ─+$/)
-    const tiny = topRow(section, 20)
-    expect(rowWidth(tiny)).toBeLessThanOrEqual(20)
-    expect(rawText(tiny)).toContain('Most')
+    expect(rawText(topRow(section, 100))).toMatch(/^ {2}── Most depended on · sorted by in ─+ all in core · in ── {2}$/)
+    // The rule inside the margin gives way as the width it has shrinks.
+    expect(rawText(topRow(section, 44, 0))).toMatch(/^── Most depended on ─+ all in core · in ──$/)
+    expect(rawText(topRow(section, 40, 0))).toBe('── Most depended… ── all in core · in ──')
+    expect(rawText(topRow(section, 44))).toBe('  ── Most depended… ── all in core · in ──  ')
+    expect(rawText(topRow(section, 34, 0))).toMatch(/^── Most depended on ─+$/)
+    for (const margin of [0, 2]) {
+      const tiny = topRow(section, 20, margin)
+      expect(rowWidth(tiny)).toBeLessThanOrEqual(20)
+      expect(rawText(tiny)).toContain('Most')
+    }
+    // Too narrow to keep its margin and a cell, it keeps the cell.
+    expect(rowWidth(topRow(section, 3))).toBeLessThanOrEqual(3)
   })
 
   it('cut a body row too wide for the frame, and leave a diff element unframed', () => {
@@ -84,10 +84,12 @@ describe('cards', () => {
 })
 
 describe('the wide grid', () => {
-  it('splits the width into two columns two apart', () => {
+  it('splits the width into two columns, each on its own margin, so their rules stand four apart', () => {
     for (const columns of [131, 140, 200]) {
       const [l, r] = gridColumns(columns)
-      expect(l + r + 2).toBe(columns)
+      expect(l + r).toBe(columns)
+      const head = arrange({ left: [fixedBlock('a', 1)], right: [fixedBlock('b', 1)] }, columns, 40).find(row => row.key === 'a-head|b-head')!
+      expect(rawText(head)).toMatch(/── {4}──/)
       expect(Math.abs(l - r)).toBeLessThanOrEqual(1)
     }
   })
@@ -98,8 +100,8 @@ describe('the wide grid', () => {
       for (const r of rows) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
       const right = rows.find(r => r.key.endsWith('|b-5'))!
       expect(right.key).toMatch(/^pad-l-\d+\|b-5$/)
-      // The right card's row starts past the left column and the gap, its own content two cells in.
-      expect(rawText(right).search(/\S/)).toBe(lw + 2 + 2)
+      // The right card's row starts past the left column, its own content on its margin.
+      expect(rawText(right).search(/\S/)).toBe(lw + 2)
       expect(rowWidth(right)).toBe(columns)
     }
   })
@@ -169,7 +171,8 @@ describe('lists sized to the height', () => {
     const rows = fitBlocks([listBlock('a', 30, 3, 20)], 60, 'narrow', 10)
     const shown = items(rows, 'a').map(r => r.key)
     expect(shown).toContain('a-20')
-    expect(rawText(rows.find(r => r.key === 'a-more')!)).toMatch(/^ {3}\d+ above ↑ · \d+ more ↓$/)
+    // On the narrow margin, then the gutter.
+    expect(rawText(rows.find(r => r.key === 'a-more')!)).toMatch(/^ {4}\d+ above ↑ · \d+ more ↓ *$/)
   })
   it('read the height from the pane, with a default where the surface gives none', () => {
     expect(paneHeight({ bodyRows: 33 })).toBe(33)
@@ -337,10 +340,10 @@ describe('balanced columns', () => {
   }
 
   it('weight the columns by a split: the left its share of the width', () => {
-    expect(gridColumns(200, 0.6)).toEqual([118, 80])
+    expect(gridColumns(200, 0.6)).toEqual([120, 80])
     const rows = arrange({ left: [fixedBlock('a', 2)], right: [fixedBlock('b', 2)], split: 0.6 }, 200, 40)
     const head = rows.find(r => r.key === 'a-head|b-head')!
-    expect(rowWidth({ key: 'x', segments: head.segments.slice(0, head.split) })).toBe(118 + 2)
+    expect(rowWidth({ key: 'x', segments: head.segments.slice(0, head.split) })).toBe(120)
   })
 })
 
@@ -368,8 +371,8 @@ describe('card glyphs', () => {
     expect(head.segments.find(s => s.text === '↻ ')).toMatchObject({ color: TITLE })
     expect(rowWidth(head)).toBe(60)
     // A card of no listed kind has none; a section may name its own.
-    expect(rawText(topRow({ key: 'x', title: 'Plain', body: [] }, 40))).toMatch(/^── Plain ─/)
-    expect(rawText(topRow({ key: 'x', title: 'Own', glyph: '✦', body: [] }, 40))).toMatch(/^── ✦ Own ─/)
+    expect(rawText(topRow({ key: 'x', title: 'Plain', body: [] }, 40))).toMatch(/^ {2}── Plain ─/)
+    expect(rawText(topRow({ key: 'x', title: 'Own', glyph: '✦', body: [] }, 40))).toMatch(/^ {2}── ✦ Own ─/)
     // The glyph gives way with the rule: a title cut for its note keeps it.
     for (const width of [12, 16, 20, 30]) expect(rowWidth(topRow({ key: 'policy', title: 'Policy violations', note: [{ text: '✓ 0' }], body: [] }, width)), `${width}`).toBeLessThanOrEqual(width)
   })
@@ -392,9 +395,9 @@ describe('the marked row in a card', () => {
 
 describe('rows of cards of equal height', () => {
   it('splits the width into equal columns, the first ones taking the remainder', () => {
-    expect(equalColumns(100, 2)).toEqual([49, 49])
-    expect(equalColumns(101, 2)).toEqual([50, 49])
-    expect(equalColumns(140, 3)).toEqual([46, 45, 45])
+    expect(equalColumns(100, 2)).toEqual([50, 50])
+    expect(equalColumns(101, 2)).toEqual([51, 50])
+    expect(equalColumns(140, 3)).toEqual([47, 47, 46])
   })
 
   it('draws the cards of a row equally tall, the shorter stretched, at every wide width and height', () => {
@@ -432,6 +435,7 @@ describe('the line under a cut list', () => {
 
   it('is two presses where the list is walked: the last item above, the first below, by their place in the walk', () => {
     const rows = moreRows('x-window', { start: 3, end: 8 }, 20, 60, 10)
+    // At the body, after the gutter.
     expect(rows.map(r => r.segments.map(s => s.text).join(''))).toEqual(['   3 above ↑ · 12 more ↓'])
     expect(ids(rows)).toEqual(['more:12', 'more:18'])
     // A walk that is not a plain offset (a cycle's members each a row) maps each item itself.
@@ -467,9 +471,9 @@ describe('a card under a rule', () => {
             expect(title).toMatchObject({ color: HEADING, bold: true })
             expect(rows[0]!.segments.find(s => s.text === '◎ ')).toMatchObject({ color: TITLE })
             const text = rows.map(rawText)
-            expect(text[0]).toMatch(/^── .*Hubs ─+ 12 ──$/)
+            expect(text[0]).toMatch(/^ {2}── .*Hubs ─+ 12 ── {2}$/)
             expect(text.some(t => /[│╭╮╰╯]/.test(t))).toBe(false)
-            // A blank row under the title, then its rows two cells in, every row as wide as the card, and nothing after the last.
+            // A blank row under the title, then its rows on the margin, every row as wide as the card, and nothing after the last.
             expect(text[1]!.trim()).toBe('')
             expect(text.slice(2).map(t => t.slice(0, 8))).toEqual(['  Router', '  Kernel'])
             expect(rows.every(r => rowWidth(r) === 60)).toBe(true)
@@ -506,13 +510,13 @@ describe('a list the wheel scrolls', () => {
     expect(cardRows({ key: 'c', title: 'C', body: [line('c-0', 'x')] }, 80, 'medium').every(r => r.lists === undefined)).toBe(true)
   })
 
-  it("keeps each side's span when two cards stand side by side, the right one's moved past the left and the gap", () => {
+  it("keeps each side's span when two cards stand side by side, the right one's moved past the left", () => {
     const left = cardRows(scrollable('a', 50).make(36, 3, 0)!, 40, 'medium')
     const right = cardRows(scrollable('b', 50).make(36, 3, 7)!, 40, 'medium')
     const rows = besideRows(left, right, 40)
     expect(rows[2]!.lists).toEqual([
       { key: 'a', from: 0, to: 40, start: 0, shown: 3, length: 50 },
-      { key: 'b', from: 42, to: 82, start: 7, shown: 3, length: 50 },
+      { key: 'b', from: 40, to: 80, start: 7, shown: 3, length: 50 },
     ])
   })
 })

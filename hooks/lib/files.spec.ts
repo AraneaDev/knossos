@@ -136,11 +136,11 @@ describe('a file detail', () => {
     expect(raw).toMatch(/►│ Router\.php ├/)
     expect(text).toMatch(/Declares · 3 components +used by/)
     expect(plainText(row(rows, 'comp-1')!)).toMatch(/^ {3}Router::dispatch +━+·* +4$/)
-    expect(plainText(row(rows, 'comps-more')!)).toBe('   +1 not listed')
+    expect(plainText(row(rows, 'comps-more')!)).toBe('   +1 more')
     // Below fifty columns the two lists as tables.
     const narrow = paneRows(shown, 40)
     expect(plainText(row(narrow, 'dep-0')!)).toMatch(/^› {2}…?[a-zA-Z/]*Kernel\.php +■ Core +━+ +6$/)
-    expect(plainText(row(narrow, 'deps-more')!)).toBe('   +12 not listed')
+    expect(plainText(row(narrow, 'deps-more')!)).toBe('   +12 more')
     expect(plainText(row(narrow, 'use-0')!)).toMatch(/Container\.php +■ Core/)
   })
 
@@ -224,7 +224,7 @@ describe('the drifted files', () => {
     expect(plainText(row(rows, 'drift-0')!)).toMatch(/^›~ src\/Http\/Router\.php +■ Http$/)
     expect(plainText(row(rows, 'drift-1')!)).toMatch(/^ \+ src\/Http\/New\.php/)
     expect(plainText(row(rows, 'drift-2')!)).toMatch(/^ − src\/Core\/Gone\.php +■ Core$/)
-    expect(plainText(row(rows, 'drift-more')!)).toBe('   +20 not listed')
+    expect(plainText(row(rows, 'drift-more')!)).toBe('   +20 more')
     expect(rows.findIndex(r => r.key === 'drift-head')).toBeGreaterThan(rows.findIndex(r => r.key === 'tabs'))
     // The marker is theirs while they are listed: the tab below draws none.
     expect(rows.filter(r => plainText(r).startsWith('›'))).toHaveLength(1)

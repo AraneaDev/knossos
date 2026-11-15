@@ -16,7 +16,8 @@ export const rawText = (row: Row): string => row.segments.map(s => s.text).join(
  */
 export const plainText = (row: Row): string => {
   const text = rawText(row)
-  const top = /^(╭─|──) (.*?)( ─╮| ──|─╮|──)$/.exec(text)
+  // A card's top edge stands on the margin either side: the margin says nothing.
+  const top = /^ *(╭─|──) (.*?)( ─╮| ──|─╮|──) *$/.exec(text)
   if (top !== null) return top[2]!.replace(GLYPH, '').replace(/ ─+( |$)/, (run, after: string) => ' '.repeat(run.length - after.length) + after).trimEnd()
   if (row.inset !== undefined) return text.slice(row.inset).trimEnd()
   // What draws a frame of its own (the stat tiles' band) still has `│ ` and ` │` to take off.

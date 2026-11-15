@@ -23,6 +23,7 @@ import { opensFile } from './editor'
 import { boundaryStyle, chip } from './chips'
 import { button, segmentsWidth, tintedRow } from './rows'
 import { cells, compact, fit, fitStart, grouped, padEnd, padStart, pathParts, spaces } from './text'
+import { GUTTER } from './spacing'
 import type { Loc, Preview, Row, Segment } from './types'
 
 export const BAR_MIN = 4
@@ -65,8 +66,8 @@ const BOUNDARY_MAX = 12
 const PLACE_MAX = 36
 /** The cells a kind mark takes before a name: its letter and a space. */
 const KIND_CELLS = 2
-/** The selection marker, the hotspot mark and a space. */
-export const MARK = 3
+/** The selection marker, the row's mark (the hotspot mark, or one the row names) and a space: the card's gutter, before the body. */
+export const MARK = GUTTER
 
 /** A whole cell of a bar, and its left half. */
 export const BAR_FULL = '━'
@@ -200,7 +201,7 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
   const segments: Segment[] = [
     { text: line.selected ? '›' : ' ', color: ACCENT, bold: true },
     line.mark ?? (line.hotspotOnly ? mark(RANKING.hotspotOnly) : { text: ' ' }),
-    { text: ' ' },
+    { text: spaces(MARK - 2) },
     ...((spec.kind ?? 0) > 0 ? [kindMark(line.kind)] : []),
     { text: parts.dir, dim: true },
     line.preview === undefined ? named : { ...named, preview: line.preview },

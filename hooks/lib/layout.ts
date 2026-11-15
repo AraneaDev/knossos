@@ -322,7 +322,7 @@ export function paneLayout(input: PaneInput, columns: number, height: number = D
     rows.push(...tabRows(input.tab, inner, input.terminal, badges, tier === 'narrow').map(row => padded(row, pad, width)))
   }
   if (!short) rows.push(blank('head-end'))
-  rows.push({ key: 'head-rule', segments: [{ text: '─'.repeat(width), color: FAINT }] })
+  rows.push(padded({ key: 'head-rule', segments: [{ text: '─'.repeat(inner), color: FAINT }] }, pad, width))
   const header = rows.length
   if (input.allow !== null) rows.push(blank('gap-allow-top'), ...allowRows(input.allow, width))
   const { bar } = footerRows(input, width, list.length > 0, offset >= header)

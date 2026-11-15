@@ -660,7 +660,7 @@ describe('the header summary', () => {
 })
 
 describe('the issues tab', () => {
-  it("names each diagnostic's place by its project path and its source, and says how many are not listed", () => {
+  it("names each diagnostic's place by its project path and its source, and says how many more are not shown", () => {
     const diagnostics = {
       total: 40,
       errors: 30,
@@ -675,7 +675,7 @@ describe('the issues tab', () => {
     // The path from the project root, cut from its start where the row is short: two files called index.ts stay apart.
     expect(text).toMatch(/E1 first .*components\/index\.ts:7 · typescript/)
     expect(text).toMatch(/W1 second +src\/index\.ts:3 · source unknown/)
-    expect(text).toContain('+34 not listed')
+    expect(text).toContain('+34 more')
   })
 
   for (const columns of WIDTHS) {
@@ -711,7 +711,7 @@ describe('the issues tab', () => {
     const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
     expect(text).toMatch(/Policy violations +✗ 7/)
     expect(text).toMatch(/ArchitectureQueryService::fileMetr… → ■ FactCollector ■ core +ArchitectureQueryService\.php:191/)
-    expect(text).toContain('+6 not listed')
+    expect(text).toContain('+6 more')
     expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
     expect(text).toMatch(/scanner\.ts:14$/m)
@@ -725,7 +725,7 @@ describe('the issues tab', () => {
     expect(text).toMatch(/workers\/typescript\/src\/scanner\.js .*━+ +4,986 +20/)
     expect(text).toMatch(/Over budget +▲ 3 functions over 205 lines/)
     expect(text).toMatch(/▲ src\/Scan\/ProjectScanService\.php +2 +260/)
-    expect(text).toContain('+2 not listed')
+    expect(text).toContain('+2 more')
   })
   it('shows the certainty and reachability columns on every dead-code row or on none', () => {
     for (const columns of [30, 40, 50, 60, 90, 100, 140]) {
@@ -743,7 +743,7 @@ describe('the issues tab', () => {
     expect(dead(70)).toMatch(/^ +○ ∅ m FactCollector::/)
     // Two marks cost four cells, so they stay even where the boundary and the place have gone.
     expect(dead(30)).toMatch(/^ +○ ∅ m FactCollector::/)
-    expect(dead(50)).toMatch(/FactCollector::… ■ php-worker …ollector\.php:108$/)
+    expect(dead(52)).toMatch(/FactCollector::… ■ php-worker …ollector\.php:108$/)
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)
     expect(dead(30)).not.toContain('.php')
@@ -786,7 +786,7 @@ describe('the issues tab', () => {
   it('says the policies are unreadable, with the reason, when knossos.json could not be read', () => {
     const broken = full({ policy: { status: 'config_invalid', message: 'knossos.json: unexpected token at line 3', total: 0, truncated: false, truncation_reasons: [], items: [] } as unknown as Dashboard['policy'] })
     expect(issuesInput(broken).policy?.unreadable).toBe('knossos.json: unexpected token at line 3')
-    expect(textOf(paneRows(fullInput({ tab: 'issues' }, broken), 90))).toMatch(/Policy violations +policies unreadable: knossos\.json: unexpected token at line 3/)
+    expect(textOf(paneRows(fullInput({ tab: 'issues' }, broken), 90))).toMatch(/Policy violat\S* +policies unreadable: knossos\.json: unexpected token at line 3/)
     // No reason sent: the pane still says why it checked nothing.
     const silent = full({ policy: { status: 'config_invalid', message: 42, total: 0, truncated: false, truncation_reasons: [], items: [] } as unknown as Dashboard['policy'] })
     expect(issuesInput(silent).policy?.unreadable).toBe('knossos.json could not be read')
@@ -1154,14 +1154,14 @@ describe('the pane at every width and height', () => {
     expect(textOf(paneRows(input({ tab: 'hubs' }, many), 100))).toMatch(/in +out +cross/)
   })
 
-  it('lays the wide Overview out on a fixed grid: two equal columns two cells apart, the cards of a row equally tall', () => {
+  it('lays the wide Overview out on a fixed grid: two equal columns, their rules four cells apart, the cards of a row equally tall', () => {
     const matrix = { boundaries: ['core', 'tests'], members: [10, 5], labelled: 15, boundaries_truncated: false, cells: [[4, 0], [3, 2]], forbidden: [], flows: [{ from: 1, to: 0, edges: 3, forbidden: false }], edges: 9, truncated: false, truncation_reasons: [] }
     const in_degree = { buckets: [{ from: 0, to: 0, components: 4 }, { from: 1, to: 5, components: 9 }, { from: 6, to: null, components: 2 }], truncated: false }
     for (const columns of [140, 200]) {
       const rows = paneRows(input({ tab: 'overview' }, dash({ boundary_matrix: matrix, in_degree })), columns, 60)
-      const left = Math.floor((columns - 2) * 0.5)
+      const left = Math.floor(columns * 0.5)
       const head = rows.find(r => r.key.endsWith('|concentration-head'))!
-      expect(rowWidth({ key: 'x', segments: head.segments.slice(0, head.split) }), `${columns}`).toBe(left + 2)
+      expect([rowWidth({ key: 'x', segments: head.segments.slice(0, head.split) }), /── {4}── /.test(rawText(head))], `${columns}`).toEqual([left, true])
       expect(plainText({ key: 'x', segments: head.segments.slice(head.split) })).toMatch(/^Dependency concentration +15 components$/)
       // The composition and the concentration end on the same row: the shorter is stretched, never padded.
       const last = (card: string) => rows.map(r => r.key.split('|').some(k => k.startsWith(card))).lastIndexOf(true)

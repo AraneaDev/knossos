@@ -16,6 +16,7 @@ import { confirmable, markedNote } from './notes-view'
 import { cycleSteps, unfoldPress } from './cycles'
 import { noteFooterRows } from './views'
 import { cardInner } from './cards'
+import { marginOf } from './spacing'
 import type { Block } from './cards'
 import type { NoteInput } from './views'
 import type { PaneInput } from './pane-types'
@@ -204,8 +205,8 @@ export const FEEDBACK_MS = 2_000
 /** The footer bar's ground: a faint fill across the pane, under the keys. */
 export const BAR_BG = 'composerSidebarBackground'
 
-/** The cells of room inside the header and the footer bar, either side, per tier. */
-export const padOf = (tier: Tier): number => (tier === 'narrow' ? 1 : 2)
+/** The cells of room inside the header and the footer bar, either side, per tier: the pane's margin. */
+export const padOf = (tier: Tier): number => marginOf(tier)
 
 /** `row` set `pad` cells in from the left; with `bg`, that ground laid across the whole of `columns`, padding included. */
 export function padded(row: Row, pad: number, columns: number, bg?: string): Row {

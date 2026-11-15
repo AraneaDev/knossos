@@ -419,7 +419,7 @@ describe('the changes since the session began, from the scan ledger', () => {
     expect(textOf(fallback)).toContain('No live watcher')
     expect(textOf(fallback)).toContain('2 turns')
     const empty = changesRows(changesInput(fromLedger({ ...ledger, files: {}, tests: [] }, NO_CHANGES, new Set()), ROOT), 0, 60)
-    expect(textOf(empty)).toContain('Nothing changed in this project since this session began.')
+    expect(textOf(empty).replace(/\s+/g, ' ')).toContain('Nothing changed in this project since this session began.')
   })
 
   it("matches a merged scan, which the ledger names by its key, to the session's own", () => {

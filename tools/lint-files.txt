@@ -1384,6 +1384,8 @@ js	hooks/lib/rows.ts
 js	hooks/lib/scheduler.spec.ts
 js	hooks/lib/scheduler.ts
 js	hooks/lib/session-changes.ts
+js	hooks/lib/spacing.spec.ts
+js	hooks/lib/spacing.ts
 js	hooks/lib/sparkline.spec.ts
 js	hooks/lib/sparkline.ts
 js	hooks/lib/table.ts

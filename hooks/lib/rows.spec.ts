@@ -92,13 +92,13 @@ describe('the editor command', () => {
 })
 
 describe('a list that holds fewer than its count', () => {
-  it('says how many it does not list, and nothing when it lists them all', () => {
-    expect(notListedRow('x-more', 12, 5, 40)).toEqual([{ key: 'x-more', segments: [{ text: '   +7 not listed', dim: true }] }])
+  it('says how many more it does not show, at the body after the gutter, and nothing when it lists them all', () => {
+    expect(notListedRow('x-more', 12, 5, 40)).toEqual([{ key: 'x-more', segments: [{ text: '   ' }, { text: '+7 more', dim: true }] }])
     expect(notListedRow('x-more', 5, 5, 40)).toEqual([])
     expect(notListedRow('x-more', 3, 5, 40)).toEqual([])
   })
   it('names what it left out, its count in groups of three, when given a kind', () => {
-    expect(notListedRow('x-more', 1204, 0, 60, { kind: 'hubs', indent: 4 })).toEqual([{ key: 'x-more', segments: [{ text: '    +1,204 more hubs not listed', dim: true }] }])
+    expect(notListedRow('x-more', 1204, 0, 60, { kind: 'hubs' })).toEqual([{ key: 'x-more', segments: [{ text: '   ' }, { text: '+1,204 more hubs', dim: true }] }])
   })
   it('places the marker in a list only when it is on it', () => {
     expect(inList(0, 3)).toBe(0)

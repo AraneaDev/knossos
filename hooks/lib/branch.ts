@@ -247,7 +247,7 @@ function verdictRows(input: BranchInput, selected: number, columns: number, limi
   const { rows } = windowedTable('branch-findings-window', input.findings, { columns, limit, local: inList(selected, input.findings.length), walk: 0 }, (shown, start) =>
     shown.map((f, n) => findingRow(f, start + n, selected, columns, hues)),
   )
-  const rest = input.unlisted.flatMap(u => notListedRow(`branch-unlisted-${u.kind}`, u.count, 0, columns, { kind: WORST[u.kind].many, indent: 4 }))
+  const rest = input.unlisted.flatMap(u => notListedRow(`branch-unlisted-${u.kind}`, u.count, 0, columns, { kind: WORST[u.kind].many }))
   const stopped: Row[] = input.partial ? [{ key: 'branch-partial', segments: [{ text: fit('    the policy check stopped at its edge or time limit: more violations may be new', columns), dim: true }] }] : []
   return [head, ...rows, ...rest, ...stopped]
 }
