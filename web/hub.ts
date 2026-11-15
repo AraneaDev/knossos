@@ -121,9 +121,11 @@ export class Hub implements PortHub {
     }
     const wait = page.last + FRAME_MS - Date.now()
     if (wait <= 0) return void this.draw(id, page)
+    // Asked again when it fires: a timer may fire a little early by the wall clock (Node counts it from the event
+    // loop's own clock, read when the loop turned), and then waits out the rest rather than draw too soon.
     page.timer = setTimeout(() => {
       page.timer = null
-      void this.draw(id, page)
+      this.schedule(id)
     }, wait)
   }
 
@@ -142,6 +144,9 @@ export class Hub implements PortHub {
       if (drawn !== null && this.pages.get(id) === page) {
         page.rows = drawn.rows
         page.send(drawn.frame)
+        // Counted from the frame's arrival, not the start of its layout: a slower layout before a quicker one would
+        // bring two frames closer than FRAME_MS otherwise.
+        page.last = Date.now()
       }
     } finally {
       page.drawing = false

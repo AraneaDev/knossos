@@ -4,7 +4,7 @@ import { THEMES } from '../hooks/lib/themes'
 import { handlersOf } from '../hooks/mod/actions'
 import { mod, reset } from '../hooks/mod/state'
 import { activeTab, fixtureDashboard, fixturePluginRoot, frameText, scratch } from './fixtures/helpers'
-import { Hub } from './hub'
+import { FRAME_MS, Hub } from './hub'
 import type { Frame } from './hub'
 import { webPort } from './port'
 
@@ -47,8 +47,30 @@ describe('Hub', () => {
     await new Promise(resolve => setTimeout(resolve, 150))
     const burst = got.slice(1)
     expect(burst).toHaveLength(2)
-    expect(burst[1]!.at - burst[0]!.at).toBeGreaterThanOrEqual(45)
+    expect(burst[1]!.at - burst[0]!.at).toBeGreaterThanOrEqual(FRAME_MS)
     expect(frameText(burst[1]!.frame)).toContain('step 10')
+  })
+
+  it('keeps FRAME_MS between the frames a page receives, when a slow layout comes before a quick one too', async () => {
+    const { hub, io, page } = await loaded()
+    const got = page('a', 100)
+    await vi.waitFor(() => expect(got).toHaveLength(1))
+    await new Promise(resolve => setTimeout(resolve, 60))
+    // The first layout of the burst takes 30 ms longer than the next, as a cold one does.
+    const frameOf = (hub as unknown as { frameOf: (page: unknown) => Promise<unknown> }).frameOf.bind(hub)
+    let calls = 0
+    vi.spyOn(hub as unknown as { frameOf: (page: unknown) => Promise<unknown> }, 'frameOf').mockImplementation(async p => {
+      if (calls++ === 0) await new Promise(resolve => setTimeout(resolve, 30))
+      return frameOf(p)
+    })
+    await io.state.feedback.update(() => ({ text: 'slow', tone: 'ok', until: Date.now() + 60_000 }))
+    hub.changed()
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await io.state.feedback.update(() => ({ text: 'quick', tone: 'ok', until: Date.now() + 60_000 }))
+    hub.changed()
+    await vi.waitFor(() => expect(got).toHaveLength(3))
+    expect(got[2]!.at - got[1]!.at).toBeGreaterThanOrEqual(FRAME_MS)
+    expect(frameText(got[2]!.frame)).toContain('quick')
   })
 
   it('lays each page out at its own size, one state', async () => {
