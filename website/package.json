@@ -1,0 +1,17 @@
+{
+  "name": "knossos-docs-site",
+  "private": true,
+  "description": "Builds the documentation under docs/ as a static site with VitePress. Kept apart from the root package so the root npm audit gate does not see these dependencies.",
+  "type": "module",
+  "scripts": {
+    "build": "vitepress build",
+    "dev": "vitepress dev",
+    "preview": "vitepress preview",
+    "check": "node check.mjs"
+  },
+  "devDependencies": {
+    "mermaid": "11.17.2",
+    "vitepress": "1.6.4",
+    "vitepress-plugin-mermaid": "2.0.17"
+  }
+}
