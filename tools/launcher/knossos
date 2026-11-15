@@ -45,9 +45,13 @@
 #     project root may not either. The launcher refuses such a layout in one
 #     line, and so does the installer, before either creates anything.
 #   - A directory becomes a graph directory only when nothing in it is yours:
-#     it is new, empty, or holds only what Knossos puts in one (GRAPH_ENTRIES),
-#     and never a native install. So no folder of repositories, and no
-#     release or plugin the host runs, is ever mounted read-write.
+#     it is new, empty, or holds only what Knossos puts in one, in the shape
+#     Knossos makes it (GRAPH_ENTRIES), and never a native install. A graph
+#     directory other than the default one never holds an `install` entry, at
+#     any call, so another installation's install directory is never part of
+#     this one's read-write mount. So no folder of repositories, and no
+#     release, update helper or plugin the host runs, is ever mounted
+#     read-write.
 #   - `knossos stop` picks the project root from the same roots file, checked
 #     the same way, as every other command.
 #   - The allow-list the project root is chosen from is the one in the install
@@ -1467,8 +1471,8 @@ mount_problem() {
 # would hand every scanned project write access to it: a git hook planted
 # there runs on your next checkout. So a directory becomes a graph directory
 # only when it is empty, does not exist yet, or holds nothing but what Knossos
-# itself puts directly in one. These are those entries, as shell patterns,
-# from the code that writes them:
+# itself puts directly in one, in the shape Knossos makes it. These are those
+# entries, as shell patterns with their shape, from the code that writes them:
 #   GRAPH_ENTRIES   the graph database and its SQLite journal files and
 #                   migration lock (RuntimeFactory); scan-failures.jsonl with
 #                   its lock and temporary copy (ScanFailureLog); watch/ (the
@@ -1476,9 +1480,16 @@ mount_problem() {
 #                   roots.json with its lock, enrichers.json and
 #                   pane-autostart.json, each with the temporary file it is
 #                   renamed from (RootsFile, EnrichersFile, PaneAutostart,
-#                   AtomicFile); mcp-serve.log (tools/mcp-serve); install/ (the
-#                   install directory of a container install); and the
-#                   launcher's own scratch directories, .knossos-files.*
+#                   AtomicFile); mcp-serve.log (tools/mcp-serve); install/,
+#                   only when it is this installation's own install directory;
+#                   .knossos-graph/, the mark the launcher leaves in a graph
+#                   directory it records; and the launcher's own scratch
+#                   directories, .knossos-files.*
+#   shapes          file: a plain file, not a link; files: a directory, not a
+#                   link, that holds plain files only (so nothing can be nested
+#                   in it); mark: an empty directory, not a link; own-install:
+#                   the directory whose inode is OWN_INSTALL_ID, the install
+#                   directory of the installation asking.
 #   NATIVE_ENTRIES  what a native install keeps in its data directory
 #                   (install.sh, VersionSwitch, UpdateCheck, SelfUpdater):
 #                   install.json, versions/, current, previous-version, plugin/,
@@ -1487,30 +1498,31 @@ mount_problem() {
 #                   directory holding them is never given to a container.
 # The checked graph directories are the ones this installation has not used
 # yet: the default one was checked by the installer, and one in use already
-# holds what its containers wrote. install.sh carries the same two lists,
-# word for word (tests/shell/install-container.sh compares them).
+# holds what its containers wrote. install.sh carries the same lists and
+# functions, word for word (tests/shell/install-container.sh compares them).
 # shellcheck disable=SC2016 # the lists are data, never expanded
 GRAPH_ENTRIES='
-knossos.sqlite
-knossos.sqlite-wal
-knossos.sqlite-shm
-knossos.sqlite-journal
-knossos.sqlite.migrate.lock
-scan-failures.jsonl
-scan-failures.jsonl.lock
-scan-failures.jsonl.*.tmp
-watch
-backups
-roots.json
-roots.json.lock
-.roots.json.*.tmp
-enrichers.json
-.enrichers.json.*.tmp
-pane-autostart.json
-.pane-autostart.json.*.tmp
-mcp-serve.log
-install
-.knossos-files.*
+knossos.sqlite file
+knossos.sqlite-wal file
+knossos.sqlite-shm file
+knossos.sqlite-journal file
+knossos.sqlite.migrate.lock file
+scan-failures.jsonl file
+scan-failures.jsonl.lock file
+scan-failures.jsonl.*.tmp file
+watch files
+backups files
+roots.json file
+roots.json.lock file
+.roots.json.*.tmp file
+enrichers.json file
+.enrichers.json.*.tmp file
+pane-autostart.json file
+.pane-autostart.json.*.tmp file
+mcp-serve.log file
+install own-install
+.knossos-graph mark
+.knossos-files.* files
 '
 NATIVE_ENTRIES='
 install.json
@@ -1527,26 +1539,56 @@ self-update.lock
 self-update.tmp
 '
 
-# entry_kind NAME: `graph` or `native` for a name on one of the lists above,
-# nothing for any other.
+# entry_kind NAME: `graph SHAPE` or `native` for a name on one of the lists
+# above, nothing for any other.
 entry_kind() {
-    for kind in graph native; do
-        if [ "$kind" = graph ]; then list=$GRAPH_ENTRIES; else list=$NATIVE_ENTRIES; fi
-        while IFS= read -r pattern; do
-            [ -n "$pattern" ] || continue
-            # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
-            case $1 in $pattern) printf '%s' "$kind"; return 0 ;; esac
-        done <<LIST
-$list
+    while read -r pattern shape; do
+        [ -n "$pattern" ] || continue
+        # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
+        case $1 in $pattern) printf 'graph %s' "$shape"; return 0 ;; esac
+    done <<LIST
+$GRAPH_ENTRIES
 LIST
-    done
+    while read -r pattern; do
+        [ -n "$pattern" ] || continue
+        # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
+        case $1 in $pattern) printf 'native'; return 0 ;; esac
+    done <<LIST
+$NATIVE_ENTRIES
+LIST
+}
+
+# entry_has_shape PATH SHAPE: whether PATH is what Knossos makes under that
+# shape (see GRAPH_ENTRIES). Nothing is followed: a link is never the shape.
+entry_has_shape() {
+    [ ! -L "$1" ] || return 1
+    case $2 in
+        file) [ -f "$1" ] ;;
+        files | mark)
+            [ -d "$1" ] && [ -r "$1" ] && [ -x "$1" ] || return 1
+            if [ "$2" = mark ]; then
+                inner=$(find "$1/." ! -name . -prune -print 2>/dev/null) || return 1
+            else
+                inner=$(find "$1/." ! -name . -prune ! -type f -print 2>/dev/null) || return 1
+            fi
+            [ -z "$inner" ]
+            ;;
+        own-install)
+            [ -d "$1" ] && [ -n "${OWN_INSTALL_ID:-}" ] || return 1
+            found_id=$(dir_id "$1") || return 1
+            [ "${found_id#*:}" = "${OWN_INSTALL_ID#*:}" ]
+            ;;
+        *) return 1 ;;
+    esac
 }
 
 # foreign_entry DIR [native-ok]: the first entry directly in DIR that is not
-# on GRAPH_ENTRIES, as `native NAME` when it is on NATIVE_ENTRIES and `other
-# NAME` otherwise; nothing when there is none. With `native-ok`, entries on
-# NATIVE_ENTRIES are passed over, so only an `other` one is reported. A name
-# holding a newline is never one Knossos makes.
+# on GRAPH_ENTRIES in its shape: `native NAME` for one on NATIVE_ENTRIES,
+# `install NAME` for an install/ that is not this installation's own, `shape
+# NAME SHAPE` for a listed name in another shape, `other NAME` for anything
+# else; nothing when there is none. With `native-ok`, entries on
+# NATIVE_ENTRIES are passed over. A name holding a newline is never one
+# Knossos makes.
 foreign_entry() {
     find "$1/." ! -name . -prune -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r found; do
         case $found in
@@ -1556,8 +1598,18 @@ foreign_entry() {
                 break
                 ;;
         esac
-        case $(entry_kind "$name") in
-            graph) ;;
+        kind=$(entry_kind "$name")
+        case $kind in
+            'graph own-install')
+                entry_has_shape "${1%/}/$name" own-install && continue
+                printf 'install %s' "$name"
+                break
+                ;;
+            graph\ *)
+                entry_has_shape "${1%/}/$name" "${kind#graph }" && continue
+                printf 'shape %s %s' "${kind#graph }" "$name"
+                break
+                ;;
             native)
                 [ "${2-}" != native-ok ] || continue
                 printf 'native %s' "$name"
@@ -1568,7 +1620,21 @@ foreign_entry() {
     done
 }
 
+# shape_text SHAPE: the shape in words, for a refusal.
+shape_text() {
+    case $1 in
+        file) printf 'a plain file' ;;
+        files) printf 'a directory that holds plain files only' ;;
+        mark) printf 'an empty directory' ;;
+        *) printf 'what Knossos makes' ;;
+    esac
+}
+
 # ---- before anything is made for this call ----------------------------------
+#
+# Every refusal of this call is decided from here on, on the paths the walks
+# planned, before the host makes the data directory, the roots file's
+# directory, a graph record or a scratch directory (settle_mounts, below).
 
 # The project root as it was reached, walked again: through a graph directory
 # (a project may lie in one) only along plain directories, never a link a
@@ -1585,21 +1651,37 @@ checked=$(walk_to "$spelled" "the project root ($spelled)" 'run knossos from a p
 mount_problem "$ROOT" project
 mount_problem "$DATA_REAL" data
 if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then mount_problem "$ROOTS_DIR_REAL" roots; fi
-# A graph directory this installation has not used yet holds nothing of yours.
+OWN_INSTALL_ID=$(dir_id "$INSTALL_REAL") || OWN_INSTALL_ID=''
 GRAPH_RECORD=''
 if [ "$DATA_REAL" != "$INSTALL_PARENT" ]; then
     GRAPH_RECORD="$INSTALL_REAL/containers/graph-$(hash12 "$DATA_REAL")"
     [ ! -L "$GRAPH_RECORD" ] || untrusted "$GRAPH_RECORD is a symlink"
+    # Another installation's install directory, or anything by that name: a
+    # graph directory other than the default one never holds one. At every
+    # call, recorded or not: every container of this installation could
+    # rewrite the install record, update helper and plugin that installation's
+    # host side runs. (This installation's own install directory, reached
+    # through any spelling, is the default graph's and never gets here.) One
+    # planted in a recorded graph by a container makes that graph refused,
+    # which is all such a container gains.
+    if [ -e "$DATA_REAL/install" ] || [ -L "$DATA_REAL/install" ]; then
+        die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) holds $DATA_REAL/install, which is not this installation's install directory ($INSTALL_REAL): it is another Knossos installation's, or looks like one, and every container of this installation would be able to rewrite what the host runs from it. Use that installation's own knossos, or point KNOSSOS_DATA_DIR at an empty directory; if nothing uses $DATA_REAL/install, remove it."
+    fi
+    # A graph directory this installation has not used yet holds nothing of yours.
     if [ ! -f "$GRAPH_RECORD" ] && [ -d "$DATA_REAL" ]; then
         foreign=$(foreign_entry "$DATA_REAL")
         case $foreign in
             native\ *) die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) holds a native Knossos install (${foreign#native }), whose release and plugin the host runs, and every container would be able to replace them; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install)." ;;
+            shape\ *)
+                shape=${foreign#shape }
+                name=${shape#* }
+                shape=${shape%% *}
+                die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) holds $name, which Knossos only makes as $(shape_text "$shape"), and every container would be able to write all of it; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install)."
+                ;;
             other\ *) die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) holds ${foreign#other }, which is not something Knossos puts in a graph directory, and every container would be able to write all of it; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install)." ;;
         esac
     fi
 fi
-make_planned "$KNOSSOS_DATA_DIR" "$DATA_REAL" "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR)" 'pick a data directory outside {graph}.'
-if [ -n "$ROOTS_DIR_GIVEN" ]; then make_planned "$ROOTS_DIR_GIVEN" "$ROOTS_DIR_REAL" "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN)" "$GRAPH_ROOTS_REFUSED"; fi
 
 # restore_roots: the list as it was before move-project, after a failed move.
 restore_roots() {
@@ -1702,34 +1784,55 @@ $MOUNTS
 MOUNTED
     MOUNTS="$kept$path|$3$NEWLINE"
 }
-add_mount "$ROOT" project false
-add_mount "$DATA_REAL" data true
-# The graph directory is recorded for this installation before any container
-# is given it, so that a later call with another KNOSSOS_DATA_DIR knows that
-# containers can write it (writer_of). The default graph needs no record.
-if [ -n "$GRAPH_RECORD" ] && [ ! -f "$GRAPH_RECORD" ]; then
-    [ ! -L "$GRAPH_RECORD" ] || untrusted "$GRAPH_RECORD is a symlink"
-    graph_tmp=$(mktemp "$INSTALL_REAL/containers/.graph.XXXXXX" 2>/dev/null) || die "could not write in $INSTALL_REAL/containers"
-    if ! printf '%s\n' "$DATA_REAL" > "$graph_tmp" || ! mv -f -- "$graph_tmp" "$GRAPH_RECORD"; then
-        rm -f -- "$graph_tmp"
-        die "could not record the graph directory $DATA_REAL in $INSTALL_REAL/containers"
-    fi
-fi
-# The roots file's directory read-only, unless it is the install directory.
-if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then add_mount "$ROOTS_DIR_REAL" roots false; fi
-# The install directory read-only, on top: always its own mount, even when a
-# read-write one contains it.
-if too_wide "$INSTALL_REAL" >/dev/null; then die "the install directory $INSTALL_REAL $(too_wide "$INSTALL_REAL"), which container mode does not mount; re-run the installer with --data-dir set to a directory of its own."; fi
+# What the container will be given, as planned, for `mounted` while the
+# arguments are checked; settle_mounts makes the directories and the real list.
+MOUNTS="$ROOT|false$NEWLINE$DATA_REAL|true$NEWLINE"
+if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then MOUNTS="$MOUNTS$ROOTS_DIR_REAL|false$NEWLINE"; fi
 MOUNTS="$MOUNTS$INSTALL_REAL|false$NEWLINE"
-# Each mount as `docker inspect` reports it: source|destination|read-write.
-EXPECTED=$(
-    while IFS='|' read -r mounted rw; do
-        [ -n "$mounted" ] && printf '%s|%s|%s\n' "$mounted" "$mounted" "$rw"
-    done <<MOUNTED
+
+# settle_mounts: once every refusal is decided, the data directory and the
+# roots file's directory made where they are missing, the graph directory
+# recorded and marked, and the mounts worked out on the directories as they
+# now are.
+settle_mounts() {
+    make_planned "$KNOSSOS_DATA_DIR" "$DATA_REAL" "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR)" 'pick a data directory outside {graph}.'
+    if [ -n "$ROOTS_DIR_GIVEN" ]; then make_planned "$ROOTS_DIR_GIVEN" "$ROOTS_DIR_REAL" "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN)" "$GRAPH_ROOTS_REFUSED"; fi
+    MOUNTS=''
+    add_mount "$ROOT" project false
+    add_mount "$DATA_REAL" data true
+    # The graph directory is recorded for this installation before any
+    # container is given it, so that a later call with another
+    # KNOSSOS_DATA_DIR knows that containers can write it (writer_of). It is
+    # also marked, with .knossos-graph, so that the installer of another
+    # installation refuses to put its install directory in it or below it. The
+    # mark is made before any container of this installation can write there;
+    # one that is already there (another installation marked it) is left.
+    # The default graph needs neither.
+    if [ -n "$GRAPH_RECORD" ] && [ ! -f "$GRAPH_RECORD" ]; then
+        [ ! -L "$GRAPH_RECORD" ] || untrusted "$GRAPH_RECORD is a symlink"
+        graph_tmp=$(mktemp "$INSTALL_REAL/containers/.graph.XXXXXX" 2>/dev/null) || die "could not write in $INSTALL_REAL/containers"
+        if ! printf '%s\n' "$DATA_REAL" > "$graph_tmp" || ! mv -f -- "$graph_tmp" "$GRAPH_RECORD"; then
+            rm -f -- "$graph_tmp"
+            die "could not record the graph directory $DATA_REAL in $INSTALL_REAL/containers"
+        fi
+        mkdir -- "$DATA_REAL/.knossos-graph" 2>/dev/null || :
+    fi
+    # The roots file's directory read-only, unless it is the install directory.
+    if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then add_mount "$ROOTS_DIR_REAL" roots false; fi
+    # The install directory read-only, on top: always its own mount, even when
+    # a read-write one contains it.
+    if too_wide "$INSTALL_REAL" >/dev/null; then die "the install directory $INSTALL_REAL $(too_wide "$INSTALL_REAL"), which container mode does not mount; re-run the installer with --data-dir set to a directory of its own."; fi
+    MOUNTS="$MOUNTS$INSTALL_REAL|false$NEWLINE"
+    # Each mount as `docker inspect` reports it: source|destination|read-write.
+    EXPECTED=$(
+        while IFS='|' read -r mounted rw; do
+            [ -n "$mounted" ] && printf '%s|%s|%s\n' "$mounted" "$mounted" "$rw"
+        done <<MOUNTED
 $MOUNTS
 MOUNTED
-)
-EXPECTED=$(printf '%s\n' "$EXPECTED" | LC_ALL=C sort)
+    )
+    EXPECTED=$(printf '%s\n' "$EXPECTED" | LC_ALL=C sort)
+}
 
 # ---- files a command names ------------------------------------------------
 #
@@ -1891,9 +1994,11 @@ place_output() {
         die "$dest lies in the graph directory $graph, which a container can write; write it somewhere else.$(graph_note "$graph")"
     fi
     [ -z "$OUTPUT_DEST" ] || die "a call can name one file to write in container mode."
-    scratch
+    # The host's own temporary directory is needed to take the file out; it
+    # is checked now, with every other refusal.
+    host_tmp
     OUTPUT_DEST=$dest
-    OUTPUT_SCRATCH="$SCRATCH/output"
+    OUTPUT_SCRATCH="$PENDING/output"
     [ -e "$dest" ] || return 0
     # A file already in place, which the container cannot see.
     case $COMMAND in
@@ -1908,17 +2013,39 @@ place_output() {
             # it is given a read-only copy at the path it writes. What it
             # refuses without reading (not a plain file, or over the 10 MB a
             # notes file may have) is refused here the same way.
-            if [ ! -f "$dest" ] || [ -n "$(find "$dest" -prune -size +10485760c 2>/dev/null)" ]; then
+            if [ ! -f "$dest" ] || [ ! -r "$dest" ] || [ -n "$(find "$dest" -prune -size +10485760c 2>/dev/null)" ]; then
                 notes_answer "NOTES_FILE_NOT_NOTES: $dest exists and is not a knossos notes file; remove it or pick another --file." KNOSSOS_INVALID_ARGUMENT
             fi
-            if ! cat < "$dest" > "$PRIVATE/existing" 2>/dev/null || ! chmod 0444 "$PRIVATE/existing"; then
-                notes_answer "NOTES_FILE_NOT_NOTES: $dest exists and is not a knossos notes file; remove it or pick another --file." KNOSSOS_INVALID_ARGUMENT
-            fi
-            in_scratch mv -f -- "$PRIVATE/existing" ./output || die "could not copy $dest into $SCRATCH"
-            OUTPUT_PLACED=$(in_scratch dir_id output) || OUTPUT_PLACED=''
-            [ -n "$OUTPUT_PLACED" ] || die "could not copy $dest into $SCRATCH"
+            # Copied in once the scratch directory exists (place_pending).
+            OUTPUT_EXISTING=$dest
             ;;
     esac
+}
+
+# place_pending: what place_output and take_input decided, carried out now
+# that every refusal has been decided and the scratch directory may be made:
+# the copy of a notes file in the way, and each input copied in. Every
+# argument that names PENDING is then given the scratch directory.
+place_pending() {
+    scratch
+    if [ -n "$OUTPUT_DEST" ]; then OUTPUT_SCRATCH="$SCRATCH/output"; fi
+    if [ -n "$OUTPUT_EXISTING" ]; then
+        if ! cat < "$OUTPUT_EXISTING" > "$PRIVATE/existing" 2>/dev/null || ! chmod 0444 "$PRIVATE/existing"; then
+            notes_answer "NOTES_FILE_NOT_NOTES: $OUTPUT_EXISTING exists and is not a knossos notes file; remove it or pick another --file." KNOSSOS_INVALID_ARGUMENT
+        fi
+        in_scratch mv -f -- "$PRIVATE/existing" ./output || die "could not copy $OUTPUT_EXISTING into $SCRATCH"
+        OUTPUT_PLACED=$(in_scratch dir_id output) || OUTPUT_PLACED=''
+        [ -n "$OUTPUT_PLACED" ] || die "could not copy $OUTPUT_EXISTING into $SCRATCH"
+    fi
+    copied=0
+    while [ "$copied" -lt "$INPUTS" ]; do
+        copied=$((copied + 1))
+        eval "file=\$INPUT_$copied"
+        if ! cp -- "$file" "$PRIVATE/input-$copied" 2>/dev/null || ! chmod 0444 "$PRIVATE/input-$copied"; then
+            die "could not read $file"
+        fi
+        in_scratch mv -f -- "$PRIVATE/input-$copied" "./input-$copied" || die "could not copy $file into $SCRATCH"
+    done
 }
 
 # notes_answer REASON CODE: a notes export that did not happen, said as the
@@ -1952,13 +2079,12 @@ take_input() {
     if graph=$(writer_of "$in_dir"); then
         die "$file lies in the graph directory $graph, which a container can write, outside this call's mounts; copy it somewhere else first.$(graph_note "$graph")"
     fi
-    scratch
+    [ -r "$file" ] || die "could not read $file"
+    host_tmp
     INPUTS=$((INPUTS + 1))
-    if ! cp -- "$file" "$PRIVATE/input-$INPUTS" 2>/dev/null || ! chmod 0444 "$PRIVATE/input-$INPUTS"; then
-        die "could not read $file"
-    fi
-    in_scratch mv -f -- "$PRIVATE/input-$INPUTS" "./input-$INPUTS" || die "could not copy $file into $SCRATCH"
-    given="$SCRATCH/input-$INPUTS"
+    # Copied in once the scratch directory exists (place_pending).
+    eval "INPUT_$INPUTS=\$file"
+    given="$PENDING/input-$INPUTS"
 }
 
 # take_database PATH: --db, which must lie in the graph directory.
@@ -1969,9 +2095,13 @@ take_database() {
 }
 
 # The command's arguments, with every file it names placed as FILE_ROLES says.
+# The scratch directory does not exist while they are checked, so an argument
+# that will name it names PENDING instead, which place_pending replaces.
 COMMAND=${1-}
 JSON=no
 INPUTS=0
+OUTPUT_EXISTING=''
+PENDING="$DATA_REAL/.knossos-files.pending-$$"
 # --json as the CLI reads a flag: on unless it says false, 0, no or off; the
 # last one counts.
 for argument in "$@"; do
@@ -2059,6 +2189,22 @@ if [ $# -gt 0 ]; then
             fi
             ;;
     esac
+fi
+
+# Every refusal is decided: what the call needs is made now.
+settle_mounts
+if [ -n "$OUTPUT_DEST" ] || [ "$INPUTS" -gt 0 ]; then
+    place_pending
+    count=$#
+    while [ "$count" -gt 0 ]; do
+        argument=$1
+        shift
+        count=$((count - 1))
+        case $argument in
+            *"$PENDING"*) argument="${argument%%"$PENDING"*}$SCRATCH${argument#*"$PENDING"}" ;;
+        esac
+        set -- "$@" "$argument"
+    done
 fi
 
 NAME="knossos-$(hash12 "$INSTALL_REAL

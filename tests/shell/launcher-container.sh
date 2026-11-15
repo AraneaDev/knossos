@@ -1663,7 +1663,7 @@ refused 'a KNOSSOS_DATA_DIR that holds a native install' \
     data_call "$NATIVE_DATA"
 # One that holds only what Knossos puts in a graph directory is taken.
 KNOWN="$WORK/known graph"
-mkdir -p "$KNOWN/watch" "$KNOWN/backups" "$KNOWN/.knossos-files.AbC123" "$KNOWN/install"
+mkdir -p "$KNOWN/watch" "$KNOWN/backups" "$KNOWN/.knossos-files.AbC123" "$KNOWN/.knossos-graph"
 for entry in knossos.sqlite knossos.sqlite-wal knossos.sqlite-shm knossos.sqlite-journal knossos.sqlite.migrate.lock \
     scan-failures.jsonl scan-failures.jsonl.lock scan-failures.jsonl.42.tmp roots.json roots.json.lock .roots.json.0123abcd.tmp \
     enrichers.json .enrichers.json.0123abcd.tmp pane-autostart.json .pane-autostart.json.0123abcd.tmp mcp-serve.log; do
@@ -1766,6 +1766,124 @@ else
 fi
 find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
 rm -rf "$OTHER_INSTALL"
+
+# ---- another installation's graph directory is never mounted ----------------------------
+
+# Its install/ would be plain read-write content of this installation's
+# graph mount: a container could replace the update helper or the plugin the
+# other installation's host side runs.
+OTHER_DATA="$WORK/other install data"
+mkdir -p "$OTHER_DATA/install/containers" "$OTHER_DATA/install/plugin"
+printf '{"mode": "container", "layout": "separate"}\n' > "$OTHER_DATA/install/install.json"
+printf 'echo planted\n' > "$OTHER_DATA/install/container-update"
+: > "$OTHER_DATA/knossos.sqlite"
+INSTALL_TEXT="which is not this installation's install directory ($INSTALL): it is another Knossos installation's, or looks like one"
+refused "another container install's graph directory as KNOSSOS_DATA_DIR" "KNOSSOS_DATA_DIR ($OTHER_DATA) holds $OTHER_DATA/install, $INSTALL_TEXT" data_call "$OTHER_DATA"
+if [ ! -e "$INSTALL/containers/graph-$(hash12 "$OTHER_DATA")" ] && [ ! -e "$OTHER_DATA/.knossos-graph" ]; then pass 'and it is neither recorded nor marked'; else fail 'the other graph was recorded or marked'; fi
+rm -rf "$OTHER_DATA"
+# Whatever goes by that name: a file, a link, an empty directory.
+for shape in file link empty; do
+    ODD="$WORK/odd install $shape"
+    mkdir -p "$ODD"
+    case $shape in
+        file) : > "$ODD/install" ;;
+        link) ln -s "$INSTALL" "$ODD/install" ;;
+        empty) mkdir "$ODD/install" ;;
+    esac
+    refused "a KNOSSOS_DATA_DIR holding an install that is a $shape" "KNOSSOS_DATA_DIR ($ODD) holds $ODD/install, $INSTALL_TEXT" data_call "$ODD"
+    rm -rf "$ODD"
+done
+# A recorded graph directory in which an install/ appears later: refused from then on.
+LATER="$WORK/later graph"
+reset_docker
+out=$(data_call "$LATER" 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ -f "$INSTALL/containers/graph-$(hash12 "$LATER")" ] && [ -d "$LATER/.knossos-graph" ]; then
+    pass 'a graph directory used for the first time is recorded and marked with .knossos-graph'
+else
+    fail "first use: $status, $out, $(ls -A "$LATER" 2>&1)"
+fi
+mkdir -p "$LATER/install/containers"
+refused 'a recorded graph directory that holds an install/ now' "KNOSSOS_DATA_DIR ($LATER) holds $LATER/install, $INSTALL_TEXT" data_call "$LATER"
+rm -rf "$LATER"
+# This installation's own graph, through another spelling, is the default graph.
+ln -s "$DATA" "$WORK/link to own data"
+reset_docker
+out=$(data_call "$WORK/link to own data" 2>&1); status=$?
+out2=$(data_call "$INSTALL/.." 2>&1); status2=$?
+if [ "$status" -eq 0 ] && [ "$status2" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$DATA,target=$DATA]" "$FAKE_DOCKER_STATE/calls" \
+    && [ ! -e "$INSTALL/containers/graph-$(hash12 "$DATA")" ]; then
+    pass "this installation's own graph directory through a link or a .. spelling is the default graph, and works"
+else
+    fail "own graph by another spelling: $status $out, $status2 $out2"
+fi
+rm -f "$WORK/link to own data"
+find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
+
+# ---- an entry with a known name is taken only in the shape Knossos makes it --------------
+
+shape_refused() {
+    what=$1 entry=$2 text=$3
+    SHAPED="$WORK/shaped graph"
+    mkdir -p "$SHAPED"
+    case $what in
+        'watch holding a directory') mkdir -p "$SHAPED/watch/repo/.git" ;;
+        'backups as a link') mkdir -p "$WORK/my backups" && ln -s "$WORK/my backups" "$SHAPED/backups" ;;
+        'knossos.sqlite as a directory') mkdir -p "$SHAPED/knossos.sqlite/.git" ;;
+        'a .knossos-graph mark with something in it') mkdir -p "$SHAPED/.knossos-graph" && : > "$SHAPED/.knossos-graph/x" ;;
+    esac
+    refused "a KNOSSOS_DATA_DIR with $what" "KNOSSOS_DATA_DIR ($SHAPED) holds $entry, which Knossos only makes as $text" data_call "$SHAPED"
+    rm -rf "$SHAPED" "$WORK/my backups"
+}
+shape_refused 'watch holding a directory' watch 'a directory that holds plain files only'
+shape_refused 'backups as a link' backups 'a directory that holds plain files only'
+shape_refused 'knossos.sqlite as a directory' knossos.sqlite 'a plain file'
+shape_refused 'a .knossos-graph mark with something in it' .knossos-graph 'an empty directory'
+# The shapes Knossos makes are taken.
+SHAPED="$WORK/shaped graph"
+mkdir -p "$SHAPED/watch" "$SHAPED/backups" "$SHAPED/.knossos-graph"
+: > "$SHAPED/watch/0123.lock"
+: > "$SHAPED/backups/b1.sqlite"
+: > "$SHAPED/knossos.sqlite"
+reset_docker
+out=$(data_call "$SHAPED" 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass 'watch/ and backups/ holding files, a database file and an empty mark are taken'; else fail "Knossos shapes: $status, $out"; fi
+rm -rf "$SHAPED"
+find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
+
+# ---- every refusal comes before the data directory, a record or a scratch exists -----------
+
+NEWG="$WORK/new graph for refusals"
+not_made() {
+    if [ ! -e "$NEWG" ] && [ ! -e "$INSTALL/containers/graph-$(hash12 "$NEWG")" ]; then pass "$1: no data directory and no record were made"; else fail "$1 left $(ls -A "$NEWG" 2>&1) and $(ls "$INSTALL/containers")"; fi
+    rm -rf "$NEWG"
+}
+refused 'an --out in the default graph directory, with a new KNOSSOS_DATA_DIR' "$DATA/x.md lies in the graph directory $DATA, which a container can write; write it somewhere else." \
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" export-agent-brief "$1" "--out=$4/x.md" </dev/null' _ "$PROJECT" "$NEWG" "$LAUNCHER" "$DATA"
+not_made 'a refused --out'
+mkdir -p "$DATA/tmp"
+refused 'a TMPDIR in the graph directory, with a new KNOSSOS_DATA_DIR' "TMPDIR ($DATA/tmp) lies in the graph directory $DATA, which a container can write" \
+    sh -c 'cd "$1" && TMPDIR="$5/tmp" KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" export-agent-brief "$1" "--out=$4/brief.md" </dev/null' _ "$PROJECT" "$NEWG" "$LAUNCHER" "$WORK" "$DATA"
+not_made 'a refused TMPDIR'
+rm -rf "$DATA/tmp"
+printf '{}\n' > "$DATA/policies.json"
+refused 'an input file in a graph directory outside the mounts, with a new KNOSSOS_DATA_DIR' "$DATA/policies.json lies in the graph directory $DATA, which a container can write, outside this call's mounts" \
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" quality-gate "--policies=$4/policies.json" </dev/null' _ "$PROJECT" "$NEWG" "$LAUNCHER" "$DATA"
+not_made 'a refused input file'
+rm -f "$DATA/policies.json"
+refused 'a second file to write, with a new KNOSSOS_DATA_DIR' 'a call can name one file to write in container mode.' \
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" export-notes "--file=$4/a.json" "--file=$4/b.json" </dev/null' _ "$PROJECT" "$NEWG" "$LAUNCHER" "$WORK"
+not_made 'a second output'
+# And one that is not refused still gets its directory, record and scratch.
+reset_docker
+out=$(cd "$PROJECT" && FAKE_EXEC_WRITE=ok KNOSSOS_DATA_DIR="$NEWG" env -u KNOSSOS_ROOTS_FILE "$LAUNCHER" export-agent-brief "$PROJECT" "--out=$WORK/fine.md" </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$(cat "$WORK/fine.md" 2>/dev/null)" = ok ] && [ -f "$INSTALL/containers/graph-$(hash12 "$NEWG")" ] \
+    && [ -z "$(find "$NEWG" -maxdepth 1 -name '.knossos-files.*')" ]; then
+    pass 'an accepted call makes its data directory, record and scratch, writes the file and leaves no scratch'
+else
+    fail "accepted call with a new data dir: $status, $out"
+fi
+rm -rf "$NEWG" "$WORK/fine.md"
+find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
 
 # ---- idle-stop ----------------------------------------------------------------------------
 
