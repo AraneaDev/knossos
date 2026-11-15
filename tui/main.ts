@@ -65,6 +65,12 @@ const { TOAST_MS } = await import('../web/public/app.mjs')
 
 /** How long the terminal is given to tell its background colour. */
 const BACKGROUND_MS = 150
+/**
+ * When the background is asked for again after no answer: tmux answers for the terminal it runs in
+ * only once that terminal has told it, and says nothing to a pane that asks earlier, as one started
+ * with tmux itself does. The reply, whenever it comes, reaches the client as input.
+ */
+const ASK_AGAIN_MS = 1000
 /** How long a server that has taken the lock is given to say where it listens. */
 const STARTING_MS = 10_000
 /** How long after asking its process group to stop the pane waits to learn that it was not stopped. */
@@ -131,8 +137,11 @@ const { stop, crashed } = ending({
   },
   name: 'knossos',
 })
+/** Whether the pane is ending: from then on nothing more is asked of the terminal. */
+let quitting = false
 /** Ends the pane: the terminal is given back before anything else. */
 const quit = (code = 0, signal?: string) => {
+  quitting = true
   client?.close()
   terminal.leave()
   // A take-over under way is waited for a moment, so the lock it claims is released with the rest.
@@ -331,6 +340,11 @@ try {
   if (started.kind === 'running' && editor !== null) client.toast("This project's pane already runs; files open in its editor.")
   if (owed) tell()
   if (rest !== '') client.input(rest)
+  // Never while the terminal is given back: the shell would read the reply as typed text.
+  if (background.ground === null)
+    setTimeout(() => {
+      if (!quitting && !suspended) out(ASK_BACKGROUND)
+    }, ASK_AGAIN_MS).unref()
   // Raw mode hands Ctrl-Z over as a key rather than as a signal: the client gives it back through `suspend`.
   process.stdin.on('data', (chunk: string) => client?.input(chunk))
   process.stdin.on('end', () => quit(0))

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { TABS } from "../../hooks/lib/chrome.ts";
 import { topRow } from "../../hooks/lib/cards.ts";
@@ -27,8 +28,13 @@ import {
     WAIT_BUDGET_MS,
     FIXTURE,
 } from "./shots.mjs";
+import { outFor } from "./options.mjs";
+import { REPO } from "./worktree.mjs";
 
-const entries = Object.entries(SHOTS);
+/** The shots played in a terminal, step by step: all but the browser's. */
+const entries = Object.entries(SHOTS).filter(
+    ([, shot]) => shot.kind !== "browser",
+);
 
 describe("SHOTS", () => {
     it("takes a still of every tab past the first two, pressing the key chrome.ts gives it", () => {
@@ -242,6 +248,62 @@ describe("parseArgs", () => {
         expect(out.endsWith("x/y")).toBe(true);
         expect(() => parseArgs(["--only=nope"])).toThrow(/unknown shot/);
         expect(() => parseArgs(["--fast"])).toThrow(/unknown option/);
+    });
+    it("reads --ref and --plugin, HEAD and this checkout's .plugin when left out", () => {
+        const plain = parseArgs([]);
+        expect(plain.ref).toBe("HEAD");
+        expect(plain.plugin).toBe(path.join(REPO, ".plugin"));
+        const given = parseArgs(["--ref=origin/topic", "--plugin=/p/.plugin"]);
+        expect(given.ref).toBe("origin/topic");
+        expect(given.plugin).toBe("/p/.plugin");
+        expect(() => parseArgs(["--ref="])).toThrow(/unknown option/);
+    });
+    it("writes a browser shot to web-client and every other to claude-code, unless --out says where", () => {
+        const images = path.join(REPO, "docs", "images");
+        expect(outFor(SHOTS["web-overview"], null)).toBe(
+            path.join(images, "web-client"),
+        );
+        expect(outFor(SHOTS.terminal, null)).toBe(
+            path.join(images, "claude-code"),
+        );
+        expect(outFor(SHOTS.branch, null)).toBe(
+            path.join(images, "claude-code"),
+        );
+        expect(outFor(SHOTS["web-overview"], "/x")).toBe("/x");
+    });
+});
+
+describe("the terminal and browser shots", () => {
+    it("plays the terminal pane on the Hubs tab with a key sent straight to it, at a width that puts the detail beside the list", () => {
+        const shot = SHOTS.terminal;
+        expect(shot.kind).toBe("terminal");
+        // No press: that gives Claude Code's pane the keyboard first, and the terminal pane has it already.
+        expect(shot.steps.map((s) => s.do)).not.toContain("press");
+        const hubs = TABS.find((t) => t.id === "hubs");
+        expect(shot.steps).toContainEqual(
+            expect.objectContaining({ do: "send", keys: [hubs.hotkey] }),
+        );
+        expect(shot.size[0]).toBeGreaterThan(130);
+        const beside = new RegExp(shot.steps.at(-2).match, "m");
+        const list = `   name\n › C ${FIXTURE.firstHub} ■ Query`;
+        expect(beside.test(`${list}  ◇ x\n ⇄ Dependencies ── used by 3`)).toBe(
+            true,
+        );
+        expect(beside.test(list)).toBe(false);
+        expect(shot.steps.at(-1)).toEqual({ do: "still", name: "terminal" });
+    });
+    it("shoots the browser's Overview, dark, at 1440 CSS pixels, once its flows card is drawn", () => {
+        const shot = SHOTS["web-overview"];
+        expect(shot).toMatchObject({
+            kind: "browser",
+            theme: "dark",
+            still: "overview",
+        });
+        expect(shot.size[0]).toBe(1440);
+        expect(shot.steps).toBeUndefined();
+        expect(new RegExp(shot.match, "m").test("⇄ Cross-boundary flows")).toBe(
+            true,
+        );
     });
 });
 

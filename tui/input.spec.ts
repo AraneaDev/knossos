@@ -214,6 +214,12 @@ describe('background reply', () => {
     expect(decode('\x1b]11;rgb:00/80/ff\x1b\\')).toEqual([{ kind: 'background', rgb: [0, 128, 255] }])
   })
 
+  it('reads an rgba reply by its colour, and refuses an alpha on the wrong kind', () => {
+    expect(decode('\x1b]11;rgba:0d0d/1111/1717/ffff\x1b\\')).toEqual([{ kind: 'background', rgb: [13, 17, 23] }])
+    expect(decode('\x1b]11;rgba:0d0d/1111/1717\x07')).toEqual([])
+    expect(decode('\x1b]11;rgb:0d0d/1111/1717/ffff\x07')).toEqual([])
+  })
+
   it('ignores another OSC string and waits for a split one', () => {
     expect(decode('\x1b]0;title\x07x')).toEqual([key('x')])
     const decoder = new Decoder()

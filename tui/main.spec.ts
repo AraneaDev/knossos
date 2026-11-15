@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { lockFile } from '../web/lock'
 import { HAS_PROC, markedPluginRoot, scratch, spawnFixture } from '../web/fixtures/helpers'
-import { ENTER, LEAVE } from './terminal'
+import { ASK_BACKGROUND, ENTER, LEAVE } from './terminal'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
@@ -278,6 +278,22 @@ describe('knossos (the terminal pane)', () => {
     run.child.stdin.write('\x1b]11;rgb:ffff/ffff/ffff\x072')
     // Pressed once, before the first frame: the second tab shows without another key.
     await run.until(text => text.includes('Component0'), 'the second tab')
+    run.child.stdin.write('q')
+    expect(await run.exited).toBe(0)
+  })
+
+  it("asks for the background again when the terminal said nothing, and lays the pane on the late reply's colour", { timeout: 30_000 }, async () => {
+    const dir = scratch()
+    const data = scratch()
+    const run = tui(dir, envOf(data, markedPluginRoot(mark())))
+    await run.until(text => text.includes('Overview'), 'the first tab')
+    // Unanswered, as tmux leaves a pane that asks before its own terminal has told it: the theme's ground is painted.
+    expect(run.out()).toContain('48;2;30;30;30')
+    await run.until(text => text.split(ASK_BACKGROUND).length === 3, 'a second question')
+    const before = run.out().length
+    run.child.stdin.write('\x1b]11;rgb:0d0d/1111/1717\x1b\\')
+    await run.until(text => text.slice(before).includes('\x1b[30;1H'), 'the pane painted again')
+    expect(run.out().slice(before)).not.toContain('48;2;30;30;30')
     run.child.stdin.write('q')
     expect(await run.exited).toBe(0)
   })

@@ -181,7 +181,7 @@ Cycles: each dependency cycle drawn as boxes, from its first member back to the 
 Changes: every file changed since the session began, its dependents, the tests that reach it,
 and its diff.
 
-![The Branch tab: a detached checkout four commits ahead of main, 14 things to look at, most of them new dependencies across boundaries, and what it changed by boundary with its lines and its reach](docs/images/claude-code/branch.png)
+![The Branch tab: a detached checkout twelve commits ahead of main, six things to look at (a new cycle of three and new dependencies across boundaries), and what it changed by boundary with its lines and its dependents](docs/images/claude-code/branch.png)
 
 Branch: whether this branch broke anything against main, then what it changed by boundary.
 
@@ -224,7 +224,7 @@ cd /path/to/your-project
 knossos web
 ```
 
-![The Knossos web client's Overview: a kanji-inspired sigil and dark application frame around the terminal workspace, with project stats, composition charts, dependency concentration and cross-boundary flows](docs/images/web-client/overview.png)
+![The Knossos web client's Overview: a kanji-inspired sigil and dark application frame around the pane, with project stats, composition charts, dependency concentration, cross-boundary flows, complexity hotspots and the files most depended on](docs/images/web-client/overview.png)
 
 The local server opens your browser with the same nine tabs, finder, component and file
 details, blast radius, diffs and notes as the native pane. Click a tab or use its number;

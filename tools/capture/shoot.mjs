@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
  * Dev-only. Shoots the README and docs captures: the hero GIF and the pane
- * stills, each in its own isolated Claude Code session (see session.mjs).
+ * stills, each in its own isolated Claude Code session (see session.mjs), the
+ * terminal pane in the same kind of session, and the browser's in Chrome
+ * (see page.mjs). Options: options.mjs.
  *
- *     node tools/capture/shoot.mjs [--only=hero,overview] [--out=docs/images/claude-code]
+ *     node tools/capture/shoot.mjs [--only=hero,overview] [--out=dir] [--ref=<commit>] [--plugin=dir]
  *
  * The sessions never run in this checkout: the hero's model turn edits a
- * file, so they run in a throwaway git worktree of HEAD, scanned into a staged
+ * file, so they run in a throwaway git worktree of `--ref`, scanned into a staged
  * copy of the graph before the first session starts. The stage, the worktree
  * and every session are removed however the run ends. CAPTURE_TRACE=1 prints
  * each step with the frame count reached, for timing the GIF.
@@ -26,6 +28,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { clearInterval, setInterval } from "node:timers";
 import { cursor, plain, resize, send, snap, type, waitFor } from "./driver.mjs";
 import { framePage } from "./frame.mjs";
+import { outFor, parseArgs } from "./options.mjs";
+import { shootPage } from "./page.mjs";
 import { buildGif } from "./gif.mjs";
 import { renderPng } from "./render.mjs";
 import {
@@ -37,30 +41,12 @@ import {
 import { FIXTURE, FRAME_MS, NEVER_SHOWN, SHOTS, WAIT_MS } from "./shots.mjs";
 import { REPO, resetTree, stageGraph, throwawayWorktree } from "./worktree.mjs";
 
+export { parseArgs };
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, "out");
-
-/** `--only=a,b` and `--out=dir`; every shot and docs/images/claude-code when left out. */
-export function parseArgs(argv, shots = SHOTS) {
-    let only = Object.keys(shots);
-    let out = path.join(REPO, "docs", "images", "claude-code");
-    for (const arg of argv) {
-        const [key, value = ""] = arg.split(/=(.*)/s);
-        if (key === "--only") {
-            only = value.split(",").filter((s) => s !== "");
-            const unknown = only.filter((s) => !Object.hasOwn(shots, s));
-            if (unknown.length > 0)
-                throw new Error(`unknown shot: ${unknown.join(", ")}`);
-        } else if (key === "--out") {
-            out = path.resolve(value);
-        } else {
-            throw new Error(`unknown option: ${arg}`);
-        }
-    }
-    return { only, out };
-}
 
 const pad = (n) => String(n).padStart(5, "0");
 
@@ -599,19 +585,21 @@ async function writeShot(name, shot, taken, { out, view }) {
     }
 }
 
-async function shootOne(
-    name,
-    shot,
-    { worktree, stage, out, run: runDir, home },
-) {
+async function shootOne(name, shot, options) {
+    const { worktree, stage, out, run: runDir, home, plugin } = options;
     const [cols, rows] = shot.size;
     const view = { cols, rows, theme: shot.theme };
     await resetTree(worktree);
+    if (shot.kind === "browser") return shootPage(name, shot, options);
     const session = await createSession({
         project: worktree,
         dataDir: stage,
         ...view,
-        pluginDir: path.join(REPO, ".plugin"),
+        pluginDir: plugin,
+        // The terminal pane: `knossos` with no command, in the worktree.
+        ...(shot.kind === "terminal"
+            ? { command: [path.join(REPO, "bin", "knossos")] }
+            : {}),
         tmpRoot: runDir,
         // The worktree lies in it, so the header names the project `~/knossos`.
         home,
@@ -629,14 +617,14 @@ async function shootOne(
             await keepPartial(name, shot, error, { view });
             throw error;
         }
-        await writeShot(name, shot, taken, { out, view });
+        await writeShot(name, shot, taken, { out: outFor(shot, out), view });
     } finally {
         await session.close();
     }
 }
 
 export async function main(argv = process.argv.slice(2), shots = SHOTS) {
-    const { only, out } = parseArgs(argv, shots);
+    const { only, out, ref, plugin } = parseArgs(argv, shots);
     installExitHandlers();
     let current = null;
     try {
@@ -646,7 +634,7 @@ export async function main(argv = process.argv.slice(2), shots = SHOTS) {
         );
         registerCleanup(() => rm(runDir, { recursive: true, force: true }));
         const home = path.join(runDir, "home");
-        const worktree = await throwawayWorktree(REPO, { home });
+        const worktree = await throwawayWorktree(REPO, { home, ref });
         const base = only.some((s) => shots[s].base === true);
         const stage = await stageGraph(worktree, { base, tmpRoot: runDir });
         for (const name of only) {
@@ -657,6 +645,7 @@ export async function main(argv = process.argv.slice(2), shots = SHOTS) {
                 out,
                 run: runDir,
                 home,
+                plugin,
             });
         }
         return 0;

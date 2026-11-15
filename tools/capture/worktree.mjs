@@ -37,16 +37,16 @@ const git = (dir, ...args) =>
 export const WORKTREE_NAME = "knossos";
 
 /**
- * A detached worktree of HEAD at `<home>/<name>` (WORKTREE_NAME), so the pane's
- * header and Claude Code's `~/<name>` read the project's name, whatever this
- * checkout's dir is called. Its removal is registered before
- * it is added, so a signal or an error while git adds it still removes it.
- * Never `git config` in it: in a linked worktree that writes the shared
- * repository config.
+ * A detached worktree of `ref` (HEAD unless given) at `<home>/<name>`
+ * (WORKTREE_NAME), so the pane's header and Claude Code's `~/<name>` read the
+ * project's name, whatever this checkout's dir is called. Its removal is
+ * registered before it is added, so a signal or an error while git adds it
+ * still removes it. Never `git config` in it: in a linked worktree that
+ * writes the shared repository config.
  */
 export async function throwawayWorktree(
     repo,
-    { home, name = WORKTREE_NAME, runGit = git, copy = cp },
+    { home, ref = "HEAD", name = WORKTREE_NAME, runGit = git, copy = cp },
 ) {
     const dir = path.join(home, name);
     registerCleanup(async () => {
@@ -57,7 +57,7 @@ export async function throwawayWorktree(
         await runGit(repo, "worktree", "prune").catch(() => {});
     });
     await mkdir(home, { recursive: true });
-    await runGit(repo, "worktree", "add", "--detach", dir, "HEAD");
+    await runGit(repo, "worktree", "add", "--detach", dir, ref);
     await copyInstalledPackages(repo, dir, runGit, copy);
     return dir;
 }
@@ -185,7 +185,8 @@ const knossosBin = path.join(REPO, "bin", "knossos");
  * A copy of the real graph in a fresh dir under `tmpRoot`, with the worktree
  * allowed and freshly scanned into it, for each session to copy in turn.
  * With `base`, the commit where HEAD left the default branch is scanned
- * first, so the Branch tab has a snapshot to compare with. After the scans
+ * first, so the Branch tab has a snapshot to compare with; a HEAD that has
+ * not left it is refused, as the tab would have nothing to compare. After the scans
  * the notes of the checkout at `notesFrom` are copied onto the worktree's
  * project in the stage (`copyNotes`), so the Notes tab shows them.
  * `realDataDir` is only ever read: the stage is refused
@@ -238,6 +239,11 @@ export async function stageGraph(
             "HEAD",
             await defaultBranch(worktree, runGit),
         );
+        // The Branch tab of a checkout that is the default branch itself says so and compares nothing.
+        if (fork === head)
+            throw new Error(
+                "the Branch shot needs a checkout with commits of its own: shoot it with --ref=<a branch ahead of the default branch>",
+            );
         await runGit(worktree, "checkout", "--quiet", "--detach", fork);
         await scan();
         await runGit(worktree, "checkout", "--quiet", "--detach", head);

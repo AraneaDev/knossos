@@ -24,6 +24,27 @@ describe('screenOf', () => {
     expect(strip(screen.lines[1]!)).toBe(' '.repeat(10))
   })
 
+  it("paints every cell of the pane on the theme's ground when the terminal's is unknown: gaps, the rest of a row, and empty rows too", () => {
+    // Two segments apart from each other, a hidden one, a short row and a body shorter than the terminal.
+    const body = [row('a', seg('ab'), seg('', { columns: 3 }), seg('cd'), seg('zz', { hidden: true })), row('b', seg('e', { look: { color: '#ff0000' } })), row('c')]
+    const screen = screenOf(frame(body, [row('f', seg('ft'))]), { columns: 9, rows: 6 }, none)
+    const backgrounds = screen.lines.map(line => {
+      const found: Array<string | null> = []
+      let bg: string | null = null
+      for (const part of line.split(new RegExp(`(${ESC}\\[[0-9;]*m)`))) {
+        if (part.startsWith(ESC)) {
+          const codes = part.slice(2, -1)
+          if (codes === '0' || codes === '') bg = null
+          const at = codes.indexOf('48;2;')
+          if (at >= 0) bg = codes.slice(at + 5).split(';').slice(0, 3).join(';')
+        } else found.push(...Array.from(part, () => bg))
+      }
+      return found
+    })
+    expect(backgrounds.map(b => b.length)).toEqual(Array(6).fill(9))
+    expect(new Set(backgrounds.flat())).toEqual(new Set(['16;16;32']))
+  })
+
   it("leaves the ground to the terminal once its colour is known", () => {
     const screen = screenOf(frame([row('a', seg('hello'))]), { columns: 10, rows: 2 }, none, [0x30, 0x0a, 0x24])
     expect(screen.lines.join('')).not.toContain('48;2')
