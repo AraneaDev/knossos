@@ -32,10 +32,12 @@ export type StatTone = 'warn' | 'alert' | 'accent'
  * the figure is a status (cycles, dead code, diagnostics), so a rise is drawn
  * in its warning colour and a fall in its success colour; a figure that is
  * not a status keeps its delta dim. `hue` colours the figure while it has
- * no tone.
+ * no tone. `note` is a second figure, dim after the figure and its delta
+ * (`28 +6 inferred`): shown where it fits, the first thing to go when the
+ * tiles are short of room, before they wrap or cut.
  */
 /** `lit` while the latest scan has just moved the figure: drawn on the flash ground for a moment. */
-export type Stat = { key: string; label: string; value: string; hue?: string; tone?: StatTone; trend?: number[]; press?: string; delta?: number; worse?: 'up'; lit?: true }
+export type Stat = { key: string; label: string; value: string; hue?: string; tone?: StatTone; trend?: number[]; press?: string; delta?: number; worse?: 'up'; lit?: true; note?: string }
 
 /** A trend is drawn only with this many points, and only when it moves. */
 export const TREND_MIN_POINTS = 5
@@ -79,8 +81,11 @@ function figureWidth(stat: Stat): number {
   return cells(stat.value) + (delta === null ? 0 : 1 + cells(delta.text))
 }
 
-/** The fewest cells a tile needs: its label, or its figure with its delta. */
-const need = (stat: Stat): number => Math.max(cells(stat.label), figureWidth(stat))
+/** The cells a tile's note takes after its figure and delta, a space before it; none without one. */
+const noteWidth = (stat: Stat): number => (stat.note === undefined ? 0 : 1 + cells(stat.note))
+
+/** The fewest cells a tile needs: its label, or its figure with its delta (and its note, `noted`). */
+const need = (stat: Stat, noted = false): number => Math.max(cells(stat.label), figureWidth(stat) + (noted ? noteWidth(stat) : 0))
 
 /**
  * How many tiles go on each line of a band `inner` wide, and how wide each
@@ -91,7 +96,11 @@ const need = (stat: Stat): number => Math.max(cells(stat.label), figureWidth(sta
  */
 export function tileSlots(stats: Stat[], inner: number): { per: number; widths: number[] } {
   const n = stats.length
-  const needs = stats.map(need)
+  // With their notes when every tile still fits on one line; else the notes go first, and each shows only where its slot has room.
+  const noted = stats.map(s => need(s, true))
+  const ownNoted = noted.reduce((a, b) => a + b, 0) + (n - 1) * DIVIDER
+  if (ownNoted <= inner) return { per: n, widths: share(noted, inner - ownNoted) }
+  const needs = stats.map(s => need(s))
   const own = needs.reduce((a, b) => a + b, 0) + (n - 1) * DIVIDER
   if (own <= inner) return { per: n, widths: share(needs, inner - own) }
   const widest = Math.max(...needs)
@@ -109,11 +118,12 @@ function share(widths: number[], extra: number): number[] {
   return widths.map((w, i) => w + each + (i < rest ? 1 : 0))
 }
 
-/** A tile's figure line: the figure and its delta, then its trend against the slot's right edge when there is room for five points. */
+/** A tile's figure line: the figure and its delta, its note when the slot has room for it, then its trend against the slot's right edge when there is room for five points. */
 function figureLine(stat: Stat, width: number): Segment[] {
   const delta = deltaSegment(stat)
-  const lead: Segment[] = [figure(stat), ...(delta === null ? [] : [{ text: ' ' }, delta])]
-  const used = figureWidth(stat)
+  const noted = stat.note !== undefined && figureWidth(stat) + noteWidth(stat) <= width
+  const lead: Segment[] = [figure(stat), ...(delta === null ? [] : [{ text: ' ' }, delta]), ...(noted ? [{ text: ' ' }, { text: stat.note!, dim: true }] : [])]
+  const used = figureWidth(stat) + (noted ? noteWidth(stat) : 0)
   const room = width - used - 1
   if (!moves(stat.trend) || room < TREND_MIN_POINTS) return [...lead, { text: spaces(width - used) }]
   const glyphs = sparkline(stat.trend.slice(-Math.min(TREND_MAX_POINTS, room)))
@@ -143,12 +153,15 @@ function bandRows(stats: Stat[], width: number): Row[] {
 /** A band row inside its frame. */
 const framed = (key: string, segments: Segment[]): Row => ({ key, segments: [{ text: '│ ', color: FRAME }, ...segments, { text: ' │', color: FRAME }] })
 
-/** The narrow summary line: each figure, then its label, wrapped. */
+/** The narrow summary line: each figure, then its label and its note (when the line has room for it), wrapped. */
 function lineRows(stats: Stat[], width: number): Row[] {
   const groups = stats
     .map((s): Segment[] => {
       const delta = deltaSegment(s)
-      return [figure(s), { text: ' ' }, label(s, cells(s.label)), ...(delta === null ? [] : [{ text: ' ' }, delta]), ...(moves(s.trend) ? [{ text: ` ${sparkline(s.trend.slice(-8))}`, color: ACCENT }] : [])]
+      const head: Segment[] = [figure(s), { text: ' ' }, label(s, cells(s.label)), ...(delta === null ? [] : [{ text: ' ' }, delta])]
+      const used = head.reduce((n, seg) => n + cells(seg.text), 0)
+      const note: Segment[] = s.note !== undefined && used + noteWidth(s) <= width ? [{ text: ` ${s.note}`, dim: true }] : []
+      return [...head, ...note, ...(moves(s.trend) ? [{ text: ` ${sparkline(s.trend.slice(-8))}`, color: ACCENT }] : [])]
     })
   return wrapGroups('tiles-line', groups, width, 3, 0)
 }

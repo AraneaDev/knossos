@@ -6,7 +6,7 @@
 import type { Dashboard, LiveState, RefreshState, RescanState } from '../../types'
 import { formatAge } from './band'
 import { countLabel } from './envelopes'
-import { declaredOf, HEADING, STAT_HUES } from './palette'
+import { boundaryCounts, declaredOf, HEADING, STAT_HUES } from './palette'
 import type { Tone } from './palette'
 import { grouped, plural } from './text'
 import { LIVE_OFF } from './live'
@@ -62,7 +62,8 @@ export const languagesOf = (d: Dashboard): string => (d.summary?.languages ?? []
 
 /**
  * The stat tiles: components and boundaries (from a dashboard that reports
- * them), cycles and the largest degree, each with how it moved since the
+ * them; boundaries with the inferred ones beside the declared, see
+ * {@link inferredNote}), cycles and the largest degree, each with how it moved since the
  * previous snapshot and its trend when every snapshot carries one, then the
  * issues and the drifted files (a press that lists them, when the dashboard
  * names them). Issues is one figure for everything the Issues tab lists: the
@@ -98,7 +99,7 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
       ? []
       : [
           ...counted(summary[0], 'components', { hue: STAT_HUES.components, ...moved('components'), ...series(t => t.components), ...listing('components', figureOf(summary[0])) }),
-          ...counted(summary[1], summary[1]?.endsWith('boundary') ? 'boundary' : 'boundaries', { hue: STAT_HUES.boundaries, ...listing('boundaries', figureOf(summary[1])) }),
+          ...counted(summary[1], summary[1]?.endsWith('boundary') ? 'boundary' : 'boundaries', { hue: STAT_HUES.boundaries, ...listing('boundaries', figureOf(summary[1])), ...inferredNote(d) }),
         ]),
     // Cycles between types only: the ones inside one type show on the Cycles tab alone.
     { key: 'cycles', label: d.cycles.count === 1 && !d.cycles.truncated ? 'cycle' : 'cycles', value: cycles, hue: STAT_HUES.cycles, ...series(t => t.cycles), ...moved('cycles', true), ...(above(cycles) ? { tone: 'warn' as const } : {}), ...listing('cycles', cycles) },
@@ -106,6 +107,19 @@ export function statsOf(d: Dashboard, summary: string[], policy: string | null, 
     issuesTile(d, policy, diagnostics, listing),
     { key: 'drifted', label: 'drifted', value: grouped(drifted), hue: STAT_HUES.drifted, ...(drifted > 0 ? { tone: 'accent' as const } : {}), ...(drift ? { press: 'drifted' } : {}) },
   ]
+}
+
+/**
+ * The boundaries tile's note: how many inferred boundaries label a component
+ * beside the declared ones its figure counts (`+6 inferred`), so the tile
+ * and the Boundaries tab add up. None without a declared boundary (the
+ * figure then counts the listed ones), with no inferred one labelling a
+ * component, or from a knossos that does not count them.
+ */
+function inferredNote(d: Dashboard): Pick<Stat, 'note'> {
+  const counts = boundaryCounts(d)
+  if (counts === null || counts.declared === 0 || counts.inferred === 0) return {}
+  return { note: `+${grouped(counts.inferred)}${counts.inferredMore ? '+' : ''} inferred` }
 }
 
 /**

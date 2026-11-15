@@ -122,6 +122,20 @@ export function declaredOf(d: Pick<Dashboard, 'boundaries'>): Set<string> {
 }
 
 /**
+ * The two figures the Overview's boundaries tile and the Boundaries tab say:
+ * how many boundaries the project declares, and how many inferred ones label
+ * a component (together, what the heat map lists), each with whether it is a
+ * floor. Null when the knossos that answered does not count the inferred
+ * ones (an older one): then neither place splits its figure, rather than
+ * read a missing count as none.
+ */
+export function boundaryCounts(d: Pick<Dashboard, 'boundaries'>): { declared: number; declaredMore: boolean; inferred: number; inferredMore: boolean } | null {
+  const b = d.boundaries
+  if (b?.inferred === undefined) return null
+  return { declared: declaredOf(d).size, declaredMore: b.declared_truncated === true, inferred: b.inferred.length, inferredMore: b.inferred_truncated === true }
+}
+
+/**
  * The project's boundaries in a stable order, the first eight each given a
  * colour of their own: declared boundaries first (the ones a person named
  * and counts), then inferred ones, each group largest first, ties by name.

@@ -58,15 +58,16 @@ final readonly class BoundaryMatrix
      * entry carries how many components it labels.
      *
      * @param list<array<string, mixed>> $policies the project's declared policies
+     * @param array<string, string>|null $labelled each node's label as {@see BoundaryLabels::forProject()} reads them, when the caller has them already
      * `labelled` counts every component that carries a label, the axes' or
      * not, so the axes' shares of it can be told; `flows` lists the strongest
      * dependencies from one boundary to another (see {@see self::flows()}).
      *
      * @return array{boundaries: list<string>, members: list<int>, labelled: int, boundaries_truncated: bool, cells: list<list<int>>, forbidden: list<array{int, int}>, flows: list<array{from: int, to: int, edges: int, forbidden: bool}>, edges: int, truncated: bool, truncation_reasons: list<string>}
      */
-    public function build(string $projectId, BoundaryLabels $labels, array $policies, int $limit = self::AXES): array
+    public function build(string $projectId, BoundaryLabels $labels, array $policies, int $limit = self::AXES, ?array $labelled = null): array
     {
-        $labelled = $labels->forProject($projectId);
+        $labelled ??= $labels->forProject($projectId);
         $members = array_count_values($labelled);
         // Ranked as the pane lists boundaries; one that labels nothing would be an empty row.
         $ranked = array_values(array_unique(array_filter(

@@ -314,7 +314,7 @@ final readonly class ProjectFindings
     {
         return [
             'summary' => ['components' => 0, 'kinds' => [], 'kinds_truncated' => false, 'files' => 0, 'languages' => [], 'languages_truncated' => false],
-            'boundaries' => ['items' => [], 'truncated' => false, 'declared' => [], 'declared_truncated' => false],
+            'boundaries' => ['items' => [], 'truncated' => false, 'declared' => [], 'declared_truncated' => false, 'inferred' => [], 'inferred_truncated' => false],
             'diagnostics' => ['total' => 0, 'errors' => 0, 'warnings' => 0, 'infos' => 0, 'items' => []],
             'complexity_hotspots' => [],
             'over_budget' => null,

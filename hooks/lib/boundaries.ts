@@ -19,7 +19,7 @@
  * scales up as a square, two glyphs wide for every row tall.
  */
 import type { Dashboard } from '../../types'
-import { ACCENT, boundaryColour, boundaryLabel, FAINT, HEADING, huesOf, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
+import { ACCENT, boundaryColour, boundaryCounts, boundaryLabel, FAINT, HEADING, huesOf, NO_HUES, SELECTED_BG, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { HEAT_KEYS } from './raster'
 import { blank, button, clip, segmentsWidth, wrapGroups } from './rows'
@@ -31,7 +31,7 @@ import { atBody, bodyIndent, bodyLine, gutter, GUTTER, labelledRows, moreText } 
 import type { Fact } from './spacing'
 import type { Row, Segment } from './types'
 import type { TableSpec, Tier } from './table'
-import { noteOf, windowedTable } from './cards'
+import { NOTE_ROOM, noteOf, windowedTable } from './cards'
 import type { Arrangement, Block, Section } from './cards'
 import { pairColumns, pairDiagram, pairTargetAt } from './diagram'
 import type { Openable } from './views'
@@ -57,6 +57,13 @@ export type BoundariesInput = {
   edges: string
   /** More boundaries label components than the matrix holds (a hundred). */
   more: boolean
+  /**
+   * How many of the boundaries that label a component are declared and how
+   * many inferred, from the dashboard rather than the axes, so a matrix cut
+   * at its axes still counts them all; absent from a knossos that does not
+   * count the inferred ones.
+   */
+  counts?: { declared: number; declaredMore: boolean; inferred: number; inferredMore: boolean }
 }
 
 /** Shades for a cell's share of the busiest cell, fewest first. */
@@ -87,6 +94,7 @@ export function boundariesInput(d: Dashboard): BoundariesInput | null {
     if (forbidden[from] !== undefined && to < n) forbidden[from][to] = true
   }
   const at = (from: number, to: number) => m.cells[from]?.[to] ?? 0
+  const counts = boundaryCounts(d)
   return {
     boundaries: m.boundaries.map((name, i) => ({
       code: axisCode(i),
@@ -100,7 +108,31 @@ export function boundariesInput(d: Dashboard): BoundariesInput | null {
     forbidden,
     edges: `${grouped(m.edges)}${m.truncated ? '+' : ''}`,
     more: m.boundaries_truncated,
+    ...(counts === null ? {} : { counts }),
   }
+}
+
+/**
+ * How many boundaries the tab lists, as its title says it: `28 declared · 6
+ * inferred`, `28 declared` when no inferred boundary labels a component,
+ * and `34 boundaries` when none is declared. A figure its own list cut short
+ * is a floor, `+`. From a knossos that does not count the inferred ones, the
+ * axes, a floor when more boundaries label components than the matrix holds.
+ */
+export function boundaryCountText(input: BoundariesInput): string {
+  const c = input.counts
+  if (c === undefined) return `${input.boundaries.length}${input.more ? '+' : ''} boundaries`
+  const figure = (n: number, more: boolean) => `${grouped(n)}${more ? '+' : ''}`
+  if (c.declared === 0) return `${figure(c.inferred, c.inferredMore)} ${c.inferred === 1 && !c.inferredMore ? 'boundary' : 'boundaries'}`
+  const declared = `${figure(c.declared, c.declaredMore)} declared`
+  return c.inferred === 0 ? declared : `${declared} · ${figure(c.inferred, c.inferredMore)} inferred`
+}
+
+/** A Boundaries card's note: its count, then `rest` (`9,214 edges`) when the top edge beside `title` has room for both in `columns`; the count alone otherwise. */
+function countNote(input: BoundariesInput, title: string, rest: string, columns: number): string {
+  const count = boundaryCountText(input)
+  const both = `${count} · ${rest}`
+  return cells(title) + cells(both) + NOTE_ROOM <= columns ? both : count
 }
 
 /**
@@ -366,8 +398,9 @@ export const BOUNDARY_AXES = 100
 /** The heat map as a card: the map (each cell `scale` rows tall when it fits), and its key when `legend`; null without a map to draw. */
 export function heatSection(input: BoundariesInput | null, columns: number, hues: Hues = NO_HUES, legend = true, scale = 1, marked: HeatCell | null = null): Section | null {
   if (input === null || input.boundaries.length === 0) return null
-  const note = [`${input.boundaries.length}${input.more ? '+' : ''} boundaries`, `${input.edges} edges`].join(' · ')
-  return { key: legend ? 'bounds' : 'map', title: legend ? 'Boundaries' : 'Boundary map', note: noteOf(note), body: [...heatRows(input, columns, hues, scale, marked), ...(legend ? legendRows(input, columns) : [])] }
+  const title = legend ? 'Boundaries' : 'Boundary map'
+  const note = countNote(input, title, `${input.edges} edges`, columns)
+  return { key: legend ? 'bounds' : 'map', title, note: noteOf(note), body: [...heatRows(input, columns, hues, scale, marked), ...(legend ? legendRows(input, columns) : [])] }
 }
 
 /**
@@ -494,13 +527,13 @@ export function boundariesArrangement(input: BoundariesInput | null, tier: Tier,
   const heat = heatBlock(input, hues, true, true, cell)
   const listed = input.boundaries.length > HEAT_MAX
   // Without the map, the table's note carries what the map's would.
-  const note = listed ? `${input.boundaries.length}${input.more ? '+' : ''} boundaries · ${input.edges} edges across` : 'edges across'
+  const note = (columns: number) => (listed ? countNote(input, 'Boundaries', `${input.edges} edges across`, columns) : 'edges across')
   const per: Block = {
     key: 'bounds-list',
     grow: { length: input.boundaries.length, min: PER_MIN },
     make: (columns, limit, scrolled) => {
       const { rows, window } = perBoundaryRows(input, marked, columns, limit, tier, hues, lit, scrolled)
-      return { key: 'bounds-list', title: listed ? 'Boundaries' : 'Per boundary', note: noteOf(note), body: rows, window }
+      return { key: 'bounds-list', title: listed ? 'Boundaries' : 'Per boundary', note: noteOf(note(columns)), body: rows, window }
     },
   }
   const focus: Block = { key: 'focus', make: columns => focusSection(input, marked, columns, hues, cell) }
