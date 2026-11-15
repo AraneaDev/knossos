@@ -167,6 +167,14 @@ const openPane = (columns, beat = true) => [
 /** A row the marker stands on, by its name: a one-glyph mark before the name (a kind letter, a change's `~`) is optional. */
 export const marked = (name) => String.raw`›\s*(?:\S\s+)?${lit(name)}\s`;
 
+/**
+ * The Hubs list with the marker on its row `index` (the first is 0), counted
+ * down from the table's header: a `j` that was lost, or not yet drawn, is
+ * pressed again rather than leaving the marker short of the hub.
+ */
+export const markedRow = (index) =>
+    String.raw`name +boundary +in +out +cross[^\n]*\n(?:[^›\n]*\n){${index}}[^›\n]*›`;
+
 /** The finder's field: `f` opens it with the keys in it, checked before typing, so a word can never reach the prompt. */
 const find = (text, fixture, delayMs = 0) => [
     press("f", String.raw`⌕ Find`),
@@ -216,7 +224,9 @@ const hubDetail = (theme) =>
         [
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
             press("2", marked(FIXTURE.firstHub)),
-            ...Array.from({ length: FIXTURE.hubRank - 1 }, () => press("j")),
+            ...Array.from({ length: FIXTURE.hubRank - 1 }, (_, i) =>
+                press("j", markedRow(i + 1)),
+            ),
             wait(
                 "hub detail",
                 // Both on screen, in either order: the detail beside the list starts at its own height.
@@ -243,7 +253,9 @@ export const SHOTS = {
             hold(500),
             // The list loaded first: a `j` pressed before it is lost, and the marker stops short.
             press("2", marked(FIXTURE.firstHub)),
-            ...Array.from({ length: FIXTURE.hubRank - 1 }, () => press("j")),
+            ...Array.from({ length: FIXTURE.hubRank - 1 }, (_, i) =>
+                press("j", markedRow(i + 1)),
+            ),
             wait("hub marked", marked(FIXTURE.hub), { fixture: "hub" }),
             hold(500),
             press("4"),

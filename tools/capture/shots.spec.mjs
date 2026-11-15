@@ -16,6 +16,7 @@ import {
 } from "./shoot.mjs";
 import {
     marked,
+    markedRow,
     COMMAND_LIST,
     COMMAND_LISTED,
     NEVER_SHOWN,
@@ -121,6 +122,42 @@ describe("SHOTS", () => {
     it("shoots the light theme for the overview and the hubs detail", () => {
         expect(SHOTS["overview-light"].theme).toBe("light");
         expect(SHOTS["hubs-detail-light"].theme).toBe("light");
+    });
+});
+
+describe("markedRow", () => {
+    // The Hubs list as the terminal shows it: Claude Code on the left, the pane after its border.
+    const list = (at) =>
+        [
+            "❯ /knossos   │       name                 boundary      in out cross",
+            ...["Alpha", "Beta", "Gamma"].map(
+                (n, i) =>
+                    `               │  ${i === at ? "›" : " "}  C ${n}     ■ Core       9   1     0`,
+            ),
+            "               │     12 more ↓",
+        ].join("\n");
+    it("finds the marker on the row it counts down to, and on no other", () => {
+        for (let at = 0; at < 3; at += 1)
+            for (let index = 0; index < 3; index += 1)
+                expect(
+                    new RegExp(markedRow(index), "m").test(list(at)),
+                    `${at} ${index}`,
+                ).toBe(at === index);
+    });
+    it("syncs every j the Hubs shots press on the row it should reach", () => {
+        for (const name of ["hero", "hubs-detail", "hubs-detail-light"]) {
+            const js = SHOTS[name].steps.filter(
+                (s) => s.do === "press" && s.key === "j",
+            );
+            expect(
+                js.map((s) => s.until),
+                name,
+            ).toEqual(
+                Array.from({ length: FIXTURE.hubRank - 1 }, (_, i) =>
+                    markedRow(i + 1),
+                ),
+            );
+        }
     });
 });
 
