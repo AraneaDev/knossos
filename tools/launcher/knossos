@@ -362,12 +362,35 @@ inside() {
 # Links above all of them are yours, and are followed as usual.
 INSTALL_PARENT=$(dirname -- "$INSTALL_REAL")
 GRAPH_DIRS=$INSTALL_PARENT
-recorded=$(find "$INSTALL_REAL/containers" -type f -name 'graph-*' -exec cat {} + 2>/dev/null) || recorded=''
-while IFS= read -r graph; do
-    case $graph in /?*) GRAPH_DIRS="$GRAPH_DIRS$NEWLINE$graph" ;; esac
-done <<RECORDED
-$recorded
-RECORDED
+# A record goes when the directory it names is gone (nothing is there, not
+# even a link): with no directory, nothing below it is left that a container
+# could have changed, and no container can be running with it mounted, as a
+# mount point cannot be removed from inside. A record is kept for a directory
+# that still exists, even one without a database any more: a container of
+# that graph could delete the database to make its directory look abandoned.
+# Removing the record file by hand lifts it (graph_note says so).
+records=$(find "$INSTALL_REAL/containers" -type f -name 'graph-*' 2>/dev/null) || records=''
+while IFS= read -r record_file; do
+    [ -n "$record_file" ] || continue
+    graph=''
+    IFS= read -r graph < "$record_file" || [ -n "$graph" ] || continue
+    case $graph in /?*) ;; *) continue ;; esac
+    if [ ! -e "$graph" ] && [ ! -L "$graph" ]; then
+        rm -f -- "$record_file"
+        continue
+    fi
+    GRAPH_DIRS="$GRAPH_DIRS$NEWLINE$graph"
+done <<RECORDS
+$records
+RECORDS
+
+# graph_note GRAPH: for a refusal that names GRAPH, why it counts as a graph
+# directory when a record says so, and how to lift that.
+graph_note() {
+    note_file="$INSTALL_REAL/containers/graph-$(hash12 "$1")"
+    [ -f "$note_file" ] || return 0
+    printf ' %s records that this installation used %s as a graph directory; if it no longer is one, remove that file to lift this refusal.' "$note_file" "$1"
+}
 
 # looks_like_graph DIR: whether DIR holds a container install's install
 # directory, told by its layout alone: nothing in it is read.
@@ -440,10 +463,10 @@ walk_to() (
             linked=''
             if [ -L "$component" ]; then linked=", and goes through ${at%/}/$component there, a symbolic link the host does not follow"; fi
             if [ "$mode" != through ] && [ "${at%/}/$component" != "$INSTALL_REAL" ]; then
-                die "$what lies in the graph directory $graph, which a container can write$linked; $advice"
+                die "$what lies in the graph directory $graph, which a container can write$linked; $advice$(graph_note "$graph")"
             fi
             if [ -n "$linked" ] || [ "$component" = .. ] || [ ! -d "$component" ]; then
-                die "$what lies in the graph directory $graph, which a container can write${linked:-, and ${at%/}/$component is not a plain directory there}; $advice"
+                die "$what lies in the graph directory $graph, which a container can write${linked:-, and ${at%/}/$component is not a plain directory there}; $advice$(graph_note "$graph")"
             fi
             cd -P -- "$component" 2>/dev/null || die "could not enter ${at%/}/$component"
             next=$(pwd -P) || die "could not read where ${at%/}/$component leads"
@@ -470,7 +493,7 @@ host_tmp() {
     [ -z "$TMP_REAL" ] || return 0
     TMP_REAL=$(walk_to "${TMPDIR:-/tmp}" "TMPDIR (${TMPDIR:-/tmp})" 'point TMPDIR at a directory outside it.' existing) || exit 1
     if graph=$(writer_of "$TMP_REAL"); then
-        die "TMPDIR (${TMPDIR:-/tmp}) lies in the graph directory $graph, which a container can write; point TMPDIR at a directory outside it."
+        die "TMPDIR (${TMPDIR:-/tmp}) lies in the graph directory $graph, which a container can write; point TMPDIR at a directory outside it.$(graph_note "$graph")"
     fi
 }
 
@@ -839,7 +862,7 @@ DATA_REAL=$(walk_to "$KNOSSOS_DATA_DIR" "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR)" '
 # A data directory inside another graph directory is written by that graph's
 # containers too: anything in it could be changed under this one.
 if graph=$(writer_of "$DATA_REAL" strict); then
-    die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) lies in the graph directory $graph, which a container can write; pick a data directory outside $graph."
+    die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) lies in the graph directory $graph, which a container can write; pick a data directory outside $graph.$(graph_note "$graph")"
 fi
 GRAPH_DIRS="$GRAPH_DIRS$NEWLINE$DATA_REAL"
 ROOTS_DIR_REAL=$INSTALL_REAL
@@ -856,7 +879,7 @@ if [ -n "$ROOTS_GIVEN" ]; then
         # In the install directory: the host's own, read-only to every container.
         :
     elif graph=$(writer_of "$ROOTS_DIR_REAL"); then
-        die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies in the graph directory $graph, which a container can write; $GRAPH_ROOTS_REFUSED"
+        die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies in the graph directory $graph, which a container can write; $GRAPH_ROOTS_REFUSED$(graph_note "$graph")"
     fi
 fi
 KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL
@@ -970,6 +993,7 @@ root_problem() {
         if reason=$(too_wide "$1"); then die "the project root $1 $reason, which container mode does not mount; run knossos from inside a project."; fi
         if inside "$1" "$INSTALL_REAL"; then die "$1 lies inside the install directory $INSTALL_REAL, which a container may only read; point KNOSSOS_DATA_DIR, KNOSSOS_ROOTS_FILE or the project elsewhere."; fi
         guard_writable "$1" project
+        if graph=$(writer_of "$1"); then die "the project root $1 lies in the graph directory $graph, which every container of that graph can write, so it would not stay read-only; keep projects outside the Knossos data directory, or pick another --data-dir.$(graph_note "$graph")"; fi
     ) 2>&1 >/dev/null | sed 's/^knossos: //'
 }
 
@@ -1384,6 +1408,11 @@ add_mount() {
         die "$path lies inside the install directory $INSTALL_REAL, which a container may only read; point KNOSSOS_DATA_DIR, KNOSSOS_ROOTS_FILE or the project elsewhere."
     fi
     guard_writable "$path" "$2"
+    # A project in a graph directory is read-only only in its own container:
+    # every other container writes it through the graph mount.
+    if [ "$2" = project ] && graph=$(writer_of "$path"); then
+        die "the project root $path lies in the graph directory $graph, which every container of that graph can write, so it would not stay read-only; keep projects outside the Knossos data directory, or pick another --data-dir.$(graph_note "$graph")"
+    fi
     kept=''
     while IFS='|' read -r mounted rw; do
         [ -n "$mounted" ] || continue
@@ -1595,7 +1624,7 @@ place_output() {
         die "$dest lies in the Knossos data directory, which a container can write; write it somewhere else."
     fi
     if graph=$(writer_of "$parent"); then
-        die "$dest lies in the graph directory $graph, which a container can write; write it somewhere else."
+        die "$dest lies in the graph directory $graph, which a container can write; write it somewhere else.$(graph_note "$graph")"
     fi
     [ -z "$OUTPUT_DEST" ] || die "a call can name one file to write in container mode."
     scratch
@@ -1657,7 +1686,7 @@ take_input() {
     # Not in a mount, so the host copies it in: never from a directory a
     # container may write, where the name could lead anywhere by now.
     if graph=$(writer_of "$in_dir"); then
-        die "$file lies in the graph directory $graph, which a container can write, outside this call's mounts; copy it somewhere else first."
+        die "$file lies in the graph directory $graph, which a container can write, outside this call's mounts; copy it somewhere else first.$(graph_note "$graph")"
     fi
     scratch
     INPUTS=$((INPUTS + 1))

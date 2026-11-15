@@ -831,18 +831,15 @@ graph_mounted() {
     esac
     return 1
 }
-mkdir -p "$DATA/projects/inside"
 all_graph=yes
-for layout in default inside-graph roots-apart; do
+for layout in default roots-apart; do
     reset_docker
     case $layout in
         default) (cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1) ;;
-        inside-graph) (cd "$DATA/projects/inside" && kn version </dev/null >/dev/null 2>&1) ;;
         roots-apart) (cd "$PROJECT" && KNOSSOS_ROOTS_FILE="$ROOTS" env -u KNOSSOS_DATA_DIR "$LAUNCHER" version </dev/null >/dev/null 2>&1) ;;
     esac
     if ! graph_mounted "$DATA" "$INSTALL"; then all_graph=no; printf '  %s: %s\n' "$layout" "$(calls)"; fi
 done
-rm -rf "$DATA/projects"
 if [ "$all_graph" = yes ]; then pass 'the graph directory is always its own read-write mount, the install directory read-only below it'; else fail 'a layout ran without the graph directory as its own mount'; fi
 
 # ---- a reused container runs the image, network and user that were checked --------------
@@ -1287,6 +1284,45 @@ refused 'a project path through a link planted in the graph directory' \
     sh -c 'cd / && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$1" scan "$2/proj" </dev/null' _ "$LAUNCHER" "$DATA"
 rm -f "$DATA/proj"
 rm -rf "$ESCAPE"
+
+# ---- a project inside a graph directory is never mounted ----------------------------------
+
+# Its own container would see it read-only, but every other container of the
+# graph writes it through the graph mount.
+mkdir -p "$DATA/projects/inside"
+refused 'a project root inside the default graph directory' \
+    "the project root $DATA/projects/inside lies in the graph directory $DATA, which every container of that graph can write, so it would not stay read-only; keep projects outside the Knossos data directory, or pick another --data-dir." \
+    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$DATA/projects/inside" "$LAUNCHER"
+reset_docker
+out=$(cd / && kn allow-root "$DATA/projects/inside" --execute </dev/null 2>&1); status=$?
+case $out in *"the project root $DATA/projects/inside lies in the graph directory $DATA"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && ! grep -qF "$DATA/projects/inside" "$INSTALL/roots.json"; then pass 'allow-root refuses a project inside a graph directory and records nothing'; else fail "allow-root inside graph: $status, $out"; fi
+rm -rf "$DATA/projects"
+
+# ---- graph records: named in a refusal, and dropped once their directory is gone ----------
+
+OLD_GRAPH="$WORK/old graph"
+reset_docker
+(cd "$PROJECT" && KNOSSOS_DATA_DIR="$OLD_GRAPH" env -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version </dev/null >/dev/null 2>&1)
+OLD_RECORD="$INSTALL/containers/graph-$(hash12 "$OLD_GRAPH")"
+if [ -f "$OLD_RECORD" ]; then pass 'a graph directory is recorded at its first use'; else fail "no record for $OLD_GRAPH"; fi
+refused 'an output in a recorded graph directory, naming the record' \
+    "$OLD_GRAPH/brief.md lies in the graph directory $OLD_GRAPH, which a container can write; write it somewhere else. $OLD_RECORD records that this installation used $OLD_GRAPH as a graph directory; if it no longer is one, remove that file to lift this refusal." \
+    sh -c 'cd "$1" && env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$2" export-agent-brief "$1" "--out=$3/brief.md" </dev/null' _ "$PROJECT" "$LAUNCHER" "$OLD_GRAPH"
+# Still there without its database: kept, as a container of that graph could have deleted it.
+rm -f "$OLD_GRAPH/knossos.sqlite"
+reset_docker
+(cd "$PROJECT" && TMPDIR="$WORK/tmp" FAKE_EXEC_WRITE=b kn export-agent-brief "$PROJECT" "--out=$OLD_GRAPH/brief.md" </dev/null >/dev/null 2>&1); status=$?
+if [ "$status" -eq 1 ] && [ -f "$OLD_RECORD" ] && [ ! -e "$OLD_GRAPH/brief.md" ]; then pass 'a record whose directory still exists is kept, database or not'; else fail "record kept: $status"; fi
+# Gone: the record goes at the next call, and the folder made again later is an ordinary one.
+rm -rf "$OLD_GRAPH"
+reset_docker
+(cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+mkdir -p "$OLD_GRAPH"
+reset_docker
+(cd "$PROJECT" && TMPDIR="$WORK/tmp" FAKE_EXEC_WRITE=b kn export-agent-brief "$PROJECT" "--out=$OLD_GRAPH/brief.md" </dev/null >/dev/null 2>&1); status=$?
+if [ ! -e "$OLD_RECORD" ] && [ "$status" -eq 0 ] && [ "$(cat "$OLD_GRAPH/brief.md" 2>/dev/null)" = b ]; then pass 'a record whose directory is gone is dropped, and that path is ordinary again'; else fail "stale record: $status, $(ls "$INSTALL/containers")"; fi
+rm -rf "$OLD_GRAPH"
 
 # allow-root: validated and written on the host; no container runs for it.
 mkdir -p "$WORK/second project"
