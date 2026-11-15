@@ -76,9 +76,17 @@ nothing:
 | ----------- | ------------------------------------------------------------------------------------------------------ |
 | `0`         | You are on the latest release: `Knossos <version> is the latest version.`                              |
 | `10`        | A newer release exists: `Knossos <latest> is available (you have <current>): run knossos self-update.` |
-| other       | The lookup failed, and the message says why.                                                           |
+| `2`         | Native mode: the lookup failed, and an error line says why.                                            |
+| `1`         | Container mode: the lookup failed: `knossos: could not look up the latest release`.                    |
 
 With `--json` the answer is an object with `current`, `latest` and `update`.
+
+In container mode the check runs on the host, in the update helper, and what
+curl or wget printed about the failure comes before that line.
+In native mode `--check --quiet`, the background form, prints nothing and
+exits `0` whatever happens. In container mode a failed lookup still exits `1`,
+with curl's or wget's message on stderr. The session hook discards the output
+and ignores the status.
 
 ## Roll back
 

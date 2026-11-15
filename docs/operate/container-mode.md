@@ -102,8 +102,16 @@ The install directory holds the allow-list (`roots.json`), the enricher list
   gives the container the project it runs in, and the second path, the new
   location, is not mounted there. In container mode you name the old root by
   its absolute path, and the new one must be an existing directory.
-- **A launcher killed with SIGKILL leaves its command running** in the
-  container until the idle stop. The launcher passes on the signals it can catch.
+- **Signals.** The runtime's exec client does not pass a signal on, so the
+  launcher catches SIGINT, SIGTERM and SIGHUP itself and sends the same signal
+  to the command in the container. Ctrl-C on a scan stops it there and the
+  launcher exits with 130, SIGTERM with 143, and the same holds for
+  `knossos serve`. SIGKILL cannot be caught: the launcher dies, the command
+  keeps running in the container, and the exec client it started keeps its
+  stdin open. A scan then runs to its end; `serve` ends when whoever started it
+  closes its stdin. A signal that was already ignored when the launcher
+  started, as SIGINT is for a job a script sends to the background, cannot be
+  caught either.
 
 ## Refusals
 

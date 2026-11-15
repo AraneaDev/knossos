@@ -393,7 +393,10 @@ leaves the report healthy. To rebuild by hand, run
 `target/release/knossos-rust-worker` into `workers/rust/bin/`.
 
 `doctor` verifies the effective runtime, the workers, the protocol, the
-database, the migrations and whether the data directory is writable. CI runs on
+database, the migrations and whether the data directory is writable. Its
+`installation` line says what is running: `source checkout at <path>`,
+`native <version> at <path>`, or
+`container <version> from <image>, installed in <install dir>`. CI runs on
 Linux. On Windows, use Docker Desktop or WSL2; native Windows is untested.
 `change_impact` still returns static impact when a scanned root is not a Git
 repository.

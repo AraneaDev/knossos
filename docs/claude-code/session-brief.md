@@ -147,6 +147,14 @@ Entry and Hubs appear only when the graph is `fresh`: both are read from the
 graph tables, so on a stale graph they could describe code that no longer
 exists.
 
+**The update notice**: one more line at the end,
+`knossos <new> is available (you have <old>): run knossos self-update`, when the
+last daily check found a newer release. The brief only reads that cached answer
+and never asks the network itself; the hook refreshes it in the background
+after the brief is out, at most once a day. `KNOSSOS_NO_UPDATE_CHECK=1` in the
+environment Claude Code runs the hooks in turns the check and the line off. See
+[the update notice](../operate/updating.md#the-update-notice).
+
 The brief leaves out file and component counts and the language mix. It is
 billed on every session start, resume and compact, and those figures change no
 decision the model is about to make. The [agent brief](../agents/agent-integration.md#agent-brief)
