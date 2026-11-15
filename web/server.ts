@@ -31,6 +31,7 @@ import type { WebTheme } from '../hooks/lib/themes'
 import { handlersOf } from '../hooks/mod/actions'
 import { focusLanded, focusMoved, wheelScrolled } from '../hooks/mod/navigate-actions'
 import { stopClocks } from '../hooks/mod/motion'
+import { endDeliberately } from '../hooks/mod/start'
 import { endWatcher } from '../hooks/mod/port'
 import { startUp } from '../hooks/mod/session'
 import { reset } from '../hooks/mod/state'
@@ -325,6 +326,8 @@ export async function startServer(o: {
     closing ??= (async () => {
       clearInterval(headPoll)
       stopClocks()
+      // A claim of the folder still running would go on to a first scan for a server that is gone.
+      endDeliberately()
       await endWatcher(io).catch(() => undefined)
       for (const res of streams) res.end()
       await new Promise<void>(resolve => server.close(() => resolve()))

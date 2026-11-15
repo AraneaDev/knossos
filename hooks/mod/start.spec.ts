@@ -3,7 +3,7 @@ import type { AllowState, Dashboard, RescanState } from '../../types'
 import { NO_CHANGES } from '../lib/session-changes'
 import { LIVE_OFF } from '../lib/live'
 import type { Port } from './port'
-import { startDeliberately } from './start'
+import { endDeliberately, startDeliberately } from './start'
 import { mod, reset } from './state'
 
 const ROOT = '/work/app'
@@ -90,6 +90,33 @@ function fakePort(init: { dashboard?: Dashboard | null; answers?: Record<string,
 beforeEach(() => reset(options))
 
 describe('startDeliberately', () => {
+    it('acts on nothing a claim answers after its server stopped, and a later start in the process claims again', async () => {
+        const port = fakePort({ answers: { claim: claim('added') } })
+        const run = port.io.process.run.bind(port.io.process)
+        let answer = () => undefined as void
+        const held = new Promise<void>(resolve => (answer = resolve))
+        port.io.process.run = (async (argv: string[], options?: unknown) => {
+            if (argv[2] === 'claim') await held
+            return run(argv, options as never)
+        }) as typeof port.io.process.run
+        const first = startDeliberately(port.io)
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(mod.deliberate.claiming).toBe(true)
+        // The server stops while its claim runs; another start in the same process begins before the answer comes.
+        endDeliberately()
+        expect(mod.deliberate.claiming).toBe(false)
+        const second = fakePort({ answers: { claim: claim('added') } })
+        const later = startDeliberately(second.io)
+        expect(mod.deliberate.claiming).toBe(true)
+        answer()
+        await first
+        // No first scan for the stopped server, and the later start is still the one claiming.
+        expect(port.subs()).toEqual(['claim'])
+        await later
+        expect(second.subs().slice(0, 2)).toEqual(['claim', 'scan'])
+        expect(mod.deliberate.claiming).toBe(false)
+    })
+
     it('claims the folder with --execute, scans the claimed root, then loads the dashboard, in that order', async () => {
         const port = fakePort({ answers: { claim: claim('added') } })
         await startDeliberately(port.io)
