@@ -14,6 +14,8 @@ Three ways to see the same pane, and what each is for:
 - `/knossos` in Claude Code: the pane beside a session, with the band and the
   messages for the model.
 
+![The pane in a terminal on the Hubs tab, on the terminal's own dark background: the hubs list with ArchitectureQueryService marked, its detail and dependency neighbourhood beside the list, and the files most depended on below](../images/claude-code/terminal.png)
+
 ## Starting it
 
 Run it in the project you want to see, or name the project:
