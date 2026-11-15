@@ -153,12 +153,14 @@ The known limits:
   where the address points, with no proof first: the page's code comes from
   whoever answers there.
 - A page that moves to a server that proved itself sends the token once more,
-  in the address of that page load. A reload of the old address reaches the
-  server that took over, which listens there with directions, and its redirect
-  to its own address carries the token as the reload did. Either page proves
+  in the address of that page load. After a takeover from a
+  pane that was suspended or stuck, the server that took over listens on the
+  old port with directions once that port is free. A reload of the old address
+  then reaches it, and its redirect to its own address carries the token as
+  the reload did. Either page proves
   its server before it opens its stream.
-- A browser without WebCrypto cannot check the proof, and connects without it,
-  as before the proof. Current browsers provide it on `127.0.0.1`.
+- A browser without WebCrypto cannot check the proof. It connects without it,
+  as before the proof, and follows a move to another port unproven. Current browsers provide it on `127.0.0.1`.
 - The proof is made on one connection and the token sent on the next. A
   server that ends in the milliseconds between, with another user's process
   binding its port in that moment, would receive the token. The same holds
