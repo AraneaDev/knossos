@@ -1,0 +1,582 @@
+/*
+ * The site dressed as the web pane (web/public/style.css): obsidian chrome,
+ * thin slate edges, the mint accent with the violet second, monospace for
+ * everything that labels or navigates. Body text stays in the system's sans
+ * face so a long page reads comfortably. No web fonts: every face here is one
+ * the reader's system already has.
+ */
+
+:root {
+    --kn-mono:
+        ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas,
+        monospace;
+    --kn-sans:
+        ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+
+    /* The pane's frame tokens. */
+    --kn-chrome: #08090b;
+    --kn-edge: #33424b;
+    --kn-muted: #8b96a6;
+    --kn-accent: #3bff9e;
+    --kn-violet: #7a5cff;
+    --kn-chrome-text: #edf3f6;
+
+    --vp-font-family-base: var(--kn-sans);
+    --vp-font-family-mono: var(--kn-mono);
+}
+
+/* Light: the pane's light theme is white with dark ink; mint on white is
+ * unreadable, so the accent deepens and the brand buttons keep the dark chrome. */
+:root {
+    --kn-frame-accent: #00a862;
+    --kn-frame-violet: #5b3fe0;
+
+    --vp-c-bg: #fbfcfd;
+    --vp-c-bg-alt: #f1f4f6;
+    --vp-c-bg-elv: #ffffff;
+    --vp-c-bg-soft: #e8edf0;
+
+    --vp-c-border: #c5cfd5;
+    --vp-c-divider: #d8e0e4;
+    --vp-c-gutter: #d8e0e4;
+
+    --vp-c-text-1: #08090b;
+    --vp-c-text-2: #44505c;
+    --vp-c-text-3: #6b7682;
+
+    --vp-c-brand-1: #00744a;
+    --vp-c-brand-2: #00603d;
+    --vp-c-brand-3: #08090b;
+    --vp-c-brand-soft: rgba(0, 168, 98, 0.12);
+
+    --vp-code-color: #4a2fd0;
+    --vp-code-bg: rgba(91, 63, 224, 0.08);
+
+    --vp-button-brand-text: #3bff9e;
+    --vp-button-brand-bg: #08090b;
+    --vp-button-brand-hover-text: #3bff9e;
+    --vp-button-brand-hover-bg: #1b2328;
+    --vp-button-brand-active-text: #3bff9e;
+    --vp-button-brand-active-bg: #33424b;
+
+    --vp-home-hero-name-color: var(--vp-c-text-1);
+}
+
+.dark {
+    --kn-frame-accent: var(--kn-accent);
+    --kn-frame-violet: var(--kn-violet);
+
+    --vp-c-bg: #08090b;
+    --vp-c-bg-alt: #0b0d10;
+    --vp-c-bg-elv: #101418;
+    --vp-c-bg-soft: #12171b;
+
+    --vp-c-border: #33424b;
+    --vp-c-divider: #1f282e;
+    --vp-c-gutter: #000000;
+
+    --vp-c-text-1: #edf3f6;
+    --vp-c-text-2: #a9b3c0;
+    --vp-c-text-3: #8b96a6;
+
+    --vp-c-brand-1: #3bff9e;
+    --vp-c-brand-2: #7dffbd;
+    --vp-c-brand-3: #3bff9e;
+    --vp-c-brand-soft: rgba(59, 255, 158, 0.12);
+
+    --vp-code-color: #b8a8ff;
+    --vp-code-bg: rgba(122, 92, 255, 0.12);
+    --vp-code-block-bg: #0e1215;
+
+    --vp-button-brand-text: #08090b;
+    --vp-button-brand-bg: #3bff9e;
+    --vp-button-brand-hover-text: #08090b;
+    --vp-button-brand-hover-bg: #7dffbd;
+    --vp-button-brand-active-text: #08090b;
+    --vp-button-brand-active-bg: #2be08a;
+    --vp-button-alt-bg: #12171b;
+    --vp-button-alt-border: #33424b;
+    --vp-button-alt-hover-bg: #1a2126;
+    --vp-button-alt-hover-border: #4a5c67;
+
+    --vp-home-hero-name-color: var(--kn-accent);
+}
+
+/* The page's ground: the pane's faint grid and two glows, in dark only. */
+.dark body {
+    background-color: var(--kn-chrome);
+    background-image:
+        radial-gradient(ellipse at 0% 0%, #3bff9e0b, transparent 42%),
+        radial-gradient(ellipse at 100% 100%, #7a5cff10, transparent 42%),
+        linear-gradient(#edf3f603 1px, transparent 1px),
+        linear-gradient(90deg, #edf3f603 1px, transparent 1px);
+    background-size:
+        auto,
+        auto,
+        40px 40px,
+        40px 40px;
+    background-attachment: fixed;
+}
+
+.dark .VPContent,
+.dark .VPFooter {
+    background: transparent;
+}
+
+/* ---- Navigation: the pane's header and tab row. ---- */
+
+.VPNavBar,
+.VPNavBar .title,
+.VPNavBarMenuLink,
+.VPNavBarMenuGroup,
+.VPFlyout,
+.VPSidebar,
+.VPLocalNav,
+.VPDocAside,
+.VPDocFooter,
+.VPFooter,
+.VPNavScreen,
+.DocSearch-Button,
+.VPNavBarSearchButton {
+    font-family: var(--kn-mono);
+}
+
+.VPNavBar .title {
+    gap: 2px;
+    font-size: 15px;
+    font-weight: 750;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.VPNavBar .logo {
+    height: 30px;
+    margin-right: 10px;
+    filter: drop-shadow(0 0 10px #3bff9e1f);
+}
+
+.VPNavBarMenuLink,
+.VPNavBarMenuGroup .text {
+    font-size: 13px;
+    letter-spacing: 0.02em;
+}
+
+.VPNavBarMenuLink.active {
+    color: var(--vp-c-text-1);
+    box-shadow: inset 0 -2px var(--kn-frame-accent);
+}
+
+.dark .VPNavBar:not(.home.top) .divider-line,
+.dark .VPNavBar.has-sidebar .divider-line {
+    background-color: var(--kn-edge);
+}
+
+.dark .VPNavBar:not(.home.top) .content-body,
+.dark .VPNavBar.has-sidebar .content-body {
+    background-color: rgba(8, 9, 11, 0.92);
+}
+
+/* The sidebar reads like the pane's tab list: dim until marked. */
+.VPSidebar {
+    border-right: 1px solid var(--vp-c-divider);
+}
+
+.dark .VPSidebar {
+    background-color: #0b0d10;
+}
+
+.VPSidebarItem.level-0 > .item > .text,
+.VPSidebarItem.level-0 > .item > .link > .text {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--vp-c-text-3);
+}
+
+.VPSidebarItem .text {
+    font-size: 13px;
+}
+
+.VPSidebarItem.is-active > .item > .indicator {
+    background-color: var(--kn-frame-accent);
+}
+
+.VPDocOutlineItem .outline-link,
+.VPDocAsideOutline .outline-title {
+    font-size: 12.5px;
+}
+
+.VPDocAsideOutline .outline-marker {
+    background-color: var(--kn-frame-accent);
+}
+
+/* ---- Pages ---- */
+
+.vp-doc {
+    font-size: 16px;
+    line-height: 1.7;
+}
+
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3,
+.vp-doc h4 {
+    font-family: var(--kn-mono);
+    letter-spacing: -0.01em;
+}
+
+.vp-doc h1 {
+    font-size: 30px;
+    font-weight: 700;
+}
+
+/* A card's rule title: a thin edge with the pane's short accent bar. */
+.vp-doc h2 {
+    position: relative;
+    border-top-color: var(--vp-c-border);
+    font-size: 21px;
+    font-weight: 700;
+}
+
+.vp-doc h2::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 0;
+    width: 54px;
+    height: 2px;
+    background: var(--kn-frame-accent);
+}
+
+.vp-doc h3 {
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.vp-doc h3::before {
+    content: "\203A\00a0";
+    color: var(--kn-frame-violet);
+}
+
+.vp-doc .header-anchor {
+    font-family: var(--kn-mono);
+}
+
+.vp-doc a {
+    text-underline-offset: 3px;
+}
+
+.vp-doc table {
+    font-family: var(--kn-mono);
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.vp-doc th {
+    color: var(--vp-c-text-2);
+    font-weight: 600;
+    text-transform: lowercase;
+}
+
+.vp-doc tr:nth-child(2n) {
+    background-color: transparent;
+}
+
+.vp-doc th,
+.vp-doc td {
+    border-color: var(--vp-c-divider);
+}
+
+.dark .vp-doc table,
+.dark .vp-doc th {
+    background-color: #0b0d10;
+}
+
+.vp-doc :not(pre) > code {
+    font-size: 0.86em;
+}
+
+.vp-doc div[class*="language-"] {
+    border: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc .custom-block {
+    border-radius: 4px;
+    border-left: 2px solid var(--kn-frame-violet);
+}
+
+/* Screenshots: framed as the pane frames itself, opened full size on a press. */
+.vp-doc img {
+    display: block;
+    width: 100%;
+    margin: 20px 0 8px;
+    border: 1px solid var(--vp-c-border);
+    border-radius: 6px;
+    cursor: zoom-in;
+}
+
+.vp-doc img:focus-visible {
+    outline: 2px solid var(--kn-frame-accent);
+    outline-offset: 2px;
+}
+
+/* A dark and a light shot of one view: the reader's appearance picks one. The
+ * fragments are GitHub's, so the same Markdown does the same thing there. */
+.dark .vp-doc img[src*="#gh-light-mode-only"],
+html:not(.dark) .vp-doc img[src*="#gh-dark-mode-only"] {
+    display: none;
+}
+
+.knossos-viewing,
+.knossos-viewing body {
+    overflow: hidden;
+}
+
+#knossos-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    overflow: auto;
+    padding: 48px 16px 16px;
+    background: rgba(8, 9, 11, 0.94);
+    text-align: center;
+    cursor: zoom-out;
+}
+
+#knossos-viewer img {
+    display: inline-block;
+    max-width: none;
+    border: 1px solid #33424b;
+    border-radius: 6px;
+    cursor: zoom-in;
+}
+
+#knossos-viewer img.zoomed {
+    cursor: zoom-out;
+}
+
+.knossos-viewer-close {
+    position: fixed;
+    top: 10px;
+    right: 16px;
+    padding: 4px 10px;
+    border: 1px solid #33424b;
+    border-radius: 4px;
+    background: #08090b;
+    color: #edf3f6;
+    font-family: var(--kn-mono);
+    font-size: 13px;
+}
+
+.knossos-viewer-close:hover,
+.knossos-viewer-close:focus-visible {
+    color: #3bff9e;
+    outline: none;
+    border-color: #3bff9e;
+}
+
+/* ---- The front page ---- */
+
+.VPHero .name,
+.VPHero .text,
+.VPHero .tagline,
+.VPButton {
+    font-family: var(--kn-mono);
+}
+
+.VPHero .name {
+    font-size: 15px;
+    line-height: 1.4;
+    font-weight: 750;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+}
+
+.VPHero .text {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.VPHero .tagline {
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--vp-c-text-2);
+}
+
+.VPButton {
+    border-radius: 4px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.02em;
+}
+
+.VPHome .vp-doc h2 {
+    margin-top: 56px;
+}
+
+/* The web pane's terminal frame: a gradient edge, two clipped corners and the
+ * accent bar at the top left. */
+.kn-frame {
+    position: relative;
+    margin: 0 0 12px;
+    padding: 1px;
+    background: linear-gradient(
+        120deg,
+        #3bff9e70,
+        #33424b 24%,
+        #33424b 76%,
+        #7a5cff90
+    );
+    clip-path: polygon(
+        0 0,
+        calc(100% - 14px) 0,
+        100% 14px,
+        100% 100%,
+        14px 100%,
+        0 calc(100% - 14px)
+    );
+}
+
+.kn-frame::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 22px;
+    width: 54px;
+    height: 2px;
+    background: var(--kn-accent);
+}
+
+.vp-doc .kn-frame img {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    clip-path: polygon(
+        0 0,
+        calc(100% - 13px) 0,
+        100% 13px,
+        100% 100%,
+        13px 100%,
+        0 calc(100% - 13px)
+    );
+}
+
+.kn-caption {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 4px 16px;
+    margin: 0 0 32px;
+    font-family: var(--kn-mono);
+    font-size: 13px;
+    color: var(--vp-c-text-3);
+}
+
+.vp-doc .kn-caption a {
+    color: var(--vp-c-text-2);
+    text-decoration: none;
+}
+
+.vp-doc .kn-caption a:hover {
+    color: var(--vp-c-brand-1);
+}
+
+.kn-tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    margin: 24px 0 8px;
+}
+
+.kn-tile {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--vp-c-border);
+    border-radius: 8px;
+    background: var(--vp-c-bg-alt);
+    overflow: hidden;
+}
+
+.dark .kn-tile {
+    background: #0b0d10;
+    box-shadow: 0 8px 28px #00000030;
+}
+
+.kn-tile-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px 0;
+    font-family: var(--kn-mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--vp-c-text-1);
+    white-space: nowrap;
+}
+
+.kn-tile-title .glyph {
+    color: var(--kn-frame-accent);
+    font-weight: 400;
+}
+
+.kn-tile-title::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--vp-c-border);
+}
+
+.vp-doc .kn-tile img {
+    width: 100%;
+    aspect-ratio: 5 / 4;
+    margin: 12px 0 0;
+    border: 0;
+    border-top: 1px solid var(--vp-c-divider);
+    border-bottom: 1px solid var(--vp-c-divider);
+    border-radius: 0;
+    object-fit: cover;
+    object-position: right top;
+}
+
+.vp-doc .kn-tile.kn-tile-web img {
+    object-position: left top;
+}
+
+.kn-tile p {
+    margin: 12px 16px 4px;
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.vp-doc .kn-tile .kn-more {
+    margin: 0 16px 14px;
+    font-family: var(--kn-mono);
+    font-size: 13px;
+}
+
+@media (max-width: 640px) {
+    .kn-tiles {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .VPHero .tagline {
+        font-size: 15px;
+    }
+
+    .vp-doc h2 {
+        font-size: 19px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .VPButton,
+    .VPNavBarMenuLink {
+        transition: none;
+    }
+}
+
+/* The outline's fade is a solid block over the pane's grid ground; drop it. */
+.dark .VPDoc .aside-curtain {
+    display: none;
+}

@@ -68,6 +68,20 @@ export default [
         },
     },
     {
+        // The site's theme, which runs in the reader's browser.
+        files: ["website/.vitepress/theme/*.mjs"],
+        languageOptions: {
+            ecmaVersion: 2024,
+            sourceType: "module",
+            globals: {
+                document: "readonly",
+                setTimeout: "readonly",
+                Element: "readonly",
+                HTMLImageElement: "readonly",
+            },
+        },
+    },
+    {
         // The configuration files at the root, which Node loads as modules.
         files: ["*.config.{js,mjs}", "workers/typescript/vitest.config.js"],
         languageOptions: {
