@@ -99,13 +99,14 @@ export function pathSegments(path: string, width: number, loc: Loc | null = null
 /**
  * A place (`path:line`, maybe ` · ` and what recorded it) in `width` cells
  * as a table or list cell shows one: cut from the front, so the file name
- * stays (the file name alone when that is all the cells hold); its folder
+ * stays (the file name alone when the cells hold no `…/` before it); its folder
  * dim, its file name and line bright (opening the file when `loc` is given),
  * anything after ` · ` dim.
  */
 export function placeSegments(place: string, width: number, loc: Loc | null = null): Segment[] {
   const file = fileOf(place)
-  const text = cells(place) <= width ? place : cells(file) === width ? file : fitStart(place, width)
+  // One cell more than the file name holds only `…` against it, which says nothing a folder would: the file name alone.
+  const text = cells(place) <= width ? place : width - cells(file) === 0 || width - cells(file) === 1 ? file : fitStart(place, width)
   const said = text.indexOf(' · ')
   const where = said < 0 ? text : text.slice(0, said)
   const cut = where.lastIndexOf('/') + 1

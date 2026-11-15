@@ -307,7 +307,7 @@ export type EntrySpec = { main: number; boundary: number; place: number }
  * One issue row: `need` is how wide its main text is uncut, `marks` the cells of it its marks take; `loc` makes its
  * place a link, and `whole` asks the place's share for its whole path, not only its file name (its folders tell it apart).
  */
-export type Entry = { selected?: boolean; mark?: Segment; need: number; marks?: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; whole?: true; loc?: Loc | null }
+export type Entry = { selected?: boolean; mark?: Segment; need: number; marks?: number; main: (width: number) => Segment[]; boundary?: string | null; place: string; whole?: true; loc?: Loc | null; /** Two names in its main text (a source and a target): the names win the row ({@link namesFirst}). */ names?: 2 }
 
 /**
  * Fits issue rows to `columns`, packed to the left like a table: the main
@@ -342,7 +342,26 @@ export function entrySpec(columns: number, entries: Entry[], hues: Hues = NO_HUE
     // Then the file name is cut, down to the fewest cells a place is shown in.
     return place - (floor - room) >= PLACE_MIN ? { main: floor, boundary, place: place - (floor - room) } : null
   }
+  if (entries.some(e => e.names === 2)) return namesFirst(columns, { main: mainNeed, floor, boundary: boundaryNeed, place: placeWhole })
   return attempt(boundaryNeed, placeNeed) ?? attempt(0, placeNeed) ?? attempt(0, 0) ?? { main: Math.max(1, columns - MARK), boundary: 0, place: 0 }
+}
+
+/**
+ * Fits rows of two names (a source and a target), where the names are what a
+ * reader scans for and win the row. As it narrows, the boundary chip after
+ * the names goes first, then the place's folders, then its file name is cut
+ * from the front, keeping its end and its line, down to {@link PLACE_MIN};
+ * only then do the names give up cells, evenly, to their floor, and past it
+ * the place goes.
+ */
+function namesFirst(columns: number, need: { main: number; floor: number; boundary: number; place: number }): EntrySpec {
+  const room = (boundary: number, place: number) => columns - MARK - (boundary > 0 ? boundary + 1 : 0) - (place > 0 ? place + 1 : 0)
+  if (need.boundary > 0 && room(need.boundary, need.place) >= need.main) return { main: need.main, boundary: need.boundary, place: need.place }
+  const least = Math.min(PLACE_MIN, need.place)
+  const place = Math.min(need.place, columns - MARK - need.main - 1)
+  if (need.place === 0 || place >= least) return { main: Math.min(need.main, room(0, need.place === 0 ? 0 : place)), boundary: 0, place: need.place === 0 ? 0 : place }
+  if (room(0, least) >= need.floor) return { main: room(0, least), boundary: 0, place: least }
+  return { main: Math.max(1, Math.min(need.main, columns - MARK)), boundary: 0, place: 0 }
 }
 
 /** One issue row, its columns fitted by {@link entrySpec}; the marked one on the selection's tint. */
@@ -420,6 +439,7 @@ function violationEntries(violations: ViolationLine[], selected: number, hues: H
     need: cells(v.source.name) + 3 + (v.targetBoundary === null ? 0 : 2) + cells(v.target),
     // The arrow and the target's swatch are not text to cut: the two names keep their least beside them.
     marks: 3 + (v.targetBoundary === null ? 0 : 2),
+    names: 2,
     main: width => {
       // The target's boundary on a swatch before its name: the name stays in the text tone.
       const swatch: Segment[] = v.targetBoundary === null ? [] : [{ text: `${SWATCH} `, color: boundaryColour(v.targetBoundary, hues) ?? FAINT }]

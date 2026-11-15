@@ -1346,6 +1346,7 @@ js	hooks/lib/gauge.ts
 js	hooks/lib/glyphs.spec.ts
 js	hooks/lib/hover.spec.ts
 js	hooks/lib/hover.ts
+js	hooks/lib/issues-places.spec.ts
 js	hooks/lib/layout.spec.ts
 js	hooks/lib/layout.ts
 js	hooks/lib/live.spec.ts

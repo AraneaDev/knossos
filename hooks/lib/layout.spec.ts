@@ -710,7 +710,7 @@ describe('the issues tab', () => {
   it('lists violations, diagnostics, dead code, the complexity hotspots and the files over budget, each with its place', () => {
     const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
     expect(text).toMatch(/Policy violations +✗ 7/)
-    expect(text).toContain('›✗ ArchitectureQueryService::fileMetr… → ■ FactCollector ■ core ArchitectureQueryService.php:191')
+    expect(text).toContain('›✗ ArchitectureQueryService::fileMetrics → ■ FactCollector ArchitectureQueryService.php:191')
     expect(text).toContain('+6 more')
     expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
