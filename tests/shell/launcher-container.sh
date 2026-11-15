@@ -683,6 +683,24 @@ else
     fail "mismatch on reuse: $status, $out, $(calls)"
 fi
 
+# ---- a root with a colon is never passed as an extra allowed root ------------------------
+
+mkdir -p "$WORK/c:olon/proj"
+ln -s "$WORK/c:olon/proj" "$WORK/colon link"
+printf '{"roots": ["%s"]}\n' "$WORK/colon link" > "$DATA/roots.json"
+reset_docker
+out=$(cd "$WORK/c:olon/proj" && kn version </dev/null 2>&1); status=$?
+exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
+if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$WORK/c:olon/proj,target=$WORK/c:olon/proj]" "$FAKE_DOCKER_STATE/calls"; then
+    case $exec_line in
+        *KNOSSOS_ALLOWED_ROOTS*) fail "a root with a colon was passed in KNOSSOS_ALLOWED_ROOTS: $exec_line" ;;
+        *) pass 'a root with a colon, listed through a symlink, is mounted but not added to KNOSSOS_ALLOWED_ROOTS' ;;
+    esac
+else
+    fail "colon root: $status, $out"
+fi
+printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$DATA/roots.json"
+
 # ---- install.json problems -------------------------------------------------------------
 
 printf '{"mode": "container", "layout": "separate", "runtime": "docker"}\n' > "$INSTALL/install.json"

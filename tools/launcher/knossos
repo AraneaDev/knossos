@@ -632,9 +632,13 @@ terminal=no
 if wants_terminal "${1-}"; then terminal=yes; fi
 set -- "$NAME" "$IN_IMAGE/tools/launcher/idle-stop" --run "$CALL_ID" "$IN_IMAGE/bin/knossos" "$@"
 # A root the roots file names through a symlink gets its physical form added
-# to the allowed roots (see below).
+# to the allowed roots (see below), but not a root with a colon in it: the
+# variable is a list split on `:`, so it would grant the pieces, two roots
+# nobody listed.
 extra_root=no
-if [ -n "$LISTED_AS" ] && [ "$LISTED_AS" != "$ROOT" ]; then extra_root=yes; fi
+if [ -n "$LISTED_AS" ] && [ "$LISTED_AS" != "$ROOT" ]; then
+    case $ROOT in *:*) ;; *) extra_root=yes ;; esac
+fi
 # A caller's other KNOSSOS_* settings reach the command too, by name, as they
 # would in native mode.
 for variable in $(env | sed -n 's/^\(KNOSSOS_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u); do
