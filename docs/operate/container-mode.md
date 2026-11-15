@@ -109,11 +109,16 @@ anything around it.
   Nothing in a graph directory is read, run or trusted. The one exception is
   the scratch copy of a file you asked a command to write, handled as
   [described below](#commands-that-work-differently).
-- **A graph directory holds graph data only when a container is given it.**
+- **A graph directory holds graph data only when a container starts with it.**
   Before any container starts with a graph directory, the launcher checks that
-  it holds only what Knossos puts there. So no install directory of another
-  installation, and nothing else of yours, is ever in a container's read-write
-  mount.
+  it holds only what Knossos puts there, so no install directory of another
+  installation, and nothing else of yours, is in its read-write mount at that
+  moment. A container that already runs keeps its mount: an install directory
+  put into its graph while it runs is caught by the installer, which asks the
+  runtime about running containers, except in two cases. One is an install
+  directory made there in the instant between that check and a container's
+  start; the other is a container that is not Knossos's own (the launcher asks
+  only about Knossos containers).
 - **No network** inside the container.
 
 ### What it does not protect
@@ -240,7 +245,11 @@ container. Messages begin with `knossos:`.
 - **`--db` outside the graph directory.**
   `--db names <path>, outside the graph directory <dir>; in container mode the database lives there, so point KNOSSOS_DATA_DIR at its directory instead.`
 - **The runtime is not running.**
-  `the docker daemon is not running; start it and try again.` Or
+  `the docker daemon is not running; start it and try again.` A daemon that
+  answers `info` but not `ps` refuses a container start and the update helper
+  too, since the launcher cannot then tell whether another installation's
+  container can write the install directory:
+  `could not ask docker which containers run, ...`. Or
   `the image <image> is gone from this host: run knossos self-update to fetch it again, or re-run the installer.` The launcher never pulls an image behind
   your back.
 - **A changed install directory.**
@@ -294,9 +303,16 @@ command has succeeded. These options are handled this way:
 - `export-notes --file=FILE` and `notes-export --file=FILE`, which write
   `knossos-notes.json` when no `--file` is given
 
-Name the file as `--option=PATH`, as the CLI itself reads it. The host takes
-the file out of every container's reach before it reads a byte of it, and
-refuses a result that is not a plain file with one link. The destination must
+Name the file as `--option=PATH`, as the CLI itself reads it. Before it reads
+a byte, the host renames the file into `<install dir>/tmp`, where no container
+can rename, replace or link it, and refuses a result that is not a plain file
+with one link. So a container of the same graph can choose the bytes of the
+file (its own bytes, the shared-graph case above), but it cannot make the host
+write the bytes of another file, follow a link, or copy more than the limit.
+This needs the install directory on the graph directory's filesystem: when it
+is not, the output is refused, and the message says to put the install
+directory there (`--install-dir`) or to use a data directory on its
+filesystem. The destination must
 be a plain file or a new one, in a directory that exists, not a link and not
 inside the graph directory. A call writes one file.
 
