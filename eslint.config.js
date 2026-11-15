@@ -138,6 +138,7 @@ export default [
                 performance: "readonly",
                 sessionStorage: "readonly",
                 setTimeout: "readonly",
+                TextEncoder: "readonly",
                 URL: "readonly",
                 URLSearchParams: "readonly",
                 window: "readonly",
@@ -149,7 +150,7 @@ export default [
         languageOptions: {
             ecmaVersion: 2024,
             sourceType: "module",
-            globals: { URL: "readonly" },
+            globals: { Response: "readonly", URL: "readonly" },
         },
     },
     {

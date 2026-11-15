@@ -90,6 +90,11 @@ try {
 } catch (error) {
   fail(messageOf(error))
 }
+// An older server that cannot be shown to be this user's is not sent the token: its address is not opened, nor printed.
+if (hosted.kind === 'running' && !hosted.proven) {
+  process.stderr.write(`knossos web: a Knossos web server from an older version runs for ${root}, and it cannot be shown to be yours. Stop it, then start knossos web again.\n`)
+  process.exit(1)
+}
 if (hosted.kind === 'running') {
   process.stdout.write(`Knossos web pane for ${root} is already running: ${hosted.url}\n`)
   if (hosted.url !== '') await show(hosted.url)

@@ -38,7 +38,7 @@ import { reset } from '../hooks/mod/state'
 import { followHead } from '../hooks/mod/watcher'
 import { Hub } from './hub'
 import type { PageEvent, Size } from './hub'
-import { PANE_HEADER, addressOf, alive, probe } from './lock'
+import { CHALLENGE_HEADER, PANE_HEADER, PROOF_HEADER, addressOf, alive, probe, proofOf } from './lock'
 import type { Replaced } from './lock'
 import { webPort } from './port'
 
@@ -335,7 +335,7 @@ export async function startServer(o: {
     res.setHeader('referrer-policy', 'no-referrer')
     // What tells a probe that a pane server answers here, and not another program on a port used again.
     res.setHeader(PANE_HEADER, '1')
-    if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
+    if (!tokenMatches(tokenOf(req, url), token)) return void refuse(req, res, port, 'pane')
     if (req.method === 'GET' && url.pathname === '/') return void file(res, 'index.html')
     if (req.method === 'GET' && url.pathname === '/manifest.webmanifest') {
       return void res.writeHead(200, { 'content-type': 'application/manifest+json', 'cache-control': 'no-store' }).end(manifestOf(origin, token))
@@ -417,7 +417,7 @@ export async function startServer(o: {
       })
     if (!(await accepts())) return false
     if (!alive(former.pid)) return true
-    if ((await probe(addressOf(former.port, token), 1_000)) !== 'other') return false
+    if ((await probe(former.port, token, 1_000)) !== 'other') return false
     // An answer that is not a pane's, or a connection cut while the holder let its port go: only the first is
     // another program's, and it still accepts.
     return accepts()
@@ -430,11 +430,22 @@ export async function startServer(o: {
   function directions(req: IncomingMessage, res: ServerResponse): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     res.setHeader('referrer-policy', 'no-referrer')
-    if (!tokenMatches(tokenOf(req, url), token)) return void res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
+    if (!tokenMatches(tokenOf(req, url), token)) return void refuse(req, res, o.former!.port, 'directions')
     if (url.pathname === '/events') {
       return void res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' }).end(`data: ${JSON.stringify({ type: 'moved', port })}\n\n`)
     }
     res.writeHead(307, { location: `http://127.0.0.1:${port}${url.pathname}${url.search}`, 'cache-control': 'no-store' }).end()
+  }
+
+  /**
+   * The answer to a request without the token: refused, with the proof of a probe's challenge when it brings one
+   * (see `proofOf`), for the port it reached. A probe never sends the token; this is how it knows a pane server of
+   * this project, and nothing in the answer tells anyone the token.
+   */
+  function refuse(req: IncomingMessage, res: ServerResponse, on: number, kind: 'pane' | 'directions'): void {
+    const challenge = req.headers[CHALLENGE_HEADER]
+    if (typeof challenge === 'string' && /^[0-9a-f]{16,128}$/.test(challenge)) res.setHeader(PROOF_HEADER, proofOf(token, challenge, on, kind))
+    res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }).end(REFUSED)
   }
 
   /** Stops the server; asked again (a step-down, then the host's own stop), it is the same stop. */

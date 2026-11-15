@@ -26,25 +26,10 @@ export const SILENT_MS = 2 * ALIVE_MS;
 const RESIZE_MS = 100;
 /** How long a toast stays. */
 export const TOAST_MS = 4000;
-/** The key the page's id is kept under, for a reload to keep it. */
-const ID_KEY = "knossos-page-id";
 
 /** The wait before the `attempt`th retry (0 the first): doubling from half a second, five at most. */
 export const retryDelay = (attempt) =>
     Math.min(RETRY_MOST_MS, RETRY_FIRST_MS * 2 ** attempt);
-
-/**
- * The page's id: the one kept in `storage` when the page was reloaded, else
- * a new one, kept. A duplicated tab copies the store but arrives by no
- * reload, so two tabs never share an id.
- */
-export function pageId(storage, navigation, random) {
-    const kept = navigation === "reload" ? storage?.getItem(ID_KEY) : null;
-    if (kept) return kept;
-    const id = random();
-    storage?.setItem(ID_KEY, id);
-    return id;
-}
 
 /** Every segment of the frame's rows, the footer's after the body's. */
 export const segmentsOf = (frame) =>
@@ -73,32 +58,9 @@ export function focusStep(order, current, by) {
     return order[Math.min(order.length - 1, Math.max(0, at + by))];
 }
 
-/** A wheel event as whole rows (`by`), lines as they are and pixels by the cell's height; what is left over is carried to the next. */
-export function wheelRows(carry, event, cellHeight) {
-    if (event.deltaMode !== 0)
-        return { by: Math.trunc(event.deltaY), carry: 0 };
-    const pixels = carry + event.deltaY;
-    const by = Math.trunc(pixels / cellHeight);
-    return { by, carry: pixels - by * cellHeight };
-}
-
-/** A finger's drag from `fromY` to `toY` as whole rows, as {@link wheelRows} turns pixels: a finger moving up scrolls down. */
-export const swipeRows = (carry, fromY, toY, cellHeight) =>
-    wheelRows(carry, { deltaMode: 0, deltaY: fromY - toY }, cellHeight);
-
 /** The press a pointer press lands on: the press it went down on, when it came up on the same one (whatever node now draws it); null otherwise. */
 export const releasedOn = (down, up) =>
     down !== null && down !== undefined && down === up ? down : null;
-
-/**
- * The cell a pointer at (`x`, `y`) is over in the body whose box is `box`,
- * scrolled `scrolled` pixels (a pinned body scrolls inside its box, whose top
- * stays where it is).
- */
-export const wheelCell = (x, y, box, cell, scrolled) => ({
-    row: Math.floor((y - box.top + scrolled) / cell.height),
-    column: Math.floor((x - box.left) / cell.width),
-});
 
 /**
  * The wheel's queue: `scroll(by, row, column)` sends `by` rows of wheel with
@@ -135,24 +97,13 @@ export function wheelQueue(send, onUnscrolled) {
 }
 
 /**
- * Where a page at `href` goes when its server says the project's pane moved to
- * `port`: the same address on that port, its token and view kept, so nothing
- * the page did not already have is put in it. Null for a port that is not one.
- */
-export function movedTo(port, href) {
-    if (!Number.isInteger(port) || port <= 0 || port >= 65536) return null;
-    const url = new URL(href);
-    url.port = String(port);
-    return url.href;
-}
-
-/**
  * One page's connection to the pane: the event stream, opened again with
  * {@link retryDelay} after each loss (the first event back is the current
  * frame, which replaces whatever the page shows), and its inputs, each sent
  * once as it happens and never again. A stream silent for {@link SILENT_MS}
  * is a loss as well, once its server is known to send keep-alives, and
- * `lost()`, when given, is told of every loss. A host
+ * `lost()`, when given, is told of every loss. `prove()`, when given, is asked
+ * before each stream opens, and the token goes nowhere until it says yes. A host
  * that is not a browser hands it `after(ms, fire)` to wait with.
  */
 export function createPage(o) {
@@ -164,6 +115,12 @@ export function createPage(o) {
      * before those events (an update can leave one running) sends a comment no page sees, and is never taken for lost.
      */
     let sendsAlive = false;
+    /**
+     * Whether the token may go to the page's server: proven by `o.prove` before each stream opens, and no longer
+     * once a stream is lost, as the port may be another's by then. A host that proves in its own way (the terminal
+     * client, in its fetch) hands no `prove`.
+     */
+    let trusted = o.prove === undefined;
     // A host without timers of its own to hand (the browser) waits with `setTimeout`.
     const later = o.after ?? ((ms, fire) => setTimeout(fire, ms));
     const page = {
@@ -171,6 +128,10 @@ export function createPage(o) {
         /** The press or field the page's focus is on, as the pane last heard of it. */
         focused: null,
         post(input) {
+            if (!trusted)
+                return Promise.reject(
+                    new Error("the pane server is not proven yet"),
+                );
             return o.fetch("/input", {
                 method: "POST",
                 headers: {
@@ -182,42 +143,15 @@ export function createPage(o) {
         },
         connect() {
             if (stopped) return;
-            const size = o.size();
-            const query = new URLSearchParams({
-                t: o.token,
-                id: o.id,
-                cols: String(size.cols),
-                rows: String(size.rows),
-                theme: o.theme(),
-            });
-            const source = new o.EventSource(`/events?${query}`);
-            let heard = 0;
-            let gone = false;
-            const lose = () => {
-                if (gone) return;
-                gone = true;
-                // The stream would retry on its own at once; the page waits instead, longer each time.
-                source.close();
-                o.lost?.();
-                later(retryDelay(attempt++), () => page.connect());
-            };
-            // A stream that says nothing for a whole period is lost too, as one whose server was suspended is: it
-            // never ends by itself. The same holds for one that never opens.
-            const look = (seen) =>
-                later(SILENT_MS, () => {
-                    if (gone || stopped) return;
-                    if (heard === seen && sendsAlive) return lose();
-                    look(heard);
-                });
-            source.onmessage = (message) => {
-                heard++;
-                attempt = 0;
-                const event = JSON.parse(message.data);
-                if (event.type === "alive") sendsAlive = true;
-                received(event);
-            };
-            source.onerror = lose;
-            look(heard);
+            if (o.prove === undefined) return open();
+            // The token goes only to a server that proved it is this project's pane; one that cannot is tried again later.
+            void o
+                .prove()
+                .then(
+                    (proven) =>
+                        proven ? ((trusted = true), open()) : failed(),
+                    failed,
+                );
         },
         /** Ends the page's connection for good: the host is closing. */
         stop() {
@@ -255,6 +189,52 @@ export function createPage(o) {
             return { press };
         },
     };
+    /** No stream could be opened: told as a loss, and tried again after the usual wait. */
+    function failed() {
+        if (stopped) return;
+        o.lost?.();
+        later(retryDelay(attempt++), () => page.connect());
+    }
+    /** Opens the event stream, looked after until it is lost. */
+    function open() {
+        const size = o.size();
+        const query = new URLSearchParams({
+            t: o.token,
+            id: o.id,
+            cols: String(size.cols),
+            rows: String(size.rows),
+            theme: o.theme(),
+        });
+        const source = new o.EventSource(`/events?${query}`);
+        let heard = 0;
+        let gone = false;
+        const lose = () => {
+            if (gone) return;
+            gone = true;
+            if (o.prove !== undefined) trusted = false;
+            // The stream would retry on its own at once; the page waits instead, longer each time.
+            source.close();
+            o.lost?.();
+            later(retryDelay(attempt++), () => page.connect());
+        };
+        // A stream that says nothing for a whole period is lost too, as one whose server was suspended is: it
+        // never ends by itself. The same holds for one that never opens.
+        const look = (seen) =>
+            later(SILENT_MS, () => {
+                if (gone || stopped) return;
+                if (heard === seen && sendsAlive) return lose();
+                look(heard);
+            });
+        source.onmessage = (message) => {
+            heard++;
+            attempt = 0;
+            const event = JSON.parse(message.data);
+            if (event.type === "alive") sendsAlive = true;
+            received(event);
+        };
+        source.onerror = lose;
+        look(heard);
+    }
     function received(event) {
         if (event.type === "frame") {
             page.frame = event;
@@ -337,7 +317,17 @@ export async function start() {
  * @param {ViewOptions} options
  */
 function paneView(root, { token, draw: drawn, cardPlace, dom }) {
-    const { cellOf, keyed, patcher } = dom;
+    const {
+        cellOf,
+        keyed,
+        patcher,
+        pageId,
+        wheelRows,
+        swipeRows,
+        wheelCell,
+        movedTo,
+        provesPane,
+    } = dom;
     const light = matchMedia("(prefers-color-scheme: light)");
     const theme = () => (light.matches ? "light" : "dark");
     root.innerHTML =
@@ -376,6 +366,14 @@ function paneView(root, { token, draw: drawn, cardPlace, dom }) {
         size,
         theme,
         draw,
+        // The page's own port: the address it was opened on, or the default the scheme gives.
+        prove: () =>
+            provesPane(
+                (url, init) => fetch(url, init),
+                globalThis.crypto?.subtle,
+                token,
+                Number(location.port) || 80,
+            ),
         on: {
             toast: (e) => toast(e.text),
             // The clipboard may refuse a write the person did not just ask for: the page says so, with the text to copy by hand.

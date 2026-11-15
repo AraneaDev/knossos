@@ -13,7 +13,7 @@ import type { Frame } from './hub'
 import { cardPlace } from '../hooks/lib/place'
 import { followHead } from '../hooks/mod/watcher'
 import { mod } from '../hooks/mod/state'
-import { PANE_HEADER } from './lock'
+import { CHALLENGE_HEADER, PANE_HEADER, PROOF_HEADER, proves } from './lock'
 import { startServer } from './server'
 
 // A wheel whose handler throws: what the server answers for an internal failure.
@@ -349,13 +349,15 @@ describe('startServer', () => {
     }
     /** Something on a free port: silent (it accepts and never answers, as a suspended pane), or another program's page. */
     const listener = async (kind: 'silent' | 'app') => {
-      const server = kind === 'silent' ? createNetServer() : createHttpServer((_req, res) => void res.writeHead(200).end('it works'))
+      // Each records what it was sent: no probe of a port not yet proven carries the token.
+      const sent: string[] = []
+      const server = kind === 'silent' ? createNetServer(socket => void socket.on('data', chunk => sent.push(String(chunk)))) : createHttpServer((req, res) => void (sent.push(`${req.url} ${JSON.stringify(req.headers)}`), res.writeHead(200).end('it works')))
       const sockets = new Set<Socket>()
       server.on('connection', (socket: Socket) => void sockets.add(socket))
       await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
       const port = (server.address() as { port: number }).port
       // Its connections go with it: a close otherwise waits on those a probe left open.
-      return { port, close: () => new Promise<void>(resolve => (server.close(() => resolve()), sockets.forEach(socket => socket.destroy()))) }
+      return { port, sent, close: () => new Promise<void>(resolve => (server.close(() => resolve()), sockets.forEach(socket => socket.destroy()))) }
     }
     const pointing = async (former: { pid: number; port: number }, formerGraceMs?: number) => {
       running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, headPollMs: 20, former, ...(formerGraceMs === undefined ? {} : { formerGraceMs }) })
@@ -370,8 +372,10 @@ describe('startServer', () => {
       const holder = holderProcess()
       const held = await listener('silent')
       const server = await pointing({ pid: holder.pid, port: held.port })
-      // Tried on each tick while the holder has it, and taken once it is free.
+      // Tried on each tick while the holder has it, and taken once it is free; what it asked the holder had no token.
       await ticks(10)
+      expect(held.sent.length).toBeGreaterThan(0)
+      expect(held.sent.join('')).not.toContain(server.token)
       await held.close()
       await vi.waitFor(async () => expect((await at(held.port, `/events?t=${server.token}&id=a`)).status).toBe(200), { timeout: 5_000 })
       // A tab's stream is told where the pane is, as a connected one is when its server steps down.
@@ -384,6 +388,11 @@ describe('startServer', () => {
       const refused = await at(held.port, '/events')
       expect(refused.status).toBe(403)
       expect(refused.headers.has(PANE_HEADER)).toBe(false)
+      // It proves itself to a page that comes back there, as directions, which no start takes for the pane.
+      const asked = await fetch(`http://127.0.0.1:${held.port}/`, { headers: { [CHALLENGE_HEADER]: 'ab'.repeat(16) } })
+      await asked.body?.cancel()
+      expect(proves(asked.headers.get(PROOF_HEADER), server.token, 'ab'.repeat(16), held.port, 'directions')).toBe(true)
+      expect(proves(asked.headers.get(PROOF_HEADER), server.token, 'ab'.repeat(16), held.port)).toBe(false)
       expect(page.headers.has(PANE_HEADER)).toBe(false)
       await server.close()
       expect(await answers(held.port)).toBe(false)
@@ -393,8 +402,10 @@ describe('startServer', () => {
     it('leaves the port to another program that holds it, also after that program restarts', async () => {
       const holder = holderProcess()
       const app = await listener('app')
-      await pointing({ pid: holder.pid, port: app.port })
+      const server = await pointing({ pid: holder.pid, port: app.port })
       await ticks(50)
+      expect(app.sent.length).toBeGreaterThan(0)
+      expect(app.sent.join('')).not.toContain(server.token)
       // The program restarts: the port is free for a moment, and stays the program's to take again.
       await app.close()
       await ticks(50)
@@ -435,6 +446,26 @@ describe('startServer', () => {
       const server = await pointing({ pid: holder.pid, port: was.port })
       await vi.waitFor(async () => expect((await at(was.port, `/events?t=${server.token}&id=a`)).status).toBe(200), { timeout: 5_000 })
     })
+  })
+
+  it("proves it is this project's pane to a probe without the token, and tells nothing of the token", async () => {
+    const server = await started()
+    const challenge = 'c0ffee'.repeat(6)
+    const res = await fetch(`http://127.0.0.1:${server.port}/`, { headers: { [CHALLENGE_HEADER]: challenge } })
+    const body = await res.text()
+    expect(res.status).toBe(403)
+    const proof = res.headers.get(PROOF_HEADER)
+    expect(proves(proof, server.token, challenge, server.port)).toBe(true)
+    // Bound to its port and to this challenge: no use on another port, or for another challenge.
+    expect(proves(proof, server.token, challenge, server.port + 1)).toBe(false)
+    expect(proves(proof, server.token, 'beef'.repeat(8), server.port)).toBe(false)
+    expect(`${body} ${JSON.stringify([...res.headers])}`).not.toContain(server.token)
+    // A request with no challenge, or one that is not a challenge, gets no proof.
+    for (const headers of [{}, { [CHALLENGE_HEADER]: 'not hex' }]) {
+      const plain = await fetch(`http://127.0.0.1:${server.port}/`, { headers })
+      await plain.body?.cancel()
+      expect(plain.headers.has(PROOF_HEADER)).toBe(false)
+    }
   })
 
   it('says it is a pane server in every answer, the refused ones too', async () => {

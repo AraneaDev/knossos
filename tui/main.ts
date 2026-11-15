@@ -54,7 +54,7 @@ const editor = asked.editor ?? (process.env.KNOSSOS_EDITOR || null)
 
 const { hostProject, silentText } = await import('../web/host')
 type Hosted = Awaited<ReturnType<typeof hostProject>>
-const { lockFile } = await import('../web/lock')
+const { lockFile, probe } = await import('../web/lock')
 const { ending } = await import('../web/life')
 const { stopWatcher } = await import('../hooks/mod/state')
 const { Decoder, groundFor, themeOfBackground } = await import('./input')
@@ -249,7 +249,8 @@ async function host(): Promise<Hosted> {
       // attached to the project, and its next reconnect goes to the lock's server, as a take-over does.
       if (found.kind === 'mine') void found.stepped.then(() => {
         if (hosted !== found) return
-        hosted = { kind: 'running', url: found.url }
+        // The lock's server, which took the project over, was proven a pane server of this project before this one closed.
+        hosted = { kind: 'running', url: found.url, proven: true }
         lost = true
       })
       return found
@@ -272,7 +273,9 @@ function acquire(): Promise<Hosted> {
 }
 function retake(): Promise<void> {
   return acquire().then(
-    () => {
+    found => {
+      // An older server that cannot be shown to be this user's is sent nothing: the pane stays lost, and says why.
+      if (found.kind === 'running' && !found.proven) return client?.status(UNPROVEN)
       lost = false
     },
     (error: unknown) => {
@@ -282,6 +285,10 @@ function retake(): Promise<void> {
 }
 
 const origin = (url: string) => new URL(url).origin
+/** What the pane says of a server it will not send the token to. */
+const UNPROVEN = 'A Knossos server from an older version runs for this project, and it cannot be shown to be yours. Stop it, then start knossos again.'
+/** How long the server a stream is about to open on is given to prove it is this project's pane. */
+const PROVE_MS = 3_000
 
 try {
   terminal.enter()
@@ -294,10 +301,16 @@ try {
   const theme = asked.theme ?? background.theme
   const ground = groundFor(background.ground, theme)
   const started = await acquire()
+  if (started.kind === 'running' && !started.proven) throw new Error(UNPROVEN)
   const first = started.url
   let current = first
+  const token = new URL(first).searchParams.get('t') ?? ''
+  /** The origin last proven to be this project's pane, while a stream to it holds: nothing with the token goes anywhere else. */
+  let trusted: string | null = null
   const copyCommand = clipboardCommand(process.platform, process.env, name => (process.env.PATH ?? '').split(delimiter).some(dir => dir !== '' && existsSync(join(dir, name))))
   // The client's retries ask for the event stream again; before one goes out, a server that is gone is replaced.
+  // The token goes only to a server proven to be this project's pane: whatever listens on a port may be anyone's,
+  // another user's process included, once the server that had it is gone.
   const reach: typeof fetch = async (input, init) => {
     const url = String(input)
     const events = url.includes('/events?')
@@ -306,10 +319,23 @@ try {
       await retake()
       if (hosted !== null) current = hosted.url
     }
+    const target = origin(current)
+    if (events && trusted !== target) {
+      if ((await probe(Number(new URL(current).port), token, PROVE_MS)) !== 'pane') {
+        lost = true
+        throw new Error(`no pane server of this project answers at ${target}`)
+      }
+      trusted = target
+    }
+    // An input while no stream holds waits for none: it is dropped, as one sent to a server that is gone would be.
+    if (!events && trusted !== target) throw new Error('not connected to the pane server')
     try {
-      return await fetch(origin(first) === origin(current) ? url : url.replace(origin(first), origin(current)), init)
+      return await fetch(origin(first) === target ? url : url.replace(origin(first), target), init)
     } catch (error) {
-      if (events) lost = true
+      if (events) {
+        lost = true
+        trusted = null
+      }
       throw error
     }
   }
@@ -334,6 +360,10 @@ try {
     // Moved: the next reconnect takes the project's usual take-over path, which finds the lock's server.
     moved: () => {
       if (hosted?.kind === 'running') lost = true
+    },
+    // A stream lost: the server is proven again before the next one, as the port may be another's by then.
+    disconnected: () => {
+      trusted = null
     },
     after: (ms, fire) => void setTimeout(fire, ms),
   })

@@ -151,7 +151,7 @@ describe('hostProject', () => {
     // A lock held by another live process (this one's parent), whose server answers: a lock of this process's own is never respected.
     writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: first.port }))
     const second = await hostFor(root, data, plugin)
-    expect(second).toEqual({ kind: 'running', url: first.url })
+    expect(second).toEqual({ kind: 'running', url: first.url, proven: true })
   })
 
   it('sends the server log to the given writer, never stderr', async () => {

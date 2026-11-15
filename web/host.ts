@@ -19,7 +19,7 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
  */
 export type Hosted =
   | { kind: 'mine'; url: string; token: string; port: number; kept: number | null; ready: Promise<void>; stepped: Promise<void>; close(): Promise<void>; release(): void }
-  | { kind: 'running'; url: string }
+  | { kind: 'running'; url: string; proven: boolean }
 
 /**
  * The server of the project at `root`: started here on the kept port (a
@@ -46,7 +46,7 @@ export async function hostProject(o: {
   } catch (error) {
     throw new Error(`could not take the project's lock: ${messageOf(error)}`, { cause: error })
   }
-  if (lock.kind === 'running') return { kind: 'running', url: lock.url }
+  if (lock.kind === 'running') return { kind: 'running', url: lock.url, proven: lock.proven }
 
   let server: Awaited<ReturnType<typeof startServer>>
   try {

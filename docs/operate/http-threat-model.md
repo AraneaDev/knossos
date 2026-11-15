@@ -109,6 +109,44 @@ token in a URL. For non-loopback or multi-user access, put a TLS/OAuth-capable
 gateway in front, restrict the upstream network, and keep exact Host/Origin
 values rather than broad wildcards.
 
+## Web pane token
+
+`knossos web` and the terminal pane serve one project's pane on `127.0.0.1`.
+Their address carries a random token, and every request without it is refused.
+The token is what lets a request read the pane and act on the project, so it is
+kept in the data directory, readable by you alone, and it is sent only to a
+server that has proven it is this project's.
+
+A probe never carries the token. A start that finds the project's lock, a
+server that checks whether another took the lock over, and a pane or browser
+tab about to open its event stream each ask the port without it, with a fresh
+random challenge. The project's server answers on its refusal with an HMAC of
+the challenge and the port, keyed with the token. Only a process that knows the
+token can make that answer, a fresh challenge cannot be answered from an old
+one, and the port in it stops a listener elsewhere from passing the challenge
+on to the real server and handing its answer back. The token goes to that port
+only after the answer holds. A pane or tab proves the server again before every
+new stream, since the port may have changed hands while it was away.
+
+Another user on the same machine can:
+
+- connect to a pane server's port and be refused, as any request without the
+  token is;
+- listen on a port the pane used once its server is gone, and receive the
+  probes: a challenge, never the token;
+- see that a pane server listens on a port, from the marker header it sends.
+
+They cannot get the token from a probe, a reconnect or a new start, and cannot
+pass a probe by sending the marker, by replaying an answer, or by relaying the
+challenge to the real server.
+
+A server from Knossos 0.49.1 or before cannot answer the challenge. A new pane
+or start still knows it (by the marker on its refusal, or by the refusal
+itself) without sending it the token, and uses it only when `/proc/net/tcp`
+shows its listening socket is yours, which another user cannot fake. Where the
+system cannot show that, the new pane does not attach to it: it says an older
+server runs for the project and asks you to stop it.
+
 ## Git subprocesses
 
 Every query that reads a project's git state runs `git` inside the scanned
