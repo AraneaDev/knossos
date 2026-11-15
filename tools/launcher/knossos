@@ -52,8 +52,9 @@
 #     read from it is ever run or expanded unquoted.
 #   - A file a command is told to write is written into a scratch directory in
 #     the graph directory and moved to the path named by the host, which never
-#     follows a link there; a file it is told to read from outside every mount
-#     is copied in. See FILE_ROLES below.
+#     follows a link there and takes no more than KNOSSOS_OUTPUT_LIMIT_MB; a
+#     file it is told to read from outside every mount is copied in. See
+#     FILE_ROLES below.
 #   - The enricher list, <install dir>/settings/enrichers.json, names commands
 #     a scan starts, so it lies where every container only reads it: a project
 #     that could register one would run code in every other project's
@@ -1172,8 +1173,10 @@ EXPECTED=$(printf '%s\n' "$EXPECTED" | LC_ALL=C sort)
 # every mount is copied in. FILE_ROLES says what each option (`--name`) or
 # positional argument (`@N`, `@N...` for that one and every one after it) that
 # names a file means here, one `command key role` per line:
-#   output    written by the command into a fresh scratch file, which the host
-#             moves to the path named once the command has succeeded
+#   output    written by the command into a scratch file, which the host moves
+#             to the path named once the command has succeeded (a notes file
+#             already there is copied in first, read-only, so the command
+#             decides whether it may replace it, as in native mode)
 #   input     read by the command: passed on as is inside a mount, else
 #             copied into the scratch directory first, read-only
 #   project   a file of the project, read through its read-only mount
@@ -1264,7 +1267,18 @@ SCRATCH_ID=''
 PRIVATE=''
 OUTPUT_SCRATCH=''
 OUTPUT_DEST=''
-OUTPUT_EXISTED=no
+# The `<device>:<inode>` of the copy of a notes file in the way that the host
+# put in the scratch directory, so it can tell whether the command replaced it.
+OUTPUT_PLACED=''
+# The most a command may write for the host to move out of a container, in
+# MB. The largest legitimate output is a graph bundle, which the core builds
+# in memory as one string under its 1 GB memory limit, so no export it can
+# make is larger. A hostile container could otherwise fill the destination's
+# filesystem, and $TMPDIR, through the host.
+OUTPUT_LIMIT_MB=${KNOSSOS_OUTPUT_LIMIT_MB:-1024}
+case $OUTPUT_LIMIT_MB in '' | *[!0-9]* | 0*) die "KNOSSOS_OUTPUT_LIMIT_MB must be a whole number of MB above 0, got '$OUTPUT_LIMIT_MB'." ;; esac
+[ "${#OUTPUT_LIMIT_MB}" -le 7 ] || die "KNOSSOS_OUTPUT_LIMIT_MB must be at most 9999999, got '$OUTPUT_LIMIT_MB'."
+OUTPUT_LIMIT_BYTES=$((OUTPUT_LIMIT_MB * 1048576))
 # shellcheck disable=SC2317,SC2329 # run from the EXIT trap
 cleanup_files() {
     [ -z "$PRIVATE" ] || rm -rf -- "$PRIVATE"
@@ -1298,36 +1312,43 @@ place_output() {
     scratch
     OUTPUT_DEST=$dest
     OUTPUT_SCRATCH="$SCRATCH/output"
-    if [ -e "$dest" ]; then OUTPUT_EXISTED=yes; fi
-    # What the command would refuse to replace, decided here: the container
-    # writes a fresh file and cannot see the one in place.
+    [ -e "$dest" ] || return 0
+    # A file already in place, which the container cannot see.
     case $COMMAND in
         export-bundle)
-            if [ "$OUTPUT_EXISTED" = yes ]; then
-                printf 'KNOSSOS_INVALID_ARGUMENT: Bundle output already exists: %s\n' "$dest" >&2
-                exit 2
-            fi
+            # The command refuses to replace one; so does the host, before anything runs.
+            printf 'KNOSSOS_INVALID_ARGUMENT: Bundle output already exists: %s\n' "$dest" >&2
+            exit 2
             ;;
         export-notes | notes-export)
-            if [ "$OUTPUT_EXISTED" = yes ] && ! notes_file "$dest"; then
-                reason="NOTES_FILE_NOT_NOTES: $dest exists and is not a knossos notes file; remove it or pick another --file."
-                if [ "$COMMAND" = notes-export ]; then
-                    if [ "$JSON" = yes ]; then printf '{"status":"refused","reason":%s}\n' "$(json_string "$reason")"; else printf 'refused: %s\n' "$reason"; fi
-                    exit 0
-                fi
-                printf 'KNOSSOS_INVALID_ARGUMENT: %s\n' "$reason" >&2
-                exit 2
+            # Only a previous notes file may be replaced, and the command
+            # decides that, as in native mode (NotesFile::looksLikeNotesFile):
+            # it is given a read-only copy at the path it writes. What it
+            # refuses without reading (not a plain file, or over the 10 MB a
+            # notes file may have) is refused here the same way.
+            if [ ! -f "$dest" ] || [ -n "$(find "$dest" -prune -size +10485760c 2>/dev/null)" ]; then
+                notes_answer "NOTES_FILE_NOT_NOTES: $dest exists and is not a knossos notes file; remove it or pick another --file." KNOSSOS_INVALID_ARGUMENT
             fi
+            if ! cat < "$dest" > "$PRIVATE/existing" 2>/dev/null || ! chmod 0444 "$PRIVATE/existing"; then
+                notes_answer "NOTES_FILE_NOT_NOTES: $dest exists and is not a knossos notes file; remove it or pick another --file." KNOSSOS_INVALID_ARGUMENT
+            fi
+            in_scratch mv -f -- "$PRIVATE/existing" ./output || die "could not copy $dest into $SCRATCH"
+            OUTPUT_PLACED=$(in_scratch dir_id output) || OUTPUT_PLACED=''
+            [ -n "$OUTPUT_PLACED" ] || die "could not copy $dest into $SCRATCH"
             ;;
     esac
 }
 
-# notes_file FILE: whether a file in the way is a previous notes file, as
-# NotesFile::looksLikeNotesFile decides: JSON whose "format" is knossos-notes.
-notes_file() {
-    [ -f "$1" ] || return 1
-    [ -z "$(find "$1" -size +10240k 2>/dev/null)" ] || return 1
-    tr -d ' \t\r\n' < "$1" 2>/dev/null | grep -q '"format":"knossos-notes"'
+# notes_answer REASON CODE: a notes export that did not happen, said as the
+# command says it: notes-export (the pane's) answers `refused` with the reason
+# and exits 0, export-notes prints the code and the reason and exits 2.
+notes_answer() {
+    if [ "$COMMAND" = notes-export ]; then
+        if [ "$JSON" = yes ]; then printf '{"status":"refused","reason":%s}\n' "$(json_string "$1")"; else printf 'refused\n'; fi
+        exit 0
+    fi
+    printf '%s: %s\n' "$2" "$1" >&2
+    exit 2
 }
 
 
@@ -1358,7 +1379,20 @@ take_database() {
 COMMAND=${1-}
 JSON=no
 INPUTS=0
-for argument in "$@"; do case $argument in --json | --json=true | --json=1) JSON=yes ;; esac; done
+# --json as the CLI reads a flag: on unless it says false, 0, no or off; the
+# last one counts.
+for argument in "$@"; do
+    [ "$argument" != -- ] || break
+    case $argument in
+        --json) JSON=yes ;;
+        --json=*)
+            case $(printf '%s' "${argument#--json=}" | tr '[:upper:]' '[:lower:]') in
+                false | 0 | no | off) JSON=no ;;
+                *) JSON=yes ;;
+            esac
+            ;;
+    esac
+done
 if [ "$COMMAND" = install-agent-plugin ]; then
     die 'This is a container install: its plugin is managed from the host. Run knossos self-update there, or re-run the installer.'
 fi
@@ -1368,7 +1402,6 @@ if [ $# -gt 0 ]; then
     shift
     count=$#
     position=0
-    pending=''
     ended=no
     file_named=no
     while [ "$count" -gt 0 ]; do
@@ -1376,39 +1409,33 @@ if [ $# -gt 0 ]; then
         shift
         count=$((count - 1))
         if [ "$ended" = yes ]; then set -- "$@" "$argument"; continue; fi
-        if [ -n "$pending" ]; then
-            key=$pending
-            value=$argument
-            pending=''
-            file_role "$COMMAND" "$key"
-        else
-            case $argument in
-                --)
-                    ended=yes
-                    set -- "$@" "$argument"
-                    continue
-                    ;;
-                --*=*)
-                    key=${argument%%=*}
-                    value=${argument#*=}
-                    file_role "$COMMAND" "$key"
-                    ;;
-                --*)
-                    # `--name PATH`, which the CLI itself does not read, is
-                    # taken as `--name=PATH` for an option that names a file.
-                    file_role "$COMMAND" "$argument"
-                    if [ -n "$role" ] && [ "$role" != none ] && [ "$count" -gt 0 ]; then pending=$argument; fi
-                    [ -n "$pending" ] || set -- "$@" "$argument"
-                    continue
-                    ;;
-                *)
-                    position=$((position + 1))
-                    key=@
-                    value=$argument
-                    file_role "$COMMAND" @ "$position"
-                    ;;
-            esac
-        fi
+        # Options are read as the CLI reads them: only `--name=VALUE` gives
+        # an option a value. `--name VALUE` is a flag and a positional
+        # argument there, so it is the same here, and an option that names a
+        # file without a value is passed on untouched for the CLI to refuse.
+        case $argument in
+            --)
+                ended=yes
+                set -- "$@" "$argument"
+                continue
+                ;;
+            --*=?*)
+                key=${argument%%=*}
+                value=${argument#*=}
+                file_role "$COMMAND" "$key"
+                ;;
+            --*)
+                if [ "${argument%%=*}" = --file ]; then file_named=yes; fi
+                set -- "$@" "$argument"
+                continue
+                ;;
+            *)
+                position=$((position + 1))
+                key=@
+                value=$argument
+                file_role "$COMMAND" @ "$position"
+                ;;
+        esac
         given=$value
         case $role in
             output)
@@ -1589,7 +1616,7 @@ fi
 # would in native mode.
 for variable in $(env | sed -n 's/^\(KNOSSOS_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u); do
     case $variable in
-        KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_SETTINGS_DIR | KNOSSOS_ENRICHERS_FILE | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN | KNOSSOS_TEST_TERMINALS) ;;
+        KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_SETTINGS_DIR | KNOSSOS_ENRICHERS_FILE | KNOSSOS_OUTPUT_LIMIT_MB | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN | KNOSSOS_TEST_TERMINALS) ;;
         KNOSSOS_ALLOWED_ROOTS)
             if [ "$extra_root" = no ]; then set -- -e "$variable" "$@"; fi
             ;;
@@ -1618,42 +1645,79 @@ forward() {
 # finish_output: once the command has succeeded, the file it wrote goes to the
 # path that was named, or nothing does. It is moved out of the scratch
 # directory by rename from inside it (a link there is moved as a link, never
-# followed), checked in the private directory to be a plain file, copied into
-# a new file beside the destination and renamed over it, which replaces a name
-# without following a link there.
+# followed), with the size the host takes bounded, checked in the private
+# directory to be a plain file, copied into a new file beside the destination
+# and renamed over it, which replaces a name without following a link there.
+# A copy of a notes file the host put there and the command left in place
+# (it refused to replace it) is not written back. Sets `refusal` to why
+# nothing was written when it returns 1.
 finish_output() {
-    # shellcheck disable=SC2016 # the inner sh expands its own argument
-    if ! in_scratch sh -c 'if [ -e output ] || [ -L output ]; then mv -f -- output "$1/output"; fi' _ "$PRIVATE"; then
-        printf 'knossos: the scratch directory %s changed while the command ran; nothing was written to %s.\n' "$SCRATCH" "$OUTPUT_DEST" >&2
+    refusal=''
+    limit_text="$OUTPUT_LIMIT_MB MB, the most the host moves out of a container (KNOSSOS_OUTPUT_LIMIT_MB raises it)"
+    if [ -n "$OUTPUT_PLACED" ] && [ "$(in_scratch dir_id output)" = "$OUTPUT_PLACED" ]; then return 0; fi
+    if [ -n "$(in_scratch find output -prune -size +"${OUTPUT_LIMIT_BYTES}c" 2>/dev/null)" ]; then
+        refusal="the command wrote more than $limit_text, for $OUTPUT_DEST; nothing was written."
+        return 1
+    fi
+    # `ulimit -f` bounds the copy mv makes when the private directory is on
+    # another filesystem, in 512-byte blocks, should the file grow meanwhile.
+    # shellcheck disable=SC2016 # the inner sh expands its own arguments
+    if ! in_scratch sh -c 'ulimit -f "$2" 2>/dev/null; if [ -e output ] || [ -L output ]; then mv -f -- output "$1/output"; fi' _ "$PRIVATE" $((OUTPUT_LIMIT_BYTES / 512 + 1)) 2>/dev/null; then
+        refusal="the scratch directory $SCRATCH changed while the command ran, or the command wrote more than $limit_text; nothing was written to $OUTPUT_DEST."
         return 1
     fi
     if [ ! -e "$PRIVATE/output" ] && [ ! -L "$PRIVATE/output" ]; then return 0; fi
     if [ -L "$PRIVATE/output" ] || [ ! -f "$PRIVATE/output" ]; then
-        printf 'knossos: the command left no plain file for %s; nothing was written.\n' "$OUTPUT_DEST" >&2
+        refusal="the command left no plain file for $OUTPUT_DEST; nothing was written."
+        return 1
+    fi
+    if [ -n "$(find "$PRIVATE/output" -prune -size +"${OUTPUT_LIMIT_BYTES}c" 2>/dev/null)" ]; then
+        refusal="the command wrote more than $limit_text, for $OUTPUT_DEST; nothing was written."
         return 1
     fi
     parent=$(dirname -- "$OUTPUT_DEST")
     if ! written=$(mktemp "$parent/.knossos-output.XXXXXX" 2>/dev/null); then
-        printf 'knossos: could not write in %s; nothing was written to %s.\n' "$parent" "$OUTPUT_DEST" >&2
+        refusal="could not write in $parent; nothing was written to $OUTPUT_DEST."
         return 1
     fi
     mode=$(printf '%o' $((0666 & ~0$(umask))))
     if ! cat < "$PRIVATE/output" > "$written" || ! chmod "$mode" "$written" \
         || [ -L "$OUTPUT_DEST" ] || [ -d "$OUTPUT_DEST" ] || ! mv -f -- "$written" "$OUTPUT_DEST"; then
         rm -f -- "$written"
-        printf 'knossos: could not write %s; nothing was written.\n' "$OUTPUT_DEST" >&2
+        refusal="could not write $OUTPUT_DEST; nothing was written."
         return 1
     fi
 }
 
-# show_output: what the command printed, with the scratch path it was given
-# shown as the path that was named.
+# refuse_output: the command succeeded, but the host could not place what it
+# wrote. Its own answer said it did, so that is not printed; the failure is
+# said instead, as the command says it when it cannot write the file in
+# native mode, with the same code and exit status, after the host's reason.
+# notes-export answers `refused`, with exit 0, as the pane expects of it.
+refuse_output() {
+    case $COMMAND in
+        notes-export)
+            reason="NOTES_FILE_WRITE_FAILED: could not write $OUTPUT_DEST: $refusal"
+            if [ "$JSON" = yes ]; then printf '{"status":"refused","reason":%s}\n' "$(json_string "$reason")"; else printf 'refused\n'; fi
+            return 0
+            ;;
+    esac
+    printf 'knossos: %s\n' "$refusal" >&2
+    case $COMMAND in
+        export-bundle) printf 'KNOSSOS_INVALID_ARGUMENT: Unable to create bundle output: %s\n' "$OUTPUT_DEST" >&2 ;;
+        export-agent-brief) printf 'KNOSSOS_INVALID_ARGUMENT: Unable to write brief to %s.\n' "$OUTPUT_DEST" >&2 ;;
+        export-notes) printf 'KNOSSOS_RUNTIME_ERROR: NOTES_FILE_WRITE_FAILED: could not write %s.\n' "$OUTPUT_DEST" >&2 ;;
+    esac
+    return 2
+}
+
+# show_output FILE: what the command printed to one stream, with the scratch
+# path it was given shown as the path that was named (JSON-escaped in a JSON
+# answer on stdout).
 show_output() {
     to=$OUTPUT_DEST
-    if [ "$JSON" = yes ]; then to=$(json_string "$OUTPUT_DEST"); to=${to#\"}; to=${to%\"}; fi
-    replaced=no
-    case $COMMAND in export-notes | notes-export) replaced=$OUTPUT_EXISTED ;; esac
-    FROM=$OUTPUT_SCRATCH TO=$to REPLACED=$replaced JSONOUT=$JSON awk '
+    if [ "$JSON" = yes ] && [ "$1" = stdout ]; then to=$(json_string "$OUTPUT_DEST"); to=${to#\"}; to=${to%\"}; fi
+    FROM=$OUTPUT_SCRATCH TO=$to awk '
         function swap(line, from, to,    out, i) {
             out = ""
             while ((i = index(line, from)) > 0) {
@@ -1663,16 +1727,8 @@ show_output() {
             return out line
         }
         BEGIN { from = ENVIRON["FROM"]; to = ENVIRON["TO"] }
-        {
-            line = $0
-            # The container saw no file in the way, so it said it replaced none.
-            if (ENVIRON["REPLACED"] == "yes") {
-                if (ENVIRON["JSONOUT"] == "yes") line = swap(line, "\"replaced\":false", "\"replaced\":true")
-                else line = swap(line, from ".", to ". (replaced the previous file)")
-            }
-            print swap(line, from, to)
-        }
-    ' < "$PRIVATE/stdout"
+        { print swap($0, from, to) }
+    ' < "$PRIVATE/$1"
 }
 
 # A background child of a non-interactive shell gets /dev/null as its stdin;
@@ -1680,7 +1736,7 @@ show_output() {
 # its output kept until the file is in place.
 exec 3<&0
 if [ -n "$OUTPUT_DEST" ]; then
-    "$RUNTIME" "$@" <&3 3<&- > "$PRIVATE/stdout" &
+    "$RUNTIME" "$@" <&3 3<&- > "$PRIVATE/stdout" 2> "$PRIVATE/stderr" &
 else
     "$RUNTIME" "$@" <&3 3<&- &
 fi
@@ -1697,8 +1753,13 @@ while :; do
     kill -0 "$CHILD" 2>/dev/null || break
 done
 if [ -n "$OUTPUT_DEST" ]; then
-    if [ "$status" -eq 0 ] && ! finish_output; then status=1; fi
-    show_output
+    show_output stderr >&2
+    if [ "$status" -eq 0 ] && ! finish_output; then
+        refuse_output
+        status=$?
+    else
+        show_output stdout
+    fi
 fi
 if [ "$status" -ne 0 ]; then restore_roots; elif [ -n "$ROOTS_BEFORE" ]; then rm -f -- "$ROOTS_BEFORE"; fi
 exit "$status"

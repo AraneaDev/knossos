@@ -15,11 +15,12 @@
 #   pull-fails             present: `pull` fails
 #   copy/<path>            what `run ... cat <path>` prints, for files read out of an image
 #
-# `exec` writes FAKE_EXEC_WRITE (or a link to FAKE_EXEC_LINK) to the file its
-# --output, --out or --file names, prints each scratch file it is given, and
-# prints `exec:` and the argument list after the container name (a
-# bare `version` prints `Knossos $FAKE_IMAGE_VERSION` instead), then
-# reads stdin when FAKE_EXEC_STDIN=1, waits for a signal when FAKE_EXEC_WAIT=1
+# `exec` prints `exec:` and the argument list after the container name (a
+# bare `version` prints `Knossos $FAKE_IMAGE_VERSION` instead), then each
+# scratch file it is given with its content, then writes FAKE_EXEC_WRITE
+# (FAKE_EXEC_KB kilobytes of zeros, a link to FAKE_EXEC_LINK, or, with
+# FAKE_EXEC_REFUSE, nothing but a notes-export refusal) to the file its
+# --output, --out or --file names, then reads stdin when FAKE_EXEC_STDIN=1, waits for a signal when FAKE_EXEC_WAIT=1
 # (it ends with 143 once `exec ... idle-stop --signal` has been called) and
 # exits with FAKE_EXEC_EXIT (default 0). `run` with --rm and a command other
 # than the idle-stop entrypoint runs that command's stand-in: `version` prints
@@ -209,22 +210,32 @@ case $command in
         fi
         # FAKE_EXEC_WRITE: text the command writes to the file its --output,
         # --out or --file names; FAKE_EXEC_LINK: a link to that path instead.
+        # Each argument that is a file in a scratch directory, with what it
+        # holds, before the command writes anything.
         for a in "$@"; do
-            case $a in
-                --output=* | --out=* | --file=*)
-                    if [ -n "${FAKE_EXEC_LINK:-}" ]; then ln -s "$FAKE_EXEC_LINK" "${a#*=}"
-                    elif [ -n "${FAKE_EXEC_WRITE:-}" ]; then printf '%s\n' "$FAKE_EXEC_WRITE" > "${a#*=}"; fi
-                    ;;
-            esac
-        done
-        # Each argument that is a file in a scratch directory, with what it holds.
-        for a in "$@"; do
+            case $a in --*=*) a=${a#*=} ;; esac
             case $a in
                 */.knossos-files.*/*)
                     if [ -f "$a" ]; then
                         if [ -w "$a" ]; then mode=writable; else mode=read-only; fi
                         printf 'file:%s:%s:%s\n' "$a" "$mode" "$(cat "$a")"
                     fi
+                    ;;
+            esac
+        done
+        # Then the write, as the core makes it: a new file renamed over the
+        # name, which works over a read-only file too. FAKE_EXEC_REFUSE: the
+        # command refuses to replace the file in the way (a notes export over
+        # something that is not a notes file) and says so as notes-export does.
+        for a in "$@"; do
+            case $a in
+                --output=* | --out=* | --file=*)
+                    target=${a#*=}
+                    if [ -n "${FAKE_EXEC_REFUSE:-}" ]; then
+                        printf '{"status":"refused","reason":"NOTES_FILE_NOT_NOTES: %s exists and is not a knossos notes file; remove it or pick another --file."}\n' "$target"
+                    elif [ -n "${FAKE_EXEC_LINK:-}" ]; then ln -s "$FAKE_EXEC_LINK" "$target"
+                    elif [ -n "${FAKE_EXEC_KB:-}" ]; then dd if=/dev/zero of="$target.tmp" bs=1024 count="$FAKE_EXEC_KB" 2>/dev/null && mv -f "$target.tmp" "$target"
+                    elif [ -n "${FAKE_EXEC_WRITE:-}" ]; then printf '%s\n' "$FAKE_EXEC_WRITE" > "$target.tmp" && mv -f "$target.tmp" "$target"; fi
                     ;;
             esac
         done

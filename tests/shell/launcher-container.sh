@@ -906,9 +906,17 @@ fi
 case $out in *"$OUT_IN"*) case $out in *.knossos-files.*) fail "the scratch path was printed: $out" ;; *) pass 'the command prints the path that was named, not the scratch path' ;; esac ;; *) fail "named path not printed: $out" ;; esac
 rm -f "$OUT_IN"
 
-FAKE_EXEC_WRITE='brief text' out_call export-agent-brief "$PROJECT" --out "$OUT_OUT"
-if [ "$status" -eq 0 ] && [ "$(cat "$OUT_OUT" 2>/dev/null)" = 'brief text' ]; then pass '--out PATH, spaced, to a path outside every mount is written too'; else fail "spaced --out outside: $status, $out"; fi
+FAKE_EXEC_WRITE='brief text' out_call export-agent-brief "$PROJECT" "--out=$OUT_OUT"
+if [ "$status" -eq 0 ] && [ "$(cat "$OUT_OUT" 2>/dev/null)" = 'brief text' ]; then pass '--out=PATH to a path outside every mount is written too'; else fail "--out outside: $status, $out"; fi
 rm -f "$OUT_OUT"
+# The CLI reads only --name=VALUE, so a spaced `--name VALUE` is a flag and a
+# positional argument here too, and nothing is placed for it.
+FAKE_EXEC_WRITE='brief text' out_call export-agent-brief "$PROJECT" --out "$OUT_OUT"
+case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *"[export-agent-brief] [$PROJECT] [--out] [$OUT_OUT]") said=yes ;; *) said=no ;; esac
+if [ "$said" = yes ] && [ ! -e "$OUT_OUT" ]; then pass 'a spaced --out PATH is passed on as the CLI reads it, a flag and an argument, and nothing is placed'; else fail "spaced --out: $status, $out, $(calls)"; fi
+FAKE_EXEC_WRITE='{"format":"knossos-notes"}' out_call export-notes "$PROJECT" --file --json
+case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *"[export-notes] [$PROJECT] [--file] [--json]") said=yes ;; *) said=no ;; esac
+if [ "$said" = yes ] && [ ! -e "$PROJECT/--json" ] && [ ! -e "$PROJECT/knossos-notes.json" ]; then pass 'export-notes --file --json writes no file named --json, and adds no default --file the CLI would see twice'; else fail "value-less --file: $status, $out, $(calls)"; fi
 
 (cd "$PROJECT/out" && FAKE_EXEC_WRITE=rel TMPDIR="$WORK/tmp" kn export-bundle project_1 --output=rel.json </dev/null >/dev/null 2>&1)
 if [ "$(cat "$PROJECT/out/rel.json" 2>/dev/null)" = rel ]; then pass 'a relative --output is resolved against the working directory on the host'; else fail "relative output: $(ls "$PROJECT/out")"; fi
@@ -933,11 +941,37 @@ else
 fi
 # A command that leaves a link where its output belongs: nothing is copied through it.
 FAKE_EXEC_LINK="$SENTINEL" out_call export-agent-brief "$PROJECT" "--out=$WORK/outside/linked.md"
-if [ "$status" -eq 1 ] && [ ! -e "$WORK/outside/linked.md" ] && [ ! -L "$WORK/outside/linked.md" ]; then
+expected="knossos: the command left no plain file for $WORK/outside/linked.md; nothing was written.
+KNOSSOS_INVALID_ARGUMENT: Unable to write brief to $WORK/outside/linked.md."
+if [ "$status" -eq 2 ] && [ ! -e "$WORK/outside/linked.md" ] && [ ! -L "$WORK/outside/linked.md" ] && sentinel_intact; then
     pass 'a link left in the scratch directory is never followed to the destination'
 else
     fail "link in scratch: $status, $out, $(ls -l "$WORK/outside")"
 fi
+# ... and the command's own answer, which said it wrote the file, is not printed (N14).
+if [ "$out" = "$expected" ]; then pass 'an output the host could not place is said as the failure the command gives, not as its success'; else fail "success printed beside the refusal: $out"; fi
+FAKE_EXEC_LINK="$SENTINEL" out_call export-notes "$PROJECT" "--file=$WORK/outside/notes.json" --json
+if [ "$status" -eq 2 ] && [ "$out" = "knossos: the command left no plain file for $WORK/outside/notes.json; nothing was written.
+KNOSSOS_RUNTIME_ERROR: NOTES_FILE_WRITE_FAILED: could not write $WORK/outside/notes.json." ]; then
+    pass 'a refused export-notes --json prints no JSON success, only the failure'
+else
+    fail "export-notes refused: $status, $out"
+fi
+FAKE_EXEC_LINK="$SENTINEL" out_call notes-export "$PROJECT" "--file=$WORK/outside/notes.json" --json
+if [ "$status" -eq 0 ] && [ "$out" = "{\"status\":\"refused\",\"reason\":\"NOTES_FILE_WRITE_FAILED: could not write $WORK/outside/notes.json: the command left no plain file for $WORK/outside/notes.json; nothing was written.\"}" ]; then
+    pass 'a refused notes-export answers refused, as the pane reads it'
+else
+    fail "notes-export refused: $status, $out"
+fi
+# The scratch output is bounded: more than KNOSSOS_OUTPUT_LIMIT_MB is never moved out.
+FAKE_EXEC_KB=2048 KNOSSOS_OUTPUT_LIMIT_MB=1 out_call export-bundle project_1 "--output=$WORK/outside/big.json"
+case $out in "knossos: the command wrote more than 1 MB, the most the host moves out of a container (KNOSSOS_OUTPUT_LIMIT_MB raises it), for $WORK/outside/big.json; nothing was written.${NL}KNOSSOS_INVALID_ARGUMENT: Unable to create bundle output: $WORK/outside/big.json") said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 2 ] && [ "$said" = yes ] && [ ! -e "$WORK/outside/big.json" ] && [ -z "$(scratch_left)" ]; then pass 'an output over the limit is refused and nothing is written'; else fail "output limit: $status, $out"; fi
+FAKE_EXEC_KB=512 KNOSSOS_OUTPUT_LIMIT_MB=1 out_call export-bundle project_1 "--output=$WORK/outside/small.json"
+if [ "$status" -eq 0 ] && [ "$(wc -c < "$WORK/outside/small.json" | tr -d ' ')" -eq 524288 ]; then pass 'an output under the limit is written whole'; else fail "under the limit: $status, $out"; fi
+rm -f "$WORK/outside/small.json"
+KNOSSOS_OUTPUT_LIMIT_MB=lots out_call export-bundle project_1 "--output=$WORK/outside/x.json"
+if [ "$status" -eq 1 ] && [ "$out" = "knossos: KNOSSOS_OUTPUT_LIMIT_MB must be a whole number of MB above 0, got 'lots'." ]; then pass 'a limit that is not a number is refused'; else fail "bad limit: $status, $out"; fi
 FAKE_EXEC_WRITE=x out_call export-bundle project_1 "--output=$DATA/bundle.json"
 case $out in *'lies in the Knossos data directory, which a container can write'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'a destination in the graph directory is refused'; else fail "output in graph: $status, $out"; fi
@@ -954,15 +988,34 @@ rm -f "$OUT_IN"
 FAKE_EXEC_WRITE='{"format": "knossos-notes"}' out_call notes-export "$PROJECT" --json
 case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *"[--file=$DATA/.knossos-files."*) via=scratch ;; *) via=other ;; esac
 if [ "$status" -eq 0 ] && [ "$via" = scratch ] && [ -f "$PROJECT/knossos-notes.json" ]; then pass 'notes-export writes the project knossos-notes.json through the host'; else fail "notes-export default: $status, $out"; fi
-printf 'not notes\n' > "$PROJECT/knossos-notes.json"
-FAKE_EXEC_WRITE=x out_call notes-export "$PROJECT" --json
-case $out in '{"status":"refused","reason":"NOTES_FILE_NOT_NOTES: '"$PROJECT"'/knossos-notes.json exists and is not a knossos notes file; remove it or pick another --file."}') said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(cat "$PROJECT/knossos-notes.json")" = 'not notes' ] && [ "$(count_calls run)" -eq 0 ]; then
-    pass 'notes-export refuses to replace a file that is not a notes file, as the pane expects'
+# A file in the way is judged by the command, as in native mode: it gets a
+# read-only copy at the path it writes, and what it leaves there is not
+# written back.
+printf '{"note": "quotes \\"format\\":\\"knossos-notes\\""}\n' > "$PROJECT/knossos-notes.json"
+cp "$PROJECT/knossos-notes.json" "$WORK/quoting.json"
+FAKE_EXEC_REFUSE=1 out_call notes-export "$PROJECT" --json
+case $out in *"file:$PROJECT/knossos-notes.json:read-only:$(cat "$WORK/quoting.json")"*) copied=yes ;; *) copied=no ;; esac
+case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *"[--file=$DATA/.knossos-files."*"/output]") ;; *) copied=no ;; esac
+case $out in *'{"status":"refused","reason":"NOTES_FILE_NOT_NOTES: '"$PROJECT"'/knossos-notes.json exists and is not a knossos notes file; remove it or pick another --file."}') said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$copied" = yes ] && [ "$said" = yes ] && cmp -s "$PROJECT/knossos-notes.json" "$WORK/quoting.json" && [ -z "$(scratch_left)" ]; then
+    pass 'a file in the way of a notes export is handed to the command read-only, which decides, and a refusal leaves it as it was'
 else
     fail "notes-export over another file: $status, $out"
 fi
-rm -f "$PROJECT/knossos-notes.json"
+inode_before=$(pin_of "$PROJECT/knossos-notes.json")
+FAKE_EXEC_REFUSE=1 out_call export-notes "$PROJECT" --json
+inode_after=$(pin_of "$PROJECT/knossos-notes.json")
+if [ "$inode_before" = "$inode_after" ]; then pass 'a copy the command left in place is never written back over the file'; else fail "unchanged copy rewritten: $inode_before $inode_after"; fi
+FAKE_EXEC_WRITE='{"format":"knossos-notes","notes":[]}' out_call export-notes "$PROJECT" --json
+if [ "$status" -eq 0 ] && [ "$(cat "$PROJECT/knossos-notes.json")" = '{"format":"knossos-notes","notes":[]}' ]; then pass 'a notes file the command replaced is written over the one in place'; else fail "replaced notes: $status, $out"; fi
+mkfifo "$WORK/outside/fifo.json"
+FAKE_EXEC_WRITE=x out_call notes-export "$PROJECT" "--file=$WORK/outside/fifo.json" --json
+if [ "$status" -eq 0 ] && [ "$out" = '{"status":"refused","reason":"NOTES_FILE_NOT_NOTES: '"$WORK"'/outside/fifo.json exists and is not a knossos notes file; remove it or pick another --file."}' ] && [ "$(count_calls run)" -eq 0 ]; then
+    pass 'something in the way that is no plain file is refused as the command refuses it, before anything runs'
+else
+    fail "fifo in the way: $status, $out"
+fi
+rm -f "$PROJECT/knossos-notes.json" "$WORK/outside/fifo.json"
 (cd "$PROJECT/src" && FAKE_EXEC_WRITE='{"format":"knossos-notes"}' TMPDIR="$WORK/tmp" kn export-notes </dev/null >/dev/null 2>&1)
 if [ -f "$PROJECT/src/knossos-notes.json" ]; then pass 'export-notes without --file writes knossos-notes.json in the folder it runs from'; else fail 'export-notes default'; fi
 rm -f "$PROJECT/src/knossos-notes.json"
