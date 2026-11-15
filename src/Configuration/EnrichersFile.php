@@ -12,7 +12,8 @@ use Knossos\Roots\AllowedRoots;
 /**
  * The installation's `enrichers.json`: which external enrichers exist and how to start them.
  *
- * Sits beside `roots.json`, so `KNOSSOS_ROOTS_FILE` moves both. Read
+ * Sits beside `roots.json`, so `KNOSSOS_ROOTS_FILE` moves both, unless
+ * `KNOSSOS_SETTINGS_DIR` names its directory ({@see AllowedRoots::settingsDirectory()}). Read
  * tolerantly: a broken file or entry never fails a scan, it only shrinks the
  * set of enrichers and leaves a line in {@see problems()} for the scan to
  * report. `knossos enricher` writes it through {@see write()}; editing it by
@@ -25,7 +26,7 @@ final readonly class EnrichersFile
     /** The enrichers file that belongs to a database path, following the roots file's location. */
     public static function forDatabase(string $databasePath): self
     {
-        return new self(dirname(AllowedRoots::defaultConfigPath($databasePath)) . '/enrichers.json');
+        return new self(AllowedRoots::settingsDirectory($databasePath) . '/enrichers.json');
     }
 
     /**

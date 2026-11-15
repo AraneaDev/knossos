@@ -665,11 +665,15 @@ install_container() {
     DATA_DIR=$(CDPATH='' cd -P -- "$DATA_DIR" && pwd -P) || die "could not enter $DATA_DIR"
     # Again on the directory as created, should a link have moved it.
     refuse_writable_layout
-    if [ "$ROOTS_FILE" = "$logical_data/roots.json" ]; then ROOTS_FILE="$DATA_DIR/roots.json"; fi
+    CINSTALL="$DATA_DIR/install"
+    # The allow-list of a container install is the host's, in the install
+    # directory, where no container can write it: the launcher chooses a
+    # project from it and hands it to every container read-only. A roots
+    # file the caller named elsewhere stays theirs.
+    if [ "$ROOTS_FILE" = "$logical_data/roots.json" ] || [ "$ROOTS_FILE" = "$DATA_DIR/roots.json" ]; then ROOTS_FILE="$CINSTALL/roots.json"; fi
     KNOSSOS_DATA_DIR=$DATA_DIR
     KNOSSOS_ROOTS_FILE=$ROOTS_FILE
     export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
-    CINSTALL="$DATA_DIR/install"
     BAKED_DIR=$CINSTALL
     for entry in "" /plugin /containers; do
         [ ! -L "$CINSTALL$entry" ] || die "$CINSTALL$entry is a symlink; remove it and run the installer again. Nothing was changed"
@@ -687,6 +691,9 @@ install_container() {
         die 'the install did not complete (see above); the previous state was restored'
     fi
     CONTAINER_SWITCHED=1
+    if [ "$ROOTS_FILE" = "$CINSTALL/roots.json" ] && [ ! -e "$ROOTS_FILE" ]; then
+        (umask 077 && printf '{\n    "roots": []\n}\n' > "$ROOTS_FILE") || die "could not write $ROOTS_FILE"
+    fi
     log "image recorded as $digest"
     log "launcher written to $LAUNCHER"
     [ "$PLUGIN" = 0 ] || log "plugin written to $CINSTALL/plugin"

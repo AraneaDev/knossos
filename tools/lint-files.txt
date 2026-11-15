@@ -624,6 +624,7 @@ php	tests/phpunit/Cli/ScanCommandTest.php
 php	tests/phpunit/Cli/SelfUpdateCommandTest.php
 php	tests/phpunit/Cli/SessionBriefUpdateNoticeTest.php
 php	tests/phpunit/Cli/SessionCommandTest.php
+php	tests/phpunit/Cli/SettingsDirectoryTest.php
 php	tests/phpunit/Cli/TestHomeIsolationTest.php
 php	tests/phpunit/Cli/TuiCommandTest.php
 php	tests/phpunit/Cli/WatchCommandTest.php

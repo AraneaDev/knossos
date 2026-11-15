@@ -101,6 +101,11 @@ else
 fi
 if grep -qxF "INSTALL_DIR='$DATA/install'" "$LAUNCHER" && [ -x "$LAUNCHER" ]; then pass 'the launcher comes from the image with the install directory baked in'; else fail "launcher: $(grep -n '^INSTALL_DIR=' "$LAUNCHER" 2>&1)"; fi
 if [ ! -e "$DATA/versions" ] && [ ! -e "$DATA/current" ]; then pass 'container mode has no versions/ and no current'; else fail 'versions/ or current exists'; fi
+if [ "$(tr -d ' \n' < "$DATA/install/roots.json" 2>/dev/null)" = '{"roots":[]}' ] && [ ! -e "$DATA/roots.json" ]; then
+    pass 'the installer writes the first, empty allow-list in the install directory'
+else
+    fail "first roots file: $(cat "$DATA/install/roots.json" 2>&1)"
+fi
 # pin_of DIR: the device and inode numbers of DIR; baked_pin LAUNCHER: the pin a launcher carries.
 pin_of() { stat -c '%d:%i' -- "$1" 2>/dev/null || stat -f '%d:%i' -- "$1"; }
 baked_pin() { sed -n "s/^INSTALL_PIN='\(.*\)'\$/\1/p" "$1"; }
@@ -190,12 +195,11 @@ fi
 expect_claude() { if grep -qxF "$1" "$CLAUDE_LOG" 2>/dev/null; then pass "$2"; else fail "$2: no call $1 in $(cat "$CLAUDE_LOG" 2>&1)"; fi; }
 expect_claude "call [plugin] [marketplace] [add] [$DATA2/install/plugin] [--scope] [user]" 'the marketplace is registered on the host at <install dir>/plugin'
 expect_claude 'call [plugin] [install] [knossos@knossos] [--scope] [user] [--yes]' 'the plugin is installed from it'
-expect_claude "call [mcp] [add] [knossos] [-s] [user] [-e] [KNOSSOS_DATA_DIR=$DATA2] [-e] [KNOSSOS_ROOTS_FILE=$DATA2/roots.json] [--] [$LAUNCHER2] [serve]" 'the MCP server is registered with the launcher'
-if grep -q "^call \[exec\] .*\[/opt/knossos/bin/knossos\] \[allow-root\] \[$PROJECT\] \[--execute\]\$" "$FAKE_DOCKER_STATE/calls" \
-    && grep -qF "[--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly]" "$FAKE_DOCKER_STATE/calls"; then
-    pass "the project root is granted by the image's allow-root, through the launcher"
+expect_claude "call [mcp] [add] [knossos] [-s] [user] [-e] [KNOSSOS_DATA_DIR=$DATA2] [-e] [KNOSSOS_ROOTS_FILE=$DATA2/install/roots.json] [--] [$LAUNCHER2] [serve]" 'the MCP server is registered with the launcher and the list in the install directory'
+if grep -qxF "        \"$PROJECT\"" "$DATA2/install/roots.json" 2>/dev/null && ! grep -q 'allow-root' "$FAKE_DOCKER_STATE/calls" && [ ! -e "$DATA2/roots.json" ]; then
+    pass 'the project root is granted on the host, in the list in the install directory, with no container'
 else
-    fail "allow-root: $(calls)"
+    fail "allow-root: $(cat "$DATA2/install/roots.json" 2>&1), $(calls)"
 fi
 
 # ---- refusals that change nothing -------------------------------------------------------------

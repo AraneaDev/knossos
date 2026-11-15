@@ -26,30 +26,34 @@
 # the installer's own pre-switch check and for tests, not for everyday use.
 #
 # Threat note (container mode). A scanned project is untrusted input, so the
-# code inside a container is treated as hostile. The project root is mounted
-# read-only, so nothing a container does can plant a file in it that a tool on
-# the host would later run (a git hook, an editor task, an agent setting). It
-# can write the graph directory and the roots file's directory. This launcher
-# runs on the host, as you, so nothing it reads or runs may be something a
-# container could have written:
+# code inside a container is treated as hostile. Each container gets:
+#   - the project root, READ-ONLY: nothing a container does can plant a file
+#     in it that a tool on the host would later run (a git hook, an editor
+#     task, an agent setting);
+#   - the graph directory, read-write, as its own mount: the one place a
+#     container can write;
+#   - the install directory, READ-ONLY, on top of the graph mount;
+#   - the directory of a roots file the caller named elsewhere, read-only.
+# This launcher runs on the host, as you, so nothing it reads or runs may be
+# something a container could have written:
+#   - The install directory holds everything the host trusts: install.json,
+#     plugin/, the update helper, the update check, the lock, containers/ and
+#     roots.json, the allow-list. Neither it nor its parent can be renamed from
+#     inside: both are mount points there.
+#   - No mount a container can write may contain or be the graph directory,
+#     the install directory or the directory holding this launcher, and the
+#     project root may not either. The launcher refuses such a layout in one
+#     line, and so does the installer.
+#   - The allow-list the project root is chosen from is the one in the install
+#     directory, or a file the caller named outside every directory a
+#     container can write and outside the project. The same file is handed to
+#     the container, read-only, so the server there enforces the same list.
+#     allow-root, claim and move-project change it here, on the host. Nothing
+#     read from it is ever run or expanded unquoted.
 #   - A file a command is told to write is written into a scratch directory in
 #     the graph directory and moved to the path named by the host, which never
 #     follows a link there; a file it is told to read from outside every mount
 #     is copied in. See FILE_ROLES below.
-#   - The install directory (install.json, plugin/, the update helper, the
-#     update check, the lock, containers/) is mounted read-only, as its own
-#     mount, directly below the root of the graph mount. Neither it nor its
-#     parent can be renamed from inside: both are mount points there.
-#   - No read-write mount may contain or be the graph directory, the install
-#     directory or the directory holding this launcher. Without that rule a
-#     container could rename the parent of the install directory and put a
-#     directory of its own in its place, or replace this file. The launcher
-#     refuses such a layout in one line, and so does the installer.
-#   - The roots file can be written from inside. It is only used to choose the
-#     project root among the ancestors of the working directory, that choice
-#     goes through the same mount rule, and nothing read from it is ever run or
-#     expanded unquoted. At worst it widens the project root to an ancestor of
-#     the working directory below the home directory.
 #   - The installer bakes the device and inode numbers of the install
 #     directory into this file, and every call compares them before it reads
 #     anything there, so a directory put in its place by anyone is refused.
@@ -269,7 +273,7 @@ fi
 [ ! -L "$INSTALL_DIR" ] || untrusted "the install directory is a symlink"
 INSTALL_REAL=$(physical "$INSTALL_DIR")
 if [ -z "$INSTALL_REAL" ] || [ "$INSTALL_REAL" != "$INSTALL_DIR" ]; then untrusted "the install directory is not at its own physical path"; fi
-for entry in plugin containers container-update update-check.json self-update.lock.d; do
+for entry in plugin containers container-update update-check.json self-update.lock.d roots.json roots.json.lock.d; do
     [ ! -L "$INSTALL_DIR/$entry" ] || untrusted "$INSTALL_DIR/$entry is a symlink"
 done
 if [ ! -d "$INSTALL_DIR/containers" ] || [ ! -d "$INSTALL_DIR/plugin" ]; then untrusted "$INSTALL_DIR has no containers/ or plugin/ directory"; fi
@@ -294,7 +298,16 @@ fi
 # the person picked with --data-dir: switching between native and container
 # mode keeps the same graph.
 KNOSSOS_DATA_DIR="${KNOSSOS_DATA_DIR:-$(dirname -- "$INSTALL_DIR")}"
-KNOSSOS_ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$KNOSSOS_DATA_DIR/roots.json}"
+# The allow-list is the one the host keeps in the install directory, which no
+# container can write. `roots.json` in the graph directory (or in the data
+# directory around the install directory) is what the plugin's hooks and the
+# MCP registration name, and where a container install kept it before; it lies
+# where every container can write, so that name stands for the host's list
+# and the file there is never read. A caller's KNOSSOS_ROOTS_FILE anywhere
+# else is checked below.
+ROOTS_GIVEN=${KNOSSOS_ROOTS_FILE:-}
+case $ROOTS_GIVEN in '' | "$(dirname -- "$INSTALL_DIR")/roots.json" | "${KNOSSOS_DATA_DIR%/}/roots.json") ROOTS_GIVEN='' ;; esac
+KNOSSOS_ROOTS_FILE=${ROOTS_GIVEN:-$INSTALL_DIR/roots.json}
 export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
 
 # inside PATH DIR: whether PATH is DIR or lies under it. Every path is under /.
@@ -517,9 +530,24 @@ make_dir() {
 }
 make_dir "$KNOSSOS_DATA_DIR" KNOSSOS_DATA_DIR
 DATA_REAL=$made
-make_dir "$(dirname -- "$KNOSSOS_ROOTS_FILE")" KNOSSOS_ROOTS_FILE
-ROOTS_DIR_REAL=$made
-ROOTS_FILE_REAL="${ROOTS_DIR_REAL%/}/${KNOSSOS_ROOTS_FILE##*/}"
+INSTALL_PARENT=$(dirname -- "$INSTALL_REAL")
+ROOTS_DIR_REAL=$INSTALL_REAL
+ROOTS_FILE_REAL="$INSTALL_REAL/roots.json"
+if [ -n "$ROOTS_GIVEN" ]; then
+    make_dir "$(dirname -- "$ROOTS_GIVEN")" KNOSSOS_ROOTS_FILE
+    ROOTS_DIR_REAL=$made
+    ROOTS_FILE_REAL="${ROOTS_DIR_REAL%/}/${ROOTS_GIVEN##*/}"
+    if [ "$ROOTS_FILE_REAL" = "$INSTALL_PARENT/roots.json" ] || [ "$ROOTS_FILE_REAL" = "$DATA_REAL/roots.json" ]; then
+        ROOTS_DIR_REAL=$INSTALL_REAL
+        ROOTS_FILE_REAL="$INSTALL_REAL/roots.json"
+    elif inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then
+        # In the install directory: the host's own, read-only to every container.
+        :
+    elif inside "$ROOTS_FILE_REAL" "$DATA_REAL"; then
+        die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies in the graph directory $DATA_REAL, which a container can write; unset it to use the list the installer keeps in $INSTALL_REAL/roots.json, or point it at a file outside every directory a container can write."
+    fi
+fi
+KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL
 
 # Where the call works from, and the directory that decides the project root:
 # the working directory, or the path argument of a command that takes a
@@ -561,6 +589,11 @@ ROOT=${answer%%"$NEWLINE"*}
 LISTED_AS=${answer#*"$NEWLINE"}
 if inside "$HERE" "$ROOT"; then WORKDIR=$HERE; else WORKDIR=$ROOT; fi
 
+# A roots file inside the project is the scanned project's to write, never the host's list.
+if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL" && inside "$ROOTS_FILE_REAL" "$ROOT"; then
+    die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies inside the project root $ROOT, whose files the scanned project controls; unset it to use the list the installer keeps in $INSTALL_REAL/roots.json."
+fi
+
 # guard_writable PATH KIND: refuse a read-write mount that contains or is a
 # directory the host trusts (see the threat note at the top). The graph
 # directory may be the directory around the install directory, which then is
@@ -599,6 +632,278 @@ $LAUNCHER_DIRS
 HELD
 }
 
+# ---- the allow-list, kept by the host -----------------------------------------
+#
+# allow-root and claim are carried out here, on the host, and never in a
+# container: the list lives where no container can write. The edit is small
+# enough to make safely in shell: the launcher reads the entries as it reads
+# them to choose a project root (roots above), appends one, and writes the
+# whole list again, pretty-printed as JSON with only `\` and `"` escaped, into
+# a new file renamed over the old one, under a lock directory beside it. A
+# list holding an entry this reader cannot reproduce byte for byte (a \u or
+# control escape) is not rewritten. Their answers are the ones the commands
+# give in native mode, so the plugin's hooks read them the same way.
+
+# root_problem DIR: why DIR may not become a project root, or nothing.
+root_problem() {
+    (
+        if reason=$(too_wide "$1"); then die "the project root $1 $reason, which container mode does not mount; run knossos from inside a project."; fi
+        if inside "$1" "$INSTALL_REAL"; then die "$1 lies inside the install directory $INSTALL_REAL, which a container may only read; point KNOSSOS_DATA_DIR, KNOSSOS_ROOTS_FILE or the project elsewhere."; fi
+        guard_writable "$1" project
+    ) 2>&1 >/dev/null | sed 's/^knossos: //'
+}
+
+# normal ROOT: a root as the server compares it, trailing slashes gone.
+normal() {
+    entry=$1
+    while [ "${#entry}" -gt 1 ] && [ "${entry%/}" != "$entry" ]; do entry=${entry%/}; done
+    printf '%s' "$entry"
+}
+
+# listed ROOT: whether the list names ROOT, compared as the server compares.
+listed() {
+    while IFS= read -r entry; do
+        [ "$(normal "$entry")" != "$1" ] || return 0
+    done <<ENTRIES
+$(roots)
+ENTRIES
+    return 1
+}
+
+ROOTS_LOCK=''
+# shellcheck disable=SC2317,SC2329 # run from the EXIT trap
+unlock_roots() { [ -z "$ROOTS_LOCK" ] || rmdir -- "$ROOTS_LOCK" 2>/dev/null; }
+lock_roots() {
+    ROOTS_LOCK="$ROOTS_FILE_REAL.lock.d"
+    tries=0
+    until mkdir -- "$ROOTS_LOCK" 2>/dev/null; do
+        tries=$((tries + 1))
+        if [ "$tries" -ge 10 ]; then
+            ROOTS_LOCK=''
+            printf '%s' "Unable to lock $ROOTS_FILE_REAL: $ROOTS_FILE_REAL.lock.d has been held for 10 seconds; remove it if no knossos call is running."
+            return 1
+        fi
+        sleep 1
+    done
+    trap unlock_roots EXIT
+}
+
+# write_roots ENTRY...: the list, replaced whole. Prints why when it cannot.
+write_roots() {
+    if [ -f "$ROOTS_FILE_REAL" ] && grep -q '\\[ubfnrt]' "$ROOTS_FILE_REAL"; then
+        printf '%s' "$ROOTS_FILE_REAL holds an entry with an escape this launcher cannot rewrite safely; edit it by hand."
+        return 1
+    fi
+    if ! next=$(mktemp "$ROOTS_DIR_REAL/.roots.XXXXXX" 2>/dev/null); then
+        printf '%s' "Unable to write $ROOTS_FILE_REAL."
+        return 1
+    fi
+    {
+        printf '{\n    "roots": ['
+        separator=''
+        for entry in "$@"; do
+            printf '%s\n        %s' "$separator" "$(json_string "$entry")"
+            separator=','
+        done
+        if [ $# -gt 0 ]; then printf '\n    ]\n}\n'; else printf ']\n}\n'; fi
+    } > "$next" && chmod 0600 "$next" && mv -f -- "$next" "$ROOTS_FILE_REAL" && return 0
+    rm -f -- "$next"
+    printf '%s' "Unable to write $ROOTS_FILE_REAL."
+    return 1
+}
+
+# json_string TEXT: TEXT as a JSON string.
+json_string() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+
+# add_root ROOT: append ROOT to the list under the lock. Prints why when it cannot.
+add_root() {
+    lock_roots || return 1
+    set -- "$1"
+    while IFS= read -r entry; do
+        [ -n "$entry" ] && set -- "$@" "$entry"
+    done <<ENTRIES
+$(roots)
+ENTRIES
+    added=$1
+    shift
+    write_roots "$@" "$added"
+    result=$?
+    unlock_roots
+    ROOTS_LOCK=''
+    return "$result"
+}
+
+# The options allow-root and claim take, as their native commands take them.
+roots_options() {
+    execute=no
+    json=no
+    folder=''
+    for argument in "$@"; do
+        case $argument in
+            --execute | --execute=true | --execute=1 | --execute=yes | --execute=on) execute=yes ;;
+            --execute=*) execute=no ;;
+            --json | --json=true | --json=1 | --json=yes | --json=on) json=yes ;;
+            --json=*) json=no ;;
+            --db=*)
+                case $(located "${argument#--db=}") in
+                    "$DATA_REAL"/*) ;;
+                    *) die "--db names ${argument#--db=}, outside the graph directory $DATA_REAL; in container mode the database lives there, so point KNOSSOS_DATA_DIR at its directory instead." ;;
+                esac
+                ;;
+            --*) printf 'KNOSSOS_INVALID_ARGUMENT: Unknown option: %s\n' "${argument%%=*}" >&2; exit 2 ;;
+            *) [ -n "$folder" ] || folder=$argument ;;
+        esac
+    done
+}
+
+# not_a_folder USAGE: the native answer for a missing or absent folder.
+not_a_folder() {
+    if [ -z "$folder" ]; then printf 'KNOSSOS_INVALID_ARGUMENT: %s\n' "$1" >&2; else printf 'KNOSSOS_INVALID_ARGUMENT: %s is not an existing directory.\n' "$folder" >&2; fi
+    exit 2
+}
+
+EFFECT='A server configured with that roots file re-reads it per request, so %s with no restart.'
+case ${1-} in
+    allow-root)
+        shift
+        roots_options "$@"
+        if [ -n "$folder" ]; then
+            case $folder in /*) ;; *) printf 'KNOSSOS_INVALID_ARGUMENT: %s is not absolute. allow-root needs an absolute path so it can be compared against scan requests.\n' "$folder" >&2; exit 2 ;; esac
+        fi
+        if [ -z "$folder" ] || [ ! -d "$folder" ]; then not_a_folder 'Usage: knossos allow-root <path> [--execute] [--db=FILE] [--json]'; fi
+        path=$(normal "$folder")
+        problem=$(root_problem "$(physical "$path")")
+        [ -z "$problem" ] || die "$problem"
+        quoted_path=$(json_string "$path")
+        quoted_file=$(json_string "$ROOTS_FILE_REAL")
+        if listed "$path"; then
+            if [ "$json" = yes ]; then printf '{"path":%s,"roots_file":%s,"added":false}\n' "$quoted_path" "$quoted_file"; else printf '%s is already present in %s. Nothing to do.\n' "$path" "$ROOTS_FILE_REAL"; fi
+            exit 0
+        fi
+        if [ "$execute" = no ]; then
+            if [ "$json" = yes ]; then
+                printf '{"path":%s,"roots_file":%s,"roots_file_source":"named","added":false,"preview":true}\n' "$quoted_path" "$quoted_file"
+            else
+                # shellcheck disable=SC2059 # EFFECT is the native message's template
+                printf "Would add %s to %s.\n$EFFECT\nRe-run with --execute to write it.\n" "$path" "$ROOTS_FILE_REAL" 'the addition would take effect'
+            fi
+            exit 0
+        fi
+        if ! problem=$(add_root "$path"); then printf 'KNOSSOS_INVALID_ARGUMENT: %s\n' "$problem" >&2; exit 2; fi
+        if [ "$json" = yes ]; then
+            printf '{"path":%s,"roots_file":%s,"roots_file_source":"named","added":true}\n' "$quoted_path" "$quoted_file"
+        else
+            # shellcheck disable=SC2059 # EFFECT is the native message's template
+            printf "Added %s to %s.\n$EFFECT\n" "$path" "$ROOTS_FILE_REAL" 'this takes effect immediately'
+        fi
+        exit 0
+        ;;
+    claim)
+        shift
+        roots_options "$@"
+        if [ -z "$folder" ] || [ ! -d "$folder" ]; then not_a_folder 'Usage: knossos claim <path> [--execute] [--db=FILE] [--json]'; fi
+        # claim_answer STATUS ROOT [REASON]: one outcome; every one exits 0.
+        claim_answer() {
+            if [ "$json" = yes ]; then
+                if [ -n "${3-}" ]; then reason=$(json_string "$3"); else reason=null; fi
+                printf '{"status":"%s","root":%s,"reason":%s}\n' "$1" "$(json_string "$2")" "$reason"
+            else
+                printf '%s: %s%s\n' "$1" "$2" "${3:+ ($3)}"
+            fi
+            exit 0
+        }
+        # The folder, and the root a start there claims: the nearest folder
+        # holding a .git, a directory or the file a linked worktree has, else
+        # the folder itself (StartClaim::targetOf).
+        started=$(physical "$folder")
+        root=$started
+        current=$started
+        while :; do
+            if [ -e "$current/.git" ]; then root=$current; break; fi
+            [ "$current" != / ] || break
+            current=$(dirname -- "$current")
+        done
+        if [ ! -r "$ROOTS_FILE_REAL" ] && [ -e "$ROOTS_FILE_REAL" ]; then claim_answer error "$root" "Unable to read $ROOTS_FILE_REAL."; fi
+        if listed "$started"; then claim_answer present "$started"; fi
+        if listed "$root"; then claim_answer present "$root"; fi
+        if [ "$root" = / ] || inside "$HOME_REAL" "$root"; then
+            claim_answer ask "$root" "$root is the filesystem root, your home folder or a folder above it, so it is not allowed without being asked."
+        fi
+        [ "$execute" = yes ] || claim_answer would-add "$root"
+        problem=$(root_problem "$root")
+        [ -z "$problem" ] || claim_answer error "$root" "$problem"
+        problem=$(add_root "$root") || claim_answer error "$root" "$problem"
+        claim_answer added "$root"
+        ;;
+esac
+
+# move-project --execute swaps the old root for the new one in the list. Here
+# that is done by the host before the command runs, so the command finds the
+# list already as it wants it and writes nothing; should the command fail, the
+# list is put back as it was.
+ROOTS_BEFORE=''
+if [ "${1-}" = move-project ]; then
+    execute=no
+    moves=''
+    for argument in "$@"; do
+        case $argument in
+            move-project) ;;
+            --execute | --execute=true | --execute=1 | --execute=yes | --execute=on) execute=yes ;;
+            --*) ;;
+            *) moves="$moves$argument$NEWLINE" ;;
+        esac
+    done
+    if [ "$execute" = yes ]; then
+        from=$(printf '%s' "$moves" | sed -n 1p)
+        to=$(printf '%s' "$moves" | sed -n 2p)
+        case $from in /*) ;; *) die 'in container mode move-project names the old root by its path, so the allow-list on the host can follow it.' ;; esac
+        [ -d "$to" ] || die "the new root $to is not an existing directory."
+        to=$(normal "$(physical "$to")")
+        problem=$(root_problem "$to")
+        [ -z "$problem" ] || die "$problem"
+        if [ -d "$from" ]; then from=$(physical "$from"); fi
+        from=$(normal "$from")
+        # moved_list: the list without the old root and with the new one, written.
+        moved_list() {
+            set --
+            while IFS= read -r entry; do
+                [ -n "$entry" ] || continue
+                [ "$(normal "$entry")" != "$from" ] || continue
+                set -- "$@" "$entry"
+            done <<ENTRIES
+$(roots)
+ENTRIES
+            if ! listed "$to"; then set -- "$@" "$to"; fi
+            write_roots "$@"
+        }
+        ROOTS_BEFORE=$(mktemp "${TMPDIR:-/tmp}/knossos-roots.XXXXXX") || die 'could not create a temporary file'
+        ROOTS_HAD=no
+        if [ -f "$ROOTS_FILE_REAL" ]; then ROOTS_HAD=yes; fi
+        if ! problem=$(
+            lock_roots || exit 1
+            if [ "$ROOTS_HAD" = yes ] && ! cp -- "$ROOTS_FILE_REAL" "$ROOTS_BEFORE"; then
+                printf '%s' "Unable to read $ROOTS_FILE_REAL."
+                unlock_roots
+                exit 1
+            fi
+            moved_list
+            written=$?
+            unlock_roots
+            exit "$written"
+        ); then
+            rm -f -- "$ROOTS_BEFORE"
+            die "$problem"
+        fi
+    fi
+fi
+
+# restore_roots: the list as it was before move-project, after a failed move.
+restore_roots() {
+    [ -n "$ROOTS_BEFORE" ] || return 0
+    if [ "$ROOTS_HAD" = yes ]; then mv -f -- "$ROOTS_BEFORE" "$ROOTS_FILE_REAL"; else rm -f -- "$ROOTS_FILE_REAL" "$ROOTS_BEFORE"; fi
+    ROOTS_BEFORE=''
+}
+
 # Every directory the container is given, each mounted at its own physical
 # path with its mode (`true` read-write, `false` read-only), and only through
 # add_mount: it applies the mount rule to exactly the path it mounts (no /, no
@@ -610,7 +915,6 @@ HELD
 # even inside the graph directory, and the graph directory is always its own
 # read-write mount: guard_writable leaves nothing that could contain it. The
 # install directory is the read-only mount added last.
-INSTALL_PARENT=$(dirname -- "$INSTALL_REAL")
 MOUNTS=''
 # add_mount DIR KIND READ-WRITE
 add_mount() {
@@ -649,7 +953,8 @@ MOUNTED
 }
 add_mount "$ROOT" project false
 add_mount "$DATA_REAL" data true
-add_mount "$ROOTS_DIR_REAL" roots true
+# The roots file's directory read-only, unless it is the install directory.
+if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then add_mount "$ROOTS_DIR_REAL" roots false; fi
 # The install directory read-only, on top: always its own mount, even when a
 # read-write one contains it.
 if too_wide "$INSTALL_REAL" >/dev/null; then die "the install directory $INSTALL_REAL $(too_wide "$INSTALL_REAL"), which container mode does not mount; re-run the installer with --data-dir set to a directory of its own."; fi
@@ -975,7 +1280,7 @@ start_container() {
     if [ "$RUNTIME" = podman ]; then set -- "$@" --userns=keep-id; fi
     set -- "$@" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
         -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_REAL" \
-        -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL"
+        -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL" -e "KNOSSOS_SETTINGS_DIR=$DATA_REAL"
     while IFS='|' read -r mounted rw; do
         [ -n "$mounted" ] || continue
         if [ "$rw" = true ]; then
@@ -1101,7 +1406,7 @@ fi
 # would in native mode.
 for variable in $(env | sed -n 's/^\(KNOSSOS_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u); do
     case $variable in
-        KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN | KNOSSOS_TEST_TERMINALS) ;;
+        KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_SETTINGS_DIR | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN | KNOSSOS_TEST_TERMINALS) ;;
         KNOSSOS_ALLOWED_ROOTS)
             if [ "$extra_root" = no ]; then set -- -e "$variable" "$@"; fi
             ;;
@@ -1110,8 +1415,8 @@ for variable in $(env | sed -n 's/^\(KNOSSOS_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u)
 done
 # A root the roots file names through a symlink: inside, that spelling leads
 # nowhere (only the physical target is mounted), so the server would not count
-# it as allowed. Its physical form is added to the allowed roots, which grants
-# nothing the roots file did not.
+# it as allowed, although it reads the very same list. Its physical form is
+# added to the allowed roots, which grants nothing the roots file did not.
 if [ "$extra_root" = yes ]; then
     set -- -e "KNOSSOS_ALLOWED_ROOTS=${KNOSSOS_ALLOWED_ROOTS:+$KNOSSOS_ALLOWED_ROOTS:}$ROOT" "$@"
 fi
@@ -1120,7 +1425,7 @@ if [ "$terminal" = yes ]; then
 fi
 set -- exec -i -w "$WORKDIR" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
     -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_REAL" \
-    -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL" "$@"
+    -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL" -e "KNOSSOS_SETTINGS_DIR=$DATA_REAL" "$@"
 
 # shellcheck disable=SC2317,SC2329 # called from the traps below
 forward() {
@@ -1211,4 +1516,5 @@ if [ -n "$OUTPUT_DEST" ]; then
     if [ "$status" -eq 0 ] && ! finish_output; then status=1; fi
     show_output
 fi
+if [ "$status" -ne 0 ]; then restore_roots; elif [ -n "$ROOTS_BEFORE" ]; then rm -f -- "$ROOTS_BEFORE"; fi
 exit "$status"

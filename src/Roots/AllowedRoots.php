@@ -240,4 +240,21 @@ final class AllowedRoots
 
         return dirname($databasePath) . '/roots.json';
     }
+
+    /**
+     * Where `enrichers.json` and `pane-autostart.json` live: beside the roots file.
+     *
+     * `KNOSSOS_SETTINGS_DIR` names another directory. The container launcher
+     * sets it to the graph directory, because there the roots file is the
+     * read-only list the host keeps, and these two settings stay writable.
+     */
+    public static function settingsDirectory(string $databasePath): string
+    {
+        $override = getenv('KNOSSOS_SETTINGS_DIR');
+        if (is_string($override) && $override !== '') {
+            return rtrim($override, '/') === '' ? '/' : rtrim($override, '/');
+        }
+
+        return dirname(self::defaultConfigPath($databasePath));
+    }
 }

@@ -78,7 +78,7 @@ bake "$PIN" "$LAUNCHER"
 
 PROJECT="$WORK/my project"
 mkdir -p "$PROJECT/src/deep"
-printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$DATA/roots.json"
+printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/roots.json"
 
 # kn ARGS: the launcher with the caller's data and roots settings removed, from the current directory.
 kn() { env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE -u KNOSSOS_NO_UPDATE_CHECK "$LAUNCHER" "$@"; }
@@ -87,14 +87,14 @@ UID_GID="$(id -u):$(id -g)"
 NAME="knossos-$(hash12 "$INSTALL
 $PROJECT
 $DATA
-$DATA/roots.json
+$INSTALL/roots.json
 $IMAGE")"
 
 # ---- the first call starts the container, the call runs in it ---------------
 
 reset_docker
 out=$(cd "$PROJECT/src/deep" && kn version --json </dev/null 2>&1); status=$?
-expected_run="call [run] [-d] [--rm] [--init] [--no-healthcheck] [--pull=never] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$DATA/roots.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$DATA,target=$DATA] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
+expected_run="call [run] [-d] [--rm] [--init] [--no-healthcheck] [--pull=never] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$DATA] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$DATA,target=$DATA] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
 if [ "$status" -eq 0 ] && grep -qxF "$expected_run" "$FAKE_DOCKER_STATE/calls"; then
     pass 'the first call runs the container with same-path mounts, the install dir as one read-only mount, the user, HOME=/tmp, no network and idle-stop'
 else
@@ -102,7 +102,7 @@ else
 fi
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls")
 case $exec_line in
-    "call [exec] [-i] [-w] [$PROJECT/src/deep] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$DATA/roots.json] "*"[$NAME] [/opt/knossos/tools/launcher/idle-stop] [--run] ["*"] [/opt/knossos/bin/knossos] [version] [--json]")
+    "call [exec] [-i] [-w] [$PROJECT/src/deep] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$INSTALL/roots.json] [-e] [KNOSSOS_SETTINGS_DIR=$DATA] "*"[$NAME] [/opt/knossos/tools/launcher/idle-stop] [--run] ["*"] [/opt/knossos/bin/knossos] [version] [--json]")
         pass 'the call is an exec -i in the working directory, without -t when there is no terminal'
         ;;
     *) fail "exec line: $exec_line" ;;
@@ -149,7 +149,7 @@ out=$(cd "$WORK" && kn scan "other proj" </dev/null 2>&1); status=$?
 OTHER_NAME="knossos-$(hash12 "$INSTALL
 $OTHER
 $DATA
-$DATA/roots.json
+$INSTALL/roots.json
 $IMAGE")"
 if [ "$status" -eq 0 ] && grep -qF "[--name] [$OTHER_NAME]" "$FAKE_DOCKER_STATE/calls" \
     && grep -qF "[--mount] [type=bind,source=$OTHER,target=$OTHER,readonly]" "$FAKE_DOCKER_STATE/calls"; then
@@ -186,29 +186,29 @@ if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'the filesystem root is n
 # ---- the roots file in its other shapes ---------------------------------------
 
 NESTED="$PROJECT/src"
-printf '["%s","%s"]' "$PROJECT" "$NESTED" > "$DATA/roots.json"
+printf '["%s","%s"]' "$PROJECT" "$NESTED" > "$INSTALL/roots.json"
 : > "$FAKE_DOCKER_STATE/calls"
 (cd "$NESTED/deep" && kn version </dev/null >/dev/null 2>&1)
 if grep -qF "[--mount] [type=bind,source=$NESTED,target=$NESTED,readonly]" "$FAKE_DOCKER_STATE/calls"; then pass 'a bare array works, and the nearest listed ancestor wins'; else fail "nested roots: $(calls)"; fi
 QUOTED="$WORK/q\"uo\\te"
 mkdir -p "$QUOTED/x"
-printf '{"roots":["%s"]}' "$WORK/q\\\"uo\\\\te" > "$DATA/roots.json"
+printf '{"roots":["%s"]}' "$WORK/q\\\"uo\\\\te" > "$INSTALL/roots.json"
 : > "$FAKE_DOCKER_STATE/calls"
 (cd "$QUOTED/x" && kn version </dev/null >/dev/null 2>&1)
 if grep -qF "[--mount] [type=bind,source=$QUOTED,target=$QUOTED,readonly]" "$FAKE_DOCKER_STATE/calls"; then pass 'escaped quotes and backslashes in the roots file are read'; else fail "escaped roots: $(calls)"; fi
-printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$DATA/roots.json"
+printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/roots.json"
 
 # ---- data dir, roots file and install dir apart ---------------------------------
 
 GRAPH="$WORK/graph dir"
 ROOTS="$WORK/roots dir/roots.json"
 mkdir -p "$(dirname "$ROOTS")"
-cp "$DATA/roots.json" "$ROOTS"
+cp "$INSTALL/roots.json" "$ROOTS"
 : > "$FAKE_DOCKER_STATE/calls"
 (cd "$PROJECT" && KNOSSOS_DATA_DIR="$GRAPH" KNOSSOS_ROOTS_FILE="$ROOTS" "$LAUNCHER" version </dev/null >/dev/null 2>&1)
 run_line=$(grep '^call \[run\]' "$FAKE_DOCKER_STATE/calls")
 case $run_line in
-    *"[-e] [KNOSSOS_DATA_DIR=$GRAPH] [-e] [KNOSSOS_ROOTS_FILE=$ROOTS] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$GRAPH,target=$GRAPH] [--mount] [type=bind,source=$WORK/roots dir,target=$WORK/roots dir] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] "*)
+    *"[-e] [KNOSSOS_DATA_DIR=$GRAPH] [-e] [KNOSSOS_ROOTS_FILE=$ROOTS] [-e] [KNOSSOS_SETTINGS_DIR=$GRAPH] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$GRAPH,target=$GRAPH] [--mount] [type=bind,source=$WORK/roots dir,target=$WORK/roots dir,readonly] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] "*)
         pass "a caller's data dir and roots file are mounted beside the project and the install directory, each at its own path"
         ;;
     *) fail "separate dirs: $run_line" ;;
@@ -344,7 +344,7 @@ G="$WORK/g"
 TAB=$(printf '\t')
 for name in 'a?' 's*' '[x]' 'sp ace' "ta${TAB}b" '-dash'; do mkdir -p "$G/$name"; done
 for name in ab ac sx x; do mkdir -p "$G/$name"; done
-printf '{"roots": []}\n' > "$DATA/roots.json"
+printf '{"roots": []}\n' > "$INSTALL/roots.json"
 all_one=yes
 for name in 'a?' 's*' '[x]' 'sp ace' "ta${TAB}b" '-dash'; do
     reset_docker
@@ -359,7 +359,7 @@ if [ "$all_one" = yes ]; then pass 'a project path with ?, *, [x], a space, a ta
 
 # A roots entry that is a pattern, relative, or not a directory never widens the root.
 mkdir -p "$WORK/q/proj"
-printf '{"roots": ["%s", "/home/*", "q", "%s/missing"]}\n' "$WORK/q*" "$WORK" > "$DATA/roots.json"
+printf '{"roots": ["%s", "/home/*", "q", "%s/missing"]}\n' "$WORK/q*" "$WORK" > "$INSTALL/roots.json"
 reset_docker
 (cd "$WORK/q/proj" && kn version </dev/null >/dev/null 2>&1)
 got=$(mounts_under "$WORK")
@@ -372,7 +372,7 @@ if [ "$(printf '%s\n' "$got" | grep -c "^$WORK/q\$")" -eq 0 ] && printf '%s\n' "
 else
     fail "pattern roots ($ok_q): $(printf '%s' "$got" | tr '\n' '|')"
 fi
-printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$DATA/roots.json"
+printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/roots.json"
 
 # ---- directories too wide to mount ------------------------------------------------
 
@@ -408,7 +408,7 @@ refused 'the filesystem root as the project root' 'the project root / is the fil
 cp "$INSTALL/install.json" "$HOME/install.json"
 mkdir -p "$HOME/plugin" "$HOME/containers"
 refused 'an install directory that is the home directory' 're-run the installer with --data-dir' \
-    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$HOME" KNOSSOS_DATA_DIR="$2" KNOSSOS_ROOTS_FILE="$2/roots.json" "$3" version </dev/null' _ "$PROJECT" "$DATA" "$LAUNCHER"
+    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$HOME" KNOSSOS_DATA_DIR="$2" env -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$PROJECT" "$DATA" "$LAUNCHER"
 rm -rf "$HOME/install.json" "$HOME/plugin" "$HOME/containers"
 
 # ---- stop and self-update work from anywhere -------------------------------------------
@@ -532,7 +532,7 @@ refused 'HOME naming no directory' 'container mode needs HOME to point at your h
 # A roots file that lists the home directory (a native install run from there
 # grants it) does not block the projects below it: that entry is skipped.
 mkdir -p "$HOME/proj/sub" "$HOME/other/deep"
-printf '{"roots": ["%s", "%s/proj"]}\n' "$HOME" "$HOME" > "$DATA/roots.json"
+printf '{"roots": ["%s", "%s/proj"]}\n' "$HOME" "$HOME" > "$INSTALL/roots.json"
 reset_docker
 out=$(cd "$HOME/proj/sub" && kn version </dev/null 2>&1); status=$?
 if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$HOME/proj,target=$HOME/proj,readonly]" "$FAKE_DOCKER_STATE/calls"; then
@@ -547,7 +547,7 @@ if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$HOME/other/deep
 else
     fail "home listed, working directory: $status, $out, $(calls)"
 fi
-printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$DATA/roots.json"
+printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/roots.json"
 
 # ---- symlinks: everything the container is given is the physical path -------------------
 
@@ -567,7 +567,7 @@ exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
 agree=yes
 for wanted in "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$REAL/install]" "[-e] [KNOSSOS_DATA_DIR=$REAL/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$REAL/roots/roots.json]" \
     "[--mount] [type=bind,source=$REAL/proj,target=$REAL/proj,readonly]" "[--mount] [type=bind,source=$REAL/graph,target=$REAL/graph]" \
-    "[--mount] [type=bind,source=$REAL/roots,target=$REAL/roots]" "[--mount] [type=bind,source=$REAL/install,target=$REAL/install,readonly]" \
+    "[--mount] [type=bind,source=$REAL/roots,target=$REAL/roots,readonly]" "[--mount] [type=bind,source=$REAL/install,target=$REAL/install,readonly]" \
     "[$REAL/install/containers/knossos-"; do
     case $run_line in *"$wanted"*) ;; *) agree=no; printf '  run lacks %s\n' "$wanted" ;; esac
 done
@@ -775,11 +775,11 @@ refused 'a project root that is the data directory' "the project root $NEST/proj
     sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$3" version </dev/null' _ "$NEST/proj/.kn" "$NEST/proj/.kn/install" "$LAUNCHER"
 # The graph elsewhere, the install directory still inside the project.
 refused 'a project root that contains the install directory' "the project root $NEST/proj contains the install directory $NEST/proj/.kn/install" \
-    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_DATA_DIR="$3" KNOSSOS_ROOTS_FILE="$3/roots.json" "$4" version </dev/null' _ "$NEST/proj" "$NEST/proj/.kn/install" "$GRAPH" "$LAUNCHER"
+    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_DATA_DIR="$3" env -u KNOSSOS_ROOTS_FILE "$4" version </dev/null' _ "$NEST/proj" "$NEST/proj/.kn/install" "$GRAPH" "$LAUNCHER"
 # A graph directory set by hand inside the project.
 mkdir -p "$PROJECT/.graph"
 refused 'a project root that contains the graph directory' "the project root $PROJECT contains the Knossos data directory $PROJECT/.graph" \
-    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$1/.graph" KNOSSOS_ROOTS_FILE="$1/.graph/roots.json" "$2" version </dev/null' _ "$PROJECT" "$LAUNCHER"
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$1/.graph" env -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$PROJECT" "$LAUNCHER"
 rm -rf "$PROJECT/.graph"
 # A roots file in a directory around the data directory.
 nested_install "$NEST/outer/data/install"
@@ -787,7 +787,7 @@ refused 'a roots file directory that contains the data directory' "the directory
     sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_ROOTS_FILE="$3/roots.json" env -u KNOSSOS_DATA_DIR "$4" version </dev/null' _ "$PROJECT" "$NEST/outer/data/install" "$NEST/outer" "$LAUNCHER"
 # A graph directory two levels above the install directory.
 refused 'a graph directory that holds the install directory deeper than one level' "KNOSSOS_DATA_DIR ($NEST/outer) contains the install directory $NEST/outer/data/install deeper than one level" \
-    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_DATA_DIR="$3" KNOSSOS_ROOTS_FILE="$3/roots.json" "$4" version </dev/null' _ "$PROJECT" "$NEST/outer/data/install" "$NEST/outer" "$LAUNCHER"
+    sh -c 'cd "$1" && KNOSSOS_INSTALL_DIR="$2" KNOSSOS_DATA_DIR="$3" env -u KNOSSOS_ROOTS_FILE "$4" version </dev/null' _ "$PROJECT" "$NEST/outer/data/install" "$NEST/outer" "$LAUNCHER"
 # The launcher inside the project, and inside the graph directory.
 mkdir -p "$NEST/tools/proj/bin"
 cp "$LAUNCHER" "$NEST/tools/proj/bin/knossos"
@@ -987,11 +987,105 @@ out_call enricher add tool -- tool --output=/nowhere/x
 case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *'[--] [tool] [--output=/nowhere/x]') said=yes ;; *) said=no ;; esac
 if [ "$said" = yes ]; then pass 'arguments after -- are passed on as given'; else fail "after --: $status, $out"; fi
 
+# ---- the allow-list is the host's -------------------------------------------------------
+
+TRUSTED="$INSTALL/roots.json"
+cp "$TRUSTED" "$WORK/trusted.kept"
+# A list in the graph directory, which every container can write, never chooses a mount.
+mkdir -p "$WORK/wide/p1"
+printf '{"roots": ["%s"]}\n' "$WORK/wide" > "$DATA/roots.json"
+printf '{"roots": []}\n' > "$TRUSTED"
+reset_docker
+(cd "$WORK/wide/p1" && kn version </dev/null >/dev/null 2>&1)
+if grep -qF "[--mount] [type=bind,source=$WORK/wide/p1,target=$WORK/wide/p1,readonly]" "$FAKE_DOCKER_STATE/calls" && ! grep -qF "source=$WORK/wide," "$FAKE_DOCKER_STATE/calls"; then
+    pass 'a roots entry written to the graph directory is ignored when the root is chosen'
+else
+    fail "graph roots file widened the mount: $(calls)"
+fi
+# What the plugin's hooks name, the graph's own roots.json, stands for the host's list.
+reset_docker
+(cd "$WORK/wide/p1" && KNOSSOS_ROOTS_FILE="$DATA/roots.json" env -u KNOSSOS_DATA_DIR "$LAUNCHER" version </dev/null >/dev/null 2>&1)
+if grep -qF "[-e] [KNOSSOS_ROOTS_FILE=$TRUSTED]" "$FAKE_DOCKER_STATE/calls" && ! grep -qF "source=$WORK/wide," "$FAKE_DOCKER_STATE/calls"; then
+    pass "KNOSSOS_ROOTS_FILE naming the graph's roots.json means the host's list, which the container is given"
+else
+    fail "graph roots.json named: $(calls)"
+fi
+rm -f "$DATA/roots.json"
+mkdir -p "$DATA/sub"
+refused "a caller's KNOSSOS_ROOTS_FILE in the graph directory" "KNOSSOS_ROOTS_FILE ($DATA/sub/roots.json) lies in the graph directory $DATA, which a container can write; unset it to use the list the installer keeps in $INSTALL/roots.json, or point it at a file outside every directory a container can write." \
+    sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$2/sub/roots.json" env -u KNOSSOS_DATA_DIR "$3" version </dev/null' _ "$PROJECT" "$DATA" "$LAUNCHER"
+refused "a caller's KNOSSOS_ROOTS_FILE inside the project" "KNOSSOS_ROOTS_FILE ($PROJECT/src/roots.json) lies inside the project root $PROJECT, whose files the scanned project controls" \
+    sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$1/src/roots.json" env -u KNOSSOS_DATA_DIR "$2" version </dev/null' _ "$PROJECT" "$LAUNCHER"
+
+# allow-root: validated and written on the host; no container runs for it.
+mkdir -p "$WORK/second project"
+reset_docker
+out=$(cd / && kn allow-root "$WORK/second project" --json </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$out" = "{\"path\":\"$WORK/second project\",\"roots_file\":\"$TRUSTED\",\"roots_file_source\":\"named\",\"added\":false,\"preview\":true}" ] \
+    && ! grep -qF "$WORK/second project" "$TRUSTED" && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then
+    pass 'allow-root previews on the host, writes nothing and runs no container'
+else
+    fail "allow-root preview: $status, $out, $(calls)"
+fi
+out=$(cd / && kn allow-root "$WORK/second project/" --execute --json </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$out" = "{\"path\":\"$WORK/second project\",\"roots_file\":\"$TRUSTED\",\"roots_file_source\":\"named\",\"added\":true}" ] \
+    && grep -qxF "        \"$WORK/second project\"" "$TRUSTED" && [ ! -s "$FAKE_DOCKER_STATE/calls" ] && [ ! -e "$TRUSTED.lock.d" ]; then
+    pass 'allow-root --execute adds the root to the list in the install directory, on the host'
+else
+    fail "allow-root execute: $status, $out, $(cat "$TRUSTED"), $(calls)"
+fi
+out=$(cd / && kn allow-root "$WORK/second project" --execute </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$out" = "$WORK/second project is already present in $TRUSTED. Nothing to do." ]; then pass 'allow-root of a listed root says it is already present'; else fail "allow-root present: $status, $out"; fi
+reset_docker
+(cd "$WORK/second project" && kn version </dev/null >/dev/null 2>&1)
+if grep -qF "io.knossos.root=$(hash12 "$WORK/second project")" "$FAKE_DOCKER_STATE/calls"; then pass 'the granted root is the project root of a call from inside it'; else fail "granted root unused: $(calls)"; fi
+out=$(cd / && kn allow-root "$HOME" --execute </dev/null 2>&1); status=$?
+case $out in *"the project root $HOME is your home directory, which container mode does not mount"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && ! grep -qF "\"$HOME\"" "$TRUSTED"; then pass 'allow-root refuses a root the mount rule refuses'; else fail "allow-root home: $status, $out"; fi
+out=$(cd / && kn allow-root "$WORK/no such project" --execute </dev/null 2>&1); status=$?
+if [ "$status" -eq 2 ] && [ "$out" = "KNOSSOS_INVALID_ARGUMENT: $WORK/no such project is not an existing directory." ]; then pass 'allow-root of a missing folder answers as in native mode'; else fail "allow-root missing: $status, $out"; fi
+
+# claim: the folder's repository, as StartClaim decides, written on the host.
+mkdir -p "$WORK/repo/.git" "$WORK/repo/pkg/sub"
+reset_docker
+out=$(cd / && kn claim "$WORK/repo/pkg/sub" --json </dev/null 2>&1)
+if [ "$out" = "{\"status\":\"would-add\",\"root\":\"$WORK/repo\",\"reason\":null}" ]; then pass 'claim without --execute answers would-add with the repository root'; else fail "claim preview: $out"; fi
+out=$(cd / && kn claim "$WORK/repo/pkg/sub" --execute --json </dev/null 2>&1)
+if [ "$out" = "{\"status\":\"added\",\"root\":\"$WORK/repo\",\"reason\":null}" ] && grep -qxF "        \"$WORK/repo\"" "$TRUSTED" && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then
+    pass 'claim --execute adds the repository root on the host, with no container'
+else
+    fail "claim execute: $out, $(cat "$TRUSTED")"
+fi
+out=$(cd / && kn claim "$WORK/repo/pkg/sub" --execute --json </dev/null 2>&1)
+if [ "$out" = "{\"status\":\"present\",\"root\":\"$WORK/repo\",\"reason\":null}" ]; then pass 'claim of a claimed repository answers present'; else fail "claim present: $out"; fi
+out=$(cd / && kn claim "$HOME" --execute --json </dev/null 2>&1)
+case $out in "{\"status\":\"ask\",\"root\":\"$HOME\",\"reason\":\"$HOME is the filesystem root, your home folder or a folder above it, so it is not allowed without being asked.\"}") said=yes ;; *) said=no ;; esac
+if [ "$said" = yes ]; then pass 'claim of the home folder asks first'; else fail "claim home: $out"; fi
+
+# move-project --execute: the host swaps the old root for the new one; a failed move puts it back.
+mkdir -p "$WORK/moved to"
+write_list() { printf '{"roots": ["%s"]}\n' "$1" > "$TRUSTED"; }
+write_list "$WORK/moved from"
+reset_docker
+(cd "$WORK/moved to" && kn move-project "$WORK/moved from" "$WORK/moved to" --execute </dev/null >/dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && grep -qF "\"$WORK/moved to\"" "$TRUSTED" && ! grep -qF "\"$WORK/moved from\"" "$TRUSTED"; then
+    pass 'move-project --execute swaps the root in the host list before the command runs'
+else
+    fail "move-project swap: $status, $(cat "$TRUSTED")"
+fi
+write_list "$WORK/moved from"
+cp "$TRUSTED" "$WORK/list.before"
+(cd "$WORK/moved to" && FAKE_EXEC_EXIT=3 kn move-project "$WORK/moved from" "$WORK/moved to" --execute </dev/null >/dev/null 2>&1); status=$?
+if [ "$status" -eq 3 ] && cmp -s "$WORK/list.before" "$TRUSTED"; then pass 'a failed move-project puts the host list back as it was'; else fail "move-project restore: $status, $(cat "$TRUSTED")"; fi
+out=$(cd "$WORK/moved to" && kn move-project project_abc "$WORK/moved to" --execute </dev/null 2>&1); status=$?
+case $out in *'names the old root by its path'*) pass 'move-project --execute from a project id is refused, the list cannot follow it' ;; *) fail "move-project id: $status, $out" ;; esac
+cp "$WORK/trusted.kept" "$TRUSTED"
+
 # ---- a root with a colon is never passed as an extra allowed root ------------------------
 
 mkdir -p "$WORK/c:olon/proj"
 ln -s "$WORK/c:olon/proj" "$WORK/colon link"
-printf '{"roots": ["%s"]}\n' "$WORK/colon link" > "$DATA/roots.json"
+printf '{"roots": ["%s"]}\n' "$WORK/colon link" > "$INSTALL/roots.json"
 reset_docker
 out=$(cd "$WORK/c:olon/proj" && kn version </dev/null 2>&1); status=$?
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
@@ -1003,7 +1097,7 @@ if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$WORK/c:olon/pro
 else
     fail "colon root: $status, $out"
 fi
-printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$DATA/roots.json"
+printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$INSTALL/roots.json"
 
 # ---- install.json problems -------------------------------------------------------------
 
