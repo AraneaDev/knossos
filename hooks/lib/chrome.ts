@@ -16,7 +16,7 @@ import { confirmable, markedNote } from './notes-view'
 import { cycleSteps, unfoldPress } from './cycles'
 import { noteFooterRows } from './notes-card'
 import { cardInner } from './cards'
-import { marginOf } from './spacing'
+import { apart, bodyRow, bodyText, groupGap, GUTTER, marginOf, PART_GAP } from './spacing'
 import type { Block } from './cards'
 import type { NoteInput } from './views'
 import type { PaneInput } from './pane-types'
@@ -65,7 +65,7 @@ function pill(status: PaneStatus, pulse = ''): Segment {
  * pill and, while it fits, why.
  */
 export function titleRow(input: PaneInput, columns: number, tier: Tier, paneColumns = columns): Row {
-  const rescan: Segment[] = input.canRescan ? [{ text: '  ' }, button('rescan', 'rescan', 'r', { dim: false })] : []
+  const rescan: Segment[] = input.canRescan ? [apart(), button('rescan', 'rescan', 'r', { dim: false })] : []
   // Where the header is short of room the label goes before the reason does;
   // the hotkey stays, on a twin drawn out of sight, as a tab's digit does.
   const rescanKey: Segment[] = input.canRescan ? [{ text: '', hidden: true, press: { id: 'rescan', label: 'rescan', hotkey: 'r' } }] : []
@@ -78,7 +78,7 @@ export function titleRow(input: PaneInput, columns: number, tier: Tier, paneColu
         ? [name]
         : [name, { text: ' › ', dim: true }, { text: TABS.find(t => t.id === input.tab)?.full ?? '', dim: true }, { text: ' › ', dim: true }, { text: input.detail.label, bold: true, color: HEADING }]
   const git = gitLabel(input.git)
-  const where: Segment[] = git === '' || tier === 'narrow' ? [] : [{ text: `  ${git}`, dim: true }]
+  const where: Segment[] = git === '' || tier === 'narrow' ? [] : [apart(), { text: git, dim: true }]
   const away = input.detail !== null || input.route !== null
   const chips: Segment[] =
     tier === 'narrow' || away || input.languages === '' ? [] : input.languages.split(' ').flatMap((l): Segment[] => [{ text: ' ' }, { text: ` ${l} `, color: languageColour(l), bg: CHIP_BG }])
@@ -87,7 +87,7 @@ export function titleRow(input: PaneInput, columns: number, tier: Tier, paneColu
   const gauge = (room: number): Segment[] => {
     // The pane's own width, which the layout goes by, not the title's padded one.
     const drawn = widthGauge(paneColumns, room)
-    return drawn.length === 0 ? [] : [...drawn, { text: '   ' }]
+    return drawn.length === 0 ? [] : [...drawn, apart(GAUGE_GAP)]
   }
   // The note cut to what is left beside the name and `right`; nothing when less than a few words would remain.
   const cutNote = (right: Segment[]): Segment[] => {
@@ -101,7 +101,7 @@ export function titleRow(input: PaneInput, columns: number, tier: Tier, paneColu
     [[...crumbs, ...(away ? [] : where), ...chipsLead], [...gauge(14), ...note, pill(input.status, input.pulse), ...rescan]],
     [[...crumbs, ...(away ? [] : where), ...chipsLead], [...note, pill(input.status, input.pulse), ...rescan]],
     [[...crumbs, ...(away ? [] : where)], [...note, pill(input.status, input.pulse), ...rescan]],
-    [[...crumbs, ...(!away && input.git?.branch ? [{ text: `  ${input.git.branch}`, dim: true }] : [])], [...note, pill(input.status, input.pulse), ...rescan]],
+    [[...crumbs, ...(!away && input.git?.branch ? [apart(), { text: input.git.branch, dim: true }] : [])], [...note, pill(input.status, input.pulse), ...rescan]],
     [crumbs, [...note, pill(input.status, input.pulse), ...rescan]],
     [crumbs, [...note, pill(input.status, input.pulse), ...rescanKey]],
     // A reason too long for any of those is cut to the room the name and the pill leave, rather than dropped.
@@ -197,7 +197,10 @@ const KEY_HELP: [string, string][] = [
   ['a', 'allow a refused root (asks first)'],
 ]
 
-const KEY_WIDTH = Math.max(...KEY_HELP.map(([k]) => cells(k))) + 2
+const KEY_WIDTH = Math.max(...KEY_HELP.map(([k]) => cells(k))) + PART_GAP
+
+/** The cells between the header's width gauge and what follows it, and between the footer's moves and what an action said. */
+const GAUGE_GAP = 3
 
 /** How long the footer's word after an action stays, in milliseconds. */
 export const FEEDBACK_MS = 2_000
@@ -280,7 +283,7 @@ export function footerRows(input: PaneInput, columns: number, hasList: boolean, 
   const left = joinGroups(moves.map(k => [{ ...k, dim: true }]))
   const right = joinGroups([...actions.map(k => [{ ...k, dim: true }]), ...(state.length > 0 ? [state] : [])])
   const lines: Row[] = []
-  const middle = said.length === 0 ? [] : [{ text: '   ' }, ...said]
+  const middle = said.length === 0 ? [] : [apart(GAUGE_GAP), ...said]
   if (segmentsWidth(left) + segmentsWidth(middle) + 2 + segmentsWidth(right) <= inner) {
     lines.push(spread('keys', [...left, ...middle], right, inner))
   } else {
@@ -341,17 +344,16 @@ export function keysBlock(host?: 'web'): Block {
     const keys = KEY_HELP.filter(([key]) => host === undefined || key !== 'q')
     // `t` sits after `q`, and names the changes by the baseline the host counts from.
     keys.splice(keys.findIndex(([key]) => key === 'd'), 0, ['t', `on Overview and Changes: copy the command for the tests that reach ${baselineWords(host).tests}`])
-    for (const [key, action] of [...keys, ['', 'A file:line opens in your editor on a click. Every key has a button.'] as [string, string]]) {
-      wrapWords(action, Math.max(1, columns - 3 - KEY_WIDTH)).forEach((line, i) =>
-        help.push({ key: `help-${n++}`, segments: [{ text: '   ' }, { text: padEnd(i === 0 ? key : '', KEY_WIDTH), color: ACCENT }, { text: line, dim: true }] }),
-      )
+    for (const [key, action] of keys) {
+      wrapWords(action, Math.max(1, columns - GUTTER - KEY_WIDTH)).forEach((line, i) => help.push(bodyRow(`help-${n++}`, [{ text: padEnd(i === 0 ? key : '', KEY_WIDTH), color: ACCENT }, { text: line, dim: true }])))
     }
-    return help
+    // How the keys stand to the rest, after them: prose, another kind of block than the list.
+    return [...help, groupGap('key-note-gap'), ...bodyText('key-note', 'A file:line opens in your editor on a click. Every key has a button.', columns)]
   }
   return { key: 'keys', grow: { length: lines(80).length, min: lines(80).length }, make: columns => ({ key: 'keys', title: 'Keys', body: lines(columns) }) }
 }
 
 /** Groups of segments on one line, two cells apart. */
 function joinGroups(groups: Segment[][]): Segment[] {
-  return groups.flatMap((g, i) => (i === 0 ? g : [{ text: '  ' }, ...g]))
+  return groups.flatMap((g, i) => (i === 0 ? g : [apart(), ...g]))
 }

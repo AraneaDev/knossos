@@ -37,7 +37,7 @@ describe('the path explorer', () => {
     expect(text(null)).toContain('Looking for a route from BriefCommand::answer to StableId…')
     expect(plainText(paneLayout(pane(state(answer())), 100, 40).body.find(r => r.key === 'title')!)).toContain('Route › BriefCommand::answer → StableId')
     expect(text(state(answer()))).toContain('2 routes, the strongest first.')
-    expect(text(state(answer({ reversed: true })))).toContain('▲  No route from BriefCommand::answer to StableId within 6 hops; StableId reaches')
+    expect(text(state(answer({ reversed: true })))).toContain(' ▲ No route from BriefCommand::answer to StableId within 6 hops; StableId reaches')
     expect(text(state(answer({ routes: [] })))).toContain('No route from BriefCommand::answer to StableId, either way, within 6 hops.')
     expect(text(state({ ...answer(), status: 'not-found', unresolved: 'to', routes: [] }))).toContain('knossos knows no component called StableId.')
     expect(text(state(null))).toContain('knossos did not answer')
@@ -49,11 +49,11 @@ describe('the path explorer', () => {
     // Told from the last component every route shares: the list reads by where they part.
     expect(t).toMatch(/›1 … → TurnBriefService::brief → ProjectScanService.* · 3 hops/)
     expect(t).toMatch(/ 2 … → TurnBriefService::brief · 1 hop/)
-    expect(t).toMatch(/calls · File0\.php:10/)
+    expect(t).toMatch(/calls · src\/Deep\/Directory\/File0\.php:10/)
     expect(t).toMatch(/│ StableId::scan +│ +■ core/)
     // The second route drawn instead, by its press.
     const second = paneLayout(pane(state(answer()), view({ route: { from: FROM, to: TO, index: 1, back: TO } })), 120, 80).body
-    expect(second.map(plainText).join('\n')).toMatch(/Route 2 · 1 hop/)
+    expect(second.map(plainText).join('\n')).toMatch(/Route 2 +1 hop$/m)
     expect(second.flatMap(r => r.segments).some(s => s.press?.id === 'route-pick:0')).toBe(true)
   })
 

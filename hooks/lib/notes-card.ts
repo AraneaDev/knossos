@@ -10,9 +10,9 @@
 import type { Block } from './cards'
 import { ACCENT, STATUS_COLOURS } from './palette'
 import { button } from './rows'
-import { bodyLine, bodyRow, bodyText, labelledRows } from './spacing'
+import { apart, bodyLine, bodyRow, bodyText, LABEL_GAP, labelledRows } from './spacing'
 import type { Fact } from './spacing'
-import { cells, wrapWords } from './text'
+import { cells, padEnd, spaces, wrapWords } from './text'
 import type { Row, Segment } from './types'
 import type { NoteInput } from './views'
 import { SEVERITY } from './marks'
@@ -20,6 +20,12 @@ import { busy } from './motion'
 
 /** An annotation as the pane has it: its kind, its text, and who wrote it (`model`, an agent). */
 type Annotation = { kind: string; value: string; author?: string }
+
+/** The label of the note's field in the footer: the kind a note is recorded as. */
+const FIELD_LABEL = 'note'
+
+/** The cells a tab in a note's sketch is drawn as. */
+const TAB_CELLS = 4
 
 /** Who wrote a note, before its text when it was not the person: `(agent)`, dim. */
 const AGENT = '(agent)'
@@ -36,7 +42,7 @@ function noteLines(a: Annotation, width: number): Segment[][] {
     ...wrapWords(agent ? `${AGENT} ${first}` : first, width),
     ...rest.flatMap(line => {
       // A tab would count as one cell and draw as several: spelled as spaces, the line measures as it draws.
-      const kept = line.replace(/\t/g, '    ').replace(/\s+$/, '')
+      const kept = line.replace(/\t/g, spaces(TAB_CELLS)).replace(/\s+$/, '')
       return kept === '' ? [] : cells(kept) <= width ? [kept] : wrapWords(kept, width)
     }),
   ]
@@ -80,15 +86,17 @@ export function notesBlock(name: string, annotations: Annotation[], note: NoteIn
 export function noteFooterRows(name: string, note: NoteInput, width: number): Row[] {
   const said = (key: string, text: string, style: Omit<Segment, 'text'>): Row[] => wrapWords(text, Math.max(1, width)).map((line, i) => ({ key: `${key}-${i}`, segments: [{ text: line, ...style }] }))
   if (note.phase === 'editing') {
+    // The field labelled as the notes card labels a note, and what Enter does under it, in the value's column.
+    const column = cells(FIELD_LABEL) + LABEL_GAP
     return [
-      { key: 'note-field', segments: [{ text: 'note: ', dim: true }, { text: note.value, field: { id: 'note', value: note.value, placeholder: `what to remember about ${name}` } }] },
-      ...said('note-field-keys', 'Enter checks it with knossos; nothing is written yet.', { dim: true }),
+      { key: 'note-field', segments: [{ text: padEnd(FIELD_LABEL, column), dim: true }, { text: note.value, field: { id: 'note', value: note.value, placeholder: `what to remember about ${name}` } }] },
+      ...wrapWords('Enter checks it with knossos; nothing is written yet.', Math.max(1, width - column)).map((line, i): Row => ({ key: `note-field-keys-${i}`, segments: [{ text: spaces(column) }, { text: line, dim: true }] })),
     ]
   }
   if (note.phase === 'previewing' || note.phase === 'saving') return said('note-busy', busy(note.phase === 'saving' ? 'recording…' : 'checking with knossos…'), { dim: true })
   const replaces = note.previous === null ? '' : ` It replaces: "${note.previous}"`
   return [
     ...said('note-ask', `Record this note on ${name}? "${note.value}"${replaces}`, { color: ACCENT }),
-    { key: 'note-answers', segments: [button('note-yes', 'record', note.keys ? 'y' : undefined, { dim: false }), { text: '   ' }, button('note-no', 'cancel', note.keys ? 'n' : undefined, { dim: true })] },
+    { key: 'note-answers', segments: [button('note-yes', 'record', note.keys ? 'y' : undefined, { dim: false }), apart(), button('note-no', 'cancel', note.keys ? 'n' : undefined, { dim: true })] },
   ]
 }

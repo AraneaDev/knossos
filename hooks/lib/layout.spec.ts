@@ -1404,7 +1404,7 @@ describe('the allow-root offer', () => {
     expect(keysOf(allowRows(offer('running'), 60))).toEqual([])
     expect(keysOf(allowRows(offer('done'), 60))).toEqual([])
     // Allowing scans the root at once, on either host.
-    expect(allowRows(offer('done'), 80).map(r => r.segments.map(s => s.text).join(''))).toEqual([`✓ ${offer('done').root} allowed · scanning it now`])
+    expect(allowRows(offer('done'), 80).map(r => r.segments.map(s => s.text).join(''))).toEqual([`   ✓ ${offer('done').root} allowed · scanning it now`])
     expect(allowRows(offer('failed', 'knossos did not allow it'), 60).map(plainText).join(' ')).toContain('allow-root failed: knossos did not allow it')
     expect(keysOf(allowRows(offer('failed'), 60))).toEqual(['a:allow'])
   })
@@ -1552,7 +1552,7 @@ describe('the pane outside Claude Code', () => {
   it('says a rescan is running, with its spinner and nothing to press, on either host', () => {
     for (const host of [undefined, 'web'] as const) {
       const rows = emptyRows('unscanned', null, 90, host, true)
-      expect(rows[0]?.segments[0]?.text).toBe(busy('Scanning the project…'))
+      expect(rows[0]?.segments[1]?.text).toBe(busy('Scanning the project…'))
       expect(pressIds(rows)).toEqual([])
       expect(textOf(rows)).not.toContain('No architecture graph yet')
     }
@@ -1571,7 +1571,7 @@ describe('the pane with no graph', () => {
   it('has a heading and one thing to do: ask Claude to scan it', () => {
     for (const columns of WIDTHS) {
       const rows = emptyRows('unscanned', null, columns)
-      expect(rows[0]).toMatchObject({ key: 'empty-head', segments: [{ text: 'No architecture graph yet', bold: true }] })
+      expect(rows[0]).toMatchObject({ key: 'empty-head', segments: [{ text: columns < 80 ? ' ' : '  ' }, { text: 'No architecture graph yet', bold: true }] })
       const presses = rows.flatMap(r => r.segments.flatMap(s => (s.press ? [s.press] : [])))
       expect(presses).toEqual([{ id: 'scan-ask', label: 'ask Claude to scan it', hotkey: 'q' }])
       for (const r of rows) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
@@ -1586,7 +1586,7 @@ describe('the pane with no graph', () => {
       }
     }
     // A read on its way spins; a failed one with none on its way is still.
-    expect(emptyRows('loading', null, 90)[0]?.segments[0]?.text).toBe(busy('Reading the graph…'))
+    expect(emptyRows('loading', null, 90)[0]?.segments[1]?.text).toBe(busy('Reading the graph…'))
     expect(emptyRows('retrying', null, 90).map(plainText).join(' ')).toBe(`${busy('Reading the graph…')} Knossos did not answer the last read; asking again.`)
     expect(emptyRows('unreadable', null, 90).map(plainText).join(' ')).toMatch(/^Could not read the graph .*asks again shortly\.$/)
     expect(emptyRows('unreadable', null, 90).some(r => r.segments.some(s => isBusy(s.text)))).toBe(false)

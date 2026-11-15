@@ -16,10 +16,11 @@ import { boundaryLabel, NO_HUES } from './palette'
 import type { Hues } from './palette'
 import { NOTE, mark } from './marks'
 import { labelOf } from './notes-view'
-import { button, clip, dimRow } from './rows'
+import { button, clip } from './rows'
 import { tableRow, tableSpec } from './table'
-import { displayName, fit, wrapWords } from './text'
-import { placeOf } from './paths'
+import { cells, displayName, fit } from './text'
+import { placeText } from './paths'
+import { apart, bodyLine, bodyRow, bodyText, gutter, GUTTER, PART_GAP } from './spacing'
 import type { Loc, Row } from './types'
 import type { Tier } from './table'
 import { locIn } from './views'
@@ -56,7 +57,7 @@ export function finderInput(state: SearchState, root: string | null, routeFrom: 
       kind: r.type === 'file' ? 'file' : r.kind,
       file: r.type === 'file',
       boundary: r.boundary,
-      place: r.type === 'file' ? '' : placeOf(r.path, r.line),
+      place: r.type === 'file' ? '' : placeText(r.path, r.line),
       loc: locIn(root, r.path, r.line),
     }),
   )
@@ -84,8 +85,8 @@ export function finderBlock(finder: FinderInput, selected: number, tier: Tier, h
     key: 'find',
     grow: { length: finder.results.length, min: FOUND_MIN },
     make: (columns, limit) => {
-      const rows: Row[] = [{ key: 'find-row', segments: [{ text: '   find: ', dim: true }, { text: finder.query, field: { id: 'find', value: finder.query, placeholder: 'letters of a name, in order' } }] }]
-      const said = (key: string, text: string) => wrapWords(text, Math.max(1, columns - 3)).forEach((line, i) => rows.push(dimRow(`${key}-${i}`, `   ${line}`, columns)))
+      const rows: Row[] = [bodyRow('find-row', [{ text: 'find: ', dim: true }, { text: finder.query, field: { id: 'find', value: finder.query, placeholder: 'letters of a name, in order' } }])]
+      const said = (key: string, text: string) => rows.push(...bodyText(key, text, columns))
       if (finder.routeFrom !== undefined && finder.query.trim() === '') said('find-route', `A route from ${finder.routeFrom}: type the letters of the component it should reach. Enter takes the first match; a click takes any.`)
       else if (finder.query.trim() === '') said('find-hint', 'Type letters of a component or file name, in order. Enter opens the first match; a click opens any.')
       else if (finder.failed) said('find-failed', 'knossos did not answer; type on to ask again.')
@@ -106,11 +107,12 @@ export function finderBlock(finder: FinderInput, selected: number, tier: Tier, h
         if (cut !== undefined) rows.push({ key: 'found-more', segments: clip([...cut.segments, { text: ' · type more to narrow', dim: true }], columns) })
       }
       if (finder.notes.length > 0) {
-        rows.push(dimRow('found-notes', '   Notes on names the graph no longer holds:', columns))
+        rows.push(bodyLine('found-notes', 'Notes on names the graph no longer holds:', columns))
         finder.notes.forEach((n, i) => {
           const who = n.author === 'user' ? 'you' : 'model'
-          const room = Math.max(1, columns - 4 - n.label.length - who.length - 4)
-          rows.push({ key: `found-note-${i}`, segments: clip([{ text: '   ' }, mark(NOTE.missing, ' '), button(`finder-note:${n.canonical}`, n.label), { text: `  ${who}  `, dim: true }, { text: fit(n.line, room) }], columns) })
+          const room = Math.max(1, columns - GUTTER - cells(n.label) - cells(who) - 2 * PART_GAP)
+          // Each a note's mark in the gutter, as on the Notes tab, its name, who wrote it and its first line at the body.
+          rows.push({ key: `found-note-${i}`, segments: clip([...gutter(false, mark(NOTE.missing)), button(`finder-note:${n.canonical}`, n.label), apart(), { text: who, dim: true }, apart(), { text: fit(n.line, room) }], columns) })
         })
       }
       const note = finder.searching ? busy('searching…') : finder.query.trim() === '' ? 'components and files' : `${list.length}${finder.truncated ? '+' : ''} found`

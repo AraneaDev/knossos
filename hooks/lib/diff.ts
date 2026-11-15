@@ -12,8 +12,9 @@
  * cut to the columns it has.
  */
 import type { DiffFold, DiffState, Inspected, SessionDiff, SessionRev } from '../../types'
-import { button, dimRow } from './rows'
-import { fit, pathText, plural, wrapWords } from './text'
+import { button } from './rows'
+import { fit, grouped, placeSegments, plural, spaces } from './text'
+import { bodyLine, bodyRow, bodyText, GUTTER } from './spacing'
 import type { Row, Segment } from './types'
 import type { Block, Section } from './cards'
 import { CHANGE } from './marks'
@@ -21,7 +22,7 @@ import { baselineWords } from './baseline'
 import type { BaselineWords } from './baseline'
 import { busy } from './motion'
 
-/** Lines of one hunk shown; past them the rest is folded into "N more lines". */
+/** Lines of one hunk shown; past them the rest is folded into "+N more lines". */
 export const HUNK_LINES = 40
 /** Hunks shown; past them the rest is counted. */
 export const HUNKS_SHOWN = 12
@@ -173,7 +174,7 @@ export function diffSection(view: DiffView, columns: number, asText = false, hos
   const title = baselineWords(host).diff
   if (view.phase !== 'diff') {
     const text = view.phase === 'loading' ? busy('Reading the change…') : view.text
-    return { key: 'diff', title, body: wrapWords(text, Math.max(1, columns - 3)).map((part, i) => dimRow(`diff-line-${i}`, `   ${part}`, columns)) }
+    return { key: 'diff', title, body: bodyText('diff-line', text, columns) }
   }
   // Only the sides that moved: an added file is all `+`, a deleted one all `−`.
   const counts: Segment[] = [
@@ -182,16 +183,16 @@ export function diffSection(view: DiffView, columns: number, asText = false, hos
     ...(view.removed > 0 ? [{ text: `${CHANGE.removed.glyph}${view.removed}`, color: 'diffRemovedWord' }] : []),
   ]
   const rows: Row[] = []
-  if (view.renamed !== null) rows.push(dimRow('diff-renamed', `   ${pathText(view.renamed, Math.max(1, columns - 3))}`, columns))
+  if (view.renamed !== null) rows.push(bodyRow('diff-renamed', placeSegments(view.renamed, Math.max(1, columns - GUTTER))))
   if (asText) {
     const shown = view.hunks.slice(0, TEXT_HUNKS)
     for (const [i, hunk] of shown.entries()) {
       const { shown: lines, more } = folded(hunk, TEXT_LINES)
       rows.push(...hunkRows(`diff-hunk-${i}`, hunk, lines, columns))
-      if (more > 0) rows.push(dimRow(`diff-more-${i}`, `   ${plural(more, 'more line', 'more lines')}`, columns))
+      if (more > 0) rows.push(bodyLine(`diff-more-${i}`, moreLines(more), columns))
     }
     const hidden = view.hunks.length - shown.length
-    if (hidden > 0) rows.push(dimRow('diff-hunks-more', `   ${plural(hidden, 'more change', 'more changes')} further down the file`, columns))
+    if (hidden > 0) rows.push(bodyLine('diff-hunks-more', moreChanges(hidden), columns))
   } else {
     const page = diffPage(view)
     if (page.start > 0) rows.push(pressRow('diff-hunks-before', `diff-from:${page.before}`, plural(page.start, 'earlier change', 'earlier changes'), columns))
@@ -199,13 +200,13 @@ export function diffSection(view: DiffView, columns: number, asText = false, hos
       const i = drawn.index
       rows.push({ key: `diff-hunk-${i}`, segments: [], code: { source: drawn.source, path: view.path } })
       // Folded: a press opens it. Cut by the element's own limit: only the file shows the rest.
-      if (drawn.cut > 0) rows.push(dimRow(`diff-more-${i}`, `   ${plural(drawn.cut + drawn.more, 'more line', 'more lines')}: too long to draw here, e opens the file`, columns))
-      else if (drawn.more > 0) rows.push(pressRow(`diff-more-${i}`, `diff-more:${i}`, plural(drawn.more, 'more line', 'more lines'), columns))
+      if (drawn.cut > 0) rows.push(bodyLine(`diff-more-${i}`, `${moreLines(drawn.cut + drawn.more)}: too long to draw here, e opens the file`, columns))
+      else if (drawn.more > 0) rows.push(pressRow(`diff-more-${i}`, `diff-more:${i}`, moreLines(drawn.more), columns))
     }
     const hidden = view.hunks.length - page.end
-    if (hidden > 0) rows.push(pressRow('diff-hunks-more', `diff-from:${page.end}`, `${plural(hidden, 'more change', 'more changes')} further down the file`, columns))
+    if (hidden > 0) rows.push(pressRow('diff-hunks-more', `diff-from:${page.end}`, moreChanges(hidden), columns))
   }
-  if (view.truncated) rows.push(dimRow('diff-cut', '   The diff is cut here: open the file to see the rest.', columns))
+  if (view.truncated) rows.push(bodyLine('diff-cut', 'The diff is cut here: open the file to see the rest.', columns))
   // Beside a tab the diff is a few lines of text: its full detail draws it across the pane.
   if (asText) rows.push(pressRow('diff-full', 'diff-open', 'open the full diff', columns))
   return { key: 'diff', title, note: counts, body: rows }
@@ -217,9 +218,12 @@ export function diffSection(view: DiffView, columns: number, asText = false, hos
  * a Button is never keyed as a row's Box is.
  */
 function pressRow(key: string, id: string, label: string, columns: number): Row {
-  const room = Math.max(1, columns - 3)
-  return { key, segments: [{ text: '   ' }, button(id, fit(label, room), undefined, { dim: true })] }
+  return bodyRow(key, [button(id, fit(label, Math.max(1, columns - GUTTER)), undefined, { dim: true })])
 }
+
+/** What a hunk folds away, and the hunks after the page, said as the pane says what it does not show. */
+const moreLines = (n: number): string => `+${grouped(n)} more ${n === 1 ? 'line' : 'lines'}`
+const moreChanges = (n: number): string => `+${grouped(n)} more ${n === 1 ? 'change' : 'changes'} further down the file`
 
 /** One hunk as a page draws it: its element's text, the lines folded away, and those the element's limit cut. */
 export type DrawnHunk = { index: number; source: string; more: number; cut: number }
@@ -273,6 +277,9 @@ export function diffPage(view: Extract<DiffView, { phase: 'diff' }>): { start: n
   return { start, end: start + drawn.length, before, drawn }
 }
 
+/** The cells a tab in a hunk's text line is drawn as. */
+const TAB_CELLS = 2
+
 /** Hunks and lines per hunk a text diff shows: it stands in a panel beside a list, where room is short. */
 const TEXT_HUNKS = 4
 const TEXT_LINES = 12
@@ -288,7 +295,7 @@ function hunkRows(key: string, hunk: Hunk, shown: string[], columns: number): Ro
   const line = (text: string, i: number): Row => {
     const mark = text.charAt(0)
     const style: Omit<Segment, 'text'> = mark === '+' ? { color: 'diffAddedWord' } : mark === '-' ? { color: 'diffRemovedWord' } : { dim: true }
-    return { key: `${key}-${i}`, segments: [{ text: fit(`${mark === '-' ? CHANGE.removed.glyph : mark} ${text.slice(1).replace(/\t/g, '  ')}`, columns), ...style }] }
+    return { key: `${key}-${i}`, segments: [{ text: fit(`${mark === '-' ? CHANGE.removed.glyph : mark} ${text.slice(1).replace(/\t/g, spaces(TAB_CELLS))}`, columns), ...style }] }
   }
   return [{ key: `${key}-head`, segments: [{ text: fit(head, columns), dim: true }] }, ...shown.map(line)]
 }

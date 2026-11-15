@@ -5088,7 +5088,7 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     expect(w.routeRuns().map(r => r.slice(4))).toEqual([['--from=Greeter', '--to=App\\Core\\Kernel']])
     const text = drawn((await ui.find({ key: 'detail' }))?.text ?? (await ui.find({ key: 'pane' }))?.text ?? '')
     expect(text).toContain('Route › Greeter → Kernel')
-    expect(text).toMatch(/calls · Greeter\.php:7/)
+    expect(text).toMatch(/calls · src\/Greeter\.php:7/)
     // A box opens its component; back from the route is the detail it began on.
     await ui.press({ key: 'back' })
     await w.clock.settle()

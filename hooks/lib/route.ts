@@ -14,12 +14,13 @@ import { noteOf } from './cards'
 import type { Arrangement, Block } from './cards'
 import { box, boxWidth, canvas, DIAGRAM_MIN, dotted, doubled, LABEL_MAX, line, toRows, write } from './diagram'
 import type { Canvas } from './diagram'
-import { ACCENT, boundaryColour, boundaryLabel, FAINT, NO_HUES, SECONDARY, STATUS_COLOURS } from './palette'
+import { boundaryColour, boundaryLabel, FAINT, NO_HUES, SECONDARY, STATUS_COLOURS } from './palette'
 import type { Hues } from './palette'
 import { button, segmentsWidth, tintedRow } from './rows'
 import { chip } from './chips'
-import { cells, displayName, fit, plural, spaces, wrapWords } from './text'
-import { placeOf } from './paths'
+import { cells, displayName, fit, placeSegments, plural, spaces } from './text'
+import { placeText } from './paths'
+import { atBody, bodyText, gutter, GUTTER, toBody } from './spacing'
 import type { Loc, Row, Segment } from './types'
 import { locIn } from './views'
 import type { Openable } from './views'
@@ -84,7 +85,7 @@ export function routeInput(state: RouteState | null, from: { name: string; label
   if (answer.status !== 'ok') return { ...base, loading: false, said: ['knossos did not look for a route.'], warn: true }
   const routes = answer.routes.map(r => ({
     nodes: r.nodes.map(n => ({ name: displayName(n), canonical: n.canonical_name, kind: n.kind, boundary: n.boundary })),
-    hops: r.hops.map(h => ({ kind: h.kind, place: placeOf(h.path, h.line), loc: locIn(root, h.path, h.line), confidence: h.confidence, derived: h.derived === true, ...(h.step === undefined ? {} : { step: h.step }), ...(h.origin === undefined ? {} : { origin: h.origin }) })),
+    hops: r.hops.map(h => ({ kind: h.kind, place: placeText(h.path, h.line), loc: locIn(root, h.path, h.line), confidence: h.confidence, derived: h.derived === true, ...(h.step === undefined ? {} : { step: h.step }), ...(h.origin === undefined ? {} : { origin: h.origin }) })),
   }))
   const shown = Math.min(Math.max(0, index), Math.max(0, routes.length - 1))
   const depth = `within ${plural(6, 'hop', 'hops')}`
@@ -115,10 +116,10 @@ export function routeDiagram(route: { nodes: RouteNode[]; hops: RouteHop[] }, co
   if (columns < DIAGRAM_MIN) {
     const rows = route.nodes.flatMap((n, i): Row[] => {
       const own = chip(n.boundary, hues)
-      const named: Row = { key: `route-node-${i}`, segments: [{ text: i === selected ? '›' : ' ', color: ACCENT, bold: true }, { text: ' ' }, button(`row:${i}`, fit(n.name, Math.max(4, columns - 3 - segmentsWidth(own) - 1))), ...(own.length > 0 ? [{ text: ' ' }, ...own] : [])] }
+      const named: Row = { key: `route-node-${i}`, segments: [...gutter(i === selected), button(`row:${i}`, fit(n.name, Math.max(4, columns - GUTTER - segmentsWidth(own) - 1))), ...(own.length > 0 ? [{ text: ' ' }, ...own] : [])] }
       const hop = route.hops[i]
-      // A derived hop is a dotted arrow (no edge holds it), an identity hop a double one.
-      return hop === undefined ? [named] : [named, { key: `route-hop-${i}`, segments: [{ text: `   ${hopArrow(hop)} `, color: FAINT }, { text: fit(hopText(hop), Math.max(1, columns - 5)), dim: true }] }]
+      // A derived hop is a dotted arrow (no edge holds it), an identity hop a double one: at the body, under the name it leaves.
+      return hop === undefined ? [named] : [named, { key: `route-hop-${i}`, segments: atBody([{ text: `${hopArrow(hop)} `, color: FAINT }, { text: fit(hopText(hop), Math.max(1, columns - GUTTER - 2)), dim: true }]) }]
     })
     return { rows, canvas: null }
   }
@@ -143,8 +144,9 @@ export function routeDiagram(route: { nodes: RouteNode[]; hops: RouteHop[] }, co
     const room = columns - centre - 3
     if (room > 4) {
       const kind = fit(hopText(hop, false), room)
-      const place = hop.place === '' || cells(kind) + 3 >= room ? '' : ` · ${fit(hop.place, room - cells(kind) - 3)}`
-      write(c, centre + 2, y + 3, [{ text: kind, color: SECONDARY }, ...(place === '' ? [] : [{ text: place, dim: true }])])
+      // Its place in the pane's one form, cut from its front so the file name and line stay.
+      const place = hop.place === '' || cells(kind) + 3 >= room ? [] : [{ text: ' · ', dim: true }, ...placeSegments(hop.place, room - cells(kind) - 3).map(s => ({ ...s, dim: true }))]
+      write(c, centre + 2, y + 3, [{ text: kind, color: SECONDARY }, ...place])
     }
   })
   return { rows: toRows(c, 'route'), canvas: c }
@@ -161,16 +163,16 @@ export function routeArrangement(input: RouteInput, selected: number, hues: Hues
       key: 'route',
       title: `${input.from} → ${input.to}`,
       ...(input.loading ? { note: noteOf(busy('looking…')) } : {}),
-      body: input.said.flatMap((text, i) =>
-        wrapWords(text, Math.max(1, columns - 3)).map((part, j): Row => ({ key: `route-said-${i}-${j}`, segments: [{ text: input.warn && j === 0 ? `${SEVERITY.warn.glyph}  ` : '   ', color: STATUS_COLOURS.warn }, { text: part, ...(input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }) }] })),
-      ),
+      // The warning's mark in the gutter, as every warning line's.
+      body: input.said.flatMap((text, i) => bodyText(`route-said-${i}`, text, columns, input.warn ? { color: STATUS_COLOURS.warn } : { dim: true }, input.warn ? { text: SEVERITY.warn.glyph, color: STATUS_COLOURS.warn } : undefined)),
     }),
   }
   const route = input.routes[input.index]
   if (route === undefined) return { left: [head] }
   const drawn: Block = {
     key: 'route-drawn',
-    make: columns => ({ key: 'route-drawn', title: input.routes.length > 1 ? `Route ${input.index + 1}` : 'Route', subtitle: plural(route.hops.length, 'hop', 'hops'), glyph: CARD_ICON.route, body: routeRows(route, columns, selected, hues) }),
+    // The boxes stand at the body, under the list of routes; a pane too narrow for them lists the route, its marker in the gutter.
+    make: columns => ({ key: 'route-drawn', title: input.routes.length > 1 ? `Route ${input.index + 1}` : 'Route', note: noteOf(plural(route.hops.length, 'hop', 'hops')), glyph: CARD_ICON.route, body: columns - GUTTER >= DIAGRAM_MIN ? toBody(routeRows(route, columns - GUTTER, selected, hues)) : routeRows(route, columns, selected, hues) }),
   }
   const others: Block = {
     key: 'route-others',
@@ -180,12 +182,14 @@ export function routeArrangement(input: RouteInput, selected: number, hues: Hues
         : {
             key: 'route-others',
             title: 'Every route found',
+            note: noteOf(String(input.routes.length)),
             body: input.routes.map((r, i): Row => {
               const on = i === input.index
               // The routes all start alike: each is told from the last component they share, so the list reads by where they part.
               const from = Math.max(0, shared(input.routes) - 1)
               const chain = `${from > 0 ? '… → ' : ''}${r.nodes.slice(from).map(n => n.name).join(' → ')}`
-              const lead: Segment[] = [{ text: on ? '›' : ' ', color: ACCENT, bold: true }, { text: `${i + 1} `, dim: true }]
+              // Its number in the gutter, where a row's mark stands.
+              const lead: Segment[] = gutter(on, { text: `${i + 1}`, dim: true })
               const hops = ` · ${plural(r.hops.length, 'hop', 'hops')}`
               const text = fit(chain, Math.max(4, columns - segmentsWidth(lead) - cells(hops)))
               const segments: Segment[] = [...lead, button(`route-pick:${i}`, text), { text: hops, dim: true }, { text: spaces(columns - segmentsWidth(lead) - cells(text) - cells(hops)) }]
