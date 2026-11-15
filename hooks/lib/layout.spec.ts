@@ -348,7 +348,7 @@ describe('paneRows', () => {
     // Six flat snapshots: no sparkline in the tiles, and the rows lie flat, saying nothing moved.
     const flat = paneRows(input(), 60, 80)
     expect(flat.filter(r => r.key.startsWith('tiles-line')).map(plainText).join('')).not.toMatch(/[▁-█]/)
-    expect(plainText(row(flat, 'health-0')!)).toMatch(/^cycles +▁+ +2 +no change$/)
+    expect(plainText(row(flat, 'health-0')!)).toMatch(/^ {3}cycles +▁+ +2 +no change$/)
     const few = dash({ trend: [1, 2, 3, 4].map((c, i) => ({ snapshot_id: `s${i}`, cycles: c, max_degree: 100 + i })) })
     expect(textOf(paneRows(input({}, few), 60, 80))).not.toContain('Health over time')
     const moving = dash({ trend: [1, 2, 2, 3, 2].map((c, i) => ({ snapshot_id: `s${i}`, cycles: c, max_degree: 100 + i })) })
@@ -356,8 +356,8 @@ describe('paneRows', () => {
     expect(textOf(rows)).toContain('2 cycles ▁▅▅█▅')
     expect(plainText(row(rows, 'health-head')!)).toMatch(/^Health over time +5 snapshots$/)
     // Each figure its own row on the same axis, the newest value after it; an older knossos sends no dead code or diagnostics.
-    expect(plainText(row(rows, 'health-0')!)).toMatch(/^cycles +[▁-█]+ +2 +1–3 *$/)
-    expect(plainText(row(rows, 'health-1')!)).toMatch(/^max degree +[▁-█]+ +104 +100–104 *$/)
+    expect(plainText(row(rows, 'health-0')!)).toMatch(/^ {3}cycles +[▁-█]+ +2 +1–3 *$/)
+    expect(plainText(row(rows, 'health-1')!)).toMatch(/^ {3}max degree +[▁-█]+ +104 +100–104 *$/)
     expect(row(rows, 'health-2')).toBeUndefined()
     expect(plainText(row(rows, 'health-axis')!)).toMatch(/^ +oldest─+newest$/)
   })
@@ -660,7 +660,7 @@ describe('the header summary', () => {
 })
 
 describe('the issues tab', () => {
-  it("names each diagnostic's place by its project path and its source, and says how many are not listed", () => {
+  it("names each diagnostic's place by its project path and its source, and says how many more are not shown", () => {
     const diagnostics = {
       total: 40,
       errors: 30,
@@ -675,7 +675,7 @@ describe('the issues tab', () => {
     // The path from the project root, cut from its start where the row is short: two files called index.ts stay apart.
     expect(text).toMatch(/E1 first .*components\/index\.ts:7 · typescript/)
     expect(text).toMatch(/W1 second +src\/index\.ts:3 · source unknown/)
-    expect(text).toContain('+34 not listed')
+    expect(text).toContain('+34 more')
   })
 
   for (const columns of WIDTHS) {
@@ -710,22 +710,22 @@ describe('the issues tab', () => {
   it('lists violations, diagnostics, dead code, the complexity hotspots and the files over budget, each with its place', () => {
     const text = textOf(paneRows(fullInput({ tab: 'issues' }), 100))
     expect(text).toMatch(/Policy violations +✗ 7/)
-    expect(text).toMatch(/ArchitectureQueryService::fileMetr… → ■ FactCollector ■ core +ArchitectureQueryService\.php:191/)
-    expect(text).toContain('+6 not listed')
+    expect(text).toContain('›✗ ArchitectureQueryService::fileMetrics → ■ FactCollector ■ core …hitectureQueryService.php:191')
+    expect(text).toContain('+6 more')
     expect(text).toMatch(/Diagnostics +✗ 1 error · ▲ 1 warning · ◦ 1 note/)
     expect(text).toMatch(/✗ TS2307 Cannot find module/)
     expect(text).toMatch(/scanner\.ts:14$/m)
     // The note is the legend for the two marks before each name.
     expect(text).toMatch(/Dead code +55 · ● 12 probable · ◐ 9 tests only · first 2/)
-    // How sure the scan is (● probable, ○ possible) and what reaches it (◐ tests only, ∅ nothing), before the name.
-    expect(text).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108/)
+    // How sure the scan is (● probable, ○ possible) in the gutter, where every issue's mark stands, then what reaches it (◐ tests only, ∅ nothing).
+    expect(text).toContain('\n ○ ∅ m FactCollector::beforeTraverse ■ php-worker …/php/src/FactCollector.php:108\n')
     expect(text).toMatch(/● ◐ f helper/)
     expect(text).not.toContain('◇')
     expect(text).toMatch(/Complexity hotspots +lines × dependents/)
     expect(text).toMatch(/workers\/typescript\/src\/scanner\.js .*━+ +4,986 +20/)
     expect(text).toMatch(/Over budget +▲ 3 functions over 205 lines/)
     expect(text).toMatch(/▲ src\/Scan\/ProjectScanService\.php +2 +260/)
-    expect(text).toContain('+2 not listed')
+    expect(text).toContain('+2 more')
   })
   it('shows the certainty and reachability columns on every dead-code row or on none', () => {
     for (const columns of [30, 40, 50, 60, 90, 100, 140]) {
@@ -737,13 +737,11 @@ describe('the issues tab', () => {
       expect(new Set(shown).size, `${columns} columns: ${rows.join(' | ')}`).toBe(1)
     }
   })
-  it('gives way in order: names are cut, then the boundary goes, then the place', () => {
+  it("gives way in order: the place's folders, the name to its floor, the file name, then the boundary, then the place", () => {
     const dead = (columns: number) => plainText(row(paneRows(fullInput({ tab: 'issues' }), columns), 'dead-0')!)
-    expect(dead(90)).toMatch(/○ ∅ m FactCollector::beforeTraverse +■ php-worker +FactCollector\.php:108$/)
-    expect(dead(70)).toMatch(/^ +○ ∅ m FactCollector::/)
-    // Two marks cost four cells, so they stay even where the boundary and the place have gone.
-    expect(dead(30)).toMatch(/^ +○ ∅ m FactCollector::/)
-    expect(dead(50)).toMatch(/FactCollector::… ■ php-worker …ollector\.php:108$/)
+    // The certainty in the gutter and two marks of four cells stay where the boundary and the place have gone.
+    const at = { 110: 'FactCollector::beforeTraverse ■ php-worker workers/php/src/FactCollector.php:108', 100: 'FactCollector::beforeTraverse ■ php-worker …/php/src/FactCollector.php:108', 90: 'FactCollector::beforeTraverse ■ php-worker …/src/FactCollector.php:108', 70: 'FactCollector::beforeTrav… ■ php-worker FactCollector.php:108', 60: 'FactCollector::… ■ php-worker FactCollector.php:108', 50: 'FactCollect… ■ php-worker …lector.php:108', 40: 'FactCollect… …Collector.php:108', 30: 'FactCollector::befor…' }
+    for (const [columns, said] of Object.entries(at)) expect(dead(Number(columns))).toBe(` ○ ∅ m ${said}`)
     expect(dead(40)).not.toContain('php-worker')
     expect(dead(40)).toMatch(/\.php:108$/)
     expect(dead(30)).not.toContain('.php')
@@ -786,7 +784,7 @@ describe('the issues tab', () => {
   it('says the policies are unreadable, with the reason, when knossos.json could not be read', () => {
     const broken = full({ policy: { status: 'config_invalid', message: 'knossos.json: unexpected token at line 3', total: 0, truncated: false, truncation_reasons: [], items: [] } as unknown as Dashboard['policy'] })
     expect(issuesInput(broken).policy?.unreadable).toBe('knossos.json: unexpected token at line 3')
-    expect(textOf(paneRows(fullInput({ tab: 'issues' }, broken), 90))).toMatch(/Policy violations +policies unreadable: knossos\.json: unexpected token at line 3/)
+    expect(textOf(paneRows(fullInput({ tab: 'issues' }, broken), 90))).toMatch(/Policy violat… +policies unreadable: knossos\.json: unexpected token at line 3\n/)
     // No reason sent: the pane still says why it checked nothing.
     const silent = full({ policy: { status: 'config_invalid', message: 42, total: 0, truncated: false, truncation_reasons: [], items: [] } as unknown as Dashboard['policy'] })
     expect(issuesInput(silent).policy?.unreadable).toBe('knossos.json could not be read')
@@ -818,8 +816,8 @@ describe('the issues tab', () => {
     const walk = issuesList(issues)
     const violations = issues.policy?.items.length ?? 0
     expect(walk.slice(violations, violations + 2)).toEqual([
-      { name: 'scanner.ts:14', canonical: 'workers/typescript/src/scanner.ts', loc: { path: '/work/Knossos-MCP/workers/typescript/src/scanner.ts', line: 14 }, file: true },
-      { name: 'worker.py:3', canonical: 'workers/python/bin/worker.py', loc: { path: '/work/Knossos-MCP/workers/python/bin/worker.py', line: 3 }, file: true },
+      { name: 'workers/typescript/src/scanner.ts:14', canonical: 'workers/typescript/src/scanner.ts', loc: { path: '/work/Knossos-MCP/workers/typescript/src/scanner.ts', line: 14 }, file: true },
+      { name: 'workers/python/bin/worker.py:3', canonical: 'workers/python/bin/worker.py', loc: { path: '/work/Knossos-MCP/workers/python/bin/worker.py', line: 3 }, file: true },
     ])
     // The dead code follows them in the walk, and each row presses its own place in it.
     expect(walk[violations + 2]?.name).toBe(issues.deadCode.items[0]?.name)
@@ -868,7 +866,7 @@ describe('the cycles tab', () => {
     expect([...frames].filter(c => /_FOR_SUBAGENTS_ONLY$/.test(c ?? '')).length).toBe(2)
     expect(label('Index::read_bounded')?.press?.id).toBe('row:2')
     expect(drawn.flatMap(r => r.segments).some(s => s.text.includes('╫') || s.text.includes('╪'))).toBe(true)
-    expect(plainText(row(rows, 'cycle-legend')!)).toBe('■ python-worker  ■ core  ╫ crosses a boundary')
+    expect(plainText(row(rows, 'cycle-legend')!)).toBe('   ■ python-worker  ■ core  ╫ crosses a boundary') // at the body, over the boxes
     // The list under it names each cycle, the marked one tinted.
     expect(plainText(row(rows, 'cycle-0')!)).toBe('›  cycle 1 · 5 members · ■ python-worker +1 boundary')
     expect(row(rows, 'cycle-0')!.tint).toBe('userMessageBackground')
@@ -889,7 +887,7 @@ describe('the cycles tab', () => {
     const long = full({ cycles: { count: 60, truncated: true, truncation_reasons: ['result_limit'], largest: [{ size: 50, members: [], nodes: [{ name: 'a', canonical_name: 'a', kind: 'function', boundary: null }], nodes_truncated: true }] } })
     const cut = textOf(paneRows(fullInput({ tab: 'cycles' }, long), 100))
     expect(cut).toMatch(/Cycles +60\+ · 1 shown · largest first/)
-    expect(cut).toContain('│ +49 not listed')
+    expect(cut).toContain('│ +49 more')
   })
   it('walks members: j and k name the box they move to, o opens a member, c copies it, q asks how to break its cycle', () => {
     const input = fullInput({ tab: 'cycles', selected: 1 })
@@ -953,8 +951,8 @@ describe('the detail view', () => {
   it('heads with name, kind, boundary and place, then draws its neighbourhood round it', () => {
     const rows = paneRows(detailPane(), 140)
     expect(plainText(row(rows, 'detail-head')!)).toMatch(/^DashboardService +class · ■ core$/)
-    expect(plainText(row(rows, 'detail-place')!)).toBe('src/Query/DashboardService.php:28')
-    expect(plainText(row(rows, 'detail-canonical')!)).toBe('Knossos\\Query\\DashboardService')
+    expect(plainText(row(rows, 'detail-place')!)).toBe('   where   src/Query/DashboardService.php:28')
+    expect(plainText(row(rows, 'detail-canonical')!)).toBe('   name    Knossos\\Query\\DashboardService')
     // Drawn round it: what uses it on the left, each with its count on its edge, what it uses on the right.
     const raw = rows.map(rawText).join('\n')
     expect(raw).toContain('│ DashboardServiceTest::testDrift ├')
@@ -963,8 +961,8 @@ describe('the detail view', () => {
     expect(raw).toMatch(/─ 4 ─+►│ BoundaryLabels/)
     // Nineteen use it and two are listed: the rest as one box.
     expect(raw).toContain('│ +17 more')
-    expect(plainText(row(rows, 'hood-head')!)).toMatch(/^Dependencies · used by 19 · uses 2 +edges$/)
-    expect(textOf(rows)).toMatch(/Notes\n *\n {3}note: Read-only: it never scans\./)
+    expect(plainText(row(rows, 'hood-head')!)).toMatch(/^Dependencies +used by 19 · uses 2 · edges$/)
+    expect(textOf(rows)).toMatch(/Notes\n *\n {3}note {3}Read-only: it never scans\.\n {3}change the note\n/) // a labelled fact, then the way to change it, no blank row between
   })
   it("marks an agent's note apart from the person's, the person's first", () => {
     const answer = detailAnswer({
@@ -973,19 +971,19 @@ describe('the detail view', () => {
         { kind: 'note', value: 'Reached from the dashboard tab only.', author: 'model' },
       ],
     })
-    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n *\n {3}note: Read-only: it never scans\.\n {3}note \(agent\): Reached from the dashboard tab only\./)
+    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/Notes\n *\n {3}note {3}Read-only: it never scans\.\n {3}note {3}\(agent\) Reached from the dashboard tab only\.\n/)
   })
   it("keeps a note's line breaks and spacing, so a short ASCII sketch survives", () => {
     const answer = detailAnswer({
       annotations: [{ kind: 'note', value: 'Store::commit\n  |-> History::record\n  `-> emit(change)', author: 'model' }],
     })
-    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/note \(agent\): Store::commit\n {5}\|-> History::record\n {5}`-> emit\(change\)/)
+    expect(textOf(paneRows(detailPane(answer), 140))).toMatch(/\n {3}note {3}\(agent\) Store::commit\n {12}\|-> History::record\n {12}`-> emit\(change\)\n/)
   })
   it('spells a tab in a note as spaces, so a tab-indented line stays within the pane', () => {
     const answer = detailAnswer({ annotations: [{ kind: 'note', value: 'Store::commit\n\t|-> History::record', author: 'model' }] })
     const rows = paneRows(detailPane(answer), 60)
     widthsFit(rows, 60)
-    expect(textOf(rows)).toMatch(/\n {7}\|-> History::record/)
+    expect(textOf(rows)).toMatch(/\n {14}\|-> History::record/)
   })
   it("presses its '+N more' box onto the nearest neighbour it hides, below the window or above it", () => {
     const items = Array.from({ length: 30 }, (_, i) => ({ name: `user${i}`, canonical_name: `App\\User${i}`, kind: 'class', boundary: 'core', edges: 1 }))
@@ -1011,7 +1009,7 @@ describe('the detail view', () => {
     expect(raw.indexOf('│ DashboardService ')).toBeLessThan(raw.indexOf('BoundaryLabels'))
     expect(raw).toContain('▾')
     const text = textOf(paneRows(detailPane(), 40))
-    expect(text.indexOf('Used by · 19')).toBeLessThan(text.indexOf('Uses · 2'))
+    expect([/Dependencies\n *\n +used by +edges\n/.test(text), text.indexOf('   used by ') < text.indexOf('   uses ')]).toEqual([true, true]) // too narrow for its note: each side named by its table's head
     expect(text).toMatch(/BoundaryLabels +■ core +[━╸·]+ +4/)
   })
   it('makes every neighbour pressable, used by first, marks the one j and k reach, and offers back beside the list keys', () => {
@@ -1041,7 +1039,7 @@ describe('the detail view', () => {
     const old = detailAnswer({ used_by: { count: 1, truncated: false, names: ['Kernel'] }, uses: { count: 0, truncated: false, names: [] } })
     expect(paneRows(detailPane(old), 60).map(rawText).join('\n')).toMatch(/│ Kernel +├─+╮/)
     const text = textOf(paneRows(detailPane(old), 40))
-    expect(text).toMatch(/Used by · 1\n *\n› {2}Kernel/)
+    expect(text).toMatch(/Dependencies\n *\n +used by\n› {2}Kernel\n +uses\n +none\n/)
     expect(text).not.toMatch(/█/)
   })
 })
@@ -1054,14 +1052,14 @@ describe('tables packed to the left', () => {
       const issues = paneRows(fullInput({ tab: 'issues' }), columns)
       if (columns >= 60) expect(plainText(row(hubs, 'hub-1')!), `hubs ${columns}`).toMatch(/ArchitectureQueryService ■ core +━/)
       // Wide, dead code is half the pane: its longest name is cut before its boundary goes.
-      if (columns >= 90 && columns <= 130) expect(plainText(row(issues, 'dead-0')!), `dead ${columns}`).toMatch(/FactCollector::beforeTraverse ■ php-worker +FactCollector\.php:108$/)
+      if (columns >= 90 && columns <= 130) expect(plainText(row(issues, 'dead-0')!), `dead ${columns}`).toMatch(/FactCollector::beforeTraverse ■ php-worker (…|workers\/)[a-z/]*FactCollector\.php:108$/)
       for (const r of [...hubs, ...issues]) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
     }
   })
   it("sets the title, the sort and the note into the card's top edge, which spans the card like its rows", () => {
     const rows = paneRows(fullInput({ tab: 'hubs' }), 100)
     const head = row(rows, 'hubs-head')!
-    expect(plainText(head)).toMatch(/^Hubs and hotspots · sorted by in +✦ hotspot only( · .+)?$/)
+    expect(plainText(head)).toMatch(/^Hubs and hotspots +sorted by in · ✦ hotspot only( · .+)?$/)
     expect(rowWidth(head)).toBe(100)
     expect(rowWidth(row(rows, 'hub-0')!)).toBe(100)
   })
@@ -1069,7 +1067,8 @@ describe('tables packed to the left', () => {
     const rows = paneRows(fullInput({ tab: 'issues' }), 90)
     const place = row(rows, 'dead-0')!.segments.find(seg => seg.press?.id.startsWith('file:'))
     expect(place?.press).toMatchObject({ id: 'file:/work/Knossos-MCP/workers/php/src/FactCollector.php' })
-    expect(place?.dim).toBe(true)
+    expect([place?.text, place?.dim]).toEqual(['FactCollector.php:108', undefined]) // the one form of a place: the folder dim, the file and line bright, the file opens it
+    expect(row(rows, 'dead-0')!.segments.find(seg => seg.text === '…/src/')?.dim).toBe(true)
     expect(rows.some(r => r.segments.some(seg => 'link' in seg))).toBe(false)
     // A hotspot or a file over budget is a row: it opens as the file's detail, and `e` opens it at its longest function.
     expect(row(rows, 'hot-0')!.segments.find(seg => seg.press)?.press).toEqual({ id: 'row:5', label: 'workers/typescript/src/scanner.js' })
@@ -1154,19 +1153,19 @@ describe('the pane at every width and height', () => {
     expect(textOf(paneRows(input({ tab: 'hubs' }, many), 100))).toMatch(/in +out +cross/)
   })
 
-  it('lays the wide Overview out on a fixed grid: two equal columns two cells apart, the cards of a row equally tall', () => {
+  it('lays the wide Overview out on a fixed grid: two equal columns, their rules four cells apart, the cards of a row equally tall', () => {
     const matrix = { boundaries: ['core', 'tests'], members: [10, 5], labelled: 15, boundaries_truncated: false, cells: [[4, 0], [3, 2]], forbidden: [], flows: [{ from: 1, to: 0, edges: 3, forbidden: false }], edges: 9, truncated: false, truncation_reasons: [] }
     const in_degree = { buckets: [{ from: 0, to: 0, components: 4 }, { from: 1, to: 5, components: 9 }, { from: 6, to: null, components: 2 }], truncated: false }
     for (const columns of [140, 200]) {
       const rows = paneRows(input({ tab: 'overview' }, dash({ boundary_matrix: matrix, in_degree })), columns, 60)
-      const left = Math.floor((columns - 2) * 0.5)
+      const left = Math.floor(columns * 0.5)
       const head = rows.find(r => r.key.endsWith('|concentration-head'))!
-      expect(rowWidth({ key: 'x', segments: head.segments.slice(0, head.split) }), `${columns}`).toBe(left + 2)
+      expect([rowWidth({ key: 'x', segments: head.segments.slice(0, head.split) }), /── {4}── /.test(rawText(head))], `${columns}`).toEqual([left, true])
       expect(plainText({ key: 'x', segments: head.segments.slice(head.split) })).toMatch(/^Dependency concentration +15 components$/)
-      // The composition and the concentration end on the same row: the shorter is stretched, never padded.
-      const last = (card: string) => rows.map(r => r.key.split('|').some(k => k.startsWith(card))).lastIndexOf(true)
-      expect(last('composition')).toBeGreaterThan(-1)
-      expect(last('composition')).toBe(last('concentration'))
+      // The composition and the concentration end on the same row, the shorter stretched, and the next grid row follows at once.
+      const last = (card: RegExp) => rows.map(r => r.key.split('|').some(k => card.test(k))).lastIndexOf(true)
+      expect(last(/^comp/)).toBeGreaterThan(-1)
+      expect([last(/^(degree|concentration)/), rows[last(/^comp/) + 1]?.key]).toEqual([last(/^comp/), 'gap-health|flows'])
       for (const r of rows) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
     }
   })
@@ -1224,7 +1223,7 @@ describe('the hubs filter and sort', () => {
   })
   it('names the sort, draws its bar, and offers n, s and x as keys, and f to find', () => {
     const rows = paneRows(input({ tab: 'hubs', sort: 'out', filter: 'a' }), 90)
-    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots · sorted by out +✦ hotspot only( · .+)?$/)
+    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots +sorted by out · ✦ hotspot only( · .+)?$/)
     expect(plainText(row(rows, 'hub-0')!)).toMatch(/ProjectScanService::scan +■ core +[━╸]+·* +119 +58 +0$/)
     const keys = rows.filter(r => r.key.startsWith('keys')).flatMap(r => r.segments.flatMap(s => (s.press ? [s.press.hotkey] : [])))
     expect(keys).toEqual(['j', 'k', 'o', 'c', 'q', 'n', 's', 'x', 'f', 'h'])
@@ -1405,7 +1404,7 @@ describe('the allow-root offer', () => {
     expect(keysOf(allowRows(offer('running'), 60))).toEqual([])
     expect(keysOf(allowRows(offer('done'), 60))).toEqual([])
     // Allowing scans the root at once, on either host.
-    expect(allowRows(offer('done'), 80).map(r => r.segments.map(s => s.text).join(''))).toEqual([`✓ ${offer('done').root} allowed · scanning it now`])
+    expect(allowRows(offer('done'), 80).map(r => r.segments.map(s => s.text).join(''))).toEqual([`   ✓ ${offer('done').root} allowed · scanning it now`])
     expect(allowRows(offer('failed', 'knossos did not allow it'), 60).map(plainText).join(' ')).toContain('allow-root failed: knossos did not allow it')
     expect(keysOf(allowRows(offer('failed'), 60))).toEqual(['a:allow'])
   })
@@ -1553,7 +1552,7 @@ describe('the pane outside Claude Code', () => {
   it('says a rescan is running, with its spinner and nothing to press, on either host', () => {
     for (const host of [undefined, 'web'] as const) {
       const rows = emptyRows('unscanned', null, 90, host, true)
-      expect(rows[0]?.segments[0]?.text).toBe(busy('Scanning the project…'))
+      expect(rows[0]?.segments[1]?.text).toBe(busy('Scanning the project…'))
       expect(pressIds(rows)).toEqual([])
       expect(textOf(rows)).not.toContain('No architecture graph yet')
     }
@@ -1572,7 +1571,7 @@ describe('the pane with no graph', () => {
   it('has a heading and one thing to do: ask Claude to scan it', () => {
     for (const columns of WIDTHS) {
       const rows = emptyRows('unscanned', null, columns)
-      expect(rows[0]).toMatchObject({ key: 'empty-head', segments: [{ text: 'No architecture graph yet', bold: true }] })
+      expect(rows[0]).toMatchObject({ key: 'empty-head', segments: [{ text: columns < 80 ? ' ' : '  ' }, { text: 'No architecture graph yet', bold: true }] })
       const presses = rows.flatMap(r => r.segments.flatMap(s => (s.press ? [s.press] : [])))
       expect(presses).toEqual([{ id: 'scan-ask', label: 'ask Claude to scan it', hotkey: 'q' }])
       for (const r of rows) expect(rowWidth(r)).toBeLessThanOrEqual(columns)
@@ -1587,8 +1586,8 @@ describe('the pane with no graph', () => {
       }
     }
     // A read on its way spins; a failed one with none on its way is still.
-    expect(emptyRows('loading', null, 90)[0]?.segments[0]?.text).toBe(busy('Reading the graph…'))
-    expect(emptyRows('retrying', null, 90).map(plainText).join(' ')).toBe(`${busy('Reading the graph…')} Knossos did not answer the last read; asking again.`)
+    expect(emptyRows('loading', null, 90)[0]?.segments[1]?.text).toBe(busy('Reading the graph…'))
+    expect(emptyRows('retrying', null, 90).map(plainText).join(' ')).toBe(`${busy('Reading the graph…')}    Knossos did not answer the last read; asking again.`)
     expect(emptyRows('unreadable', null, 90).map(plainText).join(' ')).toMatch(/^Could not read the graph .*asks again shortly\.$/)
     expect(emptyRows('unreadable', null, 90).some(r => r.segments.some(s => isBusy(s.text)))).toBe(false)
   })
@@ -1689,8 +1688,8 @@ describe('the pane at every width and height, with a large project', () => {
 
   it('adds the dependent files and the file to a wide table, and caps its bar', () => {
     const rows = paneRows(at({ tab: 'hubs' }), 200, 40)
-    expect(plainText(row(rows, 'hub-head')!)).toMatch(/in +out +cross +files +where$/)
-    expect(plainText(row(rows, 'hub-0')!)).toMatch(/ 500 +0 +0 +80 Hub0\.php:10$/)
+    expect(plainText(row(rows, 'hub-head')!)).toMatch(/in +out +cross +dependents +where$/)
+    expect(plainText(row(rows, 'hub-0')!)).toMatch(/ 500 +0 +0 +80 src\/Hub0\.php:10$/)
     const bar = row(rows, 'hub-0')!.segments.filter(s => /^[━╸·]+$/.test(s.text)).reduce((n, s) => n + [...s.text].length, 0)
     expect(bar).toBeLessThanOrEqual(30)
     // Medium has no room for them: the in, out and cross stay, the file where it fits.
@@ -1699,7 +1698,7 @@ describe('the pane at every width and height, with a large project', () => {
 
   it('lists the files most depended on beside the hubs, walked after them, opening as files', () => {
     const rows = paneRows(at({ tab: 'hubs' }), 200, 40)
-    expect(rows.some(r => r.key.endsWith('|files-head'))).toBe(true)
+    expect([rows.some(r => r.key.endsWith('|files-head')), plainText(row(rows, 'files-cols')!), plainText(row(paneRows(at({ tab: 'hubs' }), 140, 40), 'files-cols')!)]).toEqual([true, `   file${' '.repeat(50)}dependents`, `   file${' '.repeat(35)}dependents`]) // the column's one name at every width the pane is not narrow
     const list = listFor(at({ tab: 'hubs' }))
     expect(list).toHaveLength(50 + 50)
     expect(list[50]).toMatchObject({ canonical: 'src/Deep/Area0/File0.php', file: true })

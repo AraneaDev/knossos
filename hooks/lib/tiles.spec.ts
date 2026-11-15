@@ -4,6 +4,8 @@ import { deltaSegment, moves, tileRows, tileSlots, tilesBlock } from './tiles'
 import type { Stat } from './tiles'
 import { plainText, rawText } from './__tests__/plain-text'
 import { STATUS_COLOURS } from './palette'
+import { cardInner, cardRows } from './cards'
+import type { Tier } from './table'
 
 const WIDTHS = [40, 60, 80, 100, 130, 140, 200] as const
 
@@ -97,7 +99,12 @@ describe('stat tiles', () => {
     expect(tilesBlock([], 'medium').make(96, 0)).toBeNull()
     const section = tilesBlock(STATS, 'medium').make(96, 0)!
     expect(section.bare).toBe(true)
-    expect(rowWidth(section.body[0]!)).toBe(100)
+    // The band fills the width between the margins; the card frame sets it on the margin, as every card's rows, at every tier.
+    expect(rowWidth(section.body[0]!)).toBe(96)
+    const framed = (columns: number, tier: Tier) => cardRows(tilesBlock(STATS, tier).make(cardInner(columns, tier), 0)!, columns, tier).map(rawText)
+    expect(framed(100, 'medium')[0]).toMatch(/^ {2}╭─{94}╮ {2}$/)
+    expect(framed(140, 'wide').at(-1)).toMatch(/^ {2}╰─{134}╯ {2}$/)
+    expect(framed(60, 'narrow').every(text => /^ \S/.test(text) && text.length === 60)).toBe(true)
   })
 
   it('read a series as moving only with five points that differ', () => {

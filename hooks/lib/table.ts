@@ -16,13 +16,14 @@
  * shorten to their minimum, then names are cut with an ellipsis, then the
  * boundary column goes, then the bars go. The numbers always stay.
  */
-import { ACCENT, FAINT, FLASH_BG, HEADING, NO_HUES } from './palette'
+import { FAINT, FLASH_BG, HEADING, NO_HUES } from './palette'
 import type { Hues } from './palette'
-import { RANKING, kindMark, mark } from './marks'
+import { KIND_CELLS, RANKING, kindMark, mark } from './marks'
 import { opensFile } from './editor'
 import { boundaryStyle, chip } from './chips'
 import { button, segmentsWidth, tintedRow } from './rows'
-import { cells, compact, fit, fitStart, grouped, padEnd, padStart, pathParts, spaces } from './text'
+import { cells, compact, fit, grouped, padEnd, padStart, pathParts, placeLeast, placeSegments, spaces } from './text'
+import { bodyIndent, GUTTER, gutter } from './spacing'
 import type { Loc, Preview, Row, Segment } from './types'
 
 export const BAR_MIN = 4
@@ -63,10 +64,8 @@ const NAME_MAX = 32
 const BOUNDARY_MAX = 12
 /** The widest a file column grows. */
 const PLACE_MAX = 36
-/** The cells a kind mark takes before a name: its letter and a space. */
-const KIND_CELLS = 2
-/** The selection marker, the hotspot mark and a space. */
-export const MARK = 3
+/** The selection marker, the row's mark (the hotspot mark, or one the row names) and a space: the card's gutter, before the body. */
+export const MARK = GUTTER
 
 /** A whole cell of a bar, and its left half. */
 export const BAR_FULL = '━'
@@ -88,9 +87,10 @@ export type TableSpec = { name: number; boundary: number; bar: number; numbers: 
 /**
  * What a table may add beyond names and numbers: the pane's tier (its bar
  * shares), each row's file, each row's kind, and whether its numbers are
- * compact (narrow, unless the table is a detail's, whose figures stay whole).
+ * compact (narrow, unless the table is a detail's, whose figures stay whole),
+ * and `bar: false` for a table that draws none (its names take the room).
  */
-export type TableOptions = { tier?: Tier; places?: string[]; kinds?: string[]; compact?: boolean }
+export type TableOptions = { tier?: Tier; places?: string[]; kinds?: string[]; compact?: boolean; bar?: false }
 
 /**
  * Fits a table to `columns` (see the module docblock for the order things
@@ -108,11 +108,15 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
   const compacted = (options.compact ?? options.tier === 'narrow') ? { compact: true as const } : {}
   const longest = Math.max(1, ...names.map(cells))
   // From the medium tier on a whole name wins over a longer gauge; narrow, names stop at their cap so the bars still compare.
-  const nameNeed = (options.tier ?? 'narrow') === 'narrow' ? Math.min(nameMax, longest) : longest
+  // With no bar to compare there is nothing to stop names for.
+  const barred = options.bar !== false
+  const nameNeed = (options.tier ?? 'narrow') === 'narrow' && barred ? Math.min(nameMax, longest) : longest
   // A boundary is a chip: its swatch and a space before its label.
   const boundaryLongest = Math.max(0, ...boundaries.map(cells))
   const boundaryNeed = boundaryLongest === 0 ? 0 : Math.min(BOUNDARY_MAX, boundaryLongest) + 2
-  const placeNeed = Math.min(PLACE_MAX, Math.max(0, ...(options.places ?? []).map(cells)))
+  const placeLongest = Math.max(0, ...(options.places ?? []).map(cells))
+  // A place is cut from its front: it needs its file name and line whole, and takes more of its path, up to all of it, only from width the row leaves over.
+  const placeFloor = Math.min(PLACE_MAX, placeLongest, Math.max(0, ...(options.places ?? []).map(placeLeast)))
   // A kind is a two-cell mark before the name (its letter and a space), so a table with kinds always has room for it.
   const kindNeed = (options.kinds ?? []).length > 0 ? KIND_CELLS : 0
   // Beside a file or kind column a name may stop at the typical one's width: the few longest are cut rather than the column lost.
@@ -122,7 +126,11 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
     const fixed = MARK + numbers.reduce((n, w) => n + 1 + w, 0) + (place > 0 ? place + 1 : 0) + kind
     const avail = columns - fixed - (boundary > 0 ? boundary + 1 : 0)
     const placed = { ...(place > 0 ? { place } : {}), ...(kind > 0 ? { kind } : {}), ...compacted }
-    if (!withBar) return avail >= Math.min(NAME_MIN, nameNeed) ? { name: Math.min(avail, nameNeed), boundary, bar: 0, numbers, ...placed } : null
+    if (!withBar) {
+      const name = Math.min(avail, nameNeed)
+      if ((place > 0 || kind > 0) && name < typical) return null
+      return name >= Math.min(NAME_MIN, nameNeed) ? { name, boundary, bar: 0, numbers, ...placed } : null
+    }
     const barWidth = Math.min(range.max, Math.max(range.min, avail - 1 - nameNeed))
     // Room the bar may not take goes to a name past its cap: a whole name says more than a longer gauge.
     const name = Math.min(Math.max(nameNeed, Math.min(longest, avail - 1 - barWidth)), avail - 1 - barWidth)
@@ -130,13 +138,19 @@ export function tableSpec(columns: number, names: string[], boundaries: string[]
     if ((place > 0 || kind > 0) && name < typical) return null
     return name >= Math.min(NAME_MIN, nameNeed) ? { name, boundary, bar: barWidth, numbers, ...placed } : null
   }
+  const placed = placeFloor > 0 ? attempt(true, barred, placeFloor, kindNeed) : null
+  if (placed !== null) return { ...placed, place: Math.min(placeLongest, placeFloor + Math.max(0, columns - specWidth(placed))) }
   return (
-    (placeNeed > 0 ? attempt(true, true, placeNeed, kindNeed) : null) ??
-    attempt(true, true, 0, kindNeed) ??
-    attempt(false, true, 0, kindNeed) ??
+    (barred ? attempt(true, true, 0, kindNeed) : null) ??
+    (barred ? attempt(false, true, 0, kindNeed) : null) ??
+    (barred ? null : attempt(true, false, 0, kindNeed)) ??
     attempt(false, false, 0) ?? { name: Math.max(1, columns - MARK - numbers.reduce((n, w) => n + 1 + w, 0)), boundary: 0, bar: 0, numbers, ...compacted }
   )
 }
+
+/** The cells a row of `spec` takes: the gutter, the kind, the name, then each column after a space. */
+const specWidth = (spec: TableSpec): number =>
+  MARK + (spec.kind ?? 0) + spec.name + spec.numbers.reduce((n, w) => n + 1 + w, 0) + [spec.boundary, spec.bar, spec.place ?? 0].reduce((n, w) => n + (w > 0 ? 1 + w : 0), 0)
 
 /** The value `at` (0 to 1) of the way up `values` sorted; 1 for none. */
 export function percentile(values: number[], at: number): number {
@@ -147,13 +161,13 @@ export function percentile(values: number[], at: number): number {
 
 /** A column-title row for a table, dim. */
 export function tableHead(key: string, spec: TableSpec, titles: { name: string; boundary: string; numbers: string[]; place?: string; kind?: string }): Row {
-  let text = spaces(MARK + (spec.kind ?? 0)) + padEnd(fit(titles.name, spec.name), spec.name)
+  let text = padEnd(fit(titles.name, spec.name), spec.name)
   // A title that would be cut says nothing: the column's colours say what it is.
   if (spec.boundary > 0) text += ` ${padEnd(cells(titles.boundary) <= spec.boundary ? titles.boundary : '', spec.boundary)}`
   if (spec.bar > 0) text += ` ${spaces(spec.bar)}`
   spec.numbers.forEach((w, i) => (text += ` ${padStart(titles.numbers[i] ?? '', w)}`))
   if ((spec.place ?? 0) > 0) text += ` ${fit(titles.place ?? 'where', spec.place ?? 0)}`
-  return { key, segments: [{ text, dim: true }] }
+  return { key, segments: [bodyIndent(spec.kind ?? 0), { text, dim: true }] }
 }
 
 export type TableLine = {
@@ -198,9 +212,7 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
   // The press keeps the whole name as its label; the Button draws only the cells laid out for it (`pressLabel`).
   const named = line.press === undefined ? opensFile(parts.base, line.opens ?? null) : { ...button(line.press, parts.base), press: { id: line.press, label: line.name } }
   const segments: Segment[] = [
-    { text: line.selected ? '›' : ' ', color: ACCENT, bold: true },
-    line.mark ?? (line.hotspotOnly ? mark(RANKING.hotspotOnly) : { text: ' ' }),
-    { text: ' ' },
+    ...gutter(line.selected === true, line.mark ?? (line.hotspotOnly ? mark(RANKING.hotspotOnly) : undefined)),
     ...((spec.kind ?? 0) > 0 ? [kindMark(line.kind)] : []),
     { text: parts.dir, dim: true },
     line.preview === undefined ? named : { ...named, preview: line.preview },
@@ -219,11 +231,25 @@ export function tableRow(key: string, line: TableLine, spec: TableSpec, hues: Hu
     const text = ` ${padStart((spec.compact ? compact : grouped)(line.values[i] ?? 0), w)}`
     segments.push(line.sorted === undefined || line.sorted === i ? { text, color: HEADING } : { text, dim: true })
   })
-  // Files are left-aligned and cut from the front: a column of them reads down the file names.
-  if ((spec.place ?? 0) > 0 && (line.place ?? '') !== '') segments.push({ text: ' ' }, opensFile(fitStart(line.place ?? '', spec.place ?? 0), line.placeLoc ?? null, { dim: true }))
+  // Places are left-aligned and cut from the front: a column of them reads down the file names.
+  if ((spec.place ?? 0) > 0 && (line.place ?? '') !== '') segments.push({ text: ' ' }, ...placeSegments(line.place ?? '', spec.place ?? 0, line.placeLoc ?? null))
   const kept = segments.filter(s => s.text !== '')
   if (line.selected) return tintedRow(key, kept, true)
   return tintedRow(key, kept, line.lit === true, { bg: FLASH_BG })
+}
+
+/** The title of a column counting the files that depend on each row at `tier`: the one name for it, `dependents`, and its short form `deps` on a narrow pane. */
+export const dependentsTitle = (tier: Tier): string => (tier === 'narrow' ? 'deps' : 'dependents')
+
+/**
+ * A table with a column counting the files that depend on each row, fitted
+ * by `fit` (the column's title in, the spec out), titled by the pane's tier
+ * ({@link dependentsTitle}): every table of one pane says it alike, whatever
+ * room its own card has.
+ */
+export function withDependents(fit: (title: string) => TableSpec, tier: Tier): { title: string; spec: TableSpec } {
+  const title = dependentsTitle(tier)
+  return { title, spec: fit(title) }
 }
 
 /** A number column's width: its title, or its widest figure as the table prints it (`compact` on a narrow pane). */

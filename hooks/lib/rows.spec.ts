@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { inList, notListedRow, rowHeight, rowsHeight } from './rows'
+import { inList, moreListedRow, rowHeight, rowsHeight } from './rows'
 import { tableRow, tableSpec } from './table'
 import { cells, pathParts } from './text'
 import { editorCommand } from './editor'
@@ -12,13 +12,16 @@ describe('a path in two tones', () => {
     expect(pathParts('README.md', 20)).toEqual({ dir: '', base: 'README.md' })
   })
 
-  it('cuts the middle of the directory, by whole folders first, never the file name', () => {
-    expect(pathParts(PATH, 30)).toEqual({ dir: 'src/…/Drift/', base: 'GitDriftOracle.php' })
+  it('gives up whole folders from the front, put as one `…/`, never a folder cut in its middle, never the file name', () => {
+    expect(pathParts(PATH, 33)).toEqual({ dir: '…/Query/Drift/', base: 'GitDriftOracle.php' })
+    expect(pathParts(PATH, 30)).toEqual({ dir: '…/Drift/', base: 'GitDriftOracle.php' })
     expect(pathParts(PATH, 27)).toEqual({ dir: '…/Drift/', base: 'GitDriftOracle.php' })
-    expect(pathParts(PATH, 22)).toEqual({ dir: 'sr…/', base: 'GitDriftOracle.php' })
+    expect(pathParts(PATH, 22)).toEqual({ dir: '…/', base: 'GitDriftOracle.php' })
     expect(pathParts(PATH, 20)).toEqual({ dir: '…/', base: 'GitDriftOracle.php' })
-    // Only a file name wider than the width is cut, at its end.
-    expect(pathParts(PATH, 12)).toEqual({ dir: '', base: 'GitDriftOra…' })
+    // Past the last folder the file name alone.
+    expect(pathParts(PATH, 19)).toEqual({ dir: '', base: 'GitDriftOracle.php' })
+    // Only a file name wider than the width is cut, from its front, keeping its end.
+    expect(pathParts(PATH, 12)).toEqual({ dir: '', base: '…tOracle.php' })
   })
 
   it('never draws wider than the width it has', () => {
@@ -92,13 +95,13 @@ describe('the editor command', () => {
 })
 
 describe('a list that holds fewer than its count', () => {
-  it('says how many it does not list, and nothing when it lists them all', () => {
-    expect(notListedRow('x-more', 12, 5, 40)).toEqual([{ key: 'x-more', segments: [{ text: '   +7 not listed', dim: true }] }])
-    expect(notListedRow('x-more', 5, 5, 40)).toEqual([])
-    expect(notListedRow('x-more', 3, 5, 40)).toEqual([])
+  it('says how many more it does not show, at the body after the gutter, and nothing when it lists them all', () => {
+    expect(moreListedRow('x-more', 12, 5, 40)).toEqual([{ key: 'x-more', segments: [{ text: '   ' }, { text: '+7 more', dim: true }] }])
+    expect(moreListedRow('x-more', 5, 5, 40)).toEqual([])
+    expect(moreListedRow('x-more', 3, 5, 40)).toEqual([])
   })
   it('names what it left out, its count in groups of three, when given a kind', () => {
-    expect(notListedRow('x-more', 1204, 0, 60, { kind: 'hubs', indent: 4 })).toEqual([{ key: 'x-more', segments: [{ text: '    +1,204 more hubs not listed', dim: true }] }])
+    expect(moreListedRow('x-more', 1204, 0, 60, { kind: 'hubs' })).toEqual([{ key: 'x-more', segments: [{ text: '   ' }, { text: '+1,204 more hubs', dim: true }] }])
   })
   it('places the marker in a list only when it is on it', () => {
     expect(inList(0, 3)).toBe(0)

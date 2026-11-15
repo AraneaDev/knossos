@@ -2,12 +2,12 @@
  * Cards, the two-column grid and lists sized to the pane's height. Pure:
  * sections in, rows out, every row exactly as wide as the card it is in.
  *
- * Every section of the pane is a card, one style per {@link Tier}:
- *
- * - medium and wide: the title in Claude's orange set into a rule across
- *   the card (with the section's note at its end), the rows two cells in;
- * - narrow: the same rule, the rows from the edge, so a narrow pane loses
- *   no column.
+ * Every section of the pane is a card, one style at every {@link Tier}:
+ * the title in Claude's orange set into a rule across the card (with the
+ * section's note, its count or standing, at its end), a blank row above and
+ * below it, and the rows under it; rule and rows stand on the pane's margin
+ * (two cells, one when narrow: see `spacing.ts`), so the marker and a row's
+ * mark fall in the gutter after it at every tier. Never two blank rows run.
  *
  * No box closes around a card: the rule, the colour and the gap between
  * cards carry the structure. A diff (the engine's own element, which paints
@@ -19,9 +19,10 @@
  * list cut short shows the rows around the marker and an `n more ↓` line.
  */
 import { FAINT, HEADING, TITLE } from './palette'
-import { clip, dimRow, rowsHeight, rowWidth, segmentsWidth, tinted } from './rows'
+import { clip, rowsHeight, rowWidth, segmentsWidth, tinted } from './rows'
 import { tierOf } from './table'
 import { cells, fit, spaces } from './text'
+import { blankRow, bodyIndent, bodyLine, GRID_GAP, MARGIN, marginOf, trimBlanks } from './spacing'
 import type { ListSpan, Row, Segment } from './types'
 import type { Tier } from './table'
 import { CARD_ICON } from './marks'
@@ -29,7 +30,7 @@ import { CARD_ICON } from './marks'
 /**
  * One card: its title (and a dim subtitle beside it), a note against the
  * right edge, and its rows. A `bare` section is drawn without a card: its
- * rows alone (the stat tiles, which draw their own frames). `glyph` is the
+ * rows alone on the margin (the stat tiles, which draw their own frames). `glyph` is the
  * small mark before the title, when not the one its kind has ({@link GLYPHS}).
  * A section with no rows and an `empty` word collapses to one line: its title
  * and its note (or, without one, that word) set into a rule
@@ -60,20 +61,20 @@ export const NOTE_ROOM = 12
 
 /** The frame's ink: the faintest theme key, so the cards order the pane without competing with it. */
 export const FRAME = FAINT
-/** The columns between two cards side by side. */
-export const GRID_GAP = 2
+/** The columns between two cards' own widths side by side: each brings its margin, which makes the {@link GRID_GAP} between their rules. */
+const COLUMN_GAP = GRID_GAP - 2 * MARGIN
 /** The fewest cells a title is cut to so that its card's note still shows. */
 const TITLE_MIN = 10
 /** Lines a pane is assumed to have when its surface does not say. */
 export const DEFAULT_ROWS = 40
 
-/** The columns a card `width` wide leaves its rows at `tier`: the frame and its padding take four. */
-export const cardInner = (width: number, tier: Tier): number => (tier === 'narrow' ? Math.max(1, width) : Math.max(1, width - 4))
+/** The columns a card `width` wide leaves its rows at `tier`: its margin, either side. */
+export const cardInner = (width: number, tier: Tier): number => Math.max(1, width - 2 * marginOf(tier))
 
-/** The two columns of the wide grid: the left one (`split` of the width, half by default), then the right one, {@link GRID_GAP} apart. */
+/** The two columns of the wide grid: the left one (`split` of the width, half by default), then the right one, their rules {@link GRID_GAP} apart. */
 export function gridColumns(width: number, split = 0.5): [number, number] {
-  const left = Math.floor((width - GRID_GAP) * split)
-  return [left, width - GRID_GAP - left]
+  const left = Math.floor((width - COLUMN_GAP) * split)
+  return [left, width - COLUMN_GAP - left]
 }
 
 /**
@@ -94,12 +95,18 @@ export function figures(text: string): Segment[] {
 
 /**
  * A card's top edge: the title in bold, after its glyph in Claude's orange
- * (and the subtitle, while it fits), set into a rule across the card, the
- * note before its end. As
- * the width shrinks the subtitle goes, then the note, then the title is cut.
- * No box closes around the card: the rule and the colour carry it.
+ * (and the subtitle, while it fits), set into a rule across the card inside
+ * its `margin`, the note before its end. As the width shrinks the subtitle
+ * goes, then the note, then the title is cut.
  */
-export function topRow(section: Section, width: number): Row {
+export function topRow(section: Section, width: number, margin = MARGIN): Row {
+  const m = marginIn(width, margin)
+  const edge = spaces(m)
+  return { key: `${section.key}-head`, segments: [{ text: edge }, ...ruleOf(section, width - 2 * m), { text: edge }].filter(s => s.text !== ''), inset: m }
+}
+
+/** The rule of a card's top edge in `width` (see {@link topRow}). */
+function ruleOf(section: Section, width: number): Segment[] {
   const lead = '── '
   const close = '──'
   const note = section.note ?? []
@@ -115,33 +122,26 @@ export function topRow(section: Section, width: number): Row {
   // The title may be cut for the note, down to a word's worth: the note is often the figure the card is about.
   const room = width - cells(lead) - 1 - segmentsWidth(mark) - (note.length > 0 ? segmentsWidth(note) + 1 + cells(close) + 2 : 0)
   const cut = room >= Math.min(TITLE_MIN, cells(section.title)) ? build(false, true, room) : null
-  const segments = build(true, true) ?? build(false, true) ?? cut ?? build(false, false)
-  if (segments !== null) return { key: `${section.key}-head`, segments }
-  // Too narrow for the rule: the title alone, cut.
-  return { key: `${section.key}-head`, segments: [{ text: fit(section.title, width), bold: true, color: HEADING }] }
+  return build(true, true) ?? build(false, true) ?? cut ?? build(false, false) ?? [{ text: fit(section.title, width), bold: true, color: HEADING }] // too narrow for the rule: the title alone
 }
 
 /**
- * One body row of a card: two cells in, the row padded to the inner width,
- * two cells to the edge, where a box's sides once stood. A tinted row (the
- * marked one) carries its tint across the inner width and the cell either
- * side of it.
+ * One body row of a card: on the `margin`, the row padded to the inner
+ * width, the margin again to the edge. A tinted row (the marked one)
+ * carries its tint across the inner width and the cell either side of it.
  */
-function framedRow(row: Row, width: number): Row {
-  const inner = width - 4
+function framedRow(row: Row, width: number, margin: number): Row {
+  const m = marginIn(width, margin)
+  const inner = width - 2 * m
   const fitted = rowWidth(row) <= inner ? row.segments : clip(row.segments, inner)
+  if (m === 0) return { ...row, segments: fitted }
   const filled: Segment[] = [{ text: ' ' }, ...fitted, { text: spaces(inner - segmentsWidth(fitted) + 1) }]
-  return { ...row, segments: [{ text: ' ' }, ...(row.tint === undefined ? filled : tinted(filled, row.tint)), { text: ' ' }], inset: 2 }
+  const edge: Segment[] = m > 1 ? [{ text: spaces(m - 1) }] : []
+  return { ...row, segments: [...edge, ...(row.tint === undefined ? filled : tinted(filled, row.tint)), ...edge], inset: m }
 }
 
-/** A row of a frameless (narrow) card at `width`: cut to it, and a tinted row filled to it. */
-function bareRow(row: Row, width: number): Row {
-  if (row.code !== undefined) return row
-  const fitted = rowWidth(row) <= width ? row : { ...row, segments: clip(row.segments, width) }
-  if (row.tint === undefined) return fitted
-  const used = rowWidth(fitted)
-  return { ...fitted, segments: tinted([...fitted.segments, ...(used < width ? [{ text: spaces(width - used) }] : [])], row.tint) }
-}
+/** The margin a card `width` wide can keep either side and still hold a cell: none on a card too narrow for it. */
+const marginIn = (width: number, margin: number): number => Math.max(0, Math.min(margin, Math.floor((width - 1) / 2)))
 
 /** A card's rows at `width`: its top edge, its rows (framed where the tier frames them) and, framed, its bottom edge. */
 export function cardRows(section: Section, width: number, tier: Tier): Row[] {
@@ -155,22 +155,21 @@ function cardRowsOf(section: Section, width: number, tier: Tier): Row[] {
   if (section.body.length === 0 && section.empty !== undefined) {
     // Its note says how it stands when it has one (`✓ 0`); else the word.
     const note = section.note !== undefined && section.note.length > 0 ? section.note : [{ text: section.empty, dim: true }]
-    return [topRow({ key: section.key, title: section.title, note, ...(section.glyph === undefined ? {} : { glyph: section.glyph }), body: [] }, width)]
+    return [topRow({ key: section.key, title: section.title, note, ...(section.glyph === undefined ? {} : { glyph: section.glyph }), body: [] }, width, marginOf(tier))]
   }
-  if (section.bare === true) return section.body.map(row => (row.code !== undefined || rowWidth(row) <= width ? row : { ...row, segments: clip(row.segments, width) }))
-  // A blank row under the title, so the title stands apart from what it heads.
-  const head = [topRow(section, width), ...(section.body.length > 0 ? [{ key: `${section.key}-under`, segments: [{ text: spaces(width) }] }] : [])]
-  if (tier === 'narrow') return [...head, ...section.body.map(row => bareRow(row, width))]
-  const body = section.body.map(row => (row.code !== undefined ? row : framedRow(row, width)))
-  return [...head, ...body]
+  const margin = marginOf(tier)
+  // On the margin like any card's rows; what it draws is its own frame.
+  if (section.bare === true) return section.body.map(row => (row.code !== undefined ? row : framedRow(row, width, margin)))
+  // A blank row under the title, so the title stands apart from what it heads; the body's own blank rows at its ends would double it.
+  const body = trimBlanks(section.body)
+  const head = [topRow(section, width, margin), ...(body.length > 0 ? [blankRow(`${section.key}-under`, width)] : [])]
+  return [...head, ...body.map(row => (row.code !== undefined ? row : framedRow(row, width, margin)))]
 }
 
 /** Cards stacked, each after a blank row. */
 export function stackRows(sections: Section[], width: number, tier: Tier): Row[] {
   return sections.flatMap(section => [blankRow(`gap-${section.key}`), ...cardRows(section, width, tier)])
 }
-
-const blankRow = (key: string): Row => ({ key, segments: [{ text: ' ' }] })
 
 /** Whether a row holds something a person presses or types in: such a row cannot be drawn as raster cells. */
 const interactive = (row: Row): boolean => row.segments.some(s => s.press !== undefined || s.field !== undefined)
@@ -182,7 +181,7 @@ const interactive = (row: Row): boolean => row.segments.some(s => s.press !== un
  * field: those would be lost in a grid of cells, so the block is drawn
  * as text instead.
  */
-export function besideRows(left: Row[], right: Row[], leftWidth: number, gap = GRID_GAP): Row[] {
+export function besideRows(left: Row[], right: Row[], leftWidth: number, gap = COLUMN_GAP): Row[] {
   const out: Row[] = []
   for (let i = 0; i < Math.max(left.length, right.length); i++) {
     const l = left[i]
@@ -276,9 +275,9 @@ export function windowedTable<T>(
 export function moreRows(key: string, window: { start: number; end: number }, length: number, width: number, walk?: number | ((index: number) => number)): Row[] {
   const parts = [...(window.start > 0 ? [{ text: `${window.start} above ↑`, item: window.start - 1 }] : []), ...(length > window.end ? [{ text: `${length - window.end} more ↓`, item: window.end }] : [])]
   if (parts.length === 0) return []
-  if (walk === undefined) return [dimRow(key, `   ${parts.map(p => p.text).join(' · ')}`, width)]
+  if (walk === undefined) return [bodyLine(key, parts.map(p => p.text).join(' · '), width)]
   const at = (item: number): number => (typeof walk === 'number' ? walk + item : walk(item))
-  const segments: Segment[] = [{ text: '   ' }]
+  const segments: Segment[] = [bodyIndent()]
   parts.forEach((part, i) => {
     if (i > 0) segments.push({ text: ' · ', dim: true })
     segments.push({ text: part.text, dim: true, press: { id: `more:${at(part.item)}`, label: part.text } })
@@ -453,11 +452,11 @@ export function balanceColumns(left: Block[], right: Block[], float: Block[], wi
   return best!
 }
 
-/** `count` columns of equal width across `width`, {@link GRID_GAP} apart, the first ones taking the remainder. */
+/** `count` columns of equal width across `width`, their rules {@link GRID_GAP} apart, the first ones taking the remainder. */
 export function equalColumns(width: number, count: number): number[] {
   const n = Math.max(1, count)
-  const each = Math.floor((width - GRID_GAP * (n - 1)) / n)
-  const rest = width - GRID_GAP * (n - 1) - each * n
+  const each = Math.floor((width - COLUMN_GAP * (n - 1)) / n)
+  const rest = width - COLUMN_GAP * (n - 1) - each * n
   return Array.from({ length: n }, (_, i) => each + (i < rest ? 1 : 0))
 }
 
@@ -465,7 +464,7 @@ export function equalColumns(width: number, count: number): number[] {
 function stretched(rows: Row[], width: number, height: number, key: string): Row[] {
   const tall = rowsHeight(rows)
   if (tall >= height || rows.length === 0) return rows
-  return [...rows, ...Array.from({ length: height - tall }, (_, i): Row => ({ key: `${key}-fill-${i}`, segments: [{ text: spaces(width) }] }))]
+  return [...rows, ...Array.from({ length: height - tall }, (_, i): Row => blankRow(`${key}-fill-${i}`, width))]
 }
 
 /**
@@ -474,9 +473,12 @@ function stretched(rows: Row[], width: number, height: number, key: string): Row
  * the wider table) and drawn equally tall: a shorter card is stretched to the tallest one's height, so
  * no column of the row ends half way. The lists share the height the way
  * {@link fitBlocks} shares it, one row at a time each while the whole fits;
- * a list beside a taller card grows for free up to that card's height.
+ * a list beside a taller card grows for free up to that card's height. Each
+ * grid row is as tall as its tallest card and no taller: height left over
+ * stays at the pane's foot, under the last card, never as blank rows between
+ * one grid row and the next.
  */
-export function gridRows(grid: Block[][], width: number, tier: Tier, budget: number, split?: number, fill = false): Row[] {
+export function gridRows(grid: Block[][], width: number, tier: Tier, budget: number, split?: number): Row[] {
   // A collapsed card (an empty list, one line) has no frame to stretch: beside a framed card it would leave blank rows under it,
   // so it stands on a line of its own, just before the line it was on, and never takes a share of the spare height.
   const lines = grid.flatMap(line => {
@@ -505,36 +507,22 @@ export function gridRows(grid: Block[][], width: number, tier: Tier, budget: num
   for (const cap of [LIST_SOFT, Number.POSITIVE_INFINITY]) {
     growLists(limits, i => (blocks[i]!.block.grow === undefined ? limits[i]! : Math.min(blocks[i]!.block.grow!.length, cap)), () => budget - total())
   }
-  // Filling the height: the rows of cards side by side share what is left evenly (the last one alone when there are none),
-  // so the cards end at the pane's foot rather than above blank space, and no one row stands hollow.
-  const spare = fill ? Math.max(0, budget - total()) : 0
-  // Only lines with a framed card can grow: a line of collapsed cards stays one row tall.
-  const framedLine = (n: number): boolean => Array.from({ length: placed[n]!.line.length }, (_, j) => rowsOf(starts[n]! + j)).some(rows => rows.length > 1)
-  const growing = placed.map((p, n) => n).filter(framedLine)
-  const sharing = growing.filter(n => placed[n]!.line.length > 1)
-  const takers = sharing.length > 0 ? sharing : growing.slice(-1)
-  const share = (n: number): number => {
-    const at = takers.indexOf(n)
-    return at < 0 ? 0 : Math.floor(spare / takers.length) + (at < spare % takers.length ? 1 : 0)
-  }
   return placed.flatMap((p, n) => {
-    const height = lineHeight(starts[n]!, p.line.length) + share(n)
+    const height = lineHeight(starts[n]!, p.line.length)
     const cards = p.line.map((block, j) => stretched(rowsOf(starts[n]! + j), p.widths[j]!, height, block.key))
     let joined = cards[0]!
     let used = p.widths[0]!
     for (let j = 1; j < cards.length; j++) {
       joined = besideRows(joined, cards[j]!, used)
-      used += GRID_GAP + p.widths[j]!
+      used += COLUMN_GAP + p.widths[j]!
     }
     return [blankRow(`gap-${p.line.map(b => b.key).join('|')}`), ...joined]
   })
 }
 
 /**
- * A column of cards stretched to `height` rows: its last card grows (blank
- * rows inside its frame, before its bottom edge) so the column ends at the
- * height rather than above blank space. A frameless (narrow) column gets
- * blank rows after it. Taller already, it is left as it is.
+ * A column of cards made `height` rows tall: blank rows after its last
+ * card, at the foot. Taller already, it is left as it is.
  */
 export function fillColumn(rows: Row[], width: number, height: number, tier: Tier, key = 'stretch'): Row[] {
   // Counted as drawn: a diff element takes a row for each of its lines.
@@ -552,8 +540,9 @@ function collapsedAt(block: Block, width: number, count: number, tier: Tier): bo
 
 /**
  * The rows of `arrangement` at `width`, its lists sized to `budget` rows.
- * With `fill`, the cards stretch to end at the budget: the last row of a
- * grid grows, and so does the last card of each column. `as` lays it out at
+ * With `fill`, the rows reach the budget: the height the cards leave is
+ * blank rows under the last of them (under each column's, side by side),
+ * at the pane's foot, and no card grows into it. `as` lays it out at
  * a tier other than its width's (a panel of a wider pane keeps its frames).
  */
 export function arrange(arrangement: Arrangement, width: number, budget: number, fill = false, as?: Tier): Row[] {
@@ -579,8 +568,8 @@ export function arrange(arrangement: Arrangement, width: number, budget: number,
   if (tier === 'wide' && arrangement.rows !== undefined) {
     const above = fitBlocks(top, width, tier, 0)
     const below = fitBlocks(arrangement.bottom ?? [], width, tier, 0)
-    const laid = [...above, ...gridRows(arrangement.rows, width, tier, budget - above.length - below.length, arrangement.split, fill && below.length === 0), ...below]
-    // A grid with no framed card to stretch (every list empty) leaves the height to the cards across the pane.
+    const laid = [...above, ...gridRows(arrangement.rows, width, tier, budget - above.length - below.length, arrangement.split), ...below]
+    // Filling, the height left over goes under the last card, at the pane's foot.
     return fill ? fillColumn(laid, width, budget, tier) : laid
   }
   const right = arrangement.right ?? []

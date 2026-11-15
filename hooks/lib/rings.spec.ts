@@ -4,7 +4,7 @@ import { detailInput } from './views'
 import { listFor } from './pane-list'
 import { paneInput } from './pane-input'
 import { paneLayout } from './layout'
-import { ringRows, ringsInput, ringsList, RINGS_MIN } from './rings'
+import { MEMBER_ROWS, ringRows, ringsInput, ringsList, RINGS_MIN } from './rings'
 import { plainText, rawText } from './__tests__/plain-text'
 import { rowWidth } from './rows'
 
@@ -74,8 +74,8 @@ describe('the blast radius in a component detail', () => {
     expect(t).not.toContain('2 hops · 30 (')
   })
 
-  it('gives a ring its legend: how many are tested and how many are not', () => {
-    expect(text(state(radius()))).toMatch(/✓ 3 tested · ▲ 1 untested/)
+  it('gives a ring its legend in its top edge: how many are tested and how many are not', () => {
+    expect(text(state(radius()))).toMatch(/╭─ 1 hop · 4 ─+ ✓ 3 tested · ▲ 1 untested ─╮/)
   })
 
   it('marks each ring member with its kind before its name', () => {
@@ -90,7 +90,7 @@ describe('the blast radius in a component detail', () => {
     expect(shown).not.toContain('✗')
   })
 
-  it('draws the rings as nested frames, the furthest outermost and the component in the middle', () => {
+  it('draws the rings as nested frames, the furthest outermost and the component in the middle, its members in columns', () => {
     const rows = ringRows(ringsInput(state(radius()), 'App\\Store\\StableId', ROOT), 80, -1, 0)
     const raw = rows.map(rawText)
     expect(raw[0]).toMatch(/^╭─ 3\+ hops · 0 ─+ none ─╮$/)
@@ -100,14 +100,25 @@ describe('the blast radius in a component detail', () => {
     expect(raw.at(-1)).toMatch(/^╰─+╯$/)
     expect(raw.at(-2)).toMatch(/^│ ╰─+╯ │$/)
     for (const r of rows) expect(rowWidth(r), rawText(r)).toBe(80)
-    // The untested first, marked; a boundary named only where it is not the component's own.
-    const near = raw.find(r => r.includes('Near0'))!
-    expect(near).toMatch(/▲ C Near0 {3}C Near1/)
-    expect(near).toContain('Near1 ■ edge')
-    expect(near).not.toContain('Near2 ■')
-    // The tests that reach a ring, by file name, then how many more.
-    expect(raw.find(r => r.includes('test files: Middle0Test.php'))).toMatch(/✓ 9 test files: Middle0Test\.php, .* \+\d+ +│ │$/)
-    expect(raw.find(r => r.includes('NearTest'))).toContain('✓ 2 test files: NearTest.php, FarTest.php')
+    // The untested marked; a boundary named only where it is not the component's own, in its own column.
+    expect(raw.find(r => r.includes('Near0'))).toMatch(/│ ▲ C Near0 {12}C Near1 ■ edge {5}C Near2/)
+    // What a ring does not show is its last cell; the tests that reach it, by file name, then how many more.
+    // At 80 the long names leave room for one column: two of them, then the count of the rest.
+    expect(raw.filter(r => r.includes('MiddleComponentWithALongerName'))).toHaveLength(2)
+    expect(raw.find(r => r.includes('more'))).toMatch(/^│ │ \+28 more +│ │$/)
+    expect(raw.find(r => r.includes('test files  Middle0Test.php'))).toMatch(/✓ 9 test files {2}Middle0Test\.php, .* \+\d+ +│ │$/)
+    expect(raw.find(r => r.includes('NearTest'))).toContain('✓ 2 test files  NearTest.php, FarTest.php')
+  })
+
+  it('shows at most three rows of a ring, the marked one always among them, and walks past the rest with one press', () => {
+    const input = ringsInput(state(radius()), 'App\\Store\\StableId', ROOT)
+    const presses = (selected: number) => ringRows(input, 96, selected, 1).flatMap(r => r.segments).flatMap(s => (s.press === undefined ? [] : [s.press.id]))
+    // The outer ring first, as drawn; the walk still goes nearest first (ringsList).
+    expect(presses(-1)).toEqual(['rel:5', 'rel:6', 'rel:7', 'rel:8', 'rel:9', 'more:10', 'rel:1', 'rel:2', 'rel:3', 'rel:4'])
+    expect(ringRows(input, 96, -1, 1).filter(r => /^ring-1-names-/.test(r.key))).toHaveLength(MEMBER_ROWS)
+    // Marked on one the cells hide, the cells follow it.
+    expect(presses(14)).toContain('rel:14')
+    expect(presses(14)).not.toContain('rel:5')
   })
 
   it('makes every named component a row the marker walks and o opens, after the detail\'s own', () => {
@@ -121,6 +132,12 @@ describe('the blast radius in a component detail', () => {
     expect(marked).toMatchObject({ bg: 'userMessageBackground', bold: true })
   })
 
+  it('stays as tall on a short pane as on a tall one, and leaves the footer whole', () => {
+    const rings = (height: number) => paneLayout(pane(state(radius())), 100, height).body.filter(r => r.key.startsWith('ring-')).length
+    expect(rings(24)).toBe(rings(120))
+    expect(paneLayout(pane(state(radius())), 100, 24).footer.map(plainText).join(' ')).toContain('b: back')
+  })
+
   it('fits every width and height, as frames from the width they fit and as lists below it', () => {
     for (const columns of [40, 60, 80, 100, 130, 140, 200]) {
       for (const height of [24, 40, 60]) {
@@ -130,9 +147,18 @@ describe('the blast radius in a component detail', () => {
         }
       }
     }
-    expect(text(state(radius()), 40)).toMatch(/1 hop · 4 +✓ 3 tested · ▲ 1 untested/)
+    // Narrow, the figures on the ring's own row and the legend under them when both do not fit.
+    expect(text(state(radius()), 40)).toMatch(/1 hop · 4\n +✓ 3 tested · ▲ 1 untested/)
     expect(text(state(radius()), 40)).not.toContain('╭─ 1 hop')
     expect(RINGS_MIN).toBeLessThanOrEqual(60)
+  })
+
+  it('marks the selected member of a narrow list with › in the cell before its mark, as a framed ring does', () => {
+    // The walk: the one that uses it (rel:0), then the rings nearest first, Near0 at rel:1.
+    const lines = (selected: number) => text(state(radius()), 40, view({ selected })).split('\n')
+    expect(lines(1)).toContain('    ›▲ C Near0')
+    expect(lines(2).find(l => l.includes('C Near1'))).toMatch(/^ {4}› {2}C Near1 /)
+    expect(lines(1).find(l => l.includes('C Near1'))).toMatch(/^ {7}C Near1 /)
   })
 })
 
@@ -146,7 +172,8 @@ describe('notes on a component detail', () => {
     paneLayout(pane(null, view(), n), 100, 80).footer.flatMap(r => r.segments.flatMap(s => (s.press === undefined ? [] : [`${s.press.id}${s.press.hotkey === undefined ? '' : `=${s.press.hotkey}`}`])))
 
   it('offers m to add one in the footer, where it is never scrolled away, and says there is none yet', () => {
-    expect(said(null)).toMatch(/Notes\n *\n {3}No notes on StableId yet\./)
+    // No blank row inside the card: the line that says there is none, then the way to add one.
+    expect(said(null)).toMatch(/Notes\n *\n {3}No notes on StableId yet\.\n {3}add a note\n/)
     expect(footerPresses(null)).toContain('note=m')
     // The card's own button is a click under a key of its own (two Buttons may not share one), not a second m.
     expect(presses(null)).toContain('note-card')
@@ -172,7 +199,7 @@ describe('notes on a component detail', () => {
     expect([...presses(note({ phase: 'confirming' })), ...footerPresses(note({ phase: 'confirming' }))]).not.toContain('note=m')
     expect(footerSaid(note({ phase: 'saving' }))).toContain('recording…')
     // A failure is said in the card, and m is offered again.
-    expect(said(note({ phase: 'failed', reason: 'kind must be one of: note.' }))).toContain('✗ knossos did not record it: kind must be one of: note.')
+    expect(said(note({ phase: 'failed', reason: 'kind must be one of: note.' }))).toContain('\n   No notes on StableId yet.\n   ✗ knossos did not record it: kind must be one of: note.\n   add a note\n')
     expect(footerPresses(note({ phase: 'failed' }))).toContain('note=m')
     // Every footer row fits, however narrow.
     for (const columns of [40, 60, 100, 200]) for (const r of footer(note({ phase: 'confirming', previous: 'x'.repeat(300) }), columns)) expect(rowWidth(r), `${columns}`).toBeLessThanOrEqual(columns)

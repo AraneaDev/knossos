@@ -14,7 +14,8 @@ import { boundaryLabel, CARD_BG, HEADING, NO_HUES } from './palette'
 import type { Hues } from './palette'
 import { segmentsWidth } from './rows'
 import { chip } from './chips'
-import { cells, fit, grouped, pathText, spaces } from './text'
+import { cells, fit, grouped, placeSegments, spaces } from './text'
+import { apart, PART_GAP } from './spacing'
 import type { Preview, Row, Segment } from './types'
 
 /** The widest a card is drawn, frame included, and the narrowest. */
@@ -48,13 +49,14 @@ function line(key: string, segments: Segment[], inner: number): Row {
  * The card for one row, keyed `key`, at most {@link CARD_MAX} cells wide
  * and no wider than `room` (the pane's width): the name in bold with its
  * boundary in its colour, the figures, then each of the files that depend
- * on it most, cut from the front so its file name stays.
+ * on it most in the pane's one form of a place: cut from the front so its
+ * file name stays, its folder dim.
  */
 export function previewCard(key: string, facts: CardFacts, room: number, hues: Hues = NO_HUES): Preview {
   const label = boundaryLabel(facts.boundary, hues)
-  const head: Segment[] = [{ text: facts.name, bold: true, color: HEADING }, ...(label === '' ? [] : [{ text: '  ' }, ...chip(facts.boundary, hues)])]
+  const head: Segment[] = [{ text: facts.name, bold: true, color: HEADING }, ...(label === '' ? [] : [apart(), ...chip(facts.boundary, hues)])]
   const tops = facts.top.slice(0, CARD_TOP)
-  const want = Math.max(segmentsWidth(head), segmentsWidth(facts.figures), ...tops.map(t => cells(t) + 2))
+  const want = Math.max(segmentsWidth(head), segmentsWidth(facts.figures), ...tops.map(t => cells(t) + PART_GAP))
   const width = Math.max(Math.min(CARD_MIN, room), Math.min(CARD_MAX, room, want + 4))
   const inner = Math.max(1, width - 4)
   const ground = (s: Segment): Segment => ({ ...s, bg: CARD_BG })
@@ -64,7 +66,7 @@ export function previewCard(key: string, facts: CardFacts, room: number, hues: H
     line(`${key}-figures`, facts.figures, inner),
     ...(tops.length === 0
       ? [line(`${key}-none`, [{ text: 'no other file depends on it', dim: true }], inner)]
-      : tops.map((path, i) => line(`${key}-dep-${i}`, [{ text: '← ', dim: true }, { text: pathText(path, inner - 2) }], inner))),
+      : tops.map((path, i) => line(`${key}-dep-${i}`, [{ text: '← ', dim: true }, ...placeSegments(path, inner - 2)], inner))),
     { key: `${key}-end`, segments: [{ text: `╰${'─'.repeat(Math.max(0, width - 2))}╯`, color: FRAME }].map(ground) },
   ]
   return { key, rows, width }

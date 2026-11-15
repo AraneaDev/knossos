@@ -37,10 +37,11 @@ import type { Hues } from './palette'
 import { button, clip, wrapGroups, walkedRow } from './rows'
 import { BAR_FULL, bar, TRACK } from './table'
 import { chip, chipWidth, SWATCH } from './chips'
-import { cells, fit, grouped, padEnd, padStart, plural, spaces, wrapWords } from './text'
+import { cells, fit, grouped, padEnd, padStart, plural, spaces } from './text'
 import type { Row, Segment } from './types'
 import type { Openable } from './views'
 import { NOTE, PLACE, REACH, mark } from './marks'
+import { apart, bodyLine, bodyRow, bodyText, GUTTER, PART_GAP, toBody } from './spacing'
 import { countsLine } from './notes-view'
 import { baselineWords } from './baseline'
 
@@ -105,8 +106,8 @@ const UNREFERENCED = 'gate unreferenced'
 const HEALTH_LABEL = UNREFERENCED.length
 /** The cells between two columns of a legend. */
 const LEGEND_GAP = 3
-/** Below this many columns a stacked bar's label stands above it rather than beside it. */
-const BESIDE_MIN = 56
+/** Below this many columns of body a stacked bar's label stands above it rather than beside it. */
+const BESIDE_MIN = 53
 
 const LANGUAGES: Record<string, string> = { php: 'PHP', javascript: 'JS', typescript: 'TS', python: 'Python', rust: 'Rust', go: 'Go', ruby: 'Ruby', java: 'Java' }
 
@@ -232,9 +233,10 @@ export function notesLineBlock(data: OverviewData, selected: number, walk: numbe
   return {
     key: 'notes',
     make: (columns): Section => {
-      const tone = counts.missing > 0 ? mark(NOTE.missing, ' ') : counts.stale > 0 ? mark(NOTE.stale, ' ') : counts.flagged > 0 ? mark(NOTE.flagged, ' ') : { text: '' }
-      const line: Segment[] = [{ text: '  ' }, ...(tone.text === '' ? [] : [tone]), button(`row:${walk}`, countsLine(counts)), { text: '  the Notes tab', dim: true }]
-      return { key: 'notes', title: 'Notes', body: [walkedRow('notes-line', selected === walk, line, columns)] }
+      const tone = counts.missing > 0 ? mark(NOTE.missing) : counts.stale > 0 ? mark(NOTE.stale) : counts.flagged > 0 ? mark(NOTE.flagged) : undefined
+      // The mark in the gutter after the marker, the line at the body.
+      const line: Segment[] = [button(`row:${walk}`, countsLine(counts)), apart(), { text: 'the Notes tab', dim: true }]
+      return { key: 'notes', title: 'Notes', body: [walkedRow('notes-line', selected === walk, line, columns, tone)] }
     },
   }
 }
@@ -321,19 +323,20 @@ function legendRows(c: Composition, columns: number, indent: number): Row[] {
 
 /**
  * The composition card: per dimension its name, the stacked bar and the
- * whole (right-aligned), then the legend under the bar. Narrow, the name
- * and the whole stand above a bar as wide as the card.
+ * whole (right-aligned), then the legend under the bar, at the body; the
+ * dimensions one after the other, their names in one column. Narrow, the
+ * name and the whole stand above a bar as wide as the card.
  */
 export function compositionBlock(data: OverviewData): Block | null {
   if (data.composition.length === 0) return null
   return {
     key: 'composition',
-    make: (columns): Section => {
+    make: (card): Section => {
+      const columns = Math.max(1, card - GUTTER)
       const totals = Math.max(...data.composition.map(c => cells(grouped(c.total))))
       const beside = columns >= BESIDE_MIN
       const body: Row[] = []
-      data.composition.forEach((c, n) => {
-        if (n > 0) body.push({ key: `comp-${c.key}-gap`, segments: [{ text: ' ' }] })
+      data.composition.forEach(c => {
         const total: Segment[] = [{ text: padStart(grouped(c.total), totals), color: HEADING }, { text: ` ${c.unit}`, dim: true }]
         const unitWidth = Math.max(...data.composition.map(x => cells(` ${x.unit}`)))
         if (beside) {
@@ -349,7 +352,7 @@ export function compositionBlock(data: OverviewData): Block | null {
           body.push(...legendRows(c, columns, 0))
         }
       })
-      return { key: 'composition', title: 'Composition', body }
+      return { key: 'composition', title: 'Composition', body: toBody(body) }
     },
   }
 }
@@ -372,16 +375,14 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
       const counts = buckets.map(b => grouped(b.components))
       const countWidth = Math.max(...counts.map(cells), cells('components') - 1)
       const flag = ' hubs'
-      const width = Math.max(4, columns - 3 - labelWidth - 1 - 1 - countWidth - cells(flag))
+      const width = Math.max(4, columns - GUTTER - labelWidth - 1 - 1 - countWidth - cells(flag))
       const max = Math.max(0, ...buckets.map(b => b.components))
       const total = buckets.reduce((n, b) => n + b.components, 0)
       const top = buckets.length - 1
-      const head: Row = { key: 'degree-head', segments: [{ text: `   ${padEnd('in-degree', labelWidth + 1 + width)}`, dim: true }, { text: padStart('components', countWidth + 1), dim: true }] }
+      const head = bodyRow('degree-head', [{ text: padEnd('in-degree', labelWidth + 1 + width), dim: true }, { text: padStart('components', countWidth + 1), dim: true }])
       const body = buckets.map((b, i) => {
         const glyphs = bar(b.components, max, data.grow(width))
         const segments: Segment[] = [
-          i === top ? mark(PLACE.hub) : { text: ' ' },
-          { text: ' ' },
           button(`row:${offset + i}`, labels[i]!),
           { text: spaces(labelWidth - cells(labels[i]!) + 1) },
           { text: glyphs, color: heat(i, buckets.length) },
@@ -389,11 +390,11 @@ export function concentrationBlock(data: OverviewData, selected: number, offset:
           { text: ` ${padStart(counts[i]!, countWidth)}`, color: HEADING },
           ...(i === top ? [{ text: flag, dim: true }] : []),
         ]
-        return walkedRow(`degree-${i}`, offset + i === selected, segments, columns)
+        return walkedRow(`degree-${i}`, offset + i === selected, segments, columns, i === top ? mark(PLACE.hub) : undefined)
       })
       const note = `${grouped(total)}${data.bucketsPartial ? '+' : ''} components`
       // What the buckets count, so their sum is not read as the whole project.
-      body.push({ key: 'degree-said', segments: [{ text: fit('   tests and external code left out', columns), dim: true }] })
+      body.push(bodyLine('degree-said', 'tests and external code left out', columns))
       return { key: 'concentration', title: 'Dependency concentration', note: noteOf(note), body: [{ ...head, segments: clip(head.segments, columns) }, ...body] }
     },
   }
@@ -418,7 +419,7 @@ export function healthBlock(data: OverviewData): Block | null {
   const series = data.health
   // Wrapped, not cut: on a narrow pane the line is all the card says.
   const limitRows = (columns: number): Row[] =>
-    data.healthLimit.flatMap((line, i) => wrapWords(line, Math.max(1, columns - 3)).map((part, j) => ({ key: `health-limit-${i}-${j}`, segments: [{ text: `   ${part}`, dim: true }] })))
+    data.healthLimit.flatMap((line, i) => bodyText(`health-limit-${i}`, line, columns))
   if (series.length === 0 || (series[0]?.values.length ?? 0) < HEALTH_MIN_POINTS) {
     // Nothing to draw over time, but a limit to say: the card says it rather than disappearing.
     return data.healthLimit.length === 0 ? null : { key: 'health', make: (columns): Section => ({ key: 'health', title: 'Health over time', body: limitRows(columns) }) }
@@ -431,7 +432,7 @@ export function healthBlock(data: OverviewData): Block | null {
       // A figure that never moved says so instead of a range of one value.
       const ranges = series.map(s => (Math.min(...s.values) === Math.max(...s.values) ? 'no change' : `${grouped(Math.min(...s.values))}–${grouped(Math.max(...s.values))}`))
       const rangeWidth = Math.max(...ranges.map(cells)) + 2
-      const plotMax = columns - HEALTH_LABEL - 1 - 1 - lastWidth
+      const plotMax = columns - GUTTER - HEALTH_LABEL - 1 - 1 - lastWidth
       // Too narrow to plot: what was not counted is still said, the card never vanishing over it.
       if (plotMax < HEALTH_MIN_POINTS) return data.healthLimit.length === 0 ? null : { key: 'health', title: 'Health over time', body: limitRows(columns) }
       const withRange = plotMax - rangeWidth >= HEALTH_MIN_POINTS * 2
@@ -439,7 +440,7 @@ export function healthBlock(data: OverviewData): Block | null {
       const points = Math.min(series[0]!.values.length, plot)
       const per = Math.max(1, Math.min(POINT_MAX, Math.floor(plot / points)))
       const drawnWidth = points * per
-      const body: Row[] = series.map((s, i) => {
+      const charts: Row[] = series.map((s, i) => {
         const values = s.values.slice(-points)
         const flat = Math.min(...values) === Math.max(...values)
         return {
@@ -450,16 +451,17 @@ export function healthBlock(data: OverviewData): Block | null {
             { text: levels(values, per), color: flat ? FAINT : ACCENT },
             { text: ' ' },
             { text: padStart(last[i]!, lastWidth), color: HEADING },
-            ...(withRange ? [{ text: `  ${padEnd(ranges[i]!, rangeWidth - 2)}`, dim: true }] : []),
+            ...(withRange ? [apart(), { text: padEnd(ranges[i]!, rangeWidth - PART_GAP), dim: true }] : []),
           ],
         }
       })
       // The shared time axis: where the oldest and the newest snapshot stand.
       const lead = spaces(HEALTH_LABEL + 1)
       const ends = drawnWidth >= 'oldest'.length + 'newest'.length + 3 ? `oldest${'─'.repeat(drawnWidth - 12)}newest` : '─'.repeat(drawnWidth)
-      body.push({ key: 'health-axis', segments: [{ text: lead }, { text: ends.slice(0, 6), dim: true }, { text: ends.slice(6, ends.length - 6), color: FAINT }, { text: ends.slice(ends.length - 6), dim: true }].filter(s => s.text !== '') })
+      charts.push({ key: 'health-axis', segments: [{ text: lead }, { text: ends.slice(0, 6), dim: true }, { text: ends.slice(6, ends.length - 6), color: FAINT }, { text: ends.slice(ends.length - 6), dim: true }].filter(s => s.text !== '') })
+      const body = toBody(charts)
       // Two counts of unused code stand on one screen: the row says which one it is.
-      if (series.some(s => s.label === UNREFERENCED)) body.push({ key: 'health-said', segments: [{ text: fit(`   ${UNREFERENCED}: the quality gate's count, wider than the dead-code list`, columns), dim: true }] })
+      if (series.some(s => s.label === UNREFERENCED)) body.push(bodyLine('health-said', `${UNREFERENCED}: the quality gate's count, wider than the dead-code list`, columns))
       body.push(...limitRows(columns))
       const said = plural(points, 'snapshot', 'snapshots')
       return { key: 'health', title: 'Health over time', note: noteOf(said), body }
@@ -487,7 +489,7 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
       const nameCap = Math.max(6, Math.floor((columns - 3 - 3 - countWidth - forbidden - 8) / 2))
       const fromWidth = Math.min(nameCap, Math.max(...flows.map(f => chipWidth(f.from, hues))))
       const toWidth = Math.min(nameCap, Math.max(...flows.map(f => chipWidth(f.to, hues))))
-      const width = columns - 2 - fromWidth - 3 - toWidth - 1 - 1 - countWidth - forbidden
+      const width = columns - GUTTER - fromWidth - 3 - toWidth - 1 - 1 - countWidth - forbidden
       const withBar = width >= 4
       const max = Math.max(0, ...flows.map(f => f.edges))
       const body = flows.map((f, i) => {
@@ -497,8 +499,8 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
         const to = chip(f.to, hues, toWidth, {})
         const pad = (s: Segment[], w: number) => [...s, { text: spaces(w - s.reduce((n, x) => n + cells(x.text), 0)) }]
         const glyphs = withBar ? bar(f.edges, max, data.grow(width)) : ''
+        // The source's chip starts the body.
         const segments: Segment[] = [
-          { text: ' ' },
           ...pad(from, fromWidth),
           { text: ' → ', dim: true },
           ...pad(to, toWidth),
@@ -508,7 +510,7 @@ export function flowsBlock(data: OverviewData, hues: Hues, selected: number, off
         ]
         return walkedRow(`flow-${i}`, offset + i === selected, segments, columns)
       })
-      const note = `${flows.length} of ${grouped(data.flowEdges)}${data.flowsPartial ? '+' : ''} deps`
+      const note = `${flows.length} of ${grouped(data.flowEdges)}${data.flowsPartial ? '+' : ''} edges`
       return section(body, note)
     },
   }
@@ -542,12 +544,12 @@ export function sessionBlock(changes: ChangesInput, look: LookAt | null, selecte
         // Of them, the files no test reaches at all: what a change leaves unchecked.
         ...(tests > 0 && changes.untested > 0 ? [[{ text: '· ', dim: true }, warned(`${REACH.untested.glyph} ${untestedText(changes.untested)}`)]] : []),
       ]
-      body.push(...wrapGroups('session-said', said, columns, 1, 3))
-      const open: Segment[] = [{ text: '  ' }, button('row:0', 'Changes'), { text: '  every file, its dependents and its tests', dim: true }]
+      body.push(...wrapGroups('session-said', said, columns, 1, GUTTER))
+      const open: Segment[] = [button('row:0', 'Changes'), apart(), { text: 'every file, its dependents and its tests', dim: true }]
       const copy: Segment[] = look?.command ? [button('tests', 'copy test command', 't')] : []
-      const room = columns - 1 - open.reduce((n, s) => n + cells(s.text), 0) - copy.reduce((n, s) => n + cells(s.text), 0)
+      const room = columns - GUTTER - open.reduce((n, s) => n + cells(s.text), 0) - copy.reduce((n, s) => n + cells(s.text), 0)
       body.push(walkedRow('session-open', selected === 0, room >= 2 ? [...open, { text: spaces(room) }, ...copy] : open, columns))
-      if (room < 2 && copy.length > 0) body.push({ key: 'session-tests', segments: [{ text: '   ' }, ...copy] })
+      if (room < 2 && copy.length > 0) body.push(bodyRow('session-tests', copy))
       return section(body)
     },
   }

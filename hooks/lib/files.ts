@@ -16,10 +16,13 @@ import { fileDetailLines } from './envelopes'
 import { boundaryLabel, NO_HUES } from './palette'
 import type { Hues } from './palette'
 import { baseName } from './paths'
-import { blank, dimRow, inList, notListedRow } from './rows'
-import { numberWidth, tableRow, tableSpec } from './table'
+import { blank, dimRow, inList, moreListedRow } from './rows'
+import { numberWidth, tableHead, tableRow, tableSpec } from './table'
 import { chip } from './chips'
-import { cells, displayName, pathSegments, pathText, plural, wrapWords } from './text'
+import { displayName, pathParts, plural, wrapWords } from './text'
+import { placeLines } from './detail-head'
+import { bodyLine, labelledRows, wrapValue } from './spacing'
+import type { Fact } from './spacing'
 import type { Loc, Row, Segment } from './types'
 import type { TableSpec, Tier } from './table'
 import { hoodBlock, locIn } from './views'
@@ -80,10 +83,13 @@ export function fileDetailList(file: FileView): Openable[] {
 }
 
 /** A table of one number per row, its bar dropped when every row has the same number: such bars compare nothing. */
-function countedSpec(columns: number, names: string[], boundaries: string[], values: number[], tier: Tier): TableSpec {
-  const spec = tableSpec(columns, names, boundaries, [numberWidth('', values)], PATH_MAX, { tier, compact: false })
+function countedSpec(columns: number, names: string[], boundaries: string[], values: number[], tier: Tier, title = ''): TableSpec {
+  const spec = tableSpec(columns, names, boundaries, [numberWidth(title, values)], PATH_MAX, { tier, compact: false })
   return values.length > 1 && values.every(v => v === values[0]) ? { ...spec, bar: 0 } : spec
 }
+
+/** What the figure beside each component it declares counts. */
+const USED_BY = 'used by'
 
 /** The fewest dependents and components the file detail lists, however short the pane. */
 const LIST_MIN = 5
@@ -105,7 +111,8 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
       key: 'detail',
       make: columns => ({
         key: 'detail',
-        title: pathText(detail.label, Math.max(1, columns - 4)),
+        // One tone in a title: the path cut as every path is, its parts joined.
+        title: Object.values(pathParts(detail.label, Math.max(1, columns - 4))).join(''),
         body: lines.flatMap((line, i) => wrapWords(line, columns).map((part, j) => dimRow(`detail-line-${i}-${j}`, part, columns))),
       }),
     }
@@ -113,23 +120,23 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
     return { left: [head, ...diff] }
   }
   const own: Segment[] = chip(f.boundary, hues)
-  const facts = [f.language.toUpperCase(), ...(f.lines === null ? [] : [plural(f.lines, 'line', 'lines')])].filter(s => s !== '').join(' · ')
-  const tail = facts === '' ? '' : ` · ${facts}`
-  const head: Block = {
-    key: 'detail',
-    make: columns => ({
-      key: 'detail',
-      title: baseName(f.path),
-      note: own,
-      body: [{ key: 'detail-place', segments: [...pathSegments(f.path, Math.max(1, columns - cells(tail))), { text: tail, dim: true }].filter(s => s.text !== '') }],
-    }),
-  }
+  // Its facts under labels, as a component's head card has them: where it is (the page is the file, so it opens nothing), its language, its size.
+  const said = (text: string): Fact['lines'] => width => wrapValue(text, width).map(line => [{ text: line, dim: true }])
+  const facts: Fact[] = [
+    { key: 'detail-place', label: 'where', lines: width => placeLines(f.path, width, null) },
+    ...(f.language === '' ? [] : [{ key: 'detail-language', label: 'language', lines: said(f.language.toUpperCase()) }]),
+    ...(f.lines === null ? [] : [{ key: 'detail-size', label: 'size', lines: said(plural(f.lines, 'line', 'lines')) }]),
+  ]
+  const head: Block = { key: 'detail', make: columns => ({ key: 'detail', title: baseName(f.path), note: own, body: labelledRows(facts, columns) }) }
 
   // Who depends on it (what a change here reaches) and what it depends on, drawn round it.
   const deps = f.dependents
   const uses = f.uses ?? { count: 0, truncated: false, items: [] }
-  const table = (key: string, items: { path: string; edges: number; boundary: string | null }[], offset: number, columns: number, limit: number): Row[] => {
-    const spec = countedSpec(columns, items.map(d => d.path), items.map(d => boundaryLabel(d.boundary, hues)), items.map(d => d.edges), tier)
+  // Each side as a table under a head naming the side and what its figures count, as every table heads its columns.
+  const table = (key: string, named: string, items: { path: string; edges: number; boundary: string | null }[], offset: number, columns: number, limit: number): Row[] => {
+    const spec = countedSpec(columns, [named, ...items.map(d => d.path)], items.map(d => boundaryLabel(d.boundary, hues)), items.map(d => d.edges), tier, 'edges')
+    const head = tableHead(`${key}-cols`, spec, { name: named, boundary: '', numbers: items.length === 0 ? [] : ['edges'] })
+    if (items.length === 0) return [head]
     const max = Math.max(0, ...items.map(d => d.edges))
     const { rows } = windowedTable(`${key}-window`, items, { columns, limit, local: inList(selected - offset, items.length), walk: offset }, (shown, start) =>
       shown.map((d, n) => {
@@ -137,7 +144,7 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
         return tableRow(`${key}-${start + n}`, { name: d.path, boundary: d.boundary, values: [d.edges], max, selected: i === selected, path: true, press: `row:${i}` }, spec, hues)
       }),
     )
-    return rows
+    return [head, ...rows]
   }
   const side = (title: string, count: number, items: { path: string; edges: number; boundary: string | null }[], offset: number): HoodSide => ({
     title,
@@ -145,9 +152,10 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
     items: items.map((d, n) => ({ name: baseName(d.path), boundary: d.boundary, edges: d.edges, press: `row:${offset + n}` })),
   })
   const hood = hoodBlock({ name: baseName(f.path), boundary: f.boundary }, side('Depended on by', deps.count, deps.items, 0), side('Depends on', uses.count, uses.items, deps.items.length), selected, hues, (columns, limit) => [
-    ...(deps.items.length === 0 ? [dimRow('deps-none', '   none: no other file depends on it', columns)] : table('dep', deps.items, 0, columns, limit)),
-    ...notListedRow('deps-more', deps.count, deps.items.length, columns),
-    ...(f.uses === null ? [] : [blank('uses-gap'), dimRow('uses-title', `   Depends on · ${plural(uses.count, 'file', 'files')}`, columns), ...table('use', uses.items, deps.items.length, columns, limit), ...notListedRow('uses-more', uses.count, uses.items.length, columns)]),
+    ...table('dep', 'depended on by', deps.items, 0, columns, limit),
+    ...(deps.items.length === 0 ? [bodyLine('deps-none', 'none: no other file depends on it', columns)] : []),
+    ...moreListedRow('deps-more', deps.count, deps.items.length, columns),
+    ...(f.uses === null ? [] : [...table('use', 'depends on', uses.items, deps.items.length, columns, limit), ...(uses.items.length === 0 ? [bodyLine('uses-none', 'none', columns)] : []), ...moreListedRow('uses-more', uses.count, uses.items.length, columns)]),
   ])
   // The boundaries a change here reaches, above the drawing.
   const reached: Block = {
@@ -166,9 +174,10 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
     key: 'comps',
     grow: { length: comps.items.length, min: LIST_MIN },
     make: (columns, limit, scrolled) => {
-      const spec = countedSpec(columns, comps.items.map(c => c.name), [], comps.items.map(c => c.usedBy), tier)
-      const rows: Row[] = []
-      if (comps.items.length === 0) rows.push(dimRow('comps-none', '   none', columns))
+      const spec = countedSpec(columns, ['component', ...comps.items.map(c => c.name)], [], comps.items.map(c => c.usedBy), tier, USED_BY)
+      // What each column holds, over it, as every table heads its columns.
+      const rows: Row[] = comps.items.length === 0 ? [] : [tableHead('comps-cols', spec, { name: 'component', boundary: '', numbers: [USED_BY] })]
+      if (comps.items.length === 0) rows.push(bodyLine('comps-none', 'none', columns))
       const max = Math.max(0, ...comps.items.map(c => c.usedBy))
       const listed = windowedTable('comps-window', comps.items, { columns, limit, local: inList(selected - offset, comps.items.length), scrolled, walk: offset }, (shown, start) =>
         shown.map((c, n) => {
@@ -176,8 +185,8 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
           return tableRow(`comp-${start + n}`, { name: c.name, boundary: null, values: [c.usedBy], max, selected: i === selected, press: `row:${i}` }, spec, hues)
         }),
       )
-      rows.push(...listed.rows, ...notListedRow('comps-more', comps.count, comps.items.length, columns))
-      return { key: 'comps', title: 'Declares', subtitle: plural(comps.count, 'component', 'components'), note: noteOf(comps.items.length > 0 ? 'used by' : ''), body: rows, window: listed.window }
+      rows.push(...listed.rows, ...moreListedRow('comps-more', comps.count, comps.items.length, columns))
+      return { key: 'comps', title: 'Declares', note: noteOf(plural(comps.count, 'component', 'components')), body: rows, window: listed.window }
     },
   }
   return { top: [head], left: [reached, compBlock], bottom: diff, order: [head, reached, ...diff, compBlock] }
@@ -211,5 +220,5 @@ export function driftSection(drift: DriftInput, columns: number, limit: number, 
       tableRow(`drift-${start + n}`, { name: i.path, boundary: i.boundary, values: [], max: 0, selected: start + n === selected, mark: statusMark(i.change), path: true, press: `row:${start + n}` }, spec, hues),
     ),
   )
-  return { key: 'drift', title: 'Drifted since the snapshot', note: noteOf(note), body: [...rows, ...notListedRow('drift-more', drift.count, drift.items.length, columns)], window }
+  return { key: 'drift', title: 'Drifted since the snapshot', note: noteOf(note), body: [...rows, ...moreListedRow('drift-more', drift.count, drift.items.length, columns)], window }
 }

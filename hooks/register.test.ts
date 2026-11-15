@@ -1634,8 +1634,8 @@ describe('knossos mod', () => {
       expect(await ui.find({ key: 'top-0' })).toBeUndefined()
       expect(titled((await ui.find({ key: 'session-head' }))?.text)).toMatch(/^This session +nothing changed yet$/)
       await ui.press({ key: 'tab:hubs' })
-      // The marked row is tinted to the card's edge: the spaces that carry the tint end it.
-      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +C Router .*41/)
+      // The marked row is tinted to the card's edge: the spaces that carry the tint end it. Narrow, it stands on a one-cell margin.
+      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^ › +C Router .*41/)
       // A hotspot that is not a hub is listed once, marked.
       expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/✦ C Kernel/)
       await ui.press({ key: 'tab:overview' })
@@ -1734,8 +1734,8 @@ describe('knossos mod', () => {
       expect((await ui.find({ key: 'tab:hubs' }))?.props.dimColor).toBe(true)
       await ui.press({ key: 'tab:hubs' })
       expect((await ui.find({ key: 'tab:hubs' }))?.props.dimColor).toBeUndefined()
-      expect((await ui.find({ key: 'hub-head' }))?.text).toMatch(/name +in out cross$/)
-      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^› +C Router .*41 +3 +2 *$/)
+      expect((await ui.find({ key: 'hub-head' }))?.text).toMatch(/name +in out cross *$/)
+      expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^ › +C Router .*41 +3 +2 *$/)
       expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/✦ C Kernel/)
       await ui.press({ key: 'tab:boundaries' })
       expect((await ui.find({ key: 'pane' }))?.text).toContain('sends no boundary map')
@@ -1756,10 +1756,10 @@ describe('knossos mod', () => {
     expect((await ui.find({ key: 'up' }))?.props.hotkey).toBe('k')
     expect((await ui.find({ key: 'open' }))?.props.hotkey).toBe('o')
     await ui.press({ key: 'up' })
-    expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^›/)
+    expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^ ›/)
     await ui.press({ key: 'down' })
-    expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^ /)
-    expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/^›/)
+    expect((await ui.find({ key: 'hub-0' }))?.text).toMatch(/^ {2}/)
+    expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/^ ›/)
     await ui.press({ key: 'open' })
     await w.clock.settle()
     expect((await ui.find({ key: 'detail' }))?.text).toContain('App\\Kernel')
@@ -1774,16 +1774,16 @@ describe('knossos mod', () => {
     const ui = await mountPane($)
     await ui.press({ key: 'tab:hubs' })
     expect(await $.ui.focus({ requestId: 'knossos', key: 'row:1' } as never)).toEqual({})
-    expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/^›/)
+    expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/^ ›/)
     // Onto a tab: the marker stays on the list.
     await $.ui.focus({ requestId: 'knossos', key: 'tab:hubs' } as never)
-    expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/^›/)
+    expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/^ ›/)
     // Enter on the focused row presses it.
     await ui.press({ key: 'row:1' })
     await w.clock.settle()
     expect((await ui.find({ key: 'detail' }))?.text).toContain('App\\Kernel')
     await ui.press({ key: 'back' })
-    expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/^›/)
+    expect((await ui.find({ key: 'hub-1' }))?.text).toMatch(/^ ›/)
     await ui.unmount()
   })
 
@@ -2419,7 +2419,7 @@ describe('knossos mod', () => {
     await w.clock.settle()
     const detail = (await ui.find({ key: 'detail' }))?.text
     expect(detail).toContain('App\\Router')
-    expect(titled(detail)).toMatch(/Dependencies · used by 1 · uses 0.*Kernel/)
+    expect(titled(detail)).toMatch(/Dependencies used by 1 · uses 0.*Kernel/)
     expect(w.detailRuns()).toEqual([
       ['sh', expect.stringMatching(/\/hooks\/scripts\/knossos-run\.sh$/), 'component-detail', ROOT, 'App\\Router'],
     ])
@@ -2526,8 +2526,8 @@ describe('knossos mod', () => {
         const keyed = (await ui.findAll({ type: 'Box' })).find(b => typeof b.key === 'string' && (bodyColumns > 130 ? b.key.startsWith('hubs-head|peek-') : b.key === 'hubs-head'))
         const text = keyed?.text ?? ''
         const head = text
-        // Every card is a title set into a rule, at every width.
-        expect(head.startsWith('── '), `${surface} ${bodyColumns}: ${head}`).toBe(true)
+        // Every card is a title set into a rule, at every width, on the pane's margin: one cell narrow, two from medium on.
+        expect(head.indexOf('── '), `${surface} ${bodyColumns}: ${head}`).toBe(bodyColumns < 80 ? 1 : 2)
         await ui.unmount()
       }
     }
@@ -2755,12 +2755,12 @@ describe('knossos mod', () => {
       expect(titled(text)).toMatch(/Dead code *4 · first 1/)
       expect(text).toContain('Router::unused')
       expect(text).toContain('src/Http/Router.php')
-      expect((await ui.find({ key: 'pol-0' }))?.text).toMatch(/^›/)
+      expect((await ui.find({ key: 'pol-0' }))?.text).toMatch(/^ ›/)
       // The marker walks the diagnostics after the violations, then the dead code.
       await ui.press({ key: 'down' })
-      expect((await ui.find({ key: 'diag-0' }))?.text).toMatch(/^›/)
+      expect((await ui.find({ key: 'diag-0' }))?.text).toMatch(/^ ›/)
       await ui.press({ key: 'down' })
-      expect((await ui.find({ key: 'dead-0' }))?.text).toMatch(/^›/)
+      expect((await ui.find({ key: 'dead-0' }))?.text).toMatch(/^ ›/)
       await ui.press({ key: 'tab:overview' })
       await ui.unmount()
     }
@@ -2769,7 +2769,7 @@ describe('knossos mod', () => {
     await ui.press({ key: 'row:0' })
     await w.clock.settle()
     expect(w.detailRuns()[0]?.slice(4)).toEqual(['App\\Core\\Kernel::boot'])
-    expect((await ui.find({ key: 'detail' }))?.text).toContain('Dependencies · used by 2')
+    expect((await ui.find({ key: 'detail' }))?.text).toMatch(/Dependencies ─+ used by 2/)
     await ui.unmount()
   })
 
@@ -2781,10 +2781,10 @@ describe('knossos mod', () => {
       const ui = await mountPane($, surface)
       await ui.press({ key: 'tab:cycles' })
       expect(titled((await ui.find({ key: 'cycle-diagram-head' }))?.text)).toMatch(/^Cycle 1 +3 members · crosses 2 boundaries$/)
-      expect((await ui.find({ key: 'cycle-legend' }))?.text).toBe('■ Core  ■ Http  ╫ crosses a boundary')
+      expect((await ui.find({ key: 'cycle-legend' }))?.text?.trim()).toBe('■ Core  ■ Http  ╫ crosses a boundary')
       expect(titled((await ui.find({ key: 'cycles-head' }))?.text)).toMatch(/^Cycles +1 · largest first$/)
       // Most members are in Http: the cycle's line names it, and how many other boundaries it reaches.
-      expect((await ui.find({ key: 'cycle-0' }))?.text).toMatch(/^› {2}cycle 1 · 3 members · ■ Http \+1 boundary *$/)
+      expect((await ui.find({ key: 'cycle-0' }))?.text).toMatch(/^ › {2}cycle 1 · 3 members · ■ Http \+1 boundary *$/)
       // Each member a box whose name opens it; the marked one on the tint.
       expect((await ui.find({ key: 'row:0' }))?.props.label).toBe('Kernel::boot')
       expect(await ui.find({ key: 'row:0-bg' })).toBeDefined()
@@ -2888,8 +2888,8 @@ describe('knossos mod', () => {
       await wide.press({ key: 'row:0' })
       await w.clock.settle()
       expect(titled((await wide.find({ key: 'detail-head' }))?.text)).toMatch(/^Router +class · ■ Http$/)
-      expect(titled(drawn((await wide.find({ key: 'detail-place' }))?.text ?? ''))).toBe('src/Http/Router.php:3')
-      expect(titled((await wide.find({ key: 'hood-head' }))?.text)).toMatch(/^Dependencies · used by 2 · uses 1 +edges$/)
+      expect(titled(drawn((await wide.find({ key: 'detail-place' }))?.text ?? ''))).toBe('where src/Http/Router.php:3')
+      expect(titled((await wide.find({ key: 'hood-head' }))?.text)).toMatch(/^Dependencies used by 2 · uses 1 · edges$/)
       // Each neighbour a box whose name opens it, its count on its edge; the centre between them.
       expect((await wide.find({ key: 'rel:0' }))?.props.label).toBe('Kernel')
       expect((await wide.find({ key: 'rel:2' }))?.props.label).toBe('Request')
@@ -2897,7 +2897,7 @@ describe('knossos mod', () => {
       const centre = lines.findIndex(l => l.includes('Router ├'))
       expect(lines[centre]).toMatch(/►│ Router ├/)
       expect(lines.join('\n')).toMatch(/─ 4 ─/)
-      expect((await wide.find({ key: 'detail' }))?.text).toContain('note: The one way in.')
+      expect((await wide.find({ key: 'detail' }))?.text).toContain('note   The one way in.')
       // The tab strip gives way to the detail; back is a key and a click.
       expect(await wide.find({ key: 'tab:hubs' })).toBeUndefined()
       expect((await wide.find({ key: 'back' }))?.props.hotkey).toBe('b')
@@ -2983,10 +2983,10 @@ describe('knossos mod', () => {
       expect(await ui.find({ key: 'hub-1' })).toBeUndefined()
       await ui.input({ key: 'field:filter', text: 'R ' })
       expect(await ui.find({ type: 'Input', key: 'field:filter' })).toBeUndefined()
-      expect((await ui.find({ key: 'filter-row' }))?.text).toBe('   filter "R" · 3 of 3')
+      expect((await ui.find({ key: 'filter-row' }))?.text?.trimEnd()).toBe('    filter "R" · 3 of 3')
       await ui.press({ key: 'filter' })
       await ui.input({ key: 'field:filter', text: 'kern' })
-      expect((await ui.find({ key: 'filter-row' }))?.text).toBe('   filter "kern" · 1 of 3')
+      expect((await ui.find({ key: 'filter-row' }))?.text?.trimEnd()).toBe('    filter "kern" · 1 of 3')
       expect((await ui.find({ key: 'clear' }))?.props.hotkey).toBe('x')
       await ui.press({ key: 'clear' })
       expect(await ui.find({ key: 'filter-row' })).toBeUndefined()
@@ -2995,7 +2995,7 @@ describe('knossos mod', () => {
       // An empty Enter clears too.
       await ui.press({ key: 'filter' })
       await ui.input({ key: 'field:filter', text: 'zzz', kind: 'change' })
-      expect((await ui.find({ key: 'hubs-none' }))?.text).toBe('   no hub matches "zzz"')
+      expect((await ui.find({ key: 'hubs-none' }))?.text?.trimEnd()).toBe('    no hub matches "zzz"')
       await ui.input({ key: 'field:filter', text: '' })
       expect(await ui.find({ key: 'hubs-none' })).toBeUndefined()
       await ui.press({ key: 'tab:overview' })
@@ -3108,7 +3108,7 @@ describe('knossos mod', () => {
       await ui.press({ key: 'back' })
       await ui.press({ key: 'row:2' })
       await w.clock.settle()
-      expect(drawn((await ui.find({ key: 'pane' }))?.text ?? '')).toMatch(/src\/Http\/Router\.php +\+30 −2 +12 deps/)
+      expect(drawn((await ui.find({ key: 'pane' }))?.text ?? '')).toMatch(/src\/Http\/Router\.php +\+30 +−2 +12(?![\d,])/)
       await ui.press({ key: 'row:3' })
       await w.clock.settle()
       expect(w.fileRuns().at(-1)?.at(-1)).toBe('src/Http/Router.php')
@@ -3179,8 +3179,8 @@ describe('knossos mod', () => {
       // From the medium tier the tiles say the figures, and the languages are chips in the title row.
       const wide = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...PANE_PROPS, bodyColumns: 140, scroll: { offset: 0, bodyRows: 40 } } })
       expect((await wide.findAll({ type: 'Text' })).filter(t => t.props.backgroundColor === 'userMessageBackground').map(t => t.text).slice(0, 2)).toEqual([' PHP ', ' TS '])
-      expect((await wide.find({ key: 'tiles-0-label' }))?.text).toMatch(/components +│ boundaries +│ cycles? +│ .*│ issues +│ drifted +│$/)
-      expect((await wide.find({ key: 'tiles-0-value' }))?.text).toMatch(/1,234 +│ 2 +│ .*│ ✗ 7 +│ 0 +│$/)
+      expect((await wide.find({ key: 'tiles-0-label' }))?.text).toMatch(/components +│ boundaries +│ cycles? +│ .*│ issues +│ drifted +│ *$/)
+      expect((await wide.find({ key: 'tiles-0-value' }))?.text).toMatch(/1,234 +│ 2 +│ .*│ ✗ 7 +│ 0 +│ *$/)
       await wide.unmount()
     }
   })
@@ -3191,7 +3191,7 @@ describe('knossos mod', () => {
     await w.clock.settle()
     const term = await mountPane($, 'terminal')
     await term.press({ key: 'tab:boundaries' })
-    expect(titled((await term.find({ key: 'bounds-head' }))?.text)).toMatch(/^Boundaries +3 boundaries · 232 deps$/)
+    expect(titled((await term.find({ key: 'bounds-head' }))?.text)).toMatch(/^Boundaries +3 boundaries · 232 edges$/)
     const grid = await term.find({ type: 'Raster' })
     expect(grid?.key).toBe('raster-heat')
     // The axis letters, each boundary's cells (one row each, or two or three when the pane has rows to spare) and the legend's two rows.
@@ -3199,22 +3199,22 @@ describe('knossos mod', () => {
     expect(grid?.props.columns).toBeLessThanOrEqual(PANE_PROPS.bodyColumns)
     expect(typeof grid?.props.cells).toBe('string')
     expect(await term.find({ key: 'heat-1' })).toBeUndefined()
-    expect((await term.find({ key: 'bounds-1' }))?.text).toMatch(/^ {3}B Core +[━╸]+·* +30 +14 +3$/)
+    expect((await term.find({ key: 'bounds-1' }))?.text).toMatch(/^ {4}B Core +[━╸]+·* +30 +14 +3 *$/)
     await term.unmount()
 
     const desk = await mountPane($, 'desktop')
     await desk.press({ key: 'tab:boundaries' })
     expect(await desk.find({ type: 'Raster' })).toBeUndefined()
-    expect((await desk.find({ key: 'heat-head' }))?.text).toMatch(/^ {3}from→to +A +B +C *$/)
+    expect((await desk.find({ key: 'heat-head' }))?.text).toMatch(/^ {4}from→to +A +B +C *$/)
     const core = await desk.find({ key: 'heat-1' })
-    expect(core?.text).toMatch(/^ ■ B Core +▒+ +█+ +× +$/)
+    expect(core?.text).toMatch(/^ {2}■ B Core +▒+ +█+ +× +$/)
     // Core reaching into Http is forbidden and crossed: red; the empty forbidden cell is a red cross.
     // A styled piece of a row is a Text nested in the row's run: the one in the error colour.
     const crossed = (await desk.findAll({ type: 'Text', text: '▒▒' })).map(t => t.props.color)
     expect(crossed).toContain('error')
     expect((await desk.find({ key: 'heat-legend' }))?.text).toContain('forbidden')
     expect(await desk.find({ key: 'heat-legend-1' })).toBeDefined()
-    expect((await desk.find({ key: 'heat-2' }))?.text).toMatch(/^ ■ C cli /)
+    expect((await desk.find({ key: 'heat-2' }))?.text).toMatch(/^ {2}■ C cli /)
     // The boundaries are walked, copied and asked about; there is nothing to open.
     expect((await desk.find({ key: 'down' }))?.props.hotkey).toBe('j')
     expect(await desk.find({ key: 'open' })).toBeUndefined()
@@ -3501,13 +3501,13 @@ describe('knossos mod', () => {
       const text = drawn((await ui.find({ key: 'pane' }))?.text ?? '')
       expect(titled(text)).toMatch(/Changes this session +2 turns/)
       expect(text).toMatch(/2 files → 45 dependents reaching ■ Http ■ Core/)
-      expect(drawn((await ui.find({ key: 'change-0' }))?.text ?? '')).toMatch(/^›~ src\/Router\.php +■ Http .*42 *$/)
-      expect(drawn((await ui.find({ key: 'change-1' }))?.text ?? '')).toMatch(/^ \+ src\/Kernel\.php +■ Core .*3$/)
+      expect(drawn((await ui.find({ key: 'change-0' }))?.text ?? '')).toMatch(/^ ›~ src\/Router\.php +■ Http .*42 *$/)
+      expect(drawn((await ui.find({ key: 'change-1' }))?.text ?? '')).toMatch(/^ {2}\+ src\/Kernel\.php +■ Core .*3 *$/)
       // Each test once, at its nearest distance.
-      expect(titled(text)).toMatch(/Tests that reach these changes · 2 +nearest first/)
-      expect(drawn((await ui.find({ key: 'test-0' }))?.text ?? '')).toMatch(/tests\/Core\/KernelTest\.php +1$/)
-      expect(drawn((await ui.find({ key: 'test-1' }))?.text ?? '')).toMatch(/tests\/Http\/RouterTest\.php +1$/)
-      expect(text).toContain("$ vendor/bin/phpunit --filter '(KernelTest|RouterTest)'")
+      expect(titled(text)).toMatch(/Tests that reach these changes +2 · nearest first/)
+      expect(drawn((await ui.find({ key: 'test-0' }))?.text ?? '')).toMatch(/tests\/Core\/KernelTest\.php +1 *$/)
+      expect(drawn((await ui.find({ key: 'test-1' }))?.text ?? '')).toMatch(/tests\/Http\/RouterTest\.php +1 *$/)
+      expect(text).toMatch(/run {3}vendor\/bin\/phpunit --filter\s+'\(KernelTest\|RouterTest\)'/)
       // `t` copies the test command, as on Overview; `c` copies the marked file, as on every list.
       await ui.press({ key: 'tests' })
       await w.clock.settle()
@@ -3732,15 +3732,15 @@ describe('knossos mod', () => {
         await w.clock.settle()
         const text = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
         expect(titled(text), `${tab} ${key}`).toMatch(/Router\.php +■ Http/)
-        expect(titled(text)).toMatch(/Dependencies · used by 14 · uses 0 +edges/)
+        expect(titled(text)).toMatch(/Dependencies used by 14 · uses 0 · edges/)
         // The marked dependent: a box by its name, on the tint, its count on its edge.
         expect((await ui.find({ key: 'row:0' }))?.props.label).toBe('Kernel.php')
         expect(await ui.find({ key: 'row:0-bg' })).toBeDefined()
         expect(text).toMatch(/Kernel\.php +├─* 6 /)
-        expect(titled(text)).toMatch(/Declares · 2 components/)
+        expect(titled(text)).toMatch(/Declares 2 components/)
         await ui.press({ key: 'back' })
         // Back on the tab, the marker stands where the detail was opened from.
-        expect((await ui.find({ key: 'change-0' }))?.text, `${tab} ${key}`).toMatch(/^›/)
+        expect((await ui.find({ key: 'change-0' }))?.text, `${tab} ${key}`).toMatch(/^ ›/)
       }
       await ui.unmount()
     }
@@ -3787,7 +3787,7 @@ describe('knossos mod', () => {
       expect(await tilesLine(ui)).toContain('2 drifted')
       expect(await ui.find({ key: 'drift-head' })).toBeUndefined()
       await ui.press({ key: 'drifted' })
-      expect(drawn((await ui.find({ key: 'drift-0' }))?.text ?? '')).toMatch(/^›− src\/Gone\.php +■ Core *$/)
+      expect(drawn((await ui.find({ key: 'drift-0' }))?.text ?? '')).toMatch(/^ ›− src\/Gone\.php +■ Core *$/)
       // A deleted file has nothing for the editor; the changed one does.
       expect(await ui.find({ key: 'edit' })).toBeUndefined()
       await ui.press({ key: 'down' })
@@ -3796,7 +3796,7 @@ describe('knossos mod', () => {
       expect(w.editorRuns().at(-1)).toEqual(['code', '-g', '/repo/src/Router.php'])
       await ui.press({ key: 'open' })
       await w.clock.settle()
-      expect(titled(drawn((await ui.find({ key: 'detail' }))?.text ?? ''))).toMatch(/Dependencies · used by 14/)
+      expect(titled(drawn((await ui.find({ key: 'detail' }))?.text ?? ''))).toMatch(/Dependencies used by 14/)
       await ui.press({ key: 'back' })
       // `d` hides them again; a tab switch does too.
       await ui.press({ key: 'drift' })
@@ -3853,7 +3853,7 @@ describe('knossos mod', () => {
       expect(head?.text).toMatch(/in +out +cross +where +/)
       await ui.press({ key: 'row:12' })
       await w.clock.settle()
-      expect(titled(drawn((await ui.find({ key: 'detail' }))?.text ?? ''))).toMatch(/Dependencies · used by/)
+      expect(titled(drawn((await ui.find({ key: 'detail' }))?.text ?? ''))).toMatch(/Dependencies used by/)
       await ui.press({ key: 'back' })
       await ui.unmount()
     }
@@ -3955,7 +3955,7 @@ describe('knossos mod', () => {
     await $.turn.complete(TURN)
     await w.clock.settle()
     expect((await ui.find({ key: 'session-said' }))?.text).toContain('1 file · 41 dependents · 1 test reaches them')
-    expect((await ui.find({ key: 'session-open' }))?.text).toMatch(/^› +Changes/)
+    expect((await ui.find({ key: 'session-open' }))?.text).toMatch(/^ › +Changes/)
     expect((await ui.find({ key: 'tests' }))?.props.hotkey).toBe('t')
     // The way to Changes has no file: `e` is not offered.
     expect(await ui.find({ key: 'edit' })).toBeUndefined()
@@ -3964,7 +3964,7 @@ describe('knossos mod', () => {
     expect(w.copies.at(-1)?.text).toBe('npx vitest run hooks/lib/band.spec.ts')
     await ui.press({ key: 'open' })
     expect((await ui.find({ key: 'tab:changes-bg' }))?.props.backgroundColor).toBe('selectionBg')
-    expect((await ui.find({ key: 'change-0' }))?.text).toMatch(/^›~ src\/Router\.php/)
+    expect((await ui.find({ key: 'change-0' }))?.text).toMatch(/^ ›~ src\/Router\.php/)
     await ui.press({ key: 'tab:overview' })
     await ui.unmount()
   })
@@ -3985,6 +3985,8 @@ describe('knossos mod', () => {
 
 describe('the live watcher', () => {
   const READY = { event: 'ready', project_id: 'p1', snapshot_id: 's1', files: 3, scanned: false }
+  /** The rows a sentence is wrapped across (`key-0`, `key-1`, ...), read on as a person reads them: one line after another. */
+  const sentence = async (ui: Awaited<ReturnType<typeof mountPane>>, key: string, said: string[] = []): Promise<string> => { for (let row = await ui.find({ key: `${key}-0` }); row !== undefined; row = await ui.find({ key: `${key}-${said.length}` })) said.push(String(row.text).trim()); return said.join(' ') }
 
   test('starts once a dashboard of a scanned project is stored, and the header says live', async ($, on) => {
     const w = world(on, { dashboard: [{ stdout: paneDashboard() }], watch: [[READY]] })
@@ -4304,10 +4306,10 @@ describe('the live watcher', () => {
     await w.clock.advance(100)
     const ui = await mountPane($)
     await ui.press({ key: 'tab:changes' })
-    const rows = (await ui.findAll({ type: 'Text' })).map(t => t.text).join('').replace(/\s+/g, ' ')
+    const said = await sentence(ui, 'changes-fallback')
     const date = String.raw`\d{4}-\d{2}-\d{2} \d{2}:\d{2}`
-    expect(rows).toMatch(new RegExp(`The scan record does not reach back to when this session began \\(${date}\\)\\. It lists every change since ${date}, the oldest point it still holds\\.`))
-    expect(rows).toMatch(new RegExp(`since ${date}`))
+    expect(said).toMatch(new RegExp(`^The scan record does not reach back to when this session began \\(${date}\\)\\. It lists every change since ${date}, the oldest point it still holds\\.$`))
+    expect(titled((await ui.find({ key: 'changes-head' }))?.text)).toMatch(new RegExp(`since ${date}`))
     // The files since that point are listed, each with its origin, instead of nothing.
     expect((await ui.find({ key: 'change-0' }))?.text).toMatch(/Router\.php/)
     expect((await ui.find({ key: 'change-1' }))?.text).toMatch(/app\.php.*outside/)
@@ -4323,8 +4325,7 @@ describe('the live watcher', () => {
     await w.clock.advance(100)
     const ui = await mountPane($)
     await ui.press({ key: 'tab:changes' })
-    const rows = (await ui.findAll({ type: 'Text' })).map(t => t.text).join('').replace(/\s+/g, ' ')
-    expect(rows).toMatch(/The scan record does not reach back to when this session began \(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\), so only what its turns reported is listed\./)
+    expect(await sentence(ui, 'changes-fallback')).toMatch(/^The scan record does not reach back to when this session began \(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\), so only what its turns reported is listed\.$/)
     await ui.unmount()
   })
 
@@ -4830,19 +4831,18 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
       expect(await tall.find({ key: 'bar' })).toBeUndefined()
       await tall.unmount()
       // Shorter than what it draws: the bar is drawn over the window's last rows, and says the graph's state once the header is out of view.
-      const short = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 0, bodyRows: 16 } } })
-      // The lists shrink to the height; the key list, which stands in for the tab, does not.
+      // Hubs at 60 draws 17 rows, each card's column head among them: it fits; the key list, which stands in for the tab, does not.
+      const short = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 0, bodyRows: 17 } } })
       expect(await short.find({ key: 'bar' })).toBeUndefined()
       await short.press({ key: 'keys' })
       const bar = await short.find({ key: 'bar' })
       // While the key list is shown the bar offers only closing it: one row.
-      expect(bar?.props).toMatchObject({ position: 'absolute', top: 15 })
+      expect(bar?.props).toMatchObject({ position: 'absolute', top: 16 })
       expect(bar?.text).not.toContain('fresh')
       await short.unmount()
-      const scrolled = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 6, bodyRows: 16 } } })
-      // The key list is still open: the view outlives the mount.
-      // Its state joins the bar's last row.
-      expect((await scrolled.find({ key: 'bar' }))?.props).toMatchObject({ position: 'absolute', top: 21 })
+      const scrolled = await $.ui.mount({ plugin: 'knossos', surface, component: 'Pane', requestId: 'knossos', props: { ...WIDE, bodyColumns: 60, scroll: { offset: 6, bodyRows: 17 } } })
+      // The key list is still open: the view outlives the mount. Its state joins the bar's last row.
+      expect((await scrolled.find({ key: 'bar' }))?.props).toMatchObject({ position: 'absolute', top: 22 })
       expect((await scrolled.find({ key: 'bar' }))?.text).toContain('fresh 1s')
       await scrolled.press({ key: 'keys' })
       await scrolled.unmount()
@@ -4929,10 +4929,10 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     const ui = await mountPane($)
     await ui.press({ key: 'tab:boundaries' })
     // Http depends on Core most: that cell is marked and read, never inside the render.
-    expect(titled((await ui.find({ key: 'coupling-head' }))?.text)).toMatch(/^Http → Core +14 deps$/)
+    expect(titled((await ui.find({ key: 'coupling-head' }))?.text)).toMatch(/^Http → Core +14 edges$/)
     await w.clock.settle()
     expect(w.couplingRuns()).toEqual([['sh', expect.stringMatching(/knossos-run\.sh$/), 'boundary-couplings', ROOT, '--from=Http', '--to=Core']])
-    expect((await ui.find({ key: 'coupling-0' }))?.text).toMatch(/Router::route +──► Kernel +9$/)
+    expect((await ui.find({ key: 'coupling-0' }))?.text?.trimEnd()).toBe('    Router::route ──► Kernel  9')
     // Read once for this cell of this graph, however often the pane is drawn again.
     await ui.press({ key: 'keys' })
     await ui.press({ key: 'keys' })
@@ -4981,7 +4981,7 @@ describe("the pane's header, marked rows, hover cards and heat map cells", () =>
     const ui = await mountPane($)
     await ui.press({ key: 'tab:changes' })
     const row = (await ui.find({ key: 'changes-timeline' }))?.text ?? ''
-    expect(row).toMatch(/^ {3}scans •• {2}\d this session/)
+    expect(row).toMatch(/^ {4}scans •• {2}\d this session/)
     await ui.unmount()
   })
 })
@@ -5013,7 +5013,7 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     await w.clock.settle()
     expect(w.churnRuns()).toHaveLength(1)
     const text = drawn((await ui.find({ key: 'pane' }))?.text ?? '')
-    expect(titled(text)).toMatch(/Churn hotspots · commits × dependents +2 files/)
+    expect(titled(text)).toMatch(/Churn hotspots 2 files · by commits × dependents/)
     expect(text).toMatch(/1 src\/Http\/\s*Router\.php/)
     // Kept for the commit: another visit, or a turn that left the checkout where it was, reads nothing.
     await ui.press({ key: 'tab:overview' })
@@ -5046,8 +5046,8 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
       const ui = await mountPane($, surface, 100)
       const text = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
       expect(text).toMatch(/1 hop · 2 +─+ ✓ 1 tested · ▲ 1 untested/)
-      expect(text).toMatch(/▲ C Caller {3}C Router/)
-      expect(text).toContain('✓ 1 test file: RouterTest.php')
+      expect(text).toMatch(/▲ C Caller {5}C Router/)
+      expect(text).toContain('✓ 1 test file  RouterTest.php')
       expect(text).toContain('◉ Greeter')
       await ui.unmount()
     }
@@ -5088,7 +5088,7 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     expect(w.routeRuns().map(r => r.slice(4))).toEqual([['--from=Greeter', '--to=App\\Core\\Kernel']])
     const text = drawn((await ui.find({ key: 'detail' }))?.text ?? (await ui.find({ key: 'pane' }))?.text ?? '')
     expect(text).toContain('Route › Greeter → Kernel')
-    expect(text).toMatch(/calls · Greeter\.php:7/)
+    expect(text).toMatch(/calls · src\/Greeter\.php:7/)
     // A box opens its component; back from the route is the detail it began on.
     await ui.press({ key: 'back' })
     await w.clock.settle()

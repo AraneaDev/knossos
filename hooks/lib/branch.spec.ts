@@ -92,7 +92,7 @@ describe('the Branch tab: did it break anything', () => {
     expect(t.indexOf('Greeter0')).toBeLessThan(t.indexOf('A0 → B0'))
     expect(t).toMatch(/Hub0 .*20 → 31 \+11/)
     // Four of the six crossings were not listed: said, not dropped.
-    expect(t).toContain('+4 more cross-boundary dependencies not listed')
+    expect(plainText(rowsOf(answer()).find(r => r.key === 'branch-unlisted-crossing')!)).toBe('   +4 more cross-boundary dependencies')
     const rows = rowsOf(answer(), view({ selected: 6 }))
     const hub = rows.find(r => r.key.split('|').some(k => k === 'finding-6'))!
     expect(hub.segments.find(s => s.press !== undefined)?.press?.id).toBe('row:6')
@@ -129,7 +129,7 @@ describe('the Branch tab: did it break anything', () => {
 describe('the Branch tab: what changed', () => {
   it('totals the touched files, then a row per boundary, the most reaching first, the files outside the graph last', () => {
     const t = text(answer({}, 4))
-    expect(t).toMatch(/What changed +7 files +\+45 −6 · reach 61/)
+    expect(t).toMatch(/What changed +7 files +\+45 −6 → 61 dependents/)
     const lines = t.split('\n').filter(l => /[▸▾] [■·] /.test(l))
     expect(lines.map(l => l.match(/(http|core|outside the graph)/)?.[1])).toEqual(['core', 'http', 'outside the graph'])
     expect(t).toMatch(/core .*2 files +\+22 −2 +40/)
@@ -150,7 +150,7 @@ describe('the Branch tab: what changed', () => {
     ])
     expect(walk[at + 3]?.fold).toBe('branch:http')
     const t = paneLayout(pane(answer({}, 4), view({ folds: ['branch:core'] })), 100, 60).body.map(plainText).join('\n')
-    expect(t).toMatch(/src\/Touched0\.php .*\+12 −0 +40 deps/)
+    expect(t).toMatch(/^ {5}src\/Touched0\.php +\+12 +−0 +40$/m) // its dependents in the reach column, under its boundary's
     expect(t).not.toContain('src/Touched1.php')
   })
 
@@ -206,7 +206,7 @@ describe('the Branch tab on the pane', () => {
 
   it('totals the lines of every touched file, those past the listed ones too', () => {
     const files = { ...touched(2), added: 900, deleted: 40, truncated: true, count: 400 }
-    expect(text(answer({ files }))).toMatch(/What changed +400 files +\+900 −40 · reach 61/)
+    expect(text(answer({ files }))).toMatch(/What changed +400 files +\+900 −40 → 61 dependents/)
   })
 })
 
