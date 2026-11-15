@@ -14,7 +14,7 @@ Boundaries are explained in [the graph and its evidence](../concepts/graph-and-e
 
 ## Boundary policies
 
-![The Boundaries tab past twelve boundaries: all of them listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Query flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
+![The Boundaries tab: 33 boundaries, the five largest listed with their components and dependencies in and out, what the marked tests boundary depends on, and the tests to Query flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
 
 In the pane, the Boundaries tab lists every boundary, what it depends on and
 what depends on it, and draws the dependencies behind a flow between two.

@@ -20,7 +20,7 @@ or repository configuration. See the
 [HTTP threat model](../operate/http-threat-model.md#git-subprocesses) for
 the exact hardening.
 
-![The Branch tab: this checkout against main, the verdict that it broke nothing (no new cycles, crossings, hubs that grew, dead code or violations), and what it changed by boundary with its lines and the files it reaches](../images/claude-code/branch.png)
+![The Branch tab: a detached checkout four commits ahead of main, 14 things to look at, most of them new dependencies across boundaries, and what it changed by boundary with its lines and its reach](../images/claude-code/branch.png)
 
 In Claude Code, the pane's Branch tab gives this review for the branch you are
 on, against main, at a glance.
@@ -112,6 +112,12 @@ truncated cycle or edge scan may under-report.
 their indexed components and then performs conservative reverse static impact
 analysis. It separates direct components, impacted dependants, known entry
 points, and unresolved paths.
+
+In Claude Code you can see this without a call: the pane's Changes tab lists
+every file changed since the session began, with the files that depend on it
+and the tests that reach it.
+
+![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 15 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
 
 Pass explicit paths when a client already has a change set:
 

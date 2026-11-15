@@ -10,6 +10,11 @@ that puts the graph on screen while a session works. You get three things:
 - **The live watcher**, which rescans the project as files change, so the band
   and the pane follow the code whoever edits it.
 
+This is the pane open beside a session, on its Overview tab:
+
+![The Knossos pane's Overview tab beside Claude Code: headline counts, this session, composition by boundary, language and kind, dependency concentration and cross-boundary flows](../../images/claude-code/overview.png#gh-dark-mode-only)
+![The same Overview tab in Claude Code's light theme, drawn in that theme's own colours](../../images/claude-code/overview-light.png#gh-light-mode-only)
+
 The mod also tells the model a few facts at the moment they help. Those messages
 are on their own page: [messages for the model](../model-messages.md).
 
