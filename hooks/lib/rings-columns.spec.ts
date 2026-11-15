@@ -73,6 +73,27 @@ describe('the rings, members in columns', () => {
     ])
   })
 
+  it("marks the selected member with '›' in the cell before its mark, moving no column or border", () => {
+    // The walk is nearest first: Near0 is 0, Near1 is 1, Further0 is 5.
+    const marked = (columns: number, selected: number, key: string) => rawText(drawn(columns, selected).find(r => r.key === key)!)
+    expect(marked(96, 0, 'ring-0-names-0')).toBe('│ │ │›▲ C Near0 via make           C Near1          ■ edge    m Near2                      │ │ │')
+    expect(marked(96, 1, 'ring-0-names-0')).toBe('│ │ │ ▲ C Near0 via make        ›  C Near1          ■ edge    m Near2                      │ │ │')
+    expect(marked(136, 5, 'ring-2-names-0')).toBe('│›▲ m Further0  ■ tooling  ▲ C Further1             ▲ C Further2               C Further3  ■ tooling    m Further4                     │')
+    expect(marked(56, 1, 'ring-0-names-1')).toBe('│ │ │›  C Near1          ■ edge                    │ │ │')
+    // The row is the unmarked one with one cell changed, at every width, for each member that shows unmarked (a hidden one moves the window).
+    for (const columns of [44, 56, 96, 136]) {
+      for (const selected of [0, 1, 2, 5, 6].filter(n => presses(columns).includes(`rel:${n}`))) {
+        const plain = drawn(columns).map(rawText)
+        const rows = drawn(columns, selected).map(rawText)
+        rows.forEach((text, i) => {
+          const changed = [...text].filter((ch, j) => ch !== [...plain[i]!][j])
+          expect(changed.join(''), `${columns} ${selected} ${i}`).toMatch(/^›?$/)
+        })
+        expect(rows.join('\n').split('›').length - 1, `${columns} ${selected}`).toBeLessThanOrEqual(1)
+      }
+    }
+  })
+
   it('closes every box at one column: each frame row as wide as the top edge, at every width', () => {
     for (const columns of [44, 50, 56, 70, 96, 136, 196]) {
       const rows = drawn(columns)

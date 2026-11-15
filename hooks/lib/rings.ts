@@ -23,7 +23,7 @@
 import type { BlastRadius, RingsState } from '../../types'
 import { noteOf, windowOf } from './cards'
 import type { Block } from './cards'
-import { FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
+import { ACCENT, FAINT, HEADING, NO_HUES, SECONDARY, SELECTED_BG } from './palette'
 import type { Hues } from './palette'
 import { absolute, baseName } from './paths'
 import { button, clip, dimRow, inList, segmentsWidth } from './rows'
@@ -108,7 +108,10 @@ const LEAD = 4
 /** The fewest cells a name keeps before its member and its boundary give way. */
 const NAME_LEAST = 8
 
-/** A ring's components as lines of cells `room` wide (see the module docblock); `at` is the walk's index of its first. */
+/**
+ * A ring's components as lines of cells `room` wide (see the module docblock); `at` is the walk's index of its first.
+ * Each line starts one cell early, in the padding before its first mark, where the marker stands.
+ */
 function memberGrid(ring: Ring, at: number, room: number, selected: number, hues: Hues, home: string | null): Segment[][] {
   const members = ring.members
   if (members.length === 0 && ring.count === 0) return []
@@ -146,11 +149,14 @@ function memberGrid(ring: Ring, at: number, room: number, selected: number, hues
     const text = fit(`+${grouped(more)} more`, width)
     pieces.push([next === null ? { text, dim: true } : button(`more:${next}`, text, undefined, { dim: true })])
   }
+  // Each line opens with the cell before its first mark, and every cell after the first has one in its gap: the marked
+  // component's `›` stands there, as a table's marker stands before a row's mark, and no column moves for it.
+  const marked = (i: number): Segment => (i < shown.length && at + window.start + i === selected ? { text: '›', color: ACCENT, bold: true } : { text: ' ' })
   const lines: Segment[][] = []
   pieces.forEach((piece, i) => {
-    if (i % per === 0) lines.push([])
+    if (i % per === 0) lines.push([marked(i)])
     const line = lines[lines.length - 1]!
-    if (i % per > 0) line.push({ text: spaces(CELL_GAP + width - segmentsWidth(pieces[i - 1]!)) })
+    if (i % per > 0) line.push({ text: spaces(CELL_GAP - 1 + width - segmentsWidth(pieces[i - 1]!)) }, marked(i))
     line.push(...piece)
   })
   return lines
@@ -202,12 +208,15 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
     }
     return { left, right }
   }
-  // A line inside `depth` frames: their left sides, the content cut to the room, padding, their right sides.
-  const inside = (key: string, depth: number, content: Segment[]): Row => {
-    const { left, right } = sides(depth)
-    const room = Math.max(0, columns - 4 * depth)
+  // A line inside `depth` frames: their left sides, the content cut to the room, padding, their right sides; `lead`, the
+  // content takes the innermost frame's padding cell too (the marker's, before a line of components).
+  const inside = (key: string, depth: number, content: Segment[], lead = false): Row => {
+    const sided = sides(depth)
+    const last = sided.left[sided.left.length - 1]
+    const left = lead && last !== undefined ? [...sided.left.slice(0, -1), { ...last, text: '│' }] : sided.left
+    const room = Math.max(0, columns - 4 * depth + (left === sided.left ? 0 : 1))
     const fitted = clip(content, room)
-    return { key, segments: [...left, ...fitted, { text: spaces(room - segmentsWidth(fitted)) }, ...right] }
+    return { key, segments: [...left, ...fitted, { text: spaces(room - segmentsWidth(fitted)) }, ...sided.right] }
   }
   for (let d = 0; d < n; d++) {
     const index = n - 1 - d
@@ -225,7 +234,7 @@ export function ringRows(input: RingsInput, columns: number, selected: number, o
     rows.push({ key: `ring-${index}-top`, segments: [...left, ...edge, ...right] })
     const room = width - 4
     if (fill < 1) rows.push(inside(`ring-${index}-standing`, d + 1, state))
-    memberGrid(ring, offsets[index]!, room, selected, hues, home).forEach((line, i) => rows.push(inside(`ring-${index}-names-${i}`, d + 1, line)))
+    memberGrid(ring, offsets[index]!, room, selected, hues, home).forEach((line, i) => rows.push(inside(`ring-${index}-names-${i}`, d + 1, line, true)))
     const tests = testsLine(ring, room)
     if (tests.length > 0) rows.push(inside(`ring-${index}-tests`, d + 1, tests))
   }
@@ -255,7 +264,7 @@ function ringLists(input: RingsInput, columns: number, selected: number, offset:
     // How the ring stands beside its figures while both fit, else on a row of its own under them.
     const beside = segmentsWidth(head) + 2 + segmentsWidth(state) <= columns
     const rows: Row[] = beside ? [{ key: `ring-${index}-head`, segments: [...head, { text: '  ' }, ...state] }] : [{ key: `ring-${index}-head`, segments: clip(head, columns) }, { key: `ring-${index}-standing`, segments: clip([{ text: `${body}  ` }, ...state], columns) }]
-    memberGrid(ring, offsets[index]!, room, selected, hues, input.centre?.boundary ?? null).forEach((line, i) => rows.push({ key: `ring-${index}-names-${i}`, segments: [{ text: `${body}  ` }, ...line] }))
+    memberGrid(ring, offsets[index]!, room, selected, hues, input.centre?.boundary ?? null).forEach((line, i) => rows.push({ key: `ring-${index}-names-${i}`, segments: [{ text: `${body} ` }, ...line] }))
     const tests = testsLine(ring, room)
     if (tests.length > 0) rows.push({ key: `ring-${index}-tests`, segments: [{ text: `${body}  ` }, ...tests] })
     return rows

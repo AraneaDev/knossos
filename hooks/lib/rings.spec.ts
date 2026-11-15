@@ -152,6 +152,14 @@ describe('the blast radius in a component detail', () => {
     expect(text(state(radius()), 40)).not.toContain('╭─ 1 hop')
     expect(RINGS_MIN).toBeLessThanOrEqual(60)
   })
+
+  it('marks the selected member of a narrow list with › in the cell before its mark, as a framed ring does', () => {
+    // The walk: the one that uses it (rel:0), then the rings nearest first, Near0 at rel:1.
+    const lines = (selected: number) => text(state(radius()), 40, view({ selected })).split('\n')
+    expect(lines(1)).toContain('    ›▲ C Near0')
+    expect(lines(2).find(l => l.includes('C Near1'))).toMatch(/^ {4}› {2}C Near1 /)
+    expect(lines(1).find(l => l.includes('C Near1'))).toMatch(/^ {7}C Near1 /)
+  })
 })
 
 describe('notes on a component detail', () => {
