@@ -22,13 +22,13 @@ Facts that static analysis cannot prove are labelled with their confidence and o
 
 ## Install
 
-You need PHP 8.3 or newer with the JSON, PDO and PDO SQLite extensions, Node 24 or newer and Python 3.11 or newer. This installs the latest release:
+You need PHP 8.3 or newer with the JSON, mbstring, PDO and PDO SQLite extensions, Node 24 or newer, Python 3.11 or newer and Git, and `knossos doctor` fails without any of them. This installs the latest release:
 
 ```sh
 curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install.sh | sh
 ```
 
-The installer adds the folder you run it from to the list of projects Knossos may scan. [Installation](get-started/installation.md) covers installing from a checkout or in Docker, and what to do when it does not start.
+The installer grants the folder you run it from to the list of projects Knossos may scan, except `/` and your home folder when you pipe it as above; set `KNOSSOS_ALLOW_ROOT` to grant another folder, or pass `--no-roots` to grant none. [Installation](get-started/installation.md) covers installing from a checkout or in Docker, and what to do when it does not start.
 
 ## Where to go next
 
