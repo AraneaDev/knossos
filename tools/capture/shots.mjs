@@ -152,8 +152,10 @@ export const knossosCommand = {
 
 /** Opens the pane, gives it the keyboard and widens it to `columns`, so the tabs are named. */
 const openPane = (columns, beat = true) => [
-    // The first dashboard read can take a while on a busy machine.
-    { ...knossosCommand, until: "Overview", untilMs: 60000 },
+    // The first dashboard read can take a while on a busy machine: in a GIF a wait, so its seconds play as a time-lapse.
+    ...(beat
+        ? [knossosCommand, wait("pane open", "Overview", { timeoutMs: 60000 })]
+        : [{ ...knossosCommand, until: "Overview", untilMs: 60000 }]),
     { do: "focus" },
     { do: "widen", columns },
     beat
