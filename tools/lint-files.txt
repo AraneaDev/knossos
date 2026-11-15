@@ -1501,7 +1501,11 @@ js	tools/capture/frame.mjs
 js	tools/capture/frame.spec.mjs
 js	tools/capture/gif.mjs
 js	tools/capture/gif.spec.mjs
+js	tools/capture/options.mjs
+js	tools/capture/page.mjs
+js	tools/capture/page.spec.mjs
 js	tools/capture/render.mjs
+js	tools/capture/session.launch.spec.mjs
 js	tools/capture/session.mjs
 js	tools/capture/session.spec.mjs
 js	tools/capture/shoot.mjs
@@ -1509,6 +1513,7 @@ js	tools/capture/shoot.spec.mjs
 js	tools/capture/shots.mjs
 js	tools/capture/shots.spec.mjs
 js	tools/capture/worktree.mjs
+js	tools/capture/worktree.spec.mjs
 js	tools/chaos-loop.mjs
 js	tools/core-loads.mjs
 js	tools/core-loads.spec.mjs

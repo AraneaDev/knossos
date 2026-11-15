@@ -1,6 +1,11 @@
 /**
  * Dev-only. The captures as data: one entry a shot, each a terminal size, a
  * theme and the steps shoot.mjs plays in an isolated Claude Code session.
+ * `kind: "terminal"` plays them in the terminal pane (`knossos` with no
+ * command) instead, where a key goes straight to the pane: `send`, not
+ * `press`. `kind: "browser"` has no steps: page.mjs opens `knossos web` at
+ * `size` ([width, height] in CSS pixels) in `theme`, and keeps the page as
+ * `still` once `match` is on it.
  *
  * Steps:
  * - `type`: text typed into whatever has the keyboard (`delayMs` between keys,
@@ -86,7 +91,13 @@ export const HERO_MAX_MS = 30000;
  * The terminal sizes. Claude Code grows a pane to 45% of the terminal at most,
  * so each is just wide enough for its pane width below.
  */
-const SIZES = { hero: [214, 48], doc: [214, 48], wide: [312, 56] };
+const SIZES = {
+    hero: [214, 48],
+    doc: [214, 48],
+    wide: [312, 56],
+    // The terminal pane takes the whole terminal: past 130 columns the marked row's detail sits beside the list.
+    terminal: [160, 48],
+};
 /** How wide the pane is drawn at each size: past 130 columns it puts the marked row's detail beside a tab. */
 const PANE = { 214: 96, 312: 140 };
 
@@ -218,6 +229,10 @@ export const THIS_SESSION = String.raw`scans\b.*\b[1-9]\d* this session`;
 /** The hero's one prompt. */
 export const PROMPT = `Add a one-line comment above the normalise function in ${FIXTURE.edited} saying what it does. Edit only that file and run nothing.`;
 
+/** Both on screen, in either order: the Hubs list marked on `name`, and the detail beside it, drawn at its own height. */
+const hubBeside = (name) =>
+    String.raw`^(?=[\s\S]*${marked(name)})(?=[\s\S]*Dependencies ─+ used by)`;
+
 const hubDetail = (theme) =>
     pane(
         theme === "light" ? "hubs-detail-light" : "hubs-detail",
@@ -227,12 +242,7 @@ const hubDetail = (theme) =>
             ...Array.from({ length: FIXTURE.hubRank - 1 }, (_, i) =>
                 press("j", markedRow(i + 1)),
             ),
-            wait(
-                "hub detail",
-                // Both on screen, in either order: the detail beside the list starts at its own height.
-                String.raw`^(?=[\s\S]*${marked(FIXTURE.hub)})(?=[\s\S]*Dependencies ─+ used by)`,
-                { fixture: "hub" },
-            ),
+            wait("hub detail", hubBeside(FIXTURE.hub), { fixture: "hub" }),
         ],
         { size: SIZES.wide, theme },
     );
@@ -381,6 +391,34 @@ export const SHOTS = {
         press("End"),
         wait("rings", String.raw`◉ ${lit(FIXTURE.hub)}`, { fixture: "hub" }),
     ]),
+    // The terminal pane on the Hubs tab, on a terminal that tells its background: the pane lies on it.
+    terminal: {
+        kind: "terminal",
+        size: SIZES.terminal,
+        theme: "dark",
+        steps: [
+            wait("pane open", String.raw`Overview\s+Hubs\s+Boundaries`, {
+                timeoutMs: 90000,
+            }),
+            {
+                do: "send",
+                keys: ["2"],
+                until: marked(FIXTURE.firstHub),
+                untilMs: 60000,
+            },
+            wait("hub detail", hubBeside(FIXTURE.firstHub), {
+                fixture: "firstHub",
+            }),
+            still("terminal"),
+        ],
+    },
+    "web-overview": {
+        kind: "browser",
+        size: [1440, 900],
+        theme: "dark",
+        match: String.raw`Cross-boundary flows`,
+        still: "overview",
+    },
     "note-on-detail": pane("note-on-detail", [
         ...openHub(),
         press("End"),

@@ -29,6 +29,7 @@ import path from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import { tmuxArgv, tmux } from "./driver.mjs";
+import { THEMES } from "./frame.mjs";
 
 const run = promisify(execFile);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -347,9 +348,16 @@ export const sessionName = (pid = process.pid) =>
 /**
  * The command that starts the session on its own tmux server (`-L`, so the
  * user's server and its options are never touched): focus events on there,
- * or Claude Code prints a tmux hint at the bottom of the first frames.
+ * or Claude Code prints a tmux hint at the bottom of the first frames. The
+ * window's background is `background`, the colour the stills are drawn on, so
+ * tmux answers a program that asks for the terminal's background (OSC 11) as
+ * a terminal does; with no client attached it would otherwise say nothing.
+ * It runs `command`, or Claude Code with the plugin at `pluginDir`.
  */
-export function launchArgv(session, { env, project, pluginDir, claudeArgs }) {
+export function launchArgv(
+    session,
+    { env, project, pluginDir, claudeArgs, command, background },
+) {
     const envArgs = SESSION_ENV.flatMap((k) => ["-e", `${k}=${env[k]}`]);
     return tmuxArgv(session, [
         "start-server",
@@ -359,6 +367,9 @@ export function launchArgv(session, { env, project, pluginDir, claudeArgs }) {
         "focus-events",
         "on",
         ";",
+        ...(background === undefined
+            ? []
+            : ["set-option", "-gw", "window-style", `bg=${background}`, ";"]),
         "new-session",
         "-d",
         "-s",
@@ -370,10 +381,7 @@ export function launchArgv(session, { env, project, pluginDir, claudeArgs }) {
         ...envArgs,
         "-c",
         project,
-        "claude",
-        "--plugin-dir",
-        pluginDir,
-        ...claudeArgs,
+        ...(command ?? ["claude", "--plugin-dir", pluginDir, ...claudeArgs]),
     ]);
 }
 
@@ -413,7 +421,9 @@ const SESSION_ENV = [
 /**
  * `tmpRoot` is where the session's temp dir goes (the system's by default);
  * `home` must lie inside it, and is a fresh `home` dir in the session's own
- * temp dir when left out.
+ * temp dir when left out. With `command` the session runs that instead of
+ * Claude Code (the terminal pane, `knossos` with no command), and no
+ * credentials are copied for it.
  */
 export async function createSession({
     project,
@@ -425,6 +435,7 @@ export async function createSession({
     tmpRoot = os.tmpdir(),
     home,
     claudeArgs = ["--permission-mode", "default"],
+    command,
 }) {
     installExitHandlers();
     const base = await mkdtemp(path.join(tmpRoot, "knossos-capture-"));
@@ -462,10 +473,11 @@ export async function createSession({
     await mkdir(configDir, { recursive: true });
     await mkdir(homeDir, { recursive: true });
     await copyData(dataDir, dataCopy);
-    await cp(
-        path.join(os.homedir(), ".claude", ".credentials.json"),
-        path.join(configDir, ".credentials.json"),
-    );
+    if (command === undefined)
+        await cp(
+            path.join(os.homedir(), ".claude", ".credentials.json"),
+            path.join(configDir, ".credentials.json"),
+        );
     // Pre-seed what a first run would ask for, so no dialog waits on a key press,
     // and the one-time auto mode notice, so it never shows in a shot.
     await writeFile(
@@ -505,7 +517,14 @@ export async function createSession({
     const forgetStop = registerCleanup(() => session.stop());
     const [cmd, ...argv] = [
         "tmux",
-        ...launchArgv(session, { env, project, pluginDir, claudeArgs }),
+        ...launchArgv(session, {
+            env,
+            project,
+            pluginDir,
+            claudeArgs,
+            command,
+            background: THEMES[theme].background,
+        }),
     ];
     await run(cmd, argv);
     return session;
