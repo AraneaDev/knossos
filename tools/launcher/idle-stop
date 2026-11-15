@@ -5,8 +5,9 @@
 #       Keep the container alive until it has been idle for LIMIT_SECONDS
 #       (default 1800, 30 minutes), then exit, which stops the container. Idle
 #       means both: MARKER, which the launcher touches on every call, is older
-#       than the limit, and no command started with --run is still running
-#       (an MCP server or a watcher can run for hours without a new call).
+#       than the limit, and no call the launcher started with the runtime's
+#       exec is still running (an MCP server or a watcher can run for hours
+#       without a new call). A process such a call left behind does not count.
 #       Checked every POLL_SECONDS (default 60). A SIGTERM from `docker stop`
 #       ends it at once.
 #
@@ -57,8 +58,14 @@ touched() {
     stat -c %Y "$MARKER" 2>/dev/null || stat -f %m "$MARKER" 2>/dev/null || printf '%s' "$STARTED"
 }
 
-# Whether any process runs besides the init process and this script. The
-# records of commands that have ended are swept on the way.
+# Whether a call is still running: a process that the runtime's exec started,
+# which is every command the launcher runs here. Such a process has its parent
+# outside the container, so /proc reports its parent as 0. Anything a command
+# leaves behind, on purpose or not, has a parent inside the container (or is
+# handed to the init process once its parent ends), so it does not keep the
+# container alive. A process whose status cannot be read (it ended while this
+# looked) counts as running until the next look. The records of commands that
+# have ended are swept on the way.
 busy() {
     for record in "$RUN_DIR"/*.pid; do
         [ -f "$record" ] || continue
@@ -68,9 +75,20 @@ busy() {
     for entry in "$PROC"/[0-9]*; do
         [ -d "$entry" ] || continue
         case ${entry##*/} in
-            1 | "$$") ;;
-            *) return 0 ;;
+            1 | "$$") continue ;;
         esac
+        parent=''
+        while IFS= read -r line; do
+            case $line in
+                PPid:*)
+                    parent=${line#PPid:}
+                    parent=${parent#"${parent%%[! 	]*}"}
+                    break
+                    ;;
+            esac
+        done 2>/dev/null < "$entry/status" || return 0
+        [ -n "$parent" ] || return 0
+        [ "$parent" != 0 ] || return 0
     done
     return 1
 }

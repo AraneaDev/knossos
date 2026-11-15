@@ -1484,6 +1484,12 @@ write_list "$WORK/moved from"
 cp "$TRUSTED" "$WORK/list.before"
 (cd "$WORK/moved to" && FAKE_EXEC_EXIT=3 kn move-project "$WORK/moved from" "$WORK/moved to" --execute </dev/null >/dev/null 2>&1); status=$?
 if [ "$status" -eq 3 ] && cmp -s "$WORK/list.before" "$TRUSTED"; then pass 'a failed move-project puts the host list back as it was'; else fail "move-project restore: $status, $(cat "$TRUSTED")"; fi
+# The launcher itself gives up after the swap (here: no daemon to start the container).
+reset_docker
+: > "$FAKE_DOCKER_STATE/daemon-down"
+out=$(cd "$WORK/moved to" && kn move-project "$WORK/moved from" "$WORK/moved to" --execute </dev/null 2>&1); status=$?
+rm -f "$FAKE_DOCKER_STATE/daemon-down"
+if [ "$status" -eq 1 ] && cmp -s "$WORK/list.before" "$TRUSTED"; then pass 'a move-project the launcher gives up on after the swap puts the host list back too'; else fail "move-project refusal restore: $status, $out, $(cat "$TRUSTED")"; fi
 out=$(cd "$WORK/moved to" && kn move-project project_abc "$WORK/moved to" --execute </dev/null 2>&1); status=$?
 case $out in *'names the old root by its path'*) pass 'move-project --execute from a project id is refused, the list cannot follow it' ;; *) fail "move-project id: $status, $out" ;; esac
 cp "$WORK/trusted.kept" "$TRUSTED"
@@ -1544,6 +1550,223 @@ done
 out=$(cd "$PROJECT" && PATH="$NODOCKER" kn version 2>&1); status=$?
 case $out in *'docker is not installed'*) pass 'a missing runtime binary is named' ;; *) fail "missing docker: $status $out" ;; esac
 
+# ---- stop goes through the roots-file check every other command gets --------------------
+
+# A roots file a container can write is never opened for stop: not a FIFO
+# planted there (which would hang it), not a link (which would be followed).
+mkdir -p "$DATA/r"
+mkfifo "$DATA/r/roots.json"
+printf '{"roots":["%s"]}\n' "$PROJECT" > "$HOME/secret.json"
+chmod 600 "$HOME/secret.json"
+ln -s "$HOME/secret.json" "$DATA/r/s.json"
+# unblock FIFO: let a reader still stuck on FIFO go, should one be.
+unblock() { (printf '' > "$1") 2>/dev/null & sleep 1; kill "$!" 2>/dev/null; wait "$!" 2>/dev/null; }
+stop_with_roots() { sh -c 'cd "$1" && KNOSSOS_ROOTS_FILE="$2" timeout 10 env -u KNOSSOS_DATA_DIR "$3" stop </dev/null' _ "$PROJECT/src" "$1" "$LAUNCHER"; }
+reset_docker
+out=$(stop_with_roots "$DATA/r/roots.json" 2>&1); status=$?
+case $out in *"KNOSSOS_ROOTS_FILE ($DATA/r/roots.json) lies in the graph directory $DATA, which a container can write;"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls ps)" -eq 0 ]; then
+    pass 'stop with a roots file in the graph directory is refused without opening it (a FIFO there does not hang it)'
+else
+    fail "stop with a planted FIFO as roots file: status $status, $out, $(calls)"
+    unblock "$DATA/r/roots.json"
+fi
+reset_docker
+out=$(stop_with_roots "$DATA/r/s.json" 2>&1); status=$?
+case $out in *"KNOSSOS_ROOTS_FILE ($DATA/r/s.json) lies in the graph directory $DATA, which a container can write;"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls ps)" -eq 0 ]; then
+    pass 'stop with a roots file that is a link planted in the graph directory is refused, and the link is not followed'
+else
+    fail "stop with a planted link as roots file: status $status, $out, $(calls)"
+fi
+# Another spelling of the graph's roots.json stands for the host's list, as for every command.
+mkfifo "$DATA/roots.json"
+reset_docker
+(cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+out=$(stop_with_roots "$DATA/./roots.json" 2>&1); status=$?
+if [ "$status" -eq 0 ] && grep -qF "[--filter] [label=io.knossos.root=$(hash12 "$PROJECT")]" "$FAKE_DOCKER_STATE/calls"; then
+    pass "stop with <data>/./roots.json uses the host's list and never opens the file in the graph directory"
+else
+    fail "stop with another spelling of the graph roots.json: status $status, $out, $(calls)"
+    unblock "$DATA/roots.json"
+fi
+rm -rf "$DATA/r" "$DATA/roots.json" "$HOME/secret.json"
+# A roots file outside every graph directory is read for stop, as for every command.
+OUT_ROOTS="$WORK/outside roots/roots.json"
+mkdir -p "$(dirname "$OUT_ROOTS")"
+printf '{"roots":["%s"]}\n' "$PROJECT" > "$OUT_ROOTS"
+reset_docker
+out=$(stop_with_roots "$OUT_ROOTS" 2>&1); status=$?
+if [ "$status" -eq 0 ] && grep -qF "[--filter] [label=io.knossos.root=$(hash12 "$PROJECT")]" "$FAKE_DOCKER_STATE/calls"; then
+    pass 'stop reads a roots file you named outside every graph directory'
+else
+    fail "stop with your own roots file: status $status, $out, $(calls)"
+fi
+rm -rf "$WORK/outside roots"
+
+# ---- stop: a container already gone is stopped; markers go with it ----------------------
+
+reset_docker
+(cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+: > "$FAKE_DOCKER_STATE/stop-gone"
+out=$(cd "$PROJECT" && kn stop 2>&1); status=$?
+case $out in *'Stopped 1 Knossos container(s) for '"$PROJECT"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a stop that finds the container already removed by another stop succeeds'; else fail "concurrent stop: status $status, $out"; fi
+if [ ! -e "$INSTALL/containers/$NAME" ]; then pass 'stop removes the marker of the container it stopped'; else fail 'the marker was left after stop'; fi
+reset_docker
+(cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+: > "$FAKE_DOCKER_STATE/stop-fails"
+out=$(cd "$PROJECT" && kn stop 2>&1); status=$?
+if [ "$status" -eq 1 ] && [ "$out" = "knossos: could not stop container $NAME" ]; then pass 'a stop that leaves the container running is still a failure'; else fail "failed stop: status $status, $out"; fi
+rm -f "$FAKE_DOCKER_STATE/stop-fails"
+(cd "$PROJECT" && kn stop >/dev/null 2>&1)
+# Concurrent stops of several containers: every one ends with 0.
+reset_docker
+for project in "$PROJECT" "$OTHER" "$LOOSE"; do (cd "$project" && kn version </dev/null >/dev/null 2>&1); done
+pids=''
+for n in 1 2 3 4 5 6; do
+    (cd / && kn stop --all >/dev/null 2>&1; echo "$?" > "$WORK/stop-$n") &
+    pids="$pids $!"
+done
+for pid in $pids; do wait "$pid"; done
+bad=0
+for n in 1 2 3 4 5 6; do [ "$(cat "$WORK/stop-$n")" = 0 ] || bad=$((bad + 1)); done
+if [ "$bad" -eq 0 ] && [ -z "$("$FAKE_BIN/docker" ps -q --filter "label=io.knossos.install=$(hash12 "$INSTALL")")" ]; then
+    pass 'six stops at once all succeed and leave nothing running'
+else
+    fail "$bad of six concurrent stops failed"
+fi
+rm -f "$WORK"/stop-?
+
+# ---- a data directory that holds things of yours is never mounted -----------------------
+
+# ~/code with repositories in it: as a graph directory, every container could
+# plant a git hook in each of them.
+CODE="$WORK/code"
+mkdir -p "$CODE/repo2/.git/hooks"
+refused 'a KNOSSOS_DATA_DIR that holds folders of yours' \
+    "KNOSSOS_DATA_DIR ($CODE) holds repo2, which is not something Knossos puts in a graph directory, and every container would be able to write all of it; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install)." \
+    data_call "$CODE"
+if [ ! -e "$INSTALL/containers/graph-$(hash12 "$CODE")" ] && [ "$(ls -A "$CODE")" = repo2 ] && [ -z "$(ls -A "$CODE/repo2/.git/hooks")" ]; then
+    pass 'and it is neither recorded as a graph directory nor changed'
+else
+    fail "refused data dir changed: $(ls -A "$CODE")"
+fi
+# A native install's data directory: the host runs what is in it.
+NATIVE_DATA="$WORK/native data"
+mkdir -p "$NATIVE_DATA/versions/1.0.0"
+ln -s versions/1.0.0 "$NATIVE_DATA/current"
+printf '{"mode": "native"}\n' > "$NATIVE_DATA/install.json"
+: > "$NATIVE_DATA/knossos.sqlite"
+refused 'a KNOSSOS_DATA_DIR that holds a native install' \
+    "KNOSSOS_DATA_DIR ($NATIVE_DATA) holds a native Knossos install (current), whose release and plugin the host runs, and every container would be able to replace them; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install)." \
+    data_call "$NATIVE_DATA"
+# One that holds only what Knossos puts in a graph directory is taken.
+KNOWN="$WORK/known graph"
+mkdir -p "$KNOWN/watch" "$KNOWN/backups" "$KNOWN/.knossos-files.AbC123" "$KNOWN/install"
+for entry in knossos.sqlite knossos.sqlite-wal knossos.sqlite-shm knossos.sqlite-journal knossos.sqlite.migrate.lock \
+    scan-failures.jsonl scan-failures.jsonl.lock scan-failures.jsonl.42.tmp roots.json roots.json.lock .roots.json.0123abcd.tmp \
+    enrichers.json .enrichers.json.0123abcd.tmp pane-autostart.json .pane-autostart.json.0123abcd.tmp mcp-serve.log; do
+    : > "$KNOWN/$entry"
+done
+reset_docker
+out=$(data_call "$KNOWN" 2>&1); status=$?
+if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$KNOWN,target=$KNOWN]" "$FAKE_DOCKER_STATE/calls" && [ -f "$INSTALL/containers/graph-$(hash12 "$KNOWN")" ]; then
+    pass 'a KNOSSOS_DATA_DIR holding only what Knossos puts in a graph directory is mounted and recorded'
+else
+    fail "known entries: status $status, $out"
+fi
+# Once used, what its containers wrote there is theirs, and it stays usable.
+mkdir -p "$KNOWN/written by a container"
+reset_docker
+out=$(data_call "$KNOWN" 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass 'a graph directory already in use is not refused for what its containers wrote'; else fail "used graph refused: $status, $out"; fi
+EMPTY_GRAPH="$WORK/empty graph"
+mkdir -p "$EMPTY_GRAPH"
+reset_docker
+out=$(data_call "$EMPTY_GRAPH" 2>&1); status=$?
+if [ "$status" -eq 0 ]; then pass 'an empty KNOSSOS_DATA_DIR is taken'; else fail "empty data dir: $status, $out"; fi
+find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
+rm -rf "$CODE" "$NATIVE_DATA" "$KNOWN" "$EMPTY_GRAPH"
+
+# ---- nothing is created before a refusal --------------------------------------------------
+
+refused 'a KNOSSOS_DATA_DIR inside the project that does not exist yet' \
+    "the project root $PROJECT contains the Knossos data directory $PROJECT/new graph" \
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$1/new graph" env -u KNOSSOS_ROOTS_FILE "$2" version </dev/null' _ "$PROJECT" "$LAUNCHER"
+if [ ! -e "$PROJECT/new graph" ]; then pass 'and no folder is left in the project'; else fail "$PROJECT/new graph was created"; fi
+refused 'a KNOSSOS_DATA_DIR inside the install directory that does not exist yet' \
+    "$INSTALL/g lies inside the install directory $INSTALL, which a container may only read" \
+    data_call "$INSTALL/g"
+if [ ! -e "$INSTALL/g" ]; then pass 'and nothing is created in the install directory'; else fail "$INSTALL/g was created"; fi
+refused 'a roots file in a new folder, with a data directory refused' \
+    "the project root $PROJECT contains the Knossos data directory $PROJECT/new graph" \
+    sh -c 'cd "$1" && KNOSSOS_DATA_DIR="$1/new graph" KNOSSOS_ROOTS_FILE="$2/new roots/roots.json" "$3" version </dev/null' _ "$PROJECT" "$WORK" "$LAUNCHER"
+if [ ! -e "$WORK/new roots" ] && [ ! -e "$PROJECT/new graph" ]; then pass 'and neither the roots folder nor the data folder is created'; else fail 'a folder was created before the refusal'; fi
+rm -rf "$PROJECT/new graph" "$INSTALL/g" "$WORK/new roots"
+
+# ---- a call during an update never keeps a container of the old image --------------------
+
+reset_docker
+cp "$INSTALL/install.json" "$WORK/install.json.old"
+write_record "ghcr.io/araneadev/knossos@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+cp "$INSTALL/install.json" "$WORK/install.json.new"
+cp "$WORK/install.json.old" "$INSTALL/install.json"
+printf 'cp "%s" "%s"\n' "$WORK/install.json.new" "$INSTALL/install.json" > "$FAKE_DOCKER_STATE/after-run"
+out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+if [ "$status" -eq 1 ] && [ "$out" = 'knossos: Knossos was updated while this call started its container, so that container was removed; run the command again.' ] \
+    && has_call "call [rm] [-f] [$NAME]" && [ "$(count_calls exec)" -eq 0 ] && [ ! -f "$FAKE_DOCKER_STATE/containers/$NAME" ]; then
+    pass 'a container started from the image an update just replaced is removed, never used'
+else
+    fail "update during start: status $status, $out, $(calls)"
+fi
+write_record "$IMAGE"
+rm -f "$WORK/install.json.old" "$WORK/install.json.new"
+
+# ---- a caller's KNOSSOS_* settings, by name, and only names that are set ------------------
+
+reset_docker
+(cd "$PROJECT" && KNOSSOS_NOTE="$(printf 'one\nKNOSSOS_INJECTED=1')" kn version </dev/null >/dev/null 2>&1)
+exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls")
+case $exec_line in
+    *'[KNOSSOS_INJECTED]'*) fail "a line inside a value was passed as a variable: $exec_line" ;;
+    *'[-e] [KNOSSOS_NOTE]'*) pass 'a value holding a newline passes as one variable, and its second line is not taken for another' ;;
+    *) fail "passthrough with a newline: $exec_line" ;;
+esac
+
+# ---- a record swapped for a FIFO after it was checked never hangs a call ---------------------
+
+# A find in front of the real one that, once it has reported install.json as
+# a plain file, puts a FIFO in its place: the moment between the check and
+# the read, made certain.
+SWAP_BIN="$WORK/swap bin"
+mkdir -p "$SWAP_BIN"
+REAL_FIND=$(command -v find)
+cat > "$SWAP_BIN/find" <<SWAP
+#!/bin/sh
+"$REAL_FIND" "\$@"
+status=\$?
+for argument in "\$@"; do
+    if [ "\$argument" = "\${SWAP_FIFO:-}" ] && [ -f "\$argument" ] && [ ! -L "\$argument" ]; then rm -f "\$argument"; mkfifo "\$argument"; fi
+done
+exit \$status
+SWAP
+chmod +x "$SWAP_BIN/find"
+OTHER_INSTALL="$WORK/other installation"
+mkdir -p "$OTHER_INSTALL/install/containers"
+printf '{"mode": "container", "layout": "separate"}\n' > "$OTHER_INSTALL/install/install.json"
+reset_docker
+out=$(cd "$PROJECT" && PATH="$SWAP_BIN:$PATH" SWAP_FIFO="$OTHER_INSTALL/install/install.json" timeout 10 \
+    env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE KNOSSOS_DATA_DIR="$OTHER_INSTALL/graph" "$LAUNCHER" version </dev/null 2>&1); status=$?
+if [ "$status" -ne 124 ] && [ -p "$OTHER_INSTALL/install/install.json" ]; then
+    pass 'an install.json swapped for a FIFO between its check and its read does not hang the call'
+else
+    fail "swapped record: status $status, $out"
+    unblock "$OTHER_INSTALL/install/install.json"
+fi
+find "$INSTALL/containers" -name 'graph-*' -exec rm -f {} +
+rm -rf "$OTHER_INSTALL"
+
 # ---- idle-stop ----------------------------------------------------------------------------
 
 IDLE="$WORK/idle"
@@ -1572,6 +1795,26 @@ KNOSSOS_IDLE_PROC="$IDLE/proc empty" KNOSSOS_IDLE_RUN_DIR="$IDLE/run" sh "$IDLE_
 idle=$!
 sleep 2
 if kill -0 "$idle" 2>/dev/null; then pass 'idle-stop waits while the marker is fresh'; else fail 'idle-stop exited with a fresh marker'; fi
+kill -TERM "$idle" 2>/dev/null
+wait "$idle" 2>/dev/null
+
+# Only a call counts: a process the runtime's exec started has its parent
+# outside the container (PPid 0). One a command left behind has a parent
+# inside it, or the init process once that parent is gone.
+mkdir -p "$IDLE/proc stray/1" "$IDLE/proc stray/4242" "$IDLE/proc call/1" "$IDLE/proc call/4243"
+printf 'Name:\tsleep\nPPid:\t1\n' > "$IDLE/proc stray/4242/status"
+printf 'Name:\tphp\nPPid:\t0\n' > "$IDLE/proc call/4243/status"
+touch -t 202001010000 "$IDLE/marker"
+KNOSSOS_IDLE_PROC="$IDLE/proc stray" KNOSSOS_IDLE_RUN_DIR="$IDLE/run" sh "$IDLE_STOP" "$IDLE/marker" 2 1 &
+idle=$!
+sleep 4
+if kill -0 "$idle" 2>/dev/null; then fail 'a process left behind by a command kept the container alive'; kill "$idle"; else pass 'a process a command left behind does not keep the container alive'; fi
+wait "$idle" 2>/dev/null
+touch -t 202001010000 "$IDLE/marker"
+KNOSSOS_IDLE_PROC="$IDLE/proc call" KNOSSOS_IDLE_RUN_DIR="$IDLE/run" sh "$IDLE_STOP" "$IDLE/marker" 2 1 &
+idle=$!
+sleep 4
+if kill -0 "$idle" 2>/dev/null; then pass 'a call the runtime started keeps the container alive'; else fail 'idle-stop exited while a call ran'; fi
 kill -TERM "$idle" 2>/dev/null
 wait "$idle" 2>/dev/null
 

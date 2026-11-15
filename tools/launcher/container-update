@@ -259,8 +259,21 @@ $report"
 stop_containers() {
     ids=$("$RUNTIME" ps -q --filter "label=io.knossos.install=$(hash12 "$INSTALL")" 2>/dev/null) || return 0
     for id in $ids; do
-        "$RUNTIME" stop "$id" >/dev/null 2>&1 || printf 'warning: could not stop container %s\n' "$id" >&2
+        if ! "$RUNTIME" stop "$id" >/dev/null 2>&1 </dev/null; then
+            # Gone already (a stop or idle-stop ended it first) is stopped.
+            "$RUNTIME" container inspect "$id" >/dev/null 2>&1 </dev/null && printf 'warning: could not stop container %s\n' "$id" >&2
+        fi
     done
+}
+
+# forget_markers: the markers of this installation's containers, after every
+# one of them was stopped. idle-stop is the only reader, a container started
+# later writes its own again, and without this each update would leave one
+# per project and image behind.
+forget_markers() {
+    [ -d "$INSTALL/containers" ] && [ ! -L "$INSTALL/containers" ] || return 0
+    find "$INSTALL/containers" -type f -name 'knossos-????????????' -exec rm -f {} + 2>/dev/null
+    return 0
 }
 
 # ---- the switch --------------------------------------------------------------------------
@@ -373,6 +386,12 @@ switch_to() {
     [ -f "$INSTALL/install.json" ] && cp "$INSTALL/install.json" "$WORKDIR/install.json.prev"
     [ -f "$LAUNCHER" ] && cp "$LAUNCHER" "$WORKDIR/launcher.prev"
     [ -f "$INSTALL/container-update" ] && cp "$INSTALL/container-update" "$WORKDIR/helper.prev"
+    # The plugin as it is, so a plugin step that fails half way can be undone.
+    PLUGIN_SAVED=0
+    if [ -n "$5" ] && [ -d "$INSTALL/plugin" ] && [ ! -L "$INSTALL/plugin" ]; then
+        cp -pR "$INSTALL/plugin" "$WORKDIR/plugin.prev" || die "could not keep a copy of $INSTALL/plugin; nothing was changed"
+        PLUGIN_SAVED=1
+    fi
     mkdir -p "$BIN_DIR" || die "could not create $BIN_DIR"
     NEW_LAUNCHER="$BIN_DIR/.knossos.tmp.$$"
     render_launcher "$1" "$NEW_LAUNCHER" || { rm -f "$NEW_LAUNCHER"; die "the image $1 has no usable launcher template at $IN_IMAGE/launcher/knossos; nothing was changed"; }
@@ -397,6 +416,12 @@ switch_to() {
         rm -f "$NEW_LAUNCHER"
         die "could not write $INSTALL/install.json; nothing was changed"
     fi
+    # Again, now that install.json names the new image: a call that read the
+    # old one before the switch may have started a container of the old image
+    # since the first stop. (A call that reads it after its container started
+    # finds the image changed and removes that container itself.)
+    stop_containers
+    forget_markers
     if ! mv -f "$NEW_LAUNCHER" "$LAUNCHER"; then
         restore
         die "could not write the launcher $LAUNCHER; the previous state was restored"
@@ -415,9 +440,17 @@ The previous state was restored."
     fi
 }
 
-# Put install.json, the launcher and the helper copy back as switch_to found them.
+# Put install.json, the launcher, the helper copy and the plugin back as
+# switch_to found them.
 restore() {
     stop_containers
+    if [ "${PLUGIN_SAVED:-0}" = 1 ]; then
+        # The directory Claude Code registered keeps its path: its content is
+        # replaced, from this run's own copy.
+        find "$INSTALL/plugin" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null
+        (cd "$WORKDIR/plugin.prev" && cp -pR . "$INSTALL/plugin/") \
+            || printf 'warning: could not put %s back as it was\n' "$INSTALL/plugin" >&2
+    fi
     # Every file is put back by a rename from this run's own work directory,
     # never written in place: sh may be reading the helper copy.
     if [ -f "$WORKDIR/install.json.prev" ]; then

@@ -43,7 +43,13 @@
 #   - No mount a container can write may contain or be the graph directory,
 #     the install directory or the directory holding this launcher, and the
 #     project root may not either. The launcher refuses such a layout in one
-#     line, and so does the installer.
+#     line, and so does the installer, before either creates anything.
+#   - A directory becomes a graph directory only when nothing in it is yours:
+#     it is new, empty, or holds only what Knossos puts in one (GRAPH_ENTRIES),
+#     and never a native install. So no folder of repositories, and no
+#     release or plugin the host runs, is ever mounted read-write.
+#   - `knossos stop` picks the project root from the same roots file, checked
+#     the same way, as every other command.
 #   - The allow-list the project root is chosen from is the one in the install
 #     directory, or a file the caller named outside every directory a
 #     container can write and outside the project. The same file is handed to
@@ -399,11 +405,24 @@ graph_note() {
 # layout is read, and only its install.json: callers ask from the top down, so
 # a directory in a container's reach is never read (an install directory is
 # read-only to every container).
+#
+# The file is opened without blocking where dd can (GNU and BusyBox dd take
+# iflag=nonblock), so one swapped for a FIFO after the check reads as empty
+# instead of hanging the call; elsewhere it is opened as before.
+NONBLOCK=''
 looks_like_graph() {
     [ ! -L "${1%/}/install" ] && [ -d "${1%/}/install/containers" ] && [ ! -L "${1%/}/install/install.json" ] \
         && [ -f "${1%/}/install/install.json" ] || return 1
     [ -n "$(find "${1%/}/install/install.json" -prune -type f -size -65537c 2>/dev/null)" ] || return 1
-    record_text=$(dd bs=65536 count=1 < "${1%/}/install/install.json" 2>/dev/null | tr -d ' \t\r\n') || return 1
+    if [ -z "$NONBLOCK" ]; then
+        NONBLOCK=no
+        if dd if=/dev/null iflag=nonblock count=0 2>/dev/null; then NONBLOCK=yes; fi
+    fi
+    if [ "$NONBLOCK" = yes ]; then
+        record_text=$(dd if="${1%/}/install/install.json" iflag=nonblock bs=65536 count=1 2>/dev/null | tr -d ' \t\r\n') || return 1
+    else
+        record_text=$(dd bs=65536 count=1 < "${1%/}/install/install.json" 2>/dev/null | tr -d ' \t\r\n') || return 1
+    fi
     case $record_text in *'"mode":"container"'*) ;; *) return 1 ;; esac
     case $record_text in *'"layout":"separate"'*) return 0 ;; esac
     return 1
@@ -447,12 +466,15 @@ GRAPHS
 # directory the walk stands in, so no name is ever resolved again through a
 # component that a container could have changed since it was checked. Once
 # the walk stands in a directory a container may write (writer_of):
-#   - create, existing: the one step allowed is into the install directory;
-#     any other is refused, before anything is created or followed;
+#   - create, plan, existing: the one step allowed is into the install
+#     directory; any other is refused, before anything is created or followed;
 #   - through: a step into a plain directory is allowed, a symbolic link is
 #     never followed, nothing is created, and where each step leads is checked.
 # Outside every such directory a link is yours and is followed, and with
 # `create` a missing directory is made there, never through `.` or `..`.
+# `plan` is `create` without the making: at the first missing component it
+# prints the path that `create` would make, so every refusal can be decided
+# on it before anything exists (the walk with `create` then runs again).
 # WHAT names the path in a refusal, ADVICE ends it; `{graph}` in it stands for that graph directory.
 # Run as a subshell: a refusal exits it, so call it as `x=$(walk_to ...) || exit 1`.
 walk_to() (
@@ -485,8 +507,18 @@ walk_to() (
             continue
         fi
         if [ ! -e "$component" ] && [ ! -L "$component" ]; then
-            [ "$mode" = create ] || die "$what names ${at%/}/$component, which does not exist."
+            [ "$mode" = create ] || [ "$mode" = plan ] || die "$what names ${at%/}/$component, which does not exist."
             case /$component/$rest/ in */../* | */./*) die "$what names a directory to create through '..' or '.'; spell it without them." ;; esac
+            if [ "$mode" = plan ]; then
+                at="${at%/}/$component"
+                while :; do
+                    while [ "${rest#/}" != "$rest" ]; do rest=${rest#/}; done
+                    [ -n "$rest" ] || break
+                    at="$at/${rest%%/*}"
+                    case $rest in */*) rest=${rest#*/} ;; *) rest='' ;; esac
+                done
+                break
+            fi
             mkdir -- "$component" 2>/dev/null || die "could not create ${at%/}/$component"
         fi
         cd -P -- "$component" 2>/dev/null || die "could not enter ${at%/}/$component"
@@ -743,24 +775,36 @@ project_root() {
 }
 
 # stop [--all]: the containers of this installation for one project root, or
-# all of them.
+# all of them. A container that is gone by the time it is stopped (another
+# stop, or idle-stop, ended it first) is what was asked for, so it counts as
+# stopped; only one that is still there after a failed stop is an error. The
+# marker of each container stopped goes with it (idle-stop reads it, nothing
+# else), so markers do not pile up.
 stop_containers() {
     if [ "$1" = --all ]; then
-        ids=$("$RUNTIME" ps -q --filter "label=io.knossos.install=$INSTALL_HASH" 2>/dev/null) \
+        names=$("$RUNTIME" ps --filter "label=io.knossos.install=$INSTALL_HASH" --format '{{.Names}}' 2>/dev/null) \
             || die "$RUNTIME does not answer; is its daemon running?"
         what='for this installation'
     else
-        ids=$("$RUNTIME" ps -q --filter "label=io.knossos.install=$INSTALL_HASH" --filter "label=io.knossos.root=$(hash12 "$1")" 2>/dev/null) \
+        names=$("$RUNTIME" ps --filter "label=io.knossos.install=$INSTALL_HASH" --filter "label=io.knossos.root=$(hash12 "$1")" --format '{{.Names}}' 2>/dev/null) \
             || die "$RUNTIME does not answer; is its daemon running?"
         what="for $1"
     fi
-    if [ -z "$ids" ]; then
+    if [ -z "$names" ]; then
         printf 'No Knossos container is running %s.\n' "$what"
         return 0
     fi
     count=0
-    for id in $ids; do
-        "$RUNTIME" stop "$id" >/dev/null 2>&1 || die "could not stop container $id"
+    for name in $names; do
+        name=${name#/}
+        if ! "$RUNTIME" stop "$name" >/dev/null 2>&1 </dev/null; then
+            "$RUNTIME" container inspect "$name" >/dev/null 2>&1 </dev/null && die "could not stop container $name"
+        fi
+        case $name in
+            knossos-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+                rm -f -- "$INSTALL_REAL/containers/$name"
+                ;;
+        esac
         count=$((count + 1))
     done
     printf 'Stopped %s Knossos container(s) %s.\n' "$count" "$what"
@@ -790,21 +834,33 @@ located() {
     if [ -n "$dir" ]; then printf '%s/%s' "${dir%/}" "${file##*/}"; else printf '%s' "$file"; fi
 }
 
-# Answered on the host, before any project root is worked out: neither mounts
-# anything, so both work from anywhere, / included (a timer runs from there).
+# What a call leaves behind is removed however it ends: when it is done, when
+# it is refused, and on SIGHUP, SIGINT or SIGTERM before the command runs (the
+# command's own traps replace these three below). dash runs no EXIT trap on a
+# signal it does not trap, so all three are trapped from here on. Each
+# variable is set once the thing it names exists.
+SCRATCH=''
+SCRATCH_ID=''
+PRIVATE=''
+TAKEN=''
+ROOTS_BEFORE=''
+ROOTS_HAD=no
+# shellcheck disable=SC2317,SC2329 # run from the EXIT trap
+on_exit() {
+    [ -z "$ROOTS_BEFORE" ] || restore_roots
+    [ -z "$PRIVATE" ] || rm -rf -- "$PRIVATE"
+    [ -z "$TAKEN" ] || rm -rf -- "$TAKEN"
+    [ -z "$SCRATCH" ] || remove_scratch
+}
+trap on_exit EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# self-update is answered on the host before anything else is worked out: it
+# mounts nothing and reads no roots file, so it works from anywhere, /
+# included (a timer runs from there).
 case ${1-} in
-    stop)
-        case ${2-} in
-            --all) stop_containers --all ;;
-            '') stop_containers "$(root_of "$HERE")" ;;
-            *)
-                given=$(physical "$2")
-                if [ -z "$given" ] || [ $# -ne 2 ]; then die 'usage: knossos stop [--all | <project directory>]'; fi
-                stop_containers "$(root_of "$given")"
-                ;;
-        esac
-        exit
-        ;;
     self-update)
         # The background check the session-start hook runs: nothing at all
         # when it is turned off or the last look is less than a day old, so a
@@ -851,24 +907,20 @@ case ${1-} in
         ;;
 esac
 
-# From here on a container is started or used, so the mount rule must be able
-# to tell where the home directory is. claim is the one exception: it mounts
-# nothing, and without a home folder it answers `ask`, as in native mode.
-[ -n "$HOME_REAL" ] || [ "${1-}" = claim ] || die 'container mode needs HOME to point at your home directory, to keep it out of every container; set HOME and try again.'
-
 # Every path the container is given, physical, decided once: the mounts, the
 # environment passed in, the working directory, the container's name and the
 # marker all use these, so each names inside exactly what is mounted. The core
 # keys projects by their real path too (RootGuard::resolve), as native mode does.
 #
-# Before anything is created for them, the data directory and the directory of
-# a caller's roots file are walked (walk_to): nothing is created, and no link
-# followed, inside a directory a container may write, so a link a container
-# planted in a graph directory can neither move the mount nor make the host
-# create a directory where it points.
+# The data directory and the directory of a caller's roots file are walked
+# (walk_to) without creating anything: nothing is followed inside a directory
+# a container may write, so a link a container planted in a graph directory
+# can neither move the mount nor steer what the host reads or creates. Every
+# refusal is decided on the paths these walks planned, and only then is a
+# missing directory made (make_planned, below).
 if reason=$(too_wide "$INSTALL_REAL"); then die "the install directory $INSTALL_REAL $reason, which container mode does not mount; re-run the installer with --data-dir set to a directory of its own."; fi
 case $KNOSSOS_DATA_DIR in /*) ;; *) die "KNOSSOS_DATA_DIR must be an absolute path in container mode, got $KNOSSOS_DATA_DIR" ;; esac
-DATA_REAL=$(walk_to "$KNOSSOS_DATA_DIR" "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR)" 'pick a data directory outside {graph}.' create) || exit 1
+DATA_REAL=$(walk_to "$KNOSSOS_DATA_DIR" "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR)" 'pick a data directory outside {graph}.' plan) || exit 1
 # A data directory inside another graph directory is written by that graph's
 # containers too: anything in it could be changed under this one.
 if graph=$(writer_of "$DATA_REAL" strict); then
@@ -876,14 +928,17 @@ if graph=$(writer_of "$DATA_REAL" strict); then
 fi
 GRAPH_DIRS="$GRAPH_DIRS$NEWLINE$DATA_REAL"
 ROOTS_DIR_REAL=$INSTALL_REAL
+ROOTS_DIR_GIVEN=''
 ROOTS_FILE_REAL="$INSTALL_REAL/roots.json"
 GRAPH_ROOTS_REFUSED="unset it to use the list the installer keeps in $INSTALL_REAL/roots.json, or point it at a file outside every directory a container can write."
 if [ -n "$ROOTS_GIVEN" ]; then
     case $ROOTS_GIVEN in /*) ;; *) die "KNOSSOS_ROOTS_FILE must be an absolute path in container mode, got $ROOTS_GIVEN" ;; esac
-    ROOTS_DIR_REAL=$(walk_to "$(dirname -- "$ROOTS_GIVEN")" "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN)" "$GRAPH_ROOTS_REFUSED" create) || exit 1
+    ROOTS_DIR_GIVEN=$(dirname -- "$ROOTS_GIVEN")
+    ROOTS_DIR_REAL=$(walk_to "$ROOTS_DIR_GIVEN" "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN)" "$GRAPH_ROOTS_REFUSED" plan) || exit 1
     ROOTS_FILE_REAL="${ROOTS_DIR_REAL%/}/${ROOTS_GIVEN##*/}"
     if [ "$ROOTS_FILE_REAL" = "$INSTALL_PARENT/roots.json" ] || [ "$ROOTS_FILE_REAL" = "$DATA_REAL/roots.json" ]; then
         ROOTS_DIR_REAL=$INSTALL_REAL
+        ROOTS_DIR_GIVEN=''
         ROOTS_FILE_REAL="$INSTALL_REAL/roots.json"
     elif inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then
         # In the install directory: the host's own, read-only to every container.
@@ -894,6 +949,43 @@ if [ -n "$ROOTS_GIVEN" ]; then
 fi
 KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL
 
+# roots_in_project ROOT: a roots file inside the project is the scanned
+# project's to write, never the host's list.
+roots_in_project() {
+    if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL" && inside "$ROOTS_FILE_REAL" "$1"; then
+        die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies inside the project root $1, whose files the scanned project controls; unset it to use the list the installer keeps in $INSTALL_REAL/roots.json."
+    fi
+}
+
+# stop is answered here, on the host, once the roots file it picks the project
+# root from has passed the checks above, as for every other command: nothing
+# a container can write is read, followed or opened for it. It starts and
+# mounts nothing, so it works from anywhere, / included, and without HOME.
+case ${1-} in
+    stop)
+        case ${2-} in
+            --all)
+                stop_containers --all
+                exit
+                ;;
+            '') stop_at=$HERE ;;
+            *)
+                stop_at=$(physical "$2")
+                if [ -z "$stop_at" ] || [ $# -ne 2 ]; then die 'usage: knossos stop [--all | <project directory>]'; fi
+                ;;
+        esac
+        stop_root=$(root_of "$stop_at")
+        # A root too wide to mount never had a container, whatever the list says.
+        too_wide "$stop_root" >/dev/null || roots_in_project "$stop_root"
+        stop_containers "$stop_root"
+        exit
+        ;;
+esac
+
+# From here on a container is started or used, so the mount rule must be able
+# to tell where the home directory is. claim is the one exception: it mounts
+# nothing, and without a home folder it answers `ask`, as in native mode.
+[ -n "$HOME_REAL" ] || [ "${1-}" = claim ] || die 'container mode needs HOME to point at your home directory, to keep it out of every container; set HOME and try again.'
 # Where the call works from, and the directory that decides the project root:
 # the working directory, or the path argument of a command that takes a
 # project path first (scan <path>, allow-root <path>, session-brief <path>,
@@ -937,10 +1029,17 @@ ROOT=${answer%%"$NEWLINE"*}
 LISTED_AS=${answer#*"$NEWLINE"}
 if inside "$HERE" "$ROOT"; then WORKDIR=$HERE; else WORKDIR=$ROOT; fi
 
-# A roots file inside the project is the scanned project's to write, never the host's list.
-if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL" && inside "$ROOTS_FILE_REAL" "$ROOT"; then
-    die "KNOSSOS_ROOTS_FILE ($ROOTS_FILE_REAL) lies inside the project root $ROOT, whose files the scanned project controls; unset it to use the list the installer keeps in $INSTALL_REAL/roots.json."
-fi
+roots_in_project "$ROOT"
+
+# make_planned GIVEN PLANNED WHAT ADVICE: the directory GIVEN, which its walk
+# planned as PLANNED, made where it is missing by the same walk with `create`
+# (so nothing is created through a link a container planted), and refused
+# when it no longer leads to PLANNED.
+make_planned() {
+    if [ -d "$2" ] && [ "$(physical "$2")" = "$2" ]; then return 0; fi
+    made=$(walk_to "$1" "$3" "$4" create) || exit 1
+    [ "$made" = "$2" ] || die "$3 no longer leads to $2; run the command again."
+}
 
 # guard_writable PATH KIND: refuse a read-write mount that contains or is a
 # directory the host trusts (see the threat note at the top). The graph
@@ -1028,6 +1127,12 @@ ROOTS_LOCK=''
 # shellcheck disable=SC2317,SC2329 # run from the EXIT trap
 unlock_roots() { [ -z "$ROOTS_LOCK" ] || rmdir -- "$ROOTS_LOCK" 2>/dev/null; }
 lock_roots() {
+    # The directory of a caller's roots file is made only now, when the list
+    # is written into it.
+    if [ -n "$ROOTS_DIR_GIVEN" ] && ! made=$( (make_planned "$ROOTS_DIR_GIVEN" "$ROOTS_DIR_REAL" "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN)" "$GRAPH_ROOTS_REFUSED") 2>&1); then
+        printf '%s' "${made#knossos: }"
+        return 1
+    fi
     ROOTS_LOCK="$ROOTS_FILE_REAL.lock.d"
     tries=0
     until mkdir -- "$ROOTS_LOCK" 2>/dev/null; do
@@ -1318,11 +1423,196 @@ case ${1-} in
         ;;
 esac
 
+# ---- the mount rule, decided before anything is made ------------------------
+#
+# Every directory the container is given is mounted at its own physical path
+# with its mode (`true` read-write, `false` read-only), and only through
+# add_mount below. mount_problem is the mount rule, applied to exactly the
+# path that is mounted: no /, no home directory, nothing above it, nothing
+# inside the read-only install directory, nothing the host trusts (see
+# guard_writable), and no project in a graph directory. It is applied once
+# here, to the paths the walks planned, before the host makes a missing one,
+# so a refused call leaves nothing behind; and again by add_mount, to the
+# directories as they then are.
+#
+# mount_problem PATH KIND: refuse PATH, physical, as the KIND mount (project,
+# data, roots or install).
+mount_problem() {
+    case $1 in
+        *,* | *'|'* | *"$NEWLINE"*) die "a path with a comma, a bar or a newline cannot be mounted: $1" ;;
+    esac
+    if reason=$(too_wide "$1"); then
+        case $2 in
+            project) die "the project root $1 $reason, which container mode does not mount; run knossos from inside a project." ;;
+            data) die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) $reason, which container mode does not mount; point KNOSSOS_DATA_DIR at a directory of its own." ;;
+            roots) die "the directory of KNOSSOS_ROOTS_FILE ($1) $reason, which container mode does not mount; put the roots file in a directory of its own and point KNOSSOS_ROOTS_FILE at it." ;;
+            *) die "the install directory $1 $reason, which container mode does not mount; re-run the installer with --data-dir set to a directory of its own." ;;
+        esac
+    fi
+    if inside "$1" "$INSTALL_REAL"; then
+        die "$1 lies inside the install directory $INSTALL_REAL, which a container may only read; point KNOSSOS_DATA_DIR, KNOSSOS_ROOTS_FILE or the project elsewhere."
+    fi
+    guard_writable "$1" "$2"
+    # A project in a graph directory is read-only only in its own container:
+    # every other container writes it through the graph mount.
+    if [ "$2" = project ] && graph=$(writer_of "$1"); then
+        die "the project root $1 lies in the graph directory $graph, which every container of that graph can write, so it would not stay read-only; keep projects outside the Knossos data directory, or pick another --data-dir.$(graph_note "$graph")"
+    fi
+}
+
+# ---- what a graph directory may hold ------------------------------------------
+#
+# Every container is given the graph directory read-write, so a directory that
+# holds anything of yours (a folder of repositories, a dotfiles directory)
+# would hand every scanned project write access to it: a git hook planted
+# there runs on your next checkout. So a directory becomes a graph directory
+# only when it is empty, does not exist yet, or holds nothing but what Knossos
+# itself puts directly in one. These are those entries, as shell patterns,
+# from the code that writes them:
+#   GRAPH_ENTRIES   the graph database and its SQLite journal files and
+#                   migration lock (RuntimeFactory); scan-failures.jsonl with
+#                   its lock and temporary copy (ScanFailureLog); watch/ (the
+#                   watch locks, SharedWatch); backups/ (maintain-database);
+#                   roots.json with its lock, enrichers.json and
+#                   pane-autostart.json, each with the temporary file it is
+#                   renamed from (RootsFile, EnrichersFile, PaneAutostart,
+#                   AtomicFile); mcp-serve.log (tools/mcp-serve); install/ (the
+#                   install directory of a container install); and the
+#                   launcher's own scratch directories, .knossos-files.*
+#   NATIVE_ENTRIES  what a native install keeps in its data directory
+#                   (install.sh, VersionSwitch, UpdateCheck, SelfUpdater):
+#                   install.json, versions/, current, previous-version, plugin/,
+#                   update-check.json, the self-update lock and scratch, and
+#                   their temporary names. The host runs what is there, so a
+#                   directory holding them is never given to a container.
+# The checked graph directories are the ones this installation has not used
+# yet: the default one was checked by the installer, and one in use already
+# holds what its containers wrote. install.sh carries the same two lists,
+# word for word (tests/shell/install-container.sh compares them).
+# shellcheck disable=SC2016 # the lists are data, never expanded
+GRAPH_ENTRIES='
+knossos.sqlite
+knossos.sqlite-wal
+knossos.sqlite-shm
+knossos.sqlite-journal
+knossos.sqlite.migrate.lock
+scan-failures.jsonl
+scan-failures.jsonl.lock
+scan-failures.jsonl.*.tmp
+watch
+backups
+roots.json
+roots.json.lock
+.roots.json.*.tmp
+enrichers.json
+.enrichers.json.*.tmp
+pane-autostart.json
+.pane-autostart.json.*.tmp
+mcp-serve.log
+install
+.knossos-files.*
+'
+NATIVE_ENTRIES='
+install.json
+install.json.tmp.*
+versions
+current
+current.tmp.*
+previous-version
+previous-version.tmp.*
+plugin
+update-check.json
+update-check.json.tmp.*
+self-update.lock
+self-update.tmp
+'
+
+# entry_kind NAME: `graph` or `native` for a name on one of the lists above,
+# nothing for any other.
+entry_kind() {
+    for kind in graph native; do
+        if [ "$kind" = graph ]; then list=$GRAPH_ENTRIES; else list=$NATIVE_ENTRIES; fi
+        while IFS= read -r pattern; do
+            [ -n "$pattern" ] || continue
+            # shellcheck disable=SC2254 # the pattern is meant to match as a pattern
+            case $1 in $pattern) printf '%s' "$kind"; return 0 ;; esac
+        done <<LIST
+$list
+LIST
+    done
+}
+
+# foreign_entry DIR [native-ok]: the first entry directly in DIR that is not
+# on GRAPH_ENTRIES, as `native NAME` when it is on NATIVE_ENTRIES and `other
+# NAME` otherwise; nothing when there is none. With `native-ok`, entries on
+# NATIVE_ENTRIES are passed over, so only an `other` one is reported. A name
+# holding a newline is never one Knossos makes.
+foreign_entry() {
+    find "$1/." ! -name . -prune -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r found; do
+        case $found in
+            "${1%/}/./"*) name=${found#"${1%/}/./"} ;;
+            *)
+                printf 'other %s' 'an entry whose name holds a newline'
+                break
+                ;;
+        esac
+        case $(entry_kind "$name") in
+            graph) ;;
+            native)
+                [ "${2-}" != native-ok ] || continue
+                printf 'native %s' "$name"
+                break
+                ;;
+            *) printf 'other %s' "$name"; break ;;
+        esac
+    done
+}
+
+# ---- before anything is made for this call ----------------------------------
+
+# The project root as it was reached, walked again: through a graph directory
+# (a project may lie in one) only along plain directories, never a link a
+# container could have planted there to move the mount elsewhere.
+# That is the roots entry when one chose it, else the path the caller gave.
+spelled=$ROOT
+if [ -n "$LISTED_AS" ] && [ "$LISTED_AS" != "$ROOT" ]; then
+    spelled=$LISTED_AS
+elif [ "$ROOT" = "$TARGET" ] && [ -n "$TARGET_GIVEN" ]; then
+    spelled=$TARGET_GIVEN
+fi
+checked=$(walk_to "$spelled" "the project root ($spelled)" 'run knossos from a project outside it, or take that entry out of the allow-list.' through) || exit 1
+[ "$checked" = "$ROOT" ] || die "the project root $spelled no longer leads to $ROOT; run the command again."
+mount_problem "$ROOT" project
+mount_problem "$DATA_REAL" data
+if ! inside "$ROOTS_DIR_REAL" "$INSTALL_REAL"; then mount_problem "$ROOTS_DIR_REAL" roots; fi
+# A graph directory this installation has not used yet holds nothing of yours.
+GRAPH_RECORD=''
+if [ "$DATA_REAL" != "$INSTALL_PARENT" ]; then
+    GRAPH_RECORD="$INSTALL_REAL/containers/graph-$(hash12 "$DATA_REAL")"
+    [ ! -L "$GRAPH_RECORD" ] || untrusted "$GRAPH_RECORD is a symlink"
+    if [ ! -f "$GRAPH_RECORD" ] && [ -d "$DATA_REAL" ]; then
+        foreign=$(foreign_entry "$DATA_REAL")
+        case $foreign in
+            native\ *) die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) holds a native Knossos install (${foreign#native }), whose release and plugin the host runs, and every container would be able to replace them; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install)." ;;
+            other\ *) die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) holds ${foreign#other }, which is not something Knossos puts in a graph directory, and every container would be able to write all of it; choose an empty directory with KNOSSOS_DATA_DIR (or --data-dir when you install)." ;;
+        esac
+    fi
+fi
+make_planned "$KNOSSOS_DATA_DIR" "$DATA_REAL" "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR)" 'pick a data directory outside {graph}.'
+if [ -n "$ROOTS_DIR_GIVEN" ]; then make_planned "$ROOTS_DIR_GIVEN" "$ROOTS_DIR_REAL" "KNOSSOS_ROOTS_FILE ($ROOTS_GIVEN)" "$GRAPH_ROOTS_REFUSED"; fi
+
+# restore_roots: the list as it was before move-project, after a failed move.
+restore_roots() {
+    [ -n "$ROOTS_BEFORE" ] || return 0
+    if [ "$ROOTS_HAD" = yes ]; then mv -f -- "$ROOTS_BEFORE" "$ROOTS_FILE_REAL"; else rm -f -- "$ROOTS_FILE_REAL" "$ROOTS_BEFORE"; fi
+    ROOTS_BEFORE=''
+}
+
 # move-project --execute swaps the old root for the new one in the list. Here
 # that is done by the host before the command runs, so the command finds the
-# list already as it wants it and writes nothing; should the command fail, the
-# list is put back as it was.
-ROOTS_BEFORE=''
+# list already as it wants it and writes nothing; should the command fail, or
+# the call end in any other way before it succeeds, the list is put back as it
+# was (on_exit).
 if [ "${1-}" = move-project ]; then
     execute=no
     moves=''
@@ -1359,12 +1649,12 @@ ENTRIES
             write_roots "$@"
         }
         host_tmp
-        ROOTS_BEFORE=$(mktemp "$TMP_REAL/knossos-roots.XXXXXX") || die 'could not create a temporary file'
+        before=$(mktemp "$TMP_REAL/knossos-roots.XXXXXX") || die 'could not create a temporary file'
         ROOTS_HAD=no
         if [ -f "$ROOTS_FILE_REAL" ]; then ROOTS_HAD=yes; fi
         if ! problem=$(
             lock_roots || exit 1
-            if [ "$ROOTS_HAD" = yes ] && ! cp -- "$ROOTS_FILE_REAL" "$ROOTS_BEFORE"; then
+            if [ "$ROOTS_HAD" = yes ] && ! cp -- "$ROOTS_FILE_REAL" "$before"; then
                 printf '%s' "Unable to read $ROOTS_FILE_REAL."
                 unlock_roots
                 exit 1
@@ -1374,55 +1664,28 @@ ENTRIES
             unlock_roots
             exit "$written"
         ); then
-            rm -f -- "$ROOTS_BEFORE"
+            rm -f -- "$before"
             die "$problem"
         fi
+        # Only once the copy is taken and the new list written is there
+        # anything to put back.
+        ROOTS_BEFORE=$before
     fi
 fi
 
-# restore_roots: the list as it was before move-project, after a failed move.
-restore_roots() {
-    [ -n "$ROOTS_BEFORE" ] || return 0
-    if [ "$ROOTS_HAD" = yes ]; then mv -f -- "$ROOTS_BEFORE" "$ROOTS_FILE_REAL"; else rm -f -- "$ROOTS_FILE_REAL" "$ROOTS_BEFORE"; fi
-    ROOTS_BEFORE=''
-}
-
-# Every directory the container is given, each mounted at its own physical
-# path with its mode (`true` read-write, `false` read-only), and only through
-# add_mount: it applies the mount rule to exactly the path it mounts (no /, no
-# home directory, nothing above it, nothing inside the read-only install
-# directory, and nothing the host trusts, see guard_writable). A directory
-# that lies inside another mount of the same mode is already visible through
-# it and is not mounted twice; one of another mode is mounted on top, which the
-# runtime orders by depth. So the project, always read-only, is its own mount
-# even inside the graph directory, and the graph directory is always its own
-# read-write mount: guard_writable leaves nothing that could contain it. The
-# install directory is the read-only mount added last.
+# A directory that lies inside another mount of the same mode is already
+# visible through it and is not mounted twice; one of another mode is mounted
+# on top, which the runtime orders by depth. So the project, always
+# read-only, is its own mount even inside the graph directory, and the graph
+# directory is always its own read-write mount: guard_writable leaves nothing
+# that could contain it. The install directory is the read-only mount added
+# last.
 MOUNTS=''
 # add_mount DIR KIND READ-WRITE
 add_mount() {
     path=$(physical "$1")
     [ -n "$path" ] || die "could not enter $1 to mount it"
-    case $path in
-        *,* | *'|'* | *"$NEWLINE"*) die "a path with a comma, a bar or a newline cannot be mounted: $path" ;;
-    esac
-    if reason=$(too_wide "$path"); then
-        case $2 in
-            project) die "the project root $path $reason, which container mode does not mount; run knossos from inside a project." ;;
-            data) die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) $reason, which container mode does not mount; point KNOSSOS_DATA_DIR at a directory of its own." ;;
-            roots) die "the directory of KNOSSOS_ROOTS_FILE ($path) $reason, which container mode does not mount; put the roots file in a directory of its own and point KNOSSOS_ROOTS_FILE at it." ;;
-            *) die "the install directory $path $reason, which container mode does not mount; re-run the installer with --data-dir set to a directory of its own." ;;
-        esac
-    fi
-    if inside "$path" "$INSTALL_REAL"; then
-        die "$path lies inside the install directory $INSTALL_REAL, which a container may only read; point KNOSSOS_DATA_DIR, KNOSSOS_ROOTS_FILE or the project elsewhere."
-    fi
-    guard_writable "$path" "$2"
-    # A project in a graph directory is read-only only in its own container:
-    # every other container writes it through the graph mount.
-    if [ "$2" = project ] && graph=$(writer_of "$path"); then
-        die "the project root $path lies in the graph directory $graph, which every container of that graph can write, so it would not stay read-only; keep projects outside the Knossos data directory, or pick another --data-dir.$(graph_note "$graph")"
-    fi
+    mount_problem "$path" "$2"
     kept=''
     while IFS='|' read -r mounted rw; do
         [ -n "$mounted" ] || continue
@@ -1439,32 +1702,17 @@ $MOUNTS
 MOUNTED
     MOUNTS="$kept$path|$3$NEWLINE"
 }
-# The project root as it was reached, walked again: through a graph directory
-# (a project may lie in one) only along plain directories, never a link a
-# container could have planted there to move the mount elsewhere.
-# That is the roots entry when one chose it, else the path the caller gave.
-spelled=$ROOT
-if [ -n "$LISTED_AS" ] && [ "$LISTED_AS" != "$ROOT" ]; then
-    spelled=$LISTED_AS
-elif [ "$ROOT" = "$TARGET" ] && [ -n "$TARGET_GIVEN" ]; then
-    spelled=$TARGET_GIVEN
-fi
-checked=$(walk_to "$spelled" "the project root ($spelled)" 'run knossos from a project outside it, or take that entry out of the allow-list.' through) || exit 1
-[ "$checked" = "$ROOT" ] || die "the project root $spelled no longer leads to $ROOT; run the command again."
 add_mount "$ROOT" project false
 add_mount "$DATA_REAL" data true
 # The graph directory is recorded for this installation before any container
 # is given it, so that a later call with another KNOSSOS_DATA_DIR knows that
 # containers can write it (writer_of). The default graph needs no record.
-if [ "$DATA_REAL" != "$INSTALL_PARENT" ]; then
-    GRAPH_RECORD="$INSTALL_REAL/containers/graph-$(hash12 "$DATA_REAL")"
+if [ -n "$GRAPH_RECORD" ] && [ ! -f "$GRAPH_RECORD" ]; then
     [ ! -L "$GRAPH_RECORD" ] || untrusted "$GRAPH_RECORD is a symlink"
-    if [ ! -f "$GRAPH_RECORD" ]; then
-        graph_tmp=$(mktemp "$INSTALL_REAL/containers/.graph.XXXXXX" 2>/dev/null) || die "could not write in $INSTALL_REAL/containers"
-        if ! printf '%s\n' "$DATA_REAL" > "$graph_tmp" || ! mv -f -- "$graph_tmp" "$GRAPH_RECORD"; then
-            rm -f -- "$graph_tmp"
-            die "could not record the graph directory $DATA_REAL in $INSTALL_REAL/containers"
-        fi
+    graph_tmp=$(mktemp "$INSTALL_REAL/containers/.graph.XXXXXX" 2>/dev/null) || die "could not write in $INSTALL_REAL/containers"
+    if ! printf '%s\n' "$DATA_REAL" > "$graph_tmp" || ! mv -f -- "$graph_tmp" "$GRAPH_RECORD"; then
+        rm -f -- "$graph_tmp"
+        die "could not record the graph directory $DATA_REAL in $INSTALL_REAL/containers"
     fi
 fi
 # The roots file's directory read-only, unless it is the install directory.
@@ -1579,16 +1827,14 @@ MOUNTED
 # it moves files in and out by rename from inside the directory itself, after
 # checking that it still is the directory it made, and checks what it moved
 # out in a private directory of its own before it writes the destination.
-SCRATCH=''
-SCRATCH_ID=''
-PRIVATE=''
+# SCRATCH, SCRATCH_ID, PRIVATE and TAKEN (the directory the output is taken
+# into, out of every container's reach, see take_out_of_reach) are declared
+# with on_exit, which removes them.
 OUTPUT_SCRATCH=''
 OUTPUT_DEST=''
 # The `<device>:<inode>` of the copy of a notes file in the way that the host
 # put in the scratch directory, so it can tell whether the command replaced it.
 OUTPUT_PLACED=''
-# The directory the output is taken into, out of every container's reach (take_out_of_reach).
-TAKEN=''
 # The most a command may write for the host to move out of a container, in
 # MB. The largest legitimate output is a graph bundle, which the core builds
 # in memory as one string under its 1 GB memory limit, so no export it can
@@ -1598,15 +1844,23 @@ OUTPUT_LIMIT_MB=${KNOSSOS_OUTPUT_LIMIT_MB:-1024}
 case $OUTPUT_LIMIT_MB in '' | *[!0-9]* | 0*) die "KNOSSOS_OUTPUT_LIMIT_MB must be a whole number of MB above 0, got '$OUTPUT_LIMIT_MB'." ;; esac
 [ "${#OUTPUT_LIMIT_MB}" -le 7 ] || die "KNOSSOS_OUTPUT_LIMIT_MB must be at most 9999999, got '$OUTPUT_LIMIT_MB'."
 OUTPUT_LIMIT_BYTES=$((OUTPUT_LIMIT_MB * 1048576))
+# remove_scratch: the scratch directory, gone when the call ends. A container
+# that keeps writing into it can make one `rm -rf` fail (a directory refilled
+# while it is emptied), so it is tried a few times, quietly; what is left of
+# it then lies in the graph directory, where that container could write
+# anything anyway, and nothing reads it.
 # shellcheck disable=SC2317,SC2329 # run from the EXIT trap
-cleanup_files() {
-    [ -z "$PRIVATE" ] || rm -rf -- "$PRIVATE"
-    [ -z "$TAKEN" ] || rm -rf -- "$TAKEN"
-    [ -z "$SCRATCH" ] || rm -rf -- "$SCRATCH"
+remove_scratch() {
+    tries=0
+    while [ "$tries" -lt 3 ]; do
+        rm -rf -- "$SCRATCH" 2>/dev/null
+        [ -e "$SCRATCH" ] || [ -L "$SCRATCH" ] || break
+        tries=$((tries + 1))
+    done
+    SCRATCH=''
 }
 scratch() {
     [ -z "$SCRATCH" ] || return 0
-    trap cleanup_files EXIT
     host_tmp
     PRIVATE=$( (umask 077 && mktemp -d "$TMP_REAL/knossos-files.XXXXXX") ) || die 'could not create a private temporary directory'
     SCRATCH=$( (umask 077 && mktemp -d "$DATA_REAL/.knossos-files.XXXXXX") ) || die "could not create a scratch directory in $DATA_REAL"
@@ -1917,6 +2171,22 @@ MOUNTED
 }
 start_container
 
+# An update that switched images while this call started its container: the
+# call read the old install.json, so its container runs the image before the
+# update, which the update's own stop may already have missed. It is removed,
+# never used, and the call says so; the next one starts from the new image.
+record=''
+if [ -r "$INSTALL_DIR/install.json" ] && [ ! -L "$INSTALL_DIR/install.json" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        record="$record$line"
+    done < "$INSTALL_DIR/install.json"
+fi
+field image
+if [ "$value" != "$IMAGE" ]; then
+    "$RUNTIME" rm -f "$NAME" >/dev/null 2>&1 </dev/null
+    die "Knossos was updated while this call started its container, so that container was removed; run the command again."
+fi
+
 # wants_terminal COMMAND: whether the call gets `-t`. Only when stdin and
 # stdout are both terminals, as for an interactive `knossos tui`, and never
 # for `serve`, whose JSON-RPC stream a TTY would corrupt.
@@ -1954,6 +2224,12 @@ fi
 # A caller's other KNOSSOS_* settings reach the command too, by name, as they
 # would in native mode.
 for variable in $(env | sed -n 's/^\(KNOSSOS_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u); do
+    # `env` prints one variable per line, so a value holding a newline can
+    # look like a variable of its own: only a name that is set is passed on.
+    # The name is letters, digits and underscores, so eval sees no other text.
+    set_here=''
+    eval "set_here=\${$variable+yes}"
+    [ "$set_here" = yes ] || continue
     case $variable in
         KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_SETTINGS_DIR | KNOSSOS_ENRICHERS_FILE | KNOSSOS_OUTPUT_LIMIT_MB | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN | KNOSSOS_TEST_TERMINALS) ;;
         KNOSSOS_ALLOWED_ROOTS)
@@ -2167,5 +2443,10 @@ if [ -n "$OUTPUT_DEST" ]; then
         show_output stdout
     fi
 fi
-if [ "$status" -ne 0 ]; then restore_roots; elif [ -n "$ROOTS_BEFORE" ]; then rm -f -- "$ROOTS_BEFORE"; fi
+if [ "$status" -ne 0 ]; then
+    restore_roots
+elif [ -n "$ROOTS_BEFORE" ]; then
+    rm -f -- "$ROOTS_BEFORE"
+    ROOTS_BEFORE=''
+fi
 exit "$status"

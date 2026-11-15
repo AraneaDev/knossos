@@ -14,6 +14,12 @@
 #   images/<ref>           a pulled image; its content is its digest reference
 #   pull-fails             present: `pull` fails
 #   copy/<path>            what `run ... cat <path>` prints, for files read out of an image
+#   stop-gone              present: the next `stop` finds the container removed by
+#                          someone else first (it goes, and stop says No such container)
+#   stop-fails             present: every `stop` fails and the container stays
+#   after-run, after-stop  a script run once with sh, then removed, right after the
+#                          next detached `run` or the next `stop`: what another
+#                          process does at that moment
 #
 # `exec` prints `exec:` and the argument list after the container name (a
 # bare `version` prints `Knossos $FAKE_IMAGE_VERSION` instead), then each
@@ -26,7 +32,8 @@
 # exits with FAKE_EXEC_EXIT (default 0). `run` with --rm and a command other
 # than the idle-stop entrypoint runs that command's stand-in: `version` prints
 # FAKE_IMAGE_VERSION, `cat PATH` prints copy/<PATH>, and install-agent-plugin
-# writes a lib.sh into --plugin-dir naming --bin and --data-dir.
+# writes a lib.sh into --plugin-dir naming --bin and --data-dir
+# (FAKE_PLUGIN_FAILS=1 fails before it writes anything, =late after).
 set -u
 
 STATE=${FAKE_DOCKER_STATE:?FAKE_DOCKER_STATE must be set}
@@ -42,6 +49,13 @@ if [ -e "$STATE/daemon-down" ]; then
 fi
 
 image_file() { printf '%s/images/%s' "$STATE" "$(printf '%s' "$1" | tr '/:@' '___')"; }
+# hook NAME: run the one-shot script NAME once, if there is one.
+hook() {
+    [ -f "$STATE/$1" ] || return 0
+    mv -f "$STATE/$1" "$STATE/$1.running"
+    sh "$STATE/$1.running" >/dev/null 2>&1 </dev/null
+    rm -f "$STATE/$1.running"
+}
 
 command=${1-}
 [ $# -gt 0 ] && shift
@@ -171,6 +185,7 @@ case $command in
             printf '%s%s' "$mounts" "${FAKE_EXTRA_MOUNT:+$FAKE_EXTRA_MOUNT
 }" > "$STATE/containers/$name.mounts"
             echo "fakeid-$name"
+            hook after-run
             exit 0
         fi
         case $entrypoint in
@@ -180,7 +195,7 @@ case $command in
                     version) echo "Knossos ${FAKE_IMAGE_VERSION:-0.0.0}" ;;
                     doctor) [ -z "${FAKE_DOCTOR_FAILS:-}" ] || { echo 'doctor: broken' >&2; exit 1; } ; echo 'doctor ok' ;;
                     install-agent-plugin)
-                        [ -z "${FAKE_PLUGIN_FAILS:-}" ] || { echo 'plugin: broken' >&2; exit 1; }
+                        [ -z "${FAKE_PLUGIN_FAILS:-}" ] || [ "$FAKE_PLUGIN_FAILS" = late ] || { echo 'plugin: broken' >&2; exit 1; }
                         dir='' bin='' data=''
                         for a in "$@"; do
                             case $a in
@@ -191,6 +206,7 @@ case $command in
                         done
                         mkdir -p "$dir/hooks/scripts"
                         printf "KNOSSOS_INSTALLED_DATA_DIR='%s'\nKNOSSOS_INSTALLED_ROOTS_FILE='__KNOSSOS_ROOTS_FILE__'\nKNOSSOS_INSTALLED_BIN='%s'\nFROM_IMAGE='%s'\n" "$data" "$bin" "$image" > "$dir/hooks/scripts/lib.sh"
+                        [ "${FAKE_PLUGIN_FAILS:-}" != late ] || { echo 'plugin: broken half way' >&2; exit 1; }
                         ;;
                     *) echo "ran: $*" ;;
                 esac
@@ -295,10 +311,28 @@ case $command in
         done
         ;;
     stop | rm)
+        status=0
         for a in "$@"; do
             case $a in -*) continue ;; esac
+            if [ "$command" = stop ]; then
+                if [ -e "$STATE/stop-gone" ]; then
+                    rm -f "$STATE/stop-gone" "$STATE/containers/$a" "$STATE/containers/$a.labels" "$STATE/containers/$a.image" "$STATE/containers/$a.mounts" "$STATE/containers/$a.config"
+                fi
+                if [ ! -f "$STATE/containers/$a" ]; then
+                    echo "Error response from daemon: No such container: $a" >&2
+                    status=1
+                    continue
+                fi
+                if [ -e "$STATE/stop-fails" ]; then
+                    echo "Error response from daemon: cannot stop container: $a: tried to kill container, but did not receive an exit event" >&2
+                    status=1
+                    continue
+                fi
+            fi
             rm -f "$STATE/containers/$a" "$STATE/containers/$a.labels" "$STATE/containers/$a.image" "$STATE/containers/$a.mounts" "$STATE/containers/$a.config"
         done
+        [ "$command" != stop ] || hook after-stop
+        exit "$status"
         ;;
     *)
         echo "fake-docker: unsupported command $command" >&2
