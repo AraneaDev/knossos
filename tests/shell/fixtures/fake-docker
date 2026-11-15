@@ -1,0 +1,209 @@
+#!/bin/sh
+# A stand-in for docker (or podman) that the container-mode shell tests put
+# first on PATH. It needs no daemon and no network: it records every argument
+# list it is given and keeps containers and images as files under
+# $FAKE_DOCKER_STATE.
+#
+#   calls                  one line per call: `call [arg] [arg] ...`
+#   daemon-down            present: every call but --version fails as with a stopped daemon
+#   race                   present: the next `run` loses a race (the container appears, run fails)
+#   containers/NAME        a container; its content is its state (running, exited, created)
+#   containers/NAME.labels its labels, one per line
+#   containers/NAME.image  the image it runs
+#   images/<ref>           a pulled image; its content is its digest reference
+#   pull-fails             present: `pull` fails
+#   copy/<path>            what `run ... cat <path>` prints, for files read out of an image
+#
+# `exec` prints `exec:` and the argument list after the container name, then
+# reads stdin when FAKE_EXEC_STDIN=1, waits for a signal when FAKE_EXEC_WAIT=1
+# (it ends with 143 once `exec ... idle-stop --signal` has been called) and
+# exits with FAKE_EXEC_EXIT (default 0). `run` with --rm and a command other
+# than the idle-stop entrypoint runs that command's stand-in: `version` prints
+# FAKE_IMAGE_VERSION, `cat PATH` prints copy/<PATH>, and install-agent-plugin
+# writes a lib.sh into --plugin-dir naming --bin and --data-dir.
+set -u
+
+STATE=${FAKE_DOCKER_STATE:?FAKE_DOCKER_STATE must be set}
+mkdir -p "$STATE/containers" "$STATE/images"
+{
+    printf 'call'
+    for a in "$@"; do printf ' [%s]' "$a"; done
+    printf '\n'
+} >> "$STATE/calls"
+
+if [ -e "$STATE/daemon-down" ]; then
+    echo 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?' >&2
+    exit 1
+fi
+
+image_file() { printf '%s/images/%s' "$STATE" "$(printf '%s' "$1" | tr '/:@' '___')"; }
+
+command=${1-}
+[ $# -gt 0 ] && shift
+case $command in
+    info) echo 'Server Version: fake' ;;
+    container | image)
+        sub=$1
+        shift
+        format=''
+        while [ $# -gt 0 ]; do
+            case $1 in
+                --format) format=$2; shift 2 ;;
+                -f) shift ;;
+                *) break ;;
+            esac
+        done
+        case $command.$sub in
+            container.inspect)
+                [ -f "$STATE/containers/$1" ] || { echo "Error: No such container: $1" >&2; exit 1; }
+                cat "$STATE/containers/$1"
+                ;;
+            image.inspect)
+                file=$(image_file "$1")
+                [ -f "$file" ] || { echo "Error: No such image: $1" >&2; exit 1; }
+                case $format in
+                    *RepoDigests*) cat "$file" ;;
+                    *) echo "sha256:fake" ;;
+                esac
+                ;;
+            image.rm | image.remove) rm -f "$(image_file "$1")" ;;
+            *) echo "fake-docker: unsupported $command $sub" >&2; exit 2 ;;
+        esac
+        ;;
+    pull)
+        [ ! -e "$STATE/pull-fails" ] || { echo "Error response from daemon: manifest unknown: $1" >&2; exit 1; }
+        repository=${1%:*}
+        digest="sha256:$(printf '%s' "$1" | cksum | tr -dc 0-9)"
+        printf '%s@%s\n' "$repository" "$digest" > "$(image_file "$1")"
+        printf '%s@%s\n' "$repository" "$digest" > "$(image_file "$repository@$digest")"
+        echo "Status: Downloaded newer image for $1"
+        ;;
+    run)
+        name=''
+        labels=''
+        detached=0
+        entrypoint=''
+        while [ $# -gt 0 ]; do
+            case $1 in
+                -d) detached=1 ;;
+                --rm | --init | -i) ;;
+                --name) name=$2; shift ;;
+                --label) labels="$labels$2
+"; shift ;;
+                --entrypoint) entrypoint=$2; shift ;;
+                --network | --user | -e | --mount | -v | -w) shift ;;
+                --userns=* | --network=* | --user=*) ;;
+                -*) echo "fake-docker: unknown run option $1" >&2; exit 2 ;;
+                *) break ;;
+            esac
+            shift
+        done
+        image=$1
+        shift
+        if [ "$detached" = 1 ]; then
+            if [ -e "$STATE/race" ]; then
+                rm -f "$STATE/race"
+                printf 'running\n' > "$STATE/containers/$name"
+                echo "docker: Error response from daemon: Conflict. The container name \"/$name\" is already in use." >&2
+                exit 125
+            fi
+            if [ -f "$STATE/containers/$name" ]; then
+                echo "docker: Error response from daemon: Conflict. The container name \"/$name\" is already in use." >&2
+                exit 125
+            fi
+            [ -f "$(image_file "$image")" ] || [ -n "${FAKE_ANY_IMAGE:-}" ] || { echo "Unable to find image '$image' locally" >&2; exit 125; }
+            printf 'running\n' > "$STATE/containers/$name"
+            printf '%s' "$labels" > "$STATE/containers/$name.labels"
+            printf '%s\n' "$image" > "$STATE/containers/$name.image"
+            echo "fakeid-$name"
+            exit 0
+        fi
+        case $entrypoint in
+            */cat | cat) cat "$STATE/copy$1" ;;
+            *)
+                case ${1-} in
+                    version) echo "Knossos ${FAKE_IMAGE_VERSION:-0.0.0}" ;;
+                    doctor) [ -z "${FAKE_DOCTOR_FAILS:-}" ] || { echo 'doctor: broken' >&2; exit 1; } ; echo 'doctor ok' ;;
+                    install-agent-plugin)
+                        [ -z "${FAKE_PLUGIN_FAILS:-}" ] || { echo 'plugin: broken' >&2; exit 1; }
+                        dir='' bin='' data=''
+                        for a in "$@"; do
+                            case $a in
+                                --plugin-dir=*) dir=${a#--plugin-dir=} ;;
+                                --bin=*) bin=${a#--bin=} ;;
+                                --data-dir=*) data=${a#--data-dir=} ;;
+                            esac
+                        done
+                        mkdir -p "$dir/hooks/scripts"
+                        printf "KNOSSOS_INSTALLED_DATA_DIR='%s'\nKNOSSOS_INSTALLED_BIN='%s'\nFROM_IMAGE='%s'\n" "$data" "$bin" "$image" > "$dir/hooks/scripts/lib.sh"
+                        ;;
+                    *) echo "ran: $*" ;;
+                esac
+                ;;
+        esac
+        ;;
+    exec)
+        while [ $# -gt 0 ]; do
+            case $1 in
+                -i | -t) ;;
+                -w | -e) shift ;;
+                -*) echo "fake-docker: unknown exec option $1" >&2; exit 2 ;;
+                *) break ;;
+            esac
+            shift
+        done
+        name=$1
+        shift
+        [ -f "$STATE/containers/$name" ] || { echo "Error response from daemon: No such container: $name" >&2; exit 1; }
+        case ${2-} in
+            --signal) printf '%s\n' "$3" > "$STATE/signalled"; exit 0 ;;
+        esac
+        printf 'exec:'
+        for a in "$@"; do printf '[%s]' "$a"; done
+        printf '\n'
+        if [ "${FAKE_EXEC_STDIN:-}" = 1 ]; then
+            printf 'stdin:'
+            cat
+        fi
+        if [ "${FAKE_EXEC_WAIT:-}" = 1 ]; then
+            : > "$STATE/waiting"
+            tries=0
+            while [ ! -f "$STATE/signalled" ] && [ "$tries" -lt 100 ]; do
+                sleep 0.1 2>/dev/null || sleep 1
+                tries=$((tries + 1))
+            done
+            [ -f "$STATE/signalled" ] && exit 143
+        fi
+        exit "${FAKE_EXEC_EXIT:-0}"
+        ;;
+    ps)
+        filters=''
+        while [ $# -gt 0 ]; do
+            case $1 in
+                -q | -a) ;;
+                --filter) filters="$filters ${2#label=}"; shift ;;
+            esac
+            shift
+        done
+        for file in "$STATE"/containers/*; do
+            case $file in *.labels | *.image) continue ;; esac
+            [ -f "$file" ] || continue
+            [ "$(cat "$file")" = running ] || continue
+            match=1
+            for wanted in $filters; do
+                grep -qxF "$wanted" "$file.labels" 2>/dev/null || match=0
+            done
+            [ "$match" = 1 ] && printf '%s\n' "${file##*/}"
+        done
+        ;;
+    stop | rm)
+        for a in "$@"; do
+            case $a in -*) continue ;; esac
+            rm -f "$STATE/containers/$a" "$STATE/containers/$a.labels" "$STATE/containers/$a.image"
+        done
+        ;;
+    *)
+        echo "fake-docker: unsupported command $command" >&2
+        exit 2
+        ;;
+esac

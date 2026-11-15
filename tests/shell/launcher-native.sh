@@ -120,14 +120,16 @@ else
     fail "missing current (status $status, lines $lines, output $out)"
 fi
 
-# Container mode is not served by this launcher yet.
+# A container record goes to container mode, never to a native release
+# (tests/shell/launcher-container.sh covers that mode); one without an image
+# says how to repair it.
 printf '{"mode": "container"}\n' > "$EMPTY/install.json"
 out=$(KNOSSOS_INSTALL_DIR="$EMPTY" "$LAUNCHER" version 2>&1); status=$?
 case $out in
-    *"container mode"*) said=yes ;;
+    *"names no image; re-run the installer"*) said=yes ;;
     *) said=no ;;
 esac
-if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'container mode is refused clearly'; else fail "container mode (status $status, output $out)"; fi
+if [ "$status" -eq 1 ] && [ "$said" = yes ]; then pass 'a container record without an image is refused clearly'; else fail "container mode (status $status, output $out)"; fi
 
 # No install.json at all means native: the release runs.
 NOJSON="$WORK/nojson"

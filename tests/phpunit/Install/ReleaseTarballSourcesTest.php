@@ -18,14 +18,36 @@ use PHPUnit\Framework\Attributes\Group;
  */
 final class ReleaseTarballSourcesTest extends KnossosTestCase
 {
+    /**
+     * What the image carries for container mode alone, and why the tarball does without it in copy_tree.
+     *
+     * The launcher template is in both, at `launcher/knossos`, but the tarball
+     * copies it by itself; the entrypoint of the per-project container means
+     * nothing on a host that runs the release natively.
+     */
+    private const CONTAINER_ONLY = [
+        'tools/launcher/knossos' => 'copied to launcher/knossos by itself',
+        'tools/launcher/idle-stop' => 'the container entrypoint',
+    ];
+
     #[Group('packaging')]
     public function testEverySourceTheImageCopiesIsInTheTarball(): void
     {
-        $image = $this->imageSources();
+        $image = array_values(array_diff($this->imageSources(), array_keys(self::CONTAINER_ONLY)));
         $tarball = $this->tarballSources();
 
         self::assertGreaterThanOrEqual(10, count($image));
         assertSame([], array_values(array_diff($image, $tarball)), 'In the Dockerfile sources stage but not in tools/release-tarball: keep the two in step.');
+    }
+
+    #[Group('packaging')]
+    public function testTheImageCarriesTheContainerModeScriptsAndTheTarballTheLauncher(): void
+    {
+        $dockerfile = (string) file_get_contents(self::repositoryRoot() . '/Dockerfile');
+        assertSame(array_keys(self::CONTAINER_ONLY), array_values(array_intersect($this->imageSources(), array_keys(self::CONTAINER_ONLY))));
+        self::assertStringContainsString("COPY tools/launcher/knossos ./launcher/knossos\n", $dockerfile);
+        self::assertStringContainsString("COPY tools/launcher/idle-stop ./tools/launcher/idle-stop\n", $dockerfile);
+        self::assertStringContainsString('cp "$ROOT/tools/launcher/knossos" "$TREE/launcher/knossos"', (string) file_get_contents(self::repositoryRoot() . '/tools/release-tarball'));
     }
 
     /** @return list<string> the source paths of the COPY lines in the Dockerfile's `sources` stage */

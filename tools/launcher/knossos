@@ -2,12 +2,18 @@
 # The knossos launcher that install.sh writes to the bin directory.
 #
 # install.sh copies this file and replaces the value on the INSTALL_DIR line
-# with the directory it installed into: the one holding versions/, current and
-# install.json. self-update rewrites it the same way from the new release. It
-# never searches PATH for itself, and in native mode it starts no process
-# besides the final exec: the mode is read from install.json with shell
-# pattern matching. `serve` is the one exception: it runs the release's
-# mcp-serve wrapper, which starts the server and logs what happens to it.
+# with the directory it installed into: the one holding install.json (and, in
+# native mode, versions/ and current). self-update rewrites it the same way
+# from the new release. It never searches PATH for itself.
+#
+# Native mode starts no process besides the final exec: the mode is read from
+# install.json with shell pattern matching. `serve` is the one exception: it
+# runs the release's mcp-serve wrapper, which starts the server and logs what
+# happens to it.
+#
+# Container mode runs the command in a container of the image install.json
+# names, one long-lived container per project root, and needs neither PHP nor
+# Node nor Python on the host. See the container section below.
 #
 # Two different directories, kept apart on purpose:
 #   - the install directory, baked in below, is where the release lives. It is
@@ -26,26 +32,46 @@ KNOSSOS_DATA_DIR="${KNOSSOS_DATA_DIR:-$INSTALL_DIR}"
 KNOSSOS_ROOTS_FILE="${KNOSSOS_ROOTS_FILE:-$KNOSSOS_DATA_DIR/roots.json}"
 export KNOSSOS_DATA_DIR KNOSSOS_ROOTS_FILE
 
-# The mode comes from install.json: one line or pretty-printed, with or
-# without a space after the colon. A missing file means native.
-mode=native
+# install.json, joined into one line: pretty-printed or not, with or without a
+# space after the colon. A missing file means native.
+record=''
 if [ -r "$INSTALL_DIR/install.json" ]; then
-    content=''
     while IFS= read -r line || [ -n "$line" ]; do
-        content="$content$line"
+        record="$record$line"
     done < "$INSTALL_DIR/install.json"
-    case $content in
+fi
+
+# field NAME: the string value of a top-level "NAME" in install.json, or
+# nothing for a missing key, null or a value that is not a plain string. The
+# values read this way (mode, image, runtime) never hold a quote or a
+# backslash, so no escape is decoded.
+field() {
+    case $record in
+        *"\"$1\""*:*) ;;
+        *) return 0 ;;
+    esac
+    rest=${record#*"\"$1\""}
+    while :; do
+        case $rest in
+            ' '* | '	'* | :*) rest=${rest#?} ;;
+            *) break ;;
+        esac
+    done
+    case $rest in
+        '"'*)
+            rest=${rest#?}
+            printf '%s' "${rest%%\"*}"
+            ;;
+    esac
+}
+
+mode=native
+if [ -n "$record" ]; then
+    case $record in
         *'"mode"'*:*)
-            rest=${content#*'"mode"'*:}
-            while :; do
-                case $rest in
-                    ' '* | '	'*) rest=${rest#?} ;;
-                    *) break ;;
-                esac
-            done
-            case $rest in
-                '"native"'*) mode=native ;;
-                '"container"'*) mode=container ;;
+            case $(field mode) in
+                native) mode=native ;;
+                container) mode=container ;;
                 *) mode=unknown ;;
             esac
             ;;
@@ -68,12 +94,332 @@ case $mode in
         fi
         exec "$INSTALL_DIR/current/bin/knossos" "$@"
         ;;
-    container)
-        echo "knossos: container mode is not available in this launcher version; re-run the installer." >&2
-        exit 1
-        ;;
+    container) ;;
     *)
         echo "knossos: unreadable mode in $INSTALL_DIR/install.json; re-run the installer to repair it." >&2
         exit 1
         ;;
 esac
+
+# ---- container mode ----------------------------------------------------------
+#
+# One container per project root, started on the first call and reused by
+# every call after it through `exec`. The project root, the data directory, the
+# directory of the roots file and the install directory are mounted at the
+# SAME absolute paths, so a path means the same thing inside as outside and a
+# project keeps the id a native install would give it. The container runs as
+# the caller's user and group with HOME=/tmp and no network.
+#
+# Its entrypoint is tools/launcher/idle-stop, which exits (and so stops the
+# container, which --rm then removes) once nothing has run in it for 30
+# minutes: every call touches a marker file under <install dir>/containers.
+#
+# The container's name is a hash of the install directory, the root, the data
+# directory, the roots file and the image, so two installations never share a
+# container, and after an update or a rollback the next call starts one from
+# the image install.json now names instead of reusing an old one.
+#
+# `knossos stop [--all]` and `knossos self-update` are answered here, on the
+# host: the code in the container can neither stop its own container nor
+# replace its image.
+
+die() {
+    printf 'knossos: %s\n' "$1" >&2
+    exit 1
+}
+
+IMAGE=$(field image)
+RUNTIME=$(field runtime)
+[ -n "$RUNTIME" ] || RUNTIME=docker
+case $RUNTIME in
+    docker | podman) ;;
+    *) die "unknown container runtime '$RUNTIME' in $INSTALL_DIR/install.json; re-run the installer to repair it." ;;
+esac
+[ -n "$IMAGE" ] || die "$INSTALL_DIR/install.json names no image; re-run the installer to repair it."
+command -v "$RUNTIME" >/dev/null 2>&1 || die "$RUNTIME is not installed or not on PATH; this installation runs Knossos in a $RUNTIME container."
+
+# Where the image keeps what the launcher runs.
+IN_IMAGE=/opt/knossos
+
+# A path's physical form, or nothing when it is not a directory that can be entered.
+physical() { (CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P); }
+
+# The first 12 hex digits of the SHA-256 of the argument.
+hash12() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sum=$(printf '%s' "$1" | sha256sum)
+    elif command -v shasum >/dev/null 2>&1; then
+        sum=$(printf '%s' "$1" | shasum -a 256)
+    else
+        die 'sha256sum or shasum is required to name the container'
+    fi
+    printf '%s' "$sum" | cut -c 1-12
+}
+
+# The roots the roots file lists, one per line. Both shapes the server reads
+# ({"roots": [...]} and a bare [...]): every string that is not a key. A string
+# with a \u escape cannot be compared byte for byte and is left out, which only
+# means that root is not used to widen a mount.
+roots() {
+    [ -r "$KNOSSOS_ROOTS_FILE" ] || return 0
+    awk '
+        { text = text $0 "\n" }
+        END {
+            n = length(text); i = 1
+            while (i <= n) {
+                c = substr(text, i, 1)
+                if (c != "\"") { i++; continue }
+                value = ""; skip = 0; i++
+                while (i <= n) {
+                    c = substr(text, i, 1)
+                    if (c == "\\") {
+                        e = substr(text, i + 1, 1)
+                        if (e == "u") { skip = 1; value = value "?" }
+                        else if (e == "n" || e == "t" || e == "r" || e == "b" || e == "f") { skip = 1 }
+                        else { value = value e }
+                        i += 2; continue
+                    }
+                    if (c == "\"") break
+                    value = value c; i++
+                }
+                i++
+                j = i
+                while (j <= n && substr(text, j, 1) ~ /[ \t\r\n]/) j++
+                if (substr(text, j, 1) == ":") continue
+                if (!skip && value != "") print value
+            }
+        }
+    ' "$KNOSSOS_ROOTS_FILE" 2>/dev/null
+}
+
+# The project root for a directory: the nearest ancestor (the directory itself
+# included) the roots file lists, else the directory. Entries are compared as
+# written and, when that does not match, in their physical form.
+project_root() {
+    best=''
+    newline='
+'
+    saved_ifs=$IFS
+    IFS=$newline
+    for entry in $(roots); do
+        IFS=$saved_ifs
+        while [ "${#entry}" -gt 1 ] && [ "${entry%/}" != "$entry" ]; do entry=${entry%/}; done
+        case $entry in /*) ;; *) continue ;; esac
+        for candidate in "$entry" "$(physical "$entry")"; do
+            # The filesystem root as an entry widens nothing: it would mount everything.
+            if [ -z "$candidate" ] || [ "$candidate" = / ]; then continue; fi
+            if [ "$1" = "$candidate" ] || case $1 in "$candidate"/*) true ;; *) false ;; esac; then
+                if [ "${#candidate}" -gt "${#best}" ]; then best=$candidate; fi
+                break
+            fi
+        done
+    done
+    IFS=$saved_ifs
+    printf '%s' "${best:-$1}"
+}
+
+# Where the call works from, and the directory that decides the project root:
+# the working directory, or a path argument right after the command when it
+# names a directory (scan <path>, allow-root <path>, session-brief <path> and
+# every command the plugin's hooks run, which all put the project there). That
+# argument is handed on as its absolute physical path, so it still means the
+# same directory when the call has to work from somewhere else.
+HERE=$(pwd -P 2>/dev/null) || die 'the working directory cannot be read'
+TARGET=$HERE
+if [ $# -ge 2 ]; then
+    case $2 in
+        -*) ;;
+        *)
+            if [ -d "$2" ] && given=$(physical "$2") && [ -n "$given" ]; then
+                TARGET=$given
+                command=$1
+                shift 2
+                set -- "$command" "$TARGET" "$@"
+            fi
+            ;;
+    esac
+fi
+ROOT=$(project_root "$TARGET")
+[ "$ROOT" != / ] || die 'the filesystem root cannot be a project root in container mode; run knossos from inside a project.'
+case $HERE in
+    "$ROOT" | "$ROOT"/*) WORKDIR=$HERE ;;
+    *) WORKDIR=$ROOT ;;
+esac
+
+INSTALL_HASH=$(hash12 "$INSTALL_DIR")
+
+# stop [--all]: the containers of this installation for this project root, or
+# all of them.
+stop_containers() {
+    if [ "${1-}" = --all ]; then
+        ids=$("$RUNTIME" ps -q --filter "label=io.knossos.install=$INSTALL_HASH" 2>/dev/null) \
+            || die "$RUNTIME does not answer; is its daemon running?"
+        what='for this installation'
+    else
+        ids=$("$RUNTIME" ps -q --filter "label=io.knossos.install=$INSTALL_HASH" --filter "label=io.knossos.root=$(hash12 "$ROOT")" 2>/dev/null) \
+            || die "$RUNTIME does not answer; is its daemon running?"
+        what="for $ROOT"
+    fi
+    if [ -z "$ids" ]; then
+        printf 'No Knossos container is running %s.\n' "$what"
+        return 0
+    fi
+    count=0
+    for id in $ids; do
+        "$RUNTIME" stop "$id" >/dev/null 2>&1 || die "could not stop container $id"
+        count=$((count + 1))
+    done
+    printf 'Stopped %s Knossos container(s) %s.\n' "$count" "$what"
+}
+
+case ${1-} in
+    stop)
+        case ${2-} in
+            '' | --all | "$TARGET") ;;
+            *) die 'usage: knossos stop [--all]' ;;
+        esac
+        stop_containers "${2-}"
+        exit
+        ;;
+    self-update)
+        die 'self-update in container mode comes with the next release of the installer; re-run the installer to update.'
+        ;;
+esac
+
+# Every directory the container needs, each mounted at its own path. One that
+# lies inside another is already visible through it and is not mounted twice.
+DATA_DIR=$KNOSSOS_DATA_DIR
+ROOTS_DIR=$(dirname -- "$KNOSSOS_ROOTS_FILE")
+for directory in "$DATA_DIR" "$ROOTS_DIR"; do
+    case $directory in /*) ;; *) die "KNOSSOS_DATA_DIR and KNOSSOS_ROOTS_FILE must be absolute paths in container mode, got $directory" ;; esac
+    mkdir -p -- "$directory" 2>/dev/null || die "could not create $directory"
+done
+MOUNTS=''
+add_mount() {
+    path=$(physical "$1")
+    [ -n "$path" ] || die "could not enter $1 to mount it"
+    case $path in
+        *,* | *'
+'*) die "a path with a comma or a newline cannot be mounted: $path" ;;
+    esac
+    newline='
+'
+    saved_ifs=$IFS
+    IFS=$newline
+    for mounted in $MOUNTS; do
+        case $path in "$mounted" | "$mounted"/*) IFS=$saved_ifs; return 0 ;; esac
+    done
+    kept=''
+    for mounted in $MOUNTS; do
+        case $mounted in "$path"/*) ;; *) kept="$kept$mounted$newline" ;; esac
+    done
+    IFS=$saved_ifs
+    MOUNTS="$kept$path$newline"
+}
+add_mount "$ROOT"
+add_mount "$DATA_DIR"
+add_mount "$ROOTS_DIR"
+add_mount "$INSTALL_DIR"
+
+NAME="knossos-$(hash12 "$INSTALL_DIR
+$ROOT
+$DATA_DIR
+$KNOSSOS_ROOTS_FILE
+$IMAGE")"
+MARKER="$INSTALL_DIR/containers/$NAME"
+{ mkdir -p "$INSTALL_DIR/containers" 2>/dev/null && : > "$MARKER" 2>/dev/null; } \
+    || die "could not write $MARKER"
+
+# Start the container unless it runs. Two calls may get here at once: the
+# runtime refuses the second `run` because the name is taken, and that call
+# then finds the winner's container and uses it. A container that is still
+# being created or removed is waited for; one that stopped is removed first.
+start_container() {
+    set -- run -d --rm --init --name "$NAME" \
+        --label "io.knossos.install=$INSTALL_HASH" --label "io.knossos.root=$(hash12 "$ROOT")" \
+        --network none --user "$(id -u):$(id -g)"
+    if [ "$RUNTIME" = podman ]; then set -- "$@" --userns=keep-id; fi
+    set -- "$@" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
+        -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_DIR" \
+        -e "KNOSSOS_DATA_DIR=$KNOSSOS_DATA_DIR" -e "KNOSSOS_ROOTS_FILE=$KNOSSOS_ROOTS_FILE"
+    newline='
+'
+    saved_ifs=$IFS
+    IFS=$newline
+    for mounted in $MOUNTS; do
+        set -- "$@" --mount "type=bind,source=$mounted,target=$mounted"
+    done
+    IFS=$saved_ifs
+    set -- "$@" --entrypoint "$IN_IMAGE/tools/launcher/idle-stop" "$IMAGE" "$MARKER"
+    attempts=0
+    while :; do
+        state=$("$RUNTIME" container inspect --format '{{.State.Status}}' "$NAME" 2>/dev/null) || state=absent
+        case $state in
+            running) return 0 ;;
+            absent)
+                if error=$("$RUNTIME" "$@" 2>&1 >/dev/null </dev/null); then
+                    return 0
+                fi
+                # Lost the race, or a real failure: only the second leaves no container behind.
+                if ! "$RUNTIME" container inspect "$NAME" >/dev/null 2>&1; then
+                    "$RUNTIME" info >/dev/null 2>&1 </dev/null \
+                        || die "the $RUNTIME daemon is not running; start it and try again."
+                    die "could not start a container from $IMAGE: $error"
+                fi
+                ;;
+            exited | dead) "$RUNTIME" rm -f "$NAME" >/dev/null 2>&1 ;;
+        esac
+        attempts=$((attempts + 1))
+        [ "$attempts" -lt 30 ] || die "container $NAME did not start (last state: $state)"
+        sleep 1
+    done
+}
+start_container
+
+# The call itself. `-i` always, so the MCP server and anything piped in get
+# their stdin; `-t` only when both ends are a terminal, as for an interactive
+# `knossos tui`, because a TTY would corrupt a JSON-RPC stream. idle-stop
+# --run records the command's process id inside the container, so a signal
+# sent to this launcher is passed on to the command itself: the runtime's exec
+# client does not forward one. The exit status is the command's.
+#
+# The list is built from its end: the command and its arguments stay as they
+# are, and every option goes in front of them.
+CALL_ID="$$-$(date +%s 2>/dev/null)"
+set -- "$NAME" "$IN_IMAGE/tools/launcher/idle-stop" --run "$CALL_ID" "$IN_IMAGE/bin/knossos" "$@"
+# A caller's other KNOSSOS_* settings reach the command too, by name, as they
+# would in native mode.
+for variable in $(env | sed -n 's/^\(KNOSSOS_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u); do
+    case $variable in
+        KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN) ;;
+        *) set -- -e "$variable" "$@" ;;
+    esac
+done
+if [ -t 0 ] && [ -t 1 ]; then
+    set -- -t -e "TERM=${TERM:-xterm}" "$@"
+fi
+set -- exec -i -w "$WORKDIR" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
+    -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_DIR" \
+    -e "KNOSSOS_DATA_DIR=$KNOSSOS_DATA_DIR" -e "KNOSSOS_ROOTS_FILE=$KNOSSOS_ROOTS_FILE" "$@"
+
+# shellcheck disable=SC2317,SC2329 # called from the traps below
+forward() {
+    "$RUNTIME" exec "$NAME" "$IN_IMAGE/tools/launcher/idle-stop" --signal "$1" "$CALL_ID" >/dev/null 2>&1 </dev/null
+}
+# A background child of a non-interactive shell gets /dev/null as its stdin;
+# the caller's stdin is handed over explicitly.
+exec 3<&0
+"$RUNTIME" "$@" <&3 3<&- &
+CHILD=$!
+exec 3<&-
+trap 'forward TERM' TERM
+trap 'forward INT' INT
+trap 'forward HUP' HUP
+# wait returns early when a trapped signal arrives; the child is waited for
+# again until it has really ended, and its status is the one passed on.
+while :; do
+    wait "$CHILD"
+    status=$?
+    kill -0 "$CHILD" 2>/dev/null || break
+done
+exit "$status"

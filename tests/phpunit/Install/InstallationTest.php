@@ -210,4 +210,55 @@ final class InstallationTest extends KnossosTestCase
         assertSame(true, $check->due(1_000_000));
         assertSame(false, $check->due(2_000_000));
     }
+
+    #[Group('install')]
+    public function testCodeInAContainerIsTheInstallationTheLauncherNames(): void
+    {
+        $install = $this->work . '/container install';
+        mkdir($install, 0o755, true);
+        mkdir($this->work . '/image/bin', 0o755, true);
+        file_put_contents($install . '/install.json', sprintf(
+            "{\n  \"mode\": \"container\",\n  \"version\": \"1.2.0\",\n  \"image\": \"ghcr.io/araneadev/knossos@sha256:%s\",\n  \"bin_dir\": \"%s\"\n}\n",
+            str_repeat('a', 64),
+            $this->work . '/bin',
+        ));
+
+        $installation = new Installation($this->work . '/image', $install . '/');
+        assertSame($install, $installation->installDir);
+        assertSame(false, $installation->isSourceCheckout());
+        assertSame('container', $installation->mode());
+        assertSame($install . '/plugin', $installation->pluginDir());
+        assertSame($this->work . '/bin/knossos', $installation->launcher());
+        assertSame('container 1.2.0 from ghcr.io/araneadev/knossos@sha256:' . str_repeat('a', 64) . ', installed in ' . $install, $installation->describe());
+
+        // From the variable the launcher sets, as the code in the container reads it.
+        putenv(Installation::CONTAINER_VARIABLE . '=' . $install);
+        try {
+            assertSame($install, (new Installation($this->work . '/image'))->installDir);
+        } finally {
+            putenv(Installation::CONTAINER_VARIABLE);
+        }
+        assertSame(null, (new Installation($this->work . '/image'))->installDir);
+
+        // A relative name, a missing record or a record of another mode is no container install.
+        assertSame(null, (new Installation($this->work . '/image', 'container install'))->installDir);
+        assertSame(null, (new Installation($this->work . '/image', $this->work . '/nowhere'))->installDir);
+        file_put_contents($install . '/install.json', '{"mode": "native", "version": "1.2.0", "image": null}');
+        assertSame(true, (new Installation($this->work . '/image', $install))->isSourceCheckout());
+        file_put_contents($install . '/install.json', '{"mode": "container", "version": "1.2.0", "image": ""}');
+        assertSame('container 1.2.0 from an unrecorded image, installed in ' . $install, (new Installation($this->work . '/image', $install))->describe());
+    }
+
+    #[Group('install')]
+    public function testCodeUnderVersionsIgnoresAContainerInstallDirectory(): void
+    {
+        $data = $this->installed('d', '1.0.0');
+        $other = $this->work . '/other';
+        mkdir($other, 0o755, true);
+        file_put_contents($other . '/install.json', '{"mode": "container", "version": "1.0.0"}');
+
+        assertSame($data, (new Installation($data . '/versions/1.0.0', $other))->installDir);
+        file_put_contents($data . '/install.json', '{"mode": "native", "version": "0.1.0"}');
+        assertSame(null, (new Installation($data . '/versions/1.0.0', $other))->installDir);
+    }
 }

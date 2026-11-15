@@ -10,10 +10,12 @@ shell	hooks/scripts/session-brief-container.sh
 shell	hooks/scripts/session-brief.sh
 shell	install.sh
 shell	tests/shell/check-commit-style.sh
+shell	tests/shell/fixtures/fake-docker
 shell	tests/shell/gate-baseline.sh
 shell	tests/shell/install-hooks.sh
 shell	tests/shell/install-native.sh
 shell	tests/shell/knossos-run-hook.sh
+shell	tests/shell/launcher-container.sh
 shell	tests/shell/launcher-native.sh
 shell	tests/shell/mutation-diff.sh
 shell	tests/shell/mutation-gate.sh
@@ -35,6 +37,7 @@ shell	tools/dependency-image-key
 shell	tools/gate-baseline
 shell	tools/install
 shell	tools/install-hooks
+shell	tools/launcher/idle-stop
 shell	tools/launcher/knossos
 shell	tools/lib/quality-skips.sh
 shell	tools/mcp-serve
