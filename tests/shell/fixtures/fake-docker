@@ -19,8 +19,9 @@
 # bare `version` prints `Knossos $FAKE_IMAGE_VERSION` instead), then each
 # scratch file it is given with its content, then writes FAKE_EXEC_WRITE
 # (FAKE_EXEC_KB kilobytes of zeros, a link to FAKE_EXEC_LINK, or, with
-# FAKE_EXEC_REFUSE, nothing but a notes-export refusal) to the file its
-# --output, --out or --file names, then reads stdin when FAKE_EXEC_STDIN=1, waits for a signal when FAKE_EXEC_WAIT=1
+# FAKE_EXEC_REFUSE, nothing but a notes-export refusal; FAKE_EXEC_SHAPE
+# hardlink, dir, fifo or untouched: what a hostile container leaves there) to
+# the file its --output, --out or --file names, then reads stdin when FAKE_EXEC_STDIN=1, waits for a signal when FAKE_EXEC_WAIT=1
 # (it ends with 143 once `exec ... idle-stop --signal` has been called) and
 # exits with FAKE_EXEC_EXIT (default 0). `run` with --rm and a command other
 # than the idle-stop entrypoint runs that command's stand-in: `version` prints
@@ -243,6 +244,13 @@ case $command in
             case $a in
                 --output=* | --out=* | --file=*)
                     target=${a#*=}
+                    case ${FAKE_EXEC_SHAPE:-} in
+                        # What a hostile container can leave where the output belongs.
+                        hardlink) printf 'x\n' > "$target.tmp" && mv -f "$target.tmp" "$target" && ln "$target" "$target.link"; continue ;;
+                        dir) rm -f "$target"; mkdir "$target"; for n in 1 2 3; do printf 'y\n' > "$target/$n"; done; continue ;;
+                        fifo) rm -f "$target"; mkfifo "$target"; continue ;;
+                        untouched) printf 'Exported 0 notes to %s.\n' "$target"; continue ;;
+                    esac
                     if [ -n "${FAKE_EXEC_REFUSE:-}" ]; then
                         printf '{"status":"refused","reason":"NOTES_FILE_NOT_NOTES: %s exists and is not a knossos notes file; remove it or pick another --file."}\n' "$target"
                     elif [ -n "${FAKE_EXEC_LINK:-}" ]; then ln -s "$FAKE_EXEC_LINK" "$target"

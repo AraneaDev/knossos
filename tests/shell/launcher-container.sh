@@ -942,7 +942,7 @@ else
 fi
 # A command that leaves a link where its output belongs: nothing is copied through it.
 FAKE_EXEC_LINK="$SENTINEL" out_call export-agent-brief "$PROJECT" "--out=$WORK/outside/linked.md"
-expected="knossos: the command left no plain file for $WORK/outside/linked.md; nothing was written.
+expected="knossos: the command left no plain file with a single link for $WORK/outside/linked.md; nothing was written.
 KNOSSOS_INVALID_ARGUMENT: Unable to write brief to $WORK/outside/linked.md."
 if [ "$status" -eq 2 ] && [ ! -e "$WORK/outside/linked.md" ] && [ ! -L "$WORK/outside/linked.md" ] && sentinel_intact; then
     pass 'a link left in the scratch directory is never followed to the destination'
@@ -952,14 +952,14 @@ fi
 # ... and the command's own answer, which said it wrote the file, is not printed (N14).
 if [ "$out" = "$expected" ]; then pass 'an output the host could not place is said as the failure the command gives, not as its success'; else fail "success printed beside the refusal: $out"; fi
 FAKE_EXEC_LINK="$SENTINEL" out_call export-notes "$PROJECT" "--file=$WORK/outside/notes.json" --json
-if [ "$status" -eq 2 ] && [ "$out" = "knossos: the command left no plain file for $WORK/outside/notes.json; nothing was written.
+if [ "$status" -eq 2 ] && [ "$out" = "knossos: the command left no plain file with a single link for $WORK/outside/notes.json; nothing was written.
 KNOSSOS_RUNTIME_ERROR: NOTES_FILE_WRITE_FAILED: could not write $WORK/outside/notes.json." ]; then
     pass 'a refused export-notes --json prints no JSON success, only the failure'
 else
     fail "export-notes refused: $status, $out"
 fi
 FAKE_EXEC_LINK="$SENTINEL" out_call notes-export "$PROJECT" "--file=$WORK/outside/notes.json" --json
-if [ "$status" -eq 0 ] && [ "$out" = "{\"status\":\"refused\",\"reason\":\"NOTES_FILE_WRITE_FAILED: could not write $WORK/outside/notes.json: the command left no plain file for $WORK/outside/notes.json; nothing was written.\"}" ]; then
+if [ "$status" -eq 0 ] && [ "$out" = "{\"status\":\"refused\",\"reason\":\"NOTES_FILE_WRITE_FAILED: could not write $WORK/outside/notes.json: the command left no plain file with a single link for $WORK/outside/notes.json; nothing was written.\"}" ]; then
     pass 'a refused notes-export answers refused, as the pane reads it'
 else
     fail "notes-export refused: $status, $out"
@@ -971,6 +971,33 @@ if [ "$status" -eq 2 ] && [ "$said" = yes ] && [ ! -e "$WORK/outside/big.json" ]
 FAKE_EXEC_KB=512 KNOSSOS_OUTPUT_LIMIT_MB=1 out_call export-bundle project_1 "--output=$WORK/outside/small.json"
 if [ "$status" -eq 0 ] && [ "$(wc -c < "$WORK/outside/small.json" | tr -d ' ')" -eq 524288 ]; then pass 'an output under the limit is written whole'; else fail "under the limit: $status, $out"; fi
 rm -f "$WORK/outside/small.json"
+# What a hostile container leaves for the host to take: refused before anything is copied, nothing left behind.
+taken_left() { find "$INSTALL" "$(dirname -- "$DATA")" -maxdepth 1 -name '.knossos-taken.*' 2>/dev/null; }
+for shape in hardlink dir fifo; do
+    FAKE_EXEC_SHAPE=$shape out_call export-agent-brief "$PROJECT" "--out=$WORK/outside/$shape.md"
+    if [ "$status" -eq 2 ] && [ "$out" = "knossos: the command left no plain file with a single link for $WORK/outside/$shape.md; nothing was written.
+KNOSSOS_INVALID_ARGUMENT: Unable to write brief to $WORK/outside/$shape.md." ] && [ ! -e "$WORK/outside/$shape.md" ] && [ -z "$(scratch_left)" ] && [ -z "$(taken_left)" ]; then
+        pass "an output left as a $shape is refused before the host takes it, and nothing is left in TMPDIR or beside the install"
+    else
+        fail "$shape output: $status, $out, left $(scratch_left) $(taken_left)"
+    fi
+done
+FAKE_EXEC_WRITE='brief' out_call export-agent-brief "$PROJECT" "--out=$WORK/outside/taken.md"
+if [ "$status" -eq 0 ] && [ "$(cat "$WORK/outside/taken.md")" = brief ] && [ -z "$(taken_left)" ]; then pass 'a plain output is taken out of reach by a rename and written, and the directory it was taken into is removed'; else fail "taken output: $status, $out"; fi
+rm -f "$WORK/outside/taken.md"
+# A copy of the notes file in the way, left there by a command that said it exported: nothing was written, so it is a failure (M-3).
+printf '{"format":"knossos-notes"}\n' > "$WORK/outside/kept.json"
+FAKE_EXEC_SHAPE=untouched out_call export-notes "$PROJECT" "--file=$WORK/outside/kept.json"
+if [ "$status" -eq 2 ] && [ "$out" = "knossos: the file in the way was left as it was; nothing was written to $WORK/outside/kept.json.
+KNOSSOS_RUNTIME_ERROR: NOTES_FILE_WRITE_FAILED: could not write $WORK/outside/kept.json." ]; then
+    pass 'export-notes that left the file in the way untouched is said as a failure, not as an export'
+else
+    fail "untouched notes copy: $status, $out"
+fi
+FAKE_EXEC_SHAPE=untouched out_call notes-export "$PROJECT" "--file=$WORK/outside/kept.json" --json
+case $out in *'{"status":"refused","reason":"NOTES_FILE_WRITE_FAILED: could not write '"$WORK"'/outside/kept.json: the file in the way was left as it was;'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'notes-export that left it untouched without refusing answers refused'; else fail "untouched notes-export: $status, $out"; fi
+rm -f "$WORK/outside/kept.json"
 KNOSSOS_OUTPUT_LIMIT_MB=lots out_call export-bundle project_1 "--output=$WORK/outside/x.json"
 if [ "$status" -eq 1 ] && [ "$out" = "knossos: KNOSSOS_OUTPUT_LIMIT_MB must be a whole number of MB above 0, got 'lots'." ]; then pass 'a limit that is not a number is refused'; else fail "bad limit: $status, $out"; fi
 FAKE_EXEC_WRITE=x out_call export-bundle project_1 "--output=$DATA/bundle.json"

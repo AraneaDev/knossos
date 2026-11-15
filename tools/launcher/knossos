@@ -51,10 +51,15 @@
 #     allow-root, claim and move-project change it here, on the host. Nothing
 #     read from it is ever run or expanded unquoted.
 #   - A file a command is told to write is written into a scratch directory in
-#     the graph directory and moved to the path named by the host, which never
-#     follows a link there and takes no more than KNOSSOS_OUTPUT_LIMIT_MB; a
-#     file it is told to read from outside every mount is copied in. See
-#     FILE_ROLES below.
+#     the graph directory and moved to the path named by the host: only a
+#     plain file with one link, taken out of every container's reach by a
+#     rename before a byte of it is copied, no more than
+#     KNOSSOS_OUTPUT_LIMIT_MB, and checked at the destination before success
+#     is said. A file it is told to read from outside every mount is copied
+#     in. See FILE_ROLES below.
+#   - Apart from that scratch handling, the host never opens, reads, follows
+#     or creates anything under the graph directory or the project by a name
+#     a container could have changed.
 #   - The enricher list, <install dir>/settings/enrichers.json, names commands
 #     a scan starts, so it lies where every container only reads it: a project
 #     that could register one would run code in every other project's
@@ -1315,6 +1320,8 @@ OUTPUT_DEST=''
 # The `<device>:<inode>` of the copy of a notes file in the way that the host
 # put in the scratch directory, so it can tell whether the command replaced it.
 OUTPUT_PLACED=''
+# The directory the output is taken into, out of every container's reach (take_out_of_reach).
+TAKEN=''
 # The most a command may write for the host to move out of a container, in
 # MB. The largest legitimate output is a graph bundle, which the core builds
 # in memory as one string under its 1 GB memory limit, so no export it can
@@ -1327,6 +1334,7 @@ OUTPUT_LIMIT_BYTES=$((OUTPUT_LIMIT_MB * 1048576))
 # shellcheck disable=SC2317,SC2329 # run from the EXIT trap
 cleanup_files() {
     [ -z "$PRIVATE" ] || rm -rf -- "$PRIVATE"
+    [ -z "$TAKEN" ] || rm -rf -- "$TAKEN"
     [ -z "$SCRATCH" ] || rm -rf -- "$SCRATCH"
 }
 scratch() {
@@ -1687,42 +1695,100 @@ set -- exec -i -w "$WORKDIR" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
 forward() {
     "$RUNTIME" exec "$NAME" "$IN_IMAGE/tools/launcher/idle-stop" --signal "$1" "$CALL_ID" >/dev/null 2>&1 </dev/null
 }
+# take_out_of_reach: a directory the host makes for the one file it takes out
+# of the scratch directory, on the scratch directory's filesystem, so that
+# taking it is a rename and never a copy, and outside the graph directory,
+# so that no container can reach it after the rename: the install directory
+# (read-only in every container), else the directory around the graph. With
+# neither on that filesystem, nothing is taken out and the output is refused.
+# Sets TAKEN (declared with the scratch state), or leaves it empty.
+take_out_of_reach() {
+    device=$(dir_id "$SCRATCH") || device=''
+    device=${device%%:*}
+    [ -n "$device" ] || return 0
+    for base in "$INSTALL_REAL" "$(dirname -- "$DATA_REAL")"; do
+        here=$(dir_id "$base") || continue
+        [ "${here%%:*}" = "$device" ] || continue
+        TAKEN=$( (umask 077 && mktemp -d "$base/.knossos-taken.XXXXXX") 2>/dev/null) || TAKEN=''
+        [ -z "$TAKEN" ] || return 0
+    done
+}
+
 # finish_output: once the command has succeeded, the file it wrote goes to the
-# path that was named, or nothing does. It is moved out of the scratch
-# directory by rename from inside it (a link there is moved as a link, never
-# followed), with the size the host takes bounded, checked in the private
-# directory to be a plain file, copied into a new file beside the destination
-# and renamed over it, which replaces a name without following a link there.
-# A copy of a notes file the host put there and the command left in place
-# (it refused to replace it) is not written back. Sets `refusal` to why
-# nothing was written when it returns 1.
+# path that was named, or nothing does. Sets `refusal` to why nothing was
+# written when it returns 1. In order:
+#   1. A copy of a notes file in the way that is still there means the command
+#      left the file as it was: fine only when it said it refused (notes-export
+#      answers `refused` with exit 0); otherwise nothing was written.
+#   2. In the scratch directory, which every container can write, `output`
+#      must be a plain file with one link and within the limit. Anything else
+#      (a directory, FIFO, device, symlink, a hard-linked file) is refused
+#      before the host takes anything.
+#   3. It is taken out of every container's reach by a rename from inside the
+#      pinned scratch directory into TAKEN, on the same filesystem, so no byte
+#      is copied while a container could still change it, and no new link to
+#      it can be made (a link across mounts fails).
+#   4. There it is checked again: a plain file, one link, within the limit.
+#   5. At most the limit, plus one block, is copied into the private
+#      directory: a file a container still holds open for writing cannot grow
+#      what the host copies.
+#   6. That private copy is written to a new file beside the destination and
+#      renamed over it, which replaces the name without following a link
+#      there, and the destination is compared with it, size and checksum,
+#      before any success is said.
 finish_output() {
     refusal=''
     limit_text="$OUTPUT_LIMIT_MB MB, the most the host moves out of a container (KNOSSOS_OUTPUT_LIMIT_MB raises it)"
-    if [ -n "$OUTPUT_PLACED" ] && [ "$(in_scratch dir_id output)" = "$OUTPUT_PLACED" ]; then return 0; fi
+    nothing="nothing was written to $OUTPUT_DEST."
+    if [ -n "$OUTPUT_PLACED" ] && [ "$(in_scratch dir_id output)" = "$OUTPUT_PLACED" ]; then
+        if [ "$COMMAND" = notes-export ]; then
+            answer=$(tail -n 1 "$PRIVATE/stdout" 2>/dev/null)
+            case $answer in '{"status":"refused"'* | refused) return 0 ;; esac
+        fi
+        refusal="the file in the way was left as it was; $nothing"
+        return 1
+    fi
+    if ! in_scratch test -e output && ! in_scratch test -L output; then
+        refusal="the command left no file for $OUTPUT_DEST; nothing was written."
+        return 1
+    fi
+    if [ -z "$(in_scratch find output -prune -type f -links 1 2>/dev/null)" ]; then
+        refusal="the command left no plain file with a single link for $OUTPUT_DEST; nothing was written."
+        return 1
+    fi
     if [ -n "$(in_scratch find output -prune -size +"${OUTPUT_LIMIT_BYTES}c" 2>/dev/null)" ]; then
         refusal="the command wrote more than $limit_text, for $OUTPUT_DEST; nothing was written."
         return 1
     fi
-    # `ulimit -f` bounds the copy mv makes when the private directory is on
-    # another filesystem, in 512-byte blocks, should the file grow meanwhile.
-    # shellcheck disable=SC2016 # the inner sh expands its own arguments
-    if ! in_scratch sh -c 'ulimit -f "$2" 2>/dev/null; if [ -e output ] || [ -L output ]; then mv -f -- output "$1/output"; fi' _ "$PRIVATE" $((OUTPUT_LIMIT_BYTES / 512 + 1)) 2>/dev/null; then
-        refusal="the scratch directory $SCRATCH changed while the command ran, or the command wrote more than $limit_text; nothing was written to $OUTPUT_DEST."
+    take_out_of_reach
+    if [ -z "$TAKEN" ]; then
+        refusal="neither the install directory nor the directory around the graph directory $DATA_REAL is on the graph directory's filesystem, so the host cannot take the file out of every container's reach without copying it; $nothing"
         return 1
     fi
-    if [ ! -e "$PRIVATE/output" ] && [ ! -L "$PRIVATE/output" ]; then return 0; fi
-    if [ -L "$PRIVATE/output" ] || [ ! -f "$PRIVATE/output" ]; then
-        refusal="the command left no plain file for $OUTPUT_DEST; nothing was written."
+    if ! in_scratch mv -f -- output "$TAKEN/output" 2>/dev/null; then
+        refusal="the scratch directory $SCRATCH changed while the command ran; $nothing"
         return 1
     fi
+    if [ -L "$TAKEN/output" ] || [ ! -f "$TAKEN/output" ] || [ -z "$(find "$TAKEN/output" -prune -type f -links 1 2>/dev/null)" ]; then
+        refusal="the command left no plain file with a single link for $OUTPUT_DEST; nothing was written."
+        return 1
+    fi
+    if [ -n "$(find "$TAKEN/output" -prune -size +"${OUTPUT_LIMIT_BYTES}c" 2>/dev/null)" ]; then
+        refusal="the command wrote more than $limit_text, for $OUTPUT_DEST; nothing was written."
+        return 1
+    fi
+    if ! dd if="$TAKEN/output" of="$PRIVATE/output" bs=1048576 count=$((OUTPUT_LIMIT_MB + 1)) 2>/dev/null; then
+        refusal="could not read what the command wrote; $nothing"
+        return 1
+    fi
+    rm -f -- "$TAKEN/output"
     if [ -n "$(find "$PRIVATE/output" -prune -size +"${OUTPUT_LIMIT_BYTES}c" 2>/dev/null)" ]; then
         refusal="the command wrote more than $limit_text, for $OUTPUT_DEST; nothing was written."
         return 1
     fi
     parent=$(dirname -- "$OUTPUT_DEST")
     if ! written=$(mktemp "$parent/.knossos-output.XXXXXX" 2>/dev/null); then
-        refusal="could not write in $parent; nothing was written to $OUTPUT_DEST."
+        refusal="could not write in $parent; $nothing"
         return 1
     fi
     mode=$(printf '%o' $((0666 & ~0$(umask))))
@@ -1730,6 +1796,11 @@ finish_output() {
         || [ -L "$OUTPUT_DEST" ] || [ -d "$OUTPUT_DEST" ] || ! mv -f -- "$written" "$OUTPUT_DEST"; then
         rm -f -- "$written"
         refusal="could not write $OUTPUT_DEST; nothing was written."
+        return 1
+    fi
+    if [ -L "$OUTPUT_DEST" ] || [ ! -f "$OUTPUT_DEST" ] \
+        || [ "$(cksum < "$OUTPUT_DEST" 2>/dev/null)" != "$(cksum < "$PRIVATE/output")" ]; then
+        refusal="$OUTPUT_DEST does not hold what the command wrote after the host wrote it; check it before you use it."
         return 1
     fi
 }
