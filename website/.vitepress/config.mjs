@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
 import { REPOSITORY, repositoryLinks } from "./links.mjs";
+import { githubSlug } from "./slug.mjs";
 import {
     SCRATCH_DIRECTORIES,
     brokenIndexLinks,
@@ -97,17 +98,8 @@ export default defineConfig({
     vite: { plugins: [resolveFromSite] },
     head: [["meta", { name: "color-scheme", content: "light dark" }]],
     markdown: {
-        // The pages are written for GitHub, whose heading anchors keep underscores
-        // and drop apostrophes; VitePress's own slugs differ, and a link such as
-        // `page.md#one-files-context` would land on the top of the page.
-        // Same rule as tools/documentation-check.php, which checks the links.
-        anchor: {
-            slugify: (text) =>
-                text
-                    .toLowerCase()
-                    .replace(/[^\p{L}\p{N}_ -]/gu, "")
-                    .replace(/ /g, "-"),
-        },
+        // GitHub's anchors, not VitePress's: see slug.mjs.
+        anchor: { slugify: githubSlug },
         config: (md) => {
             md.use(repositoryLinks({ docsDir, ref }));
             // Vue reads {{ }} in a page as an expression. Fenced code is exempt

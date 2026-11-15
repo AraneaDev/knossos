@@ -591,6 +591,7 @@ php	tests/phpunit/Cli/DependencyFanoutTest.php
 php	tests/phpunit/Cli/DockerIgnoreTest.php
 php	tests/phpunit/Cli/DocsSiteWorkflowTest.php
 php	tests/phpunit/Cli/DocstringCoverageTest.php
+php	tests/phpunit/Cli/DocumentationAnchorTest.php
 php	tests/phpunit/Cli/DocumentationIndexTest.php
 php	tests/phpunit/Cli/DocumentationTest.php
 php	tests/phpunit/Cli/EnricherCommandTest.php
@@ -1566,6 +1567,7 @@ js	web/server.ts
 js	website/.vitepress/config.mjs
 js	website/.vitepress/links.mjs
 js	website/.vitepress/navigation.mjs
+js	website/.vitepress/slug.mjs
 js	website/check.mjs
 js	workers/typescript/bin/worker.js
 js	workers/typescript/src/__tests__/ambient-declarations.test.js

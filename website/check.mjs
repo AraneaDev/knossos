@@ -3,11 +3,13 @@
 //
 //   node check.mjs [--dist=DIR]
 //
-// KNOSSOS_DOCS_REF must be the value the build ran with (default: main).
+// The ref the build documented is read from the built index page. KNOSSOS_DOCS_REF,
+// when set, must equal it; unset, the check goes by what the build did.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { REPOSITORY, repositoryLink } from "./.vitepress/links.mjs";
+import { githubSlug } from "./.vitepress/slug.mjs";
 import {
     allPages,
     readIndex,
@@ -23,7 +25,6 @@ const distArgument = process.argv.find((argument) =>
 const dist = distArgument
     ? path.resolve(distArgument.slice(7))
     : path.join(here, ".vitepress/dist");
-const ref = process.env.KNOSSOS_DOCS_REF || "main";
 const BASE = "/knossos/";
 
 const failures = [];
@@ -32,6 +33,21 @@ const fail = (message) => failures.push(message);
 if (!fs.existsSync(dist)) {
     console.error(`no build at ${dist}; run npm run build first`);
     process.exit(2);
+}
+
+// The ref the build used, as it shows in the link from the index to README.md.
+const built = path.join(dist, "all-pages.html");
+const detected = fs.existsSync(built)
+    ? new RegExp(`href="${REPOSITORY}/blob/([^/"]+)/README.md"`).exec(
+          fs.readFileSync(built, "utf8"),
+      )?.[1]
+    : undefined;
+const asked = process.env.KNOSSOS_DOCS_REF || undefined;
+const ref = detected ?? asked ?? "main";
+if (asked !== undefined && detected !== undefined && asked !== detected) {
+    fail(
+        `KNOSSOS_DOCS_REF is ${asked} but the build documented ${detected}; run the check with the value the build ran with`,
+    );
 }
 
 /** The built file of a page's Markdown source. */
@@ -265,10 +281,24 @@ for (const name of fs.readdirSync(path.join(dist, "assets"))) {
     }
 }
 
+// 6. The slug rule is GitHub's: it keeps combining marks, underscores and non-ASCII letters.
+for (const [text, slug] of [
+    ["One file's context", "one-files-context"],
+    ["`file_context` tool", "file_context-tool"],
+    ["Cafe\u0301 Re\u0301sume\u0301", "cafe\u0301-re\u0301sume\u0301"],
+    ["Why? / How it works", "why--how-it-works"],
+]) {
+    if (githubSlug(text) !== slug) {
+        fail(
+            `githubSlug(${JSON.stringify(text)}) is ${JSON.stringify(githubSlug(text))}, GitHub gives ${JSON.stringify(slug)}`,
+        );
+    }
+}
+
 if (failures.length > 0) {
     console.error(failures.join("\n"));
     process.exit(1);
 }
 console.log(
-    `site check: ${html.size} pages, ${leaving} links to GitHub at ${ref}, ${internal} internal links (${anchors} with an anchor, ${indexes} to a directory index), search index present`,
+    `site check: ${html.size} pages, ${leaving} links to GitHub at ${ref}, ${internal} internal links (${anchors} with an anchor, ${indexes} to a directory index), search index present; ref ${ref} ${asked === undefined ? "(read from the build)" : "(KNOSSOS_DOCS_REF)"}`,
 );
