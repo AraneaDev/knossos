@@ -50,6 +50,7 @@ type Page = {
   focusedOn(element: string): void
   key(event: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; inField: boolean }): { focus?: string; press?: string } | null
   connect(): void
+  stop(): void
 }
 
 /** The field being edited: its id, its text and the cursor's place in it (a string index). */
@@ -171,8 +172,6 @@ export function startClient(o: ClientOptions): Client {
       inner.onerror = () => {
         streams.delete(inner)
         if (closed) return
-        persistent = RECONNECTING
-        paint()
         handler()
       }
     }
@@ -191,6 +190,12 @@ export function startClient(o: ClientOptions): Client {
     size: () => ({ cols: size().columns, rows: size().rows }),
     theme: () => o.theme,
     after: o.after,
+    // A stream that ended, failed or went silent: said on the toast line until the next event arrives.
+    lost: () => {
+      if (closed) return
+      persistent = RECONNECTING
+      paint()
+    },
     draw: (frame: Frame) => {
       // A field that left the frame is no longer edited.
       if (editing !== null && !fieldsOf(frame).has(editing.id)) editing = null
@@ -407,6 +412,7 @@ export function startClient(o: ClientOptions): Client {
     },
     close() {
       closed = true
+      page.stop()
       for (const stream of streams) stream.close()
     },
     status(text) {

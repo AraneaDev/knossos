@@ -327,6 +327,18 @@ describe('startServer', () => {
     await running.close()
   })
 
+  it('sends each page a keep-alive event while nothing else happens', async () => {
+    running = await startServer({ root: scratch(), pluginRoot: fixturePluginRoot(), dataDir: scratch(), port: 0, aliveMs: 20 })
+    await running.ready
+    const base = running.url.slice(0, running.url.indexOf('?'))
+    const raw = await fetch(`${base}events?t=${running.token}&id=a&cols=100&rows=40`)
+    const reader = raw.body!.getReader()
+    let text = ''
+    // Two keep-alives, as events a page sees, not comments it never does.
+    while (text.split('data: {"type":"alive"}').length < 3) text += new TextDecoder().decode((await reader.read()).value)
+    await reader.cancel()
+  })
+
   it('says it is a pane server in every answer, the refused ones too', async () => {
     const server = await started()
     const base = server.url.slice(0, server.url.indexOf('?'))

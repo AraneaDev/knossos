@@ -61,7 +61,7 @@
     "tools/eval/run.mjs": 638,
     "tools/eval/run.spec.mjs": 1184,
     "tools/pane-preview.mjs": 942,
-    "tui/client.spec.ts": 673,
+    "tui/client.spec.ts": 648,
     "workers/php/src/FactCollector.php": 1304,
     "workers/php/src/ReceiverTypeInference.php": 652,
     "workers/python/bin/knossos_python/collector.py": 912,

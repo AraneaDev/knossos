@@ -41,10 +41,10 @@ import type { PageEvent, Size } from './hub'
 import { PANE_HEADER, addressOf } from './lock'
 import { webPort } from './port'
 
+/** How often each page's stream carries a keep-alive: the page's own ALIVE_MS (web/public/app.mjs), which a page counts on to tell a silent stream. */
+export const ALIVE_MS = 10_000
 /** How often the checkout's commit is read again while a page is connected, beside every word from the watcher. */
 const HEAD_POLL_MS = 5_000
-/** How often an idle event stream says it is still there, so a proxy or a sleeping laptop notices a dead one. */
-const KEEPALIVE_MS = 20_000
 /** The largest input a page sends. */
 const MAX_BODY = 64 * 1024
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), 'public')
@@ -149,6 +149,8 @@ export async function startServer(o: {
   token?: string
   /** The command files open in (see `editorCommand`); VS Code's when null. */
   editor?: string | null
+  /** How often each page's stream carries a keep-alive ({@link ALIVE_MS} by default). */
+  aliveMs?: number
   /** How often the checkout's commit is read while a page is connected ({@link HEAD_POLL_MS} by default). */
   headPollMs?: number
   /** Where the server's log lines go (`console.error` when absent). */
@@ -290,7 +292,8 @@ export async function startServer(o: {
     // A frame still being laid out when `close` ended the stream is dropped, not written after the end.
     const write = (text: string) => void (res.writableEnded || res.destroyed || res.write(text))
     const send = (event: PageEvent) => write(`data: ${JSON.stringify(event)}\n\n`)
-    const alive = setInterval(() => write(': alive\n\n'), KEEPALIVE_MS)
+    // An event, not a comment: a page sees only events, and takes a stream that stays silent for a while as lost.
+    const alive = setInterval(() => send({ type: 'alive' }), o.aliveMs ?? ALIVE_MS)
     res.on('close', () => {
       clearInterval(alive)
       streams.delete(res)
