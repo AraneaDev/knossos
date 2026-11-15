@@ -143,6 +143,53 @@ export function createPage(o) {
         },
         connect() {
             if (stopped) return;
+            // Both are this connect's own: a retry comes back to it, as one call of it scheduling the next.
+            /** No stream could be opened: told as a loss, and tried again after the usual wait. */
+            const failed = () => {
+                if (stopped) return;
+                o.lost?.();
+                later(retryDelay(attempt++), () => page.connect());
+            };
+            /** Opens the event stream, looked after until it is lost. */
+            const open = () => {
+                const size = o.size();
+                const query = new URLSearchParams({
+                    t: o.token,
+                    id: o.id,
+                    cols: String(size.cols),
+                    rows: String(size.rows),
+                    theme: o.theme(),
+                });
+                const source = new o.EventSource(`/events?${query}`);
+                let heard = 0;
+                let gone = false;
+                const lose = () => {
+                    if (gone) return;
+                    gone = true;
+                    if (o.prove !== undefined) trusted = false;
+                    // The stream would retry on its own at once; the page waits instead, longer each time.
+                    source.close();
+                    o.lost?.();
+                    later(retryDelay(attempt++), () => page.connect());
+                };
+                // A stream that says nothing for a whole period is lost too, as one whose server was suspended is: it
+                // never ends by itself. The same holds for one that never opens.
+                const look = (seen) =>
+                    later(SILENT_MS, () => {
+                        if (gone || stopped) return;
+                        if (heard === seen && sendsAlive) return lose();
+                        look(heard);
+                    });
+                source.onmessage = (message) => {
+                    heard++;
+                    attempt = 0;
+                    const event = JSON.parse(message.data);
+                    if (event.type === "alive") sendsAlive = true;
+                    received(event);
+                };
+                source.onerror = lose;
+                look(heard);
+            };
             if (o.prove === undefined) return open();
             // The token goes only to a server that proved it is this project's pane; one that cannot is tried again later.
             void o
@@ -189,52 +236,6 @@ export function createPage(o) {
             return { press };
         },
     };
-    /** No stream could be opened: told as a loss, and tried again after the usual wait. */
-    function failed() {
-        if (stopped) return;
-        o.lost?.();
-        later(retryDelay(attempt++), () => page.connect());
-    }
-    /** Opens the event stream, looked after until it is lost. */
-    function open() {
-        const size = o.size();
-        const query = new URLSearchParams({
-            t: o.token,
-            id: o.id,
-            cols: String(size.cols),
-            rows: String(size.rows),
-            theme: o.theme(),
-        });
-        const source = new o.EventSource(`/events?${query}`);
-        let heard = 0;
-        let gone = false;
-        const lose = () => {
-            if (gone) return;
-            gone = true;
-            if (o.prove !== undefined) trusted = false;
-            // The stream would retry on its own at once; the page waits instead, longer each time.
-            source.close();
-            o.lost?.();
-            later(retryDelay(attempt++), () => page.connect());
-        };
-        // A stream that says nothing for a whole period is lost too, as one whose server was suspended is: it
-        // never ends by itself. The same holds for one that never opens.
-        const look = (seen) =>
-            later(SILENT_MS, () => {
-                if (gone || stopped) return;
-                if (heard === seen && sendsAlive) return lose();
-                look(heard);
-            });
-        source.onmessage = (message) => {
-            heard++;
-            attempt = 0;
-            const event = JSON.parse(message.data);
-            if (event.type === "alive") sendsAlive = true;
-            received(event);
-        };
-        source.onerror = lose;
-        look(heard);
-    }
     function received(event) {
         if (event.type === "frame") {
             page.frame = event;
