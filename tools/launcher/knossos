@@ -163,22 +163,6 @@ NEWLINE='
 # A path's physical form, or nothing when it is not a directory that can be entered.
 physical() { (CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P); }
 
-# The physical form of a directory that may not exist yet: its nearest
-# existing ancestor resolved, the rest appended as written.
-resolved() {
-    if found=$(physical "$1") && [ -n "$found" ]; then
-        printf '%s' "$found"
-        return 0
-    fi
-    case $1 in
-        / | '') printf '/' ;;
-        *)
-            parent=$(resolved "$(dirname -- "$1")")
-            printf '%s/%s' "${parent%/}" "${1##*/}"
-            ;;
-    esac
-}
-
 # inside PATH DIR: whether PATH is DIR or lies under it. Every path is under /.
 inside() {
     [ "$2" = / ] && return 0
@@ -236,45 +220,51 @@ roots() {
     ' "$KNOSSOS_ROOTS_FILE" 2>/dev/null
 }
 
-# The project root for a directory: the nearest ancestor (the directory itself
-# included) the roots file lists, else the directory. Only an entry that is an
-# absolute path to an existing directory counts, compared as written and in
-# its physical form; each entry is one line, whatever characters it holds.
-project_root() {
-    roots | {
-        best=''
-        while IFS= read -r entry; do
-            while [ "${#entry}" -gt 1 ] && [ "${entry%/}" != "$entry" ]; do entry=${entry%/}; done
-            case $entry in /*) ;; *) continue ;; esac
-            [ -d "$entry" ] || continue
-            real=$(physical "$entry")
-            for candidate in "$entry" "$real"; do
-                # The filesystem root as an entry widens nothing: it would mount everything.
-                if [ -z "$candidate" ] || [ "$candidate" = / ]; then continue; fi
-                if inside "$1" "$candidate"; then
-                    if [ "${#candidate}" -gt "${#best}" ]; then best=$candidate; fi
-                    break
-                fi
-            done
-        done
-        printf '%s' "${best:-$1}"
-    }
-}
-
 # Whether a directory may be mounted: not /, not the home directory and not
-# above it. Prints the reason when it may not.
+# above it. Prints the reason when it may not. Given physical paths only.
 too_wide() {
     if [ "$1" = / ]; then
         printf 'is the filesystem root'
         return 0
     fi
-    home=''
-    [ -z "${HOME:-}" ] || home=$(physical "$HOME")
-    if [ -n "$home" ] && inside "$home" "$1"; then
-        if [ "$1" = "$home" ]; then printf 'is your home directory'; else printf 'contains your home directory'; fi
+    if [ -n "$HOME_REAL" ] && inside "$HOME_REAL" "$1"; then
+        if [ "$1" = "$HOME_REAL" ]; then printf 'is your home directory'; else printf 'contains your home directory'; fi
         return 0
     fi
     return 1
+}
+
+# The home directory, physical, or nothing when HOME does not name one. Only a
+# start refuses without it (see below); stop and self-update mount nothing.
+HOME_REAL=''
+if [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then HOME_REAL=$(physical "$HOME"); fi
+
+# project_root DIR (physical): prints the project root, then on a second line
+# the roots entry as written when it chose that root (empty otherwise). The
+# root is the nearest ancestor of DIR (DIR itself included) that the roots
+# file lists, else DIR. An entry counts only when it is an absolute path to an
+# existing directory, and it is compared in its physical form, since that is
+# what gets mounted. An entry the mount rule refuses (/, the home directory
+# or above it, which a native install grants when it is run from the home
+# directory) is skipped, so a narrower entry or DIR itself is used instead.
+project_root() {
+    roots | {
+        best=''
+        written=''
+        while IFS= read -r entry; do
+            while [ "${#entry}" -gt 1 ] && [ "${entry%/}" != "$entry" ]; do entry=${entry%/}; done
+            case $entry in /*) ;; *) continue ;; esac
+            [ -d "$entry" ] || continue
+            candidate=$(physical "$entry")
+            [ -n "$candidate" ] || continue
+            if too_wide "$candidate" >/dev/null; then continue; fi
+            if inside "$1" "$candidate" && [ "${#candidate}" -gt "${#best}" ]; then
+                best=$candidate
+                written=$entry
+            fi
+        done
+        printf '%s\n%s\n' "${best:-$1}" "$written"
+    }
 }
 
 # stop [--all]: the containers of this installation for one project root, or
@@ -306,8 +296,11 @@ stop_containers() {
 image_gone() {
     "$RUNTIME" image inspect "$IMAGE" >/dev/null 2>&1 </dev/null && return 1
     "$RUNTIME" info >/dev/null 2>&1 </dev/null || die "the $RUNTIME daemon is not running; start it and try again."
-    die "the image $IMAGE is gone from this host: run knossos self-update, or re-run the installer."
+    die "the image $IMAGE is gone from this host: run knossos self-update to fetch it again, or re-run the installer."
 }
+
+# The first line of project_root's answer.
+root_of() { project_root "$1" | head -n 1; }
 
 HERE=$(pwd -P 2>/dev/null) || die 'the working directory cannot be read'
 
@@ -317,11 +310,11 @@ case ${1-} in
     stop)
         case ${2-} in
             --all) stop_containers --all ;;
-            '') stop_containers "$(project_root "$HERE")" ;;
+            '') stop_containers "$(root_of "$HERE")" ;;
             *)
                 given=$(physical "$2")
                 if [ -z "$given" ] || [ $# -ne 2 ]; then die 'usage: knossos stop [--all | <project directory>]'; fi
-                stop_containers "$(project_root "$given")"
+                stop_containers "$(root_of "$given")"
                 ;;
         esac
         exit
@@ -344,23 +337,57 @@ case ${1-} in
                 [ -n "$future" ] || exit 0
             fi
         fi
-        # The update runs on the host, from the helper in the installed image:
-        # the code in a container cannot replace its own image. The helper is
-        # exec'd, so a signal (the hook's timeout) reaches it, and it deletes
-        # its temporary copy itself, named in KNOSSOS_UPDATE_HELPER.
+        # The update runs on the host, from the helper of the image last
+        # switched to: the code in a container cannot replace its own image.
+        # Every switch leaves a copy beside install.json, so an update still
+        # works when the image itself is gone from the host. An installation
+        # without that copy reads it out of the image. The helper is exec'd, so
+        # a signal (the hook's timeout) reaches it; a temporary copy deletes
+        # itself, named in KNOSSOS_UPDATE_HELPER.
+        if [ -s "$INSTALL_DIR/container-update" ]; then
+            exec sh "$INSTALL_DIR/container-update" self-update "--install-dir=$INSTALL_DIR" "$@"
+        fi
         helper=$(mktemp "${TMPDIR:-/tmp}/knossos-update.XXXXXX") || die 'could not create a temporary file'
         if ! "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$IMAGE" "$IN_IMAGE/tools/launcher/container-update" > "$helper" 2>/dev/null </dev/null \
             || [ ! -s "$helper" ]; then
             rm -f "$helper"
             [ "$quiet" = 0 ] || exit 0
-            image_gone
-            die "could not read the update helper out of $IMAGE; re-run the installer."
+            "$RUNTIME" info >/dev/null 2>&1 </dev/null || die "the $RUNTIME daemon is not running; start it and try again."
+            die "could not read the update helper out of $IMAGE, and $INSTALL_DIR has no copy of it; re-run the installer."
         fi
         KNOSSOS_UPDATE_HELPER=$helper
         export KNOSSOS_UPDATE_HELPER
         exec sh "$helper" self-update "--install-dir=$INSTALL_DIR" "$@"
         ;;
 esac
+
+# From here on a container is started or used, so the mount rule must be able
+# to tell where the home directory is.
+[ -n "$HOME_REAL" ] || die 'container mode needs HOME to point at your home directory, to keep it out of every container; set HOME and try again.'
+
+# Every path the container is given, physical, decided once: the mounts, the
+# environment passed in, the working directory, the container's name and the
+# marker all use these, so each names inside exactly what is mounted. The core
+# keys projects by their real path too (RootGuard::resolve), as native mode does.
+#
+# A directory that does not exist yet is created first, and never through a
+# `..` component, so the directory checked is the one created.
+make_dir() {
+    case $1 in /*) ;; *) die "$2 must be an absolute path in container mode, got $1" ;; esac
+    if [ ! -d "$1" ]; then
+        case /$1/ in */../* | */./*) die "$2 names a directory to create through '..' or '.' ($1); spell it without them." ;; esac
+        mkdir -p -- "$1" 2>/dev/null || die "could not create $1"
+    fi
+    made=$(physical "$1")
+    [ -n "$made" ] || die "could not enter $1"
+}
+INSTALL_REAL=$(physical "$INSTALL_DIR")
+[ -n "$INSTALL_REAL" ] || die "could not enter the install directory $INSTALL_DIR"
+make_dir "$KNOSSOS_DATA_DIR" KNOSSOS_DATA_DIR
+DATA_REAL=$made
+make_dir "$(dirname -- "$KNOSSOS_ROOTS_FILE")" KNOSSOS_ROOTS_FILE
+ROOTS_DIR_REAL=$made
+ROOTS_FILE_REAL="${ROOTS_DIR_REAL%/}/${KNOSSOS_ROOTS_FILE##*/}"
 
 # Where the call works from, and the directory that decides the project root:
 # the working directory, or the path argument of a command that takes a
@@ -397,32 +424,15 @@ if [ "$takes_path" = yes ] && [ $# -ge 2 ]; then
             ;;
     esac
 fi
-ROOT=$(project_root "$TARGET")
-if reason=$(too_wide "$ROOT"); then
-    die "the project root $ROOT $reason, which container mode does not mount; run knossos from inside a project."
-fi
+answer=$(project_root "$TARGET")
+ROOT=${answer%%"$NEWLINE"*}
+LISTED_AS=${answer#*"$NEWLINE"}
 if inside "$HERE" "$ROOT"; then WORKDIR=$HERE; else WORKDIR=$ROOT; fi
 
-# Every directory the container needs, each mounted at its own path. One that
-# lies inside another is already visible through it and is not mounted twice.
-# Each is checked before anything is created or started.
-DATA_DIR=$KNOSSOS_DATA_DIR
-ROOTS_DIR=$(dirname -- "$KNOSSOS_ROOTS_FILE")
-case $DATA_DIR in /*) ;; *) die "KNOSSOS_DATA_DIR must be an absolute path in container mode, got $DATA_DIR" ;; esac
-case $ROOTS_DIR in /*) ;; *) die "KNOSSOS_ROOTS_FILE must be an absolute path in container mode, got $KNOSSOS_ROOTS_FILE" ;; esac
-if reason=$(too_wide "$(resolved "$DATA_DIR")"); then
-    die "KNOSSOS_DATA_DIR $DATA_DIR $reason, which container mode does not mount; point KNOSSOS_DATA_DIR at a directory of its own."
-fi
-if reason=$(too_wide "$(resolved "$ROOTS_DIR")"); then
-    die "the directory of KNOSSOS_ROOTS_FILE ($ROOTS_DIR) $reason, which container mode does not mount; put the roots file in a directory of its own and point KNOSSOS_ROOTS_FILE at it."
-fi
-if reason=$(too_wide "$(resolved "$INSTALL_DIR")"); then
-    die "the install directory $INSTALL_DIR $reason, which container mode does not mount; re-run the installer with --data-dir set to a directory of its own."
-fi
-for directory in "$DATA_DIR" "$ROOTS_DIR"; do
-    mkdir -p -- "$directory" 2>/dev/null || die "could not create $directory"
-done
-
+# Every directory the container needs, each mounted at its own physical path,
+# and only through add_mount: it applies the mount rule to exactly the path it
+# mounts (no /, no home directory, nothing above it). One that lies inside
+# another is already visible through it and is not mounted twice.
 MOUNTS=''
 add_mount() {
     path=$(physical "$1")
@@ -430,6 +440,14 @@ add_mount() {
     case $path in
         *,* | *"$NEWLINE"*) die "a path with a comma or a newline cannot be mounted: $path" ;;
     esac
+    if reason=$(too_wide "$path"); then
+        case $2 in
+            project) die "the project root $path $reason, which container mode does not mount; run knossos from inside a project." ;;
+            data) die "KNOSSOS_DATA_DIR ($KNOSSOS_DATA_DIR) $reason, which container mode does not mount; point KNOSSOS_DATA_DIR at a directory of its own." ;;
+            roots) die "the directory of KNOSSOS_ROOTS_FILE ($path) $reason, which container mode does not mount; put the roots file in a directory of its own and point KNOSSOS_ROOTS_FILE at it." ;;
+            *) die "the install directory $path $reason, which container mode does not mount; re-run the installer with --data-dir set to a directory of its own." ;;
+        esac
+    fi
     kept=''
     while IFS= read -r mounted; do
         [ -n "$mounted" ] || continue
@@ -440,19 +458,18 @@ $MOUNTS
 MOUNTED
     MOUNTS="$kept$path$NEWLINE"
 }
-add_mount "$ROOT"
-add_mount "$DATA_DIR"
-add_mount "$ROOTS_DIR"
-add_mount "$INSTALL_DIR"
-INSTALL_REAL=$(physical "$INSTALL_DIR")
+add_mount "$ROOT" project
+add_mount "$DATA_REAL" data
+add_mount "$ROOTS_DIR_REAL" roots
+add_mount "$INSTALL_REAL" install
 
-NAME="knossos-$(hash12 "$INSTALL_DIR
+NAME="knossos-$(hash12 "$INSTALL_REAL
 $ROOT
-$DATA_DIR
-$KNOSSOS_ROOTS_FILE
+$DATA_REAL
+$ROOTS_FILE_REAL
 $IMAGE")"
-MARKER="$INSTALL_DIR/containers/$NAME"
-{ mkdir -p "$INSTALL_DIR/containers" 2>/dev/null && : > "$MARKER" 2>/dev/null; } \
+MARKER="$INSTALL_REAL/containers/$NAME"
+{ mkdir -p "$INSTALL_REAL/containers" 2>/dev/null && : > "$MARKER" 2>/dev/null; } \
     || die "could not write $MARKER"
 
 # Start the container unless it runs. Two calls may get here at once: the
@@ -465,8 +482,8 @@ start_container() {
         --network none --user "$(id -u):$(id -g)"
     if [ "$RUNTIME" = podman ]; then set -- "$@" --userns=keep-id; fi
     set -- "$@" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
-        -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_DIR" \
-        -e "KNOSSOS_DATA_DIR=$KNOSSOS_DATA_DIR" -e "KNOSSOS_ROOTS_FILE=$KNOSSOS_ROOTS_FILE"
+        -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_REAL" \
+        -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL"
     while IFS= read -r mounted; do
         [ -n "$mounted" ] || continue
         set -- "$@" --mount "type=bind,source=$mounted,target=$mounted"
@@ -474,8 +491,9 @@ start_container() {
 $MOUNTS
 MOUNTED
     # What the host runs from the install directory, read-only over the
-    # read-write mount: the plugin's hooks and the record of the image.
-    for protected in "$INSTALL_REAL/plugin" "$INSTALL_REAL/install.json"; do
+    # read-write mount: the plugin's hooks, the update helper and the record
+    # of the image.
+    for protected in "$INSTALL_REAL/plugin" "$INSTALL_REAL/container-update" "$INSTALL_REAL/install.json"; do
         if [ -e "$protected" ]; then set -- "$@" --mount "type=bind,source=$protected,target=$protected,readonly"; fi
     done
     set -- "$@" --entrypoint "$IN_IMAGE/tools/launcher/idle-stop" "$IMAGE" "$MARKER"
@@ -503,31 +521,56 @@ MOUNTED
 }
 start_container
 
+# wants_terminal COMMAND: whether the call gets `-t`. Only when stdin and
+# stdout are both terminals, as for an interactive `knossos tui`, and never
+# for `serve`, whose JSON-RPC stream a TTY would corrupt.
+# KNOSSOS_TEST_TERMINALS (`<stdin>,<stdout>`, each yes or no) stands in for
+# the two terminal checks in tests, which have no terminal.
+wants_terminal() {
+    [ "${1-}" != serve ] || return 1
+    if [ -n "${KNOSSOS_TEST_TERMINALS:-}" ]; then
+        [ "$KNOSSOS_TEST_TERMINALS" = yes,yes ]
+        return
+    fi
+    [ -t 0 ] && [ -t 1 ]
+}
+
 # The call itself. `-i` always, so the MCP server and anything piped in get
-# their stdin; `-t` only when both ends are a terminal, as for an interactive
-# `knossos tui`, because a TTY would corrupt a JSON-RPC stream. idle-stop
-# --run records the command's process id inside the container, so a signal
-# sent to this launcher is passed on to the command itself: the runtime's exec
-# client does not forward one. The exit status is the command's.
+# their stdin; `-t` as wants_terminal decides. idle-stop --run records the
+# command's process id inside the container, so a signal sent to this
+# launcher is passed on to the command itself: the runtime's exec client does
+# not forward one. The exit status is the command's.
 #
 # The list is built from its end: the command and its arguments stay as they
 # are, and every option goes in front of them.
 CALL_ID="$$-$(date +%s 2>/dev/null)"
+terminal=no
+if wants_terminal "${1-}"; then terminal=yes; fi
 set -- "$NAME" "$IN_IMAGE/tools/launcher/idle-stop" --run "$CALL_ID" "$IN_IMAGE/bin/knossos" "$@"
 # A caller's other KNOSSOS_* settings reach the command too, by name, as they
 # would in native mode.
 for variable in $(env | sed -n 's/^\(KNOSSOS_[A-Za-z0-9_]*\)=.*/\1/p' | sort -u); do
     case $variable in
-        KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN) ;;
+        KNOSSOS_DATA_DIR | KNOSSOS_ROOTS_FILE | KNOSSOS_INSTALL_DIR | KNOSSOS_CONTAINER | KNOSSOS_CONTAINER_INSTALL_DIR | KNOSSOS_BIN | KNOSSOS_TEST_TERMINALS) ;;
+        KNOSSOS_ALLOWED_ROOTS)
+            if [ -z "$LISTED_AS" ] || [ "$LISTED_AS" = "$ROOT" ]; then set -- -e "$variable" "$@"; fi
+            ;;
         *) set -- -e "$variable" "$@" ;;
     esac
 done
-if [ -t 0 ] && [ -t 1 ]; then
+# A root the roots file names through a symlink: inside, that spelling leads
+# nowhere (only the physical target is mounted), so the server would not count
+# it as allowed. Its physical form is added to the allowed roots, which grants
+# nothing the roots file did not.
+if [ -n "$LISTED_AS" ] && [ "$LISTED_AS" != "$ROOT" ]; then
+    set -- -e "KNOSSOS_ALLOWED_ROOTS=${KNOSSOS_ALLOWED_ROOTS:+$KNOSSOS_ALLOWED_ROOTS:}$ROOT" "$@"
+fi
+if [ "$terminal" = yes ]; then
     set -- -t -e "TERM=${TERM:-xterm}" "$@"
 fi
 set -- exec -i -w "$WORKDIR" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
-    -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_DIR" \
-    -e "KNOSSOS_DATA_DIR=$KNOSSOS_DATA_DIR" -e "KNOSSOS_ROOTS_FILE=$KNOSSOS_ROOTS_FILE" "$@"
+    -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_REAL" \
+    -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL" "$@"
 
 # shellcheck disable=SC2317,SC2329 # called from the traps below
 forward() {
