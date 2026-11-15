@@ -24,7 +24,7 @@ tab that lists them with the marker on the first item: `components` opens Hubs,
 `boundaries` opens Boundaries, `cycles` opens Cycles, and `policy`,
 `diagnostics` and `dead code` open Issues on their first violation, diagnostic
 or candidate. When Issues lists none of what the figure counts (a policy total
-whose violations are all `+N not listed`, say), the tab opens at its top with
+whose violations are all `+N more`, say), the tab opens at its top with
 the marker on its first row, whichever kind that is. At zero there is nothing to list, and the label is plain. `max
 degree` is a single figure, so it is always plain.
 
@@ -91,7 +91,8 @@ with its boundary and three degrees:
 | `out`   | its dependencies on other components                        |
 | `cross` | those of its dependencies, in or out, that cross a boundary |
 
-The bar follows the sorted column, and the title says which (`sorted by in`).
+The bar follows the sorted column, and the note at the right of the title says
+which (`sorted by in`).
 `◆` marks a hotspot that is not also a hub. Methods read `Class::method`. The
 list holds the fifty most depended on, and the note says `partial` when the
 walk that ranks them stopped at its time limit.
@@ -182,7 +183,7 @@ note says how many members it has.
   a narrow pane, ten on a medium one and sixteen on a wide one. `o` on the fold
   unfolds it.
 - Members the dashboard did not list (it lists forty per cycle) close the loop
-  as one `+N not listed` box.
+  as one `+N more` box.
 - Below 50 columns, the drawing becomes the chain as text and a member a row.
 
 **All cycles** lists the ten largest, each with its member count and the
@@ -208,7 +209,7 @@ Issues gathers what needs fixing, one card each, in the order a pane this wide s
 - **Policy violations**: each declared policy violation, with the offending
   file and line.
 - **Diagnostics**: the scan's errors and warnings, the first twenty, then
-  `+N not listed`; notes are counted, never listed. Each row ends in its path
+  `+N more`; notes are counted, never listed. Each row ends in its path
   from the project root and its line, cut from the start where the row is
   short, then the scanner or enricher that recorded it (`· typescript`, or
   `· source unknown`). A message longer than one line ends in `…`. The marker

@@ -35,7 +35,7 @@ describe('the Churn tab', () => {
 
   it('ranks the files by commits times dependents, the nine highest by their rank, each opening its file', () => {
     const t = text(state(answer(12)))
-    expect(t).toMatch(/Churn hotspots · commits × dependents +12 files/)
+    expect(t).toMatch(/Churn hotspots +12 files · by commits × dependents/)
     expect(t).toMatch(/1 src\/a\/rather\/deep\/directory\/Service0\.php .* 30 +300/)
     expect(t).toMatch(/9 src\/a\/rather\/deep\/directory\/Service8\.php/)
     // The tenth has no rank: only nine are marked on the scatter.
@@ -58,7 +58,7 @@ describe('the Churn tab', () => {
     // The axis from the fewest dependents listed, the commits' ends labelled under it.
     expect(plot[8]).toMatch(/^201 │/)
     expect(rawText(rows[9]!)).toMatch(/^ {4}╰─+$/)
-    expect(rawText(rows[10]!)).toMatch(/0 +commits → +30$/)
+    expect(rawText(rows[10]!)).toMatch(/0 +commits → · dependents ↑ +30$/)
   })
 
   // A sweep over every width and height: seconds under coverage, so it gets its own bound rather than the default 5 s.

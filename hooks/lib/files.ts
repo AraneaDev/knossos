@@ -17,7 +17,7 @@ import { boundaryLabel, NO_HUES } from './palette'
 import type { Hues } from './palette'
 import { baseName } from './paths'
 import { blank, dimRow, inList, notListedRow } from './rows'
-import { numberWidth, tableRow, tableSpec } from './table'
+import { numberWidth, tableHead, tableRow, tableSpec } from './table'
 import { chip } from './chips'
 import { displayName, pathText, plural, wrapWords } from './text'
 import { placeLines } from './detail-head'
@@ -83,10 +83,13 @@ export function fileDetailList(file: FileView): Openable[] {
 }
 
 /** A table of one number per row, its bar dropped when every row has the same number: such bars compare nothing. */
-function countedSpec(columns: number, names: string[], boundaries: string[], values: number[], tier: Tier): TableSpec {
-  const spec = tableSpec(columns, names, boundaries, [numberWidth('', values)], PATH_MAX, { tier, compact: false })
+function countedSpec(columns: number, names: string[], boundaries: string[], values: number[], tier: Tier, title = ''): TableSpec {
+  const spec = tableSpec(columns, names, boundaries, [numberWidth(title, values)], PATH_MAX, { tier, compact: false })
   return values.length > 1 && values.every(v => v === values[0]) ? { ...spec, bar: 0 } : spec
 }
+
+/** What the figure beside each component it declares counts. */
+const USED_BY = 'used by'
 
 /** The fewest dependents and components the file detail lists, however short the pane. */
 const LIST_MIN = 5
@@ -166,8 +169,9 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
     key: 'comps',
     grow: { length: comps.items.length, min: LIST_MIN },
     make: (columns, limit, scrolled) => {
-      const spec = countedSpec(columns, comps.items.map(c => c.name), [], comps.items.map(c => c.usedBy), tier)
-      const rows: Row[] = []
+      const spec = countedSpec(columns, comps.items.map(c => c.name), [], comps.items.map(c => c.usedBy), tier, USED_BY)
+      // What the figures count, over them, as every table heads its columns.
+      const rows: Row[] = comps.items.length === 0 ? [] : [tableHead('comps-cols', spec, { name: '', boundary: '', numbers: [USED_BY] })]
       if (comps.items.length === 0) rows.push(bodyLine('comps-none', 'none', columns))
       const max = Math.max(0, ...comps.items.map(c => c.usedBy))
       const listed = windowedTable('comps-window', comps.items, { columns, limit, local: inList(selected - offset, comps.items.length), scrolled, walk: offset }, (shown, start) =>
@@ -177,7 +181,7 @@ export function fileDetailArrangement(detail: DetailInput, tier: Tier, hues: Hue
         }),
       )
       rows.push(...listed.rows, ...notListedRow('comps-more', comps.count, comps.items.length, columns))
-      return { key: 'comps', title: 'Declares', subtitle: plural(comps.count, 'component', 'components'), note: noteOf(comps.items.length > 0 ? 'used by' : ''), body: rows, window: listed.window }
+      return { key: 'comps', title: 'Declares', note: noteOf(plural(comps.count, 'component', 'components')), body: rows, window: listed.window }
     },
   }
   return { top: [head], left: [reached, compBlock], bottom: diff, order: [head, reached, ...diff, compBlock] }

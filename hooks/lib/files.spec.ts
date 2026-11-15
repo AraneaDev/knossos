@@ -132,7 +132,7 @@ describe('a file detail', () => {
     ])
     // The file's own detail: its path is where the person already is, so it opens nothing.
     expect(row(rows, 'detail-place')!.segments.some(s => s.press !== undefined || 'link' in s)).toBe(false)
-    expect(text).toMatch(/Dependencies · used by 14 · uses 1 +edges/)
+    expect(text).toMatch(/Dependencies +used by 14 · uses 1 · edges/)
     // The dependents' boundaries in the project's colour order: declared ones first.
     expect(plainText(row(rows, 'deps-reach')!)).toBe('   reaching ■ Http ■ Core ■ tests')
     // Each file by its name in a box, its count on its edge; the twelve not listed as one box.
@@ -140,7 +140,7 @@ describe('a file detail', () => {
     expect(raw).toContain('│ +12 more')
     expect(raw).toMatch(/─ 2 ─+►│ Container\.php/)
     expect(raw).toMatch(/►│ Router\.php ├/)
-    expect(text).toMatch(/Declares · 3 components +used by/)
+    expect(text).toMatch(/Declares +3 components\n *\n +used by\n/)
     expect(plainText(row(rows, 'comp-1')!)).toMatch(/^ {3}Router::dispatch +━+·* +4$/)
     expect(plainText(row(rows, 'comps-more')!)).toBe('   +1 more')
     // Below fifty columns the two lists as tables.
@@ -196,7 +196,7 @@ describe('a file detail', () => {
     const alone = answer({ dependents: { count: 0, truncated: false, boundaries: [], items: [] } })
     expect(paneRows(pane({ view: { inspect: SHOWN }, state: done(alone) }), 90).map(rawText).join('\n')).toContain('nothing uses it')
     const text = textOf(paneRows(pane({ view: { inspect: SHOWN }, state: done(alone) }), 40))
-    expect(text).toContain('Depended on by · 0')
+    expect(text).toMatch(/Depended on by +0 · edges\n/)
     expect(text).toContain('none: no other file depends on it')
   })
 

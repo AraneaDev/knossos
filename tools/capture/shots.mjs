@@ -207,7 +207,7 @@ const hubDetail = (theme) =>
             wait(
                 "hub detail",
                 // Both on screen, in either order: the detail beside the list starts at its own height.
-                String.raw`^(?=[\s\S]*${marked(FIXTURE.hub)})(?=[\s\S]*Dependencies · used by)`,
+                String.raw`^(?=[\s\S]*${marked(FIXTURE.hub)})(?=[\s\S]*Dependencies ─+ used by)`,
                 { fixture: "hub" },
             ),
         ],

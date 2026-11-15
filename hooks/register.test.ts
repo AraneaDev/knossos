@@ -2419,7 +2419,7 @@ describe('knossos mod', () => {
     await w.clock.settle()
     const detail = (await ui.find({ key: 'detail' }))?.text
     expect(detail).toContain('App\\Router')
-    expect(titled(detail)).toMatch(/Dependencies · used by 1 · uses 0.*Kernel/)
+    expect(titled(detail)).toMatch(/Dependencies used by 1 · uses 0.*Kernel/)
     expect(w.detailRuns()).toEqual([
       ['sh', expect.stringMatching(/\/hooks\/scripts\/knossos-run\.sh$/), 'component-detail', ROOT, 'App\\Router'],
     ])
@@ -2769,7 +2769,7 @@ describe('knossos mod', () => {
     await ui.press({ key: 'row:0' })
     await w.clock.settle()
     expect(w.detailRuns()[0]?.slice(4)).toEqual(['App\\Core\\Kernel::boot'])
-    expect((await ui.find({ key: 'detail' }))?.text).toContain('Dependencies · used by 2')
+    expect((await ui.find({ key: 'detail' }))?.text).toMatch(/Dependencies ─+ used by 2/)
     await ui.unmount()
   })
 
@@ -2889,7 +2889,7 @@ describe('knossos mod', () => {
       await w.clock.settle()
       expect(titled((await wide.find({ key: 'detail-head' }))?.text)).toMatch(/^Router +class · ■ Http$/)
       expect(titled(drawn((await wide.find({ key: 'detail-place' }))?.text ?? ''))).toBe('where src/Http/Router.php:3')
-      expect(titled((await wide.find({ key: 'hood-head' }))?.text)).toMatch(/^Dependencies · used by 2 · uses 1 +edges$/)
+      expect(titled((await wide.find({ key: 'hood-head' }))?.text)).toMatch(/^Dependencies used by 2 · uses 1 · edges$/)
       // Each neighbour a box whose name opens it, its count on its edge; the centre between them.
       expect((await wide.find({ key: 'rel:0' }))?.props.label).toBe('Kernel')
       expect((await wide.find({ key: 'rel:2' }))?.props.label).toBe('Request')
@@ -3732,12 +3732,12 @@ describe('knossos mod', () => {
         await w.clock.settle()
         const text = drawn((await ui.find({ key: 'detail' }))?.text ?? '')
         expect(titled(text), `${tab} ${key}`).toMatch(/Router\.php +■ Http/)
-        expect(titled(text)).toMatch(/Dependencies · used by 14 · uses 0 +edges/)
+        expect(titled(text)).toMatch(/Dependencies used by 14 · uses 0 · edges/)
         // The marked dependent: a box by its name, on the tint, its count on its edge.
         expect((await ui.find({ key: 'row:0' }))?.props.label).toBe('Kernel.php')
         expect(await ui.find({ key: 'row:0-bg' })).toBeDefined()
         expect(text).toMatch(/Kernel\.php +├─* 6 /)
-        expect(titled(text)).toMatch(/Declares · 2 components/)
+        expect(titled(text)).toMatch(/Declares 2 components/)
         await ui.press({ key: 'back' })
         // Back on the tab, the marker stands where the detail was opened from.
         expect((await ui.find({ key: 'change-0' }))?.text, `${tab} ${key}`).toMatch(/^ ›/)
@@ -3796,7 +3796,7 @@ describe('knossos mod', () => {
       expect(w.editorRuns().at(-1)).toEqual(['code', '-g', '/repo/src/Router.php'])
       await ui.press({ key: 'open' })
       await w.clock.settle()
-      expect(titled(drawn((await ui.find({ key: 'detail' }))?.text ?? ''))).toMatch(/Dependencies · used by 14/)
+      expect(titled(drawn((await ui.find({ key: 'detail' }))?.text ?? ''))).toMatch(/Dependencies used by 14/)
       await ui.press({ key: 'back' })
       // `d` hides them again; a tab switch does too.
       await ui.press({ key: 'drift' })
@@ -3853,7 +3853,7 @@ describe('knossos mod', () => {
       expect(head?.text).toMatch(/in +out +cross +where +/)
       await ui.press({ key: 'row:12' })
       await w.clock.settle()
-      expect(titled(drawn((await ui.find({ key: 'detail' }))?.text ?? ''))).toMatch(/Dependencies · used by/)
+      expect(titled(drawn((await ui.find({ key: 'detail' }))?.text ?? ''))).toMatch(/Dependencies used by/)
       await ui.press({ key: 'back' })
       await ui.unmount()
     }
@@ -5013,7 +5013,7 @@ describe('round 13: churn, blast radius, routes, notifications and notes', () =>
     await w.clock.settle()
     expect(w.churnRuns()).toHaveLength(1)
     const text = drawn((await ui.find({ key: 'pane' }))?.text ?? '')
-    expect(titled(text)).toMatch(/Churn hotspots · commits × dependents +2 files/)
+    expect(titled(text)).toMatch(/Churn hotspots 2 files · by commits × dependents/)
     expect(text).toMatch(/1 src\/Http\/\s*Router\.php/)
     // Kept for the commit: another visit, or a turn that left the checkout where it was, reads nothing.
     await ui.press({ key: 'tab:overview' })

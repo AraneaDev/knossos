@@ -131,7 +131,7 @@ describe("Churn on the pane's spacing", () => {
     60: [
       " 300 │                                                    ◉",
       "     ╰─────────────────────────────────────────────────────",
-      "      0                     commits →                    30",
+      "      0             commits → · dependents ↑             30",
       "    file                                       commits deps",
       " ›1 src/…/deep/directory/Service0.php     ━━━━      30  300",
       "  2 src/…/deep/directory/Service1.php     ━━━━      29  291",
@@ -139,7 +139,7 @@ describe("Churn on the pane's spacing", () => {
     100: [
       "  300 │                                                                                          ◉",
       "      ╰───────────────────────────────────────────────────────────────────────────────────────────",
-      "       0                                        commits →                                       30",
+      "       0                                commits → · dependents ↑                                30",
       "     file                                                                      commits dependents",
       "  ›1 src/a/rather/deep/directory/Service0.php ■ core  ━━━━━━━━━━━━━━━━━━━━━━━━      30        300",
       "   2 src/a/rather/deep/directory/Service1.php ■ tests ━━━━━━━━━━━━━━━━━━━━━━╸·      29        291",
@@ -147,7 +147,7 @@ describe("Churn on the pane's spacing", () => {
     140: [
       "  300 │                                                                                                                                  ◉",
       "      ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
-      "       0                                                            commits →                                                           30",
+      "       0                                                    commits → · dependents ↑                                                    30",
       "     file                                                                            commits dependents",
       "  ›1 src/a/rather/deep/directory/Service0.php ■ core  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━      30        300",
       "   2 src/a/rather/deep/directory/Service1.php ■ tests ━━━━━━━━━━━━━━━━━━━━━━━━━━━━··      29        291",

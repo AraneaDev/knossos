@@ -252,7 +252,7 @@ function detailSection(n: NoteItem, columns: number, hues: Hues): Section {
       const lines = n.value.split('\n').flatMap(para => (para.trim() === '' ? [''] : wrapWords(para, width)))
       const shown = lines.slice(0, DETAIL_LINES).map((part): Segment[] => [{ text: part }])
       // Past what the panel shows whole, how many more lines, at the end of the text.
-      return lines.length > DETAIL_LINES ? [...shown, ...wrapWords(`${plural(lines.length - DETAIL_LINES, 'more line', 'more lines')}: o opens the component with the note in full`, width).map((part): Segment[] => [{ text: part, dim: true }])] : shown
+      return lines.length > DETAIL_LINES ? [...shown, ...wrapWords(`+${plural(lines.length - DETAIL_LINES, 'more line', 'more lines')}: o opens the component with the note in full`, width).map((part): Segment[] => [{ text: part, dim: true }])] : shown
     },
   }
   return { key: 'notes-detail', title: noteName(n), glyph: CARD_ICON.notes, note: noteOf(`${n.author === 'user' ? 'yours' : 'model'} · ${n.date}`), body: labelledRows([where, ...(why.length === 0 ? [] : [status]), text], columns) }

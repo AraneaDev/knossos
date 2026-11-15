@@ -129,9 +129,10 @@ export function scatterRows(files: ChurnFile[], columns: number, height: number,
     if (run.trimEnd() !== '') segments.push({ text: run.trimEnd() })
     return { key: `churn-plot-${y}`, segments }
   })
-  // Under the axis: 0 at its start, the most commits at its end, what runs across in the middle.
+  // Under the axis: 0 at its start, the most commits at its end, what runs across and what runs up in the middle (the title says neither).
   const under = Array.from({ length: width }, () => ' ')
-  const caption = 'commits →'
+  const both = 'commits → · dependents ↑'
+  const caption = width >= cells(both) + cells(String(maxC)) + 4 ? both : 'commits →'
   const put = (at: number, text: string) => [...text].forEach((ch, i) => (under[at + i] = ch))
   if (width >= cells(caption) + cells(String(maxC)) + 4) put(Math.floor((width - cells(caption)) / 2), caption)
   put(0, '0')
@@ -165,7 +166,7 @@ export function churnArrangement(input: ChurnInput, selected: number, tier: Tier
     make: columns =>
       input.files.length === 0 || columns < PLOT_MIN
         ? null
-        : { key: 'churn-plot', title: 'Changed often, depended on widely', subtitle: 'dependents ↑', note: noteOf(read), body: scatterRows(input.files, columns, PLOT_ROWS[tier], selected) },
+        : { key: 'churn-plot', title: 'Changed often, depended on widely', note: noteOf(read), body: scatterRows(input.files, columns, PLOT_ROWS[tier], selected) },
   }
   const list: Block = {
     key: 'churn-list',
@@ -181,7 +182,8 @@ export function churnArrangement(input: ChurnInput, selected: number, tier: Tier
           return tableRow(`churn-${i}`, { name: f.path, boundary: tier === 'narrow' ? null : f.boundary, values: [f.commits, f.dependents], barValue: f.score, max, path: true, selected: i === selected, press: `row:${i}`, mark: { text: rankOf(i), dim: true } }, spec, hues)
         }),
       ])
-      return { key: 'churn-list', title: 'Churn hotspots', subtitle: 'commits × dependents', note: noteOf(input.files.length === 0 ? read : `${grouped(input.files.length)} files`), body: rows, window: view }
+      // The count at the right of the title, with the order the list stands in, as a list sorted by one figure says it.
+      return { key: 'churn-list', title: 'Churn hotspots', note: noteOf(`${grouped(input.files.length)} files · by commits × ${dependents}`), body: rows, window: view }
     },
   }
   return { left: [plot, list] }

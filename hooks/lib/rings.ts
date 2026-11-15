@@ -290,7 +290,7 @@ export function ringsBlock(input: RingsInput, selected: number, offset: number, 
       if (input.said !== null) return { key: 'rings', title: 'Blast radius', note, body: bodyText('rings-said', input.said, columns) }
       if (total === 0) return { key: 'rings', title: 'Blast radius', note, body: [bodyLine('rings-none', 'Nothing depends on it: a change here reaches no other component.', columns)] }
       const body = columns >= RINGS_MIN ? ringRows(input, columns, selected, offset, hues) : ringLists(input, columns, selected, offset, hues)
-      return { key: 'rings', title: 'Blast radius', ...(input.loading ? { subtitle: busy('reading…') } : {}), note, body }
+      return { key: 'rings', title: 'Blast radius', note: input.loading ? [{ text: `${busy('reading…')} · `, dim: true }, ...note] : note, body }
     },
   }
 }

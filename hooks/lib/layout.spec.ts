@@ -816,8 +816,8 @@ describe('the issues tab', () => {
     const walk = issuesList(issues)
     const violations = issues.policy?.items.length ?? 0
     expect(walk.slice(violations, violations + 2)).toEqual([
-      { name: 'scanner.ts:14', canonical: 'workers/typescript/src/scanner.ts', loc: { path: '/work/Knossos-MCP/workers/typescript/src/scanner.ts', line: 14 }, file: true },
-      { name: 'worker.py:3', canonical: 'workers/python/bin/worker.py', loc: { path: '/work/Knossos-MCP/workers/python/bin/worker.py', line: 3 }, file: true },
+      { name: 'workers/typescript/src/scanner.ts:14', canonical: 'workers/typescript/src/scanner.ts', loc: { path: '/work/Knossos-MCP/workers/typescript/src/scanner.ts', line: 14 }, file: true },
+      { name: 'workers/python/bin/worker.py:3', canonical: 'workers/python/bin/worker.py', loc: { path: '/work/Knossos-MCP/workers/python/bin/worker.py', line: 3 }, file: true },
     ])
     // The dead code follows them in the walk, and each row presses its own place in it.
     expect(walk[violations + 2]?.name).toBe(issues.deadCode.items[0]?.name)
@@ -887,7 +887,7 @@ describe('the cycles tab', () => {
     const long = full({ cycles: { count: 60, truncated: true, truncation_reasons: ['result_limit'], largest: [{ size: 50, members: [], nodes: [{ name: 'a', canonical_name: 'a', kind: 'function', boundary: null }], nodes_truncated: true }] } })
     const cut = textOf(paneRows(fullInput({ tab: 'cycles' }, long), 100))
     expect(cut).toMatch(/Cycles +60\+ · 1 shown · largest first/)
-    expect(cut).toContain('│ +49 not listed')
+    expect(cut).toContain('│ +49 more')
   })
   it('walks members: j and k name the box they move to, o opens a member, c copies it, q asks how to break its cycle', () => {
     const input = fullInput({ tab: 'cycles', selected: 1 })
@@ -961,7 +961,7 @@ describe('the detail view', () => {
     expect(raw).toMatch(/─ 4 ─+►│ BoundaryLabels/)
     // Nineteen use it and two are listed: the rest as one box.
     expect(raw).toContain('│ +17 more')
-    expect(plainText(row(rows, 'hood-head')!)).toMatch(/^Dependencies · used by 19 · uses 2 +edges$/)
+    expect(plainText(row(rows, 'hood-head')!)).toMatch(/^Dependencies +used by 19 · uses 2 · edges$/)
     expect(textOf(rows)).toMatch(/Notes\n *\n {3}note {3}Read-only: it never scans\.\n {3}change the note\n/) // a labelled fact, then the way to change it, no blank row between
   })
   it("marks an agent's note apart from the person's, the person's first", () => {
@@ -1039,7 +1039,7 @@ describe('the detail view', () => {
     const old = detailAnswer({ used_by: { count: 1, truncated: false, names: ['Kernel'] }, uses: { count: 0, truncated: false, names: [] } })
     expect(paneRows(detailPane(old), 60).map(rawText).join('\n')).toMatch(/│ Kernel +├─+╮/)
     const text = textOf(paneRows(detailPane(old), 40))
-    expect(text).toMatch(/Used by · 1\n *\n› {2}Kernel/)
+    expect(text).toMatch(/Used by +1\n *\n› {2}Kernel/)
     expect(text).not.toMatch(/█/)
   })
 })
@@ -1059,7 +1059,7 @@ describe('tables packed to the left', () => {
   it("sets the title, the sort and the note into the card's top edge, which spans the card like its rows", () => {
     const rows = paneRows(fullInput({ tab: 'hubs' }), 100)
     const head = row(rows, 'hubs-head')!
-    expect(plainText(head)).toMatch(/^Hubs and hotspots · sorted by in +✦ hotspot only( · .+)?$/)
+    expect(plainText(head)).toMatch(/^Hubs and hotspots +sorted by in · ✦ hotspot only( · .+)?$/)
     expect(rowWidth(head)).toBe(100)
     expect(rowWidth(row(rows, 'hub-0')!)).toBe(100)
   })
@@ -1223,7 +1223,7 @@ describe('the hubs filter and sort', () => {
   })
   it('names the sort, draws its bar, and offers n, s and x as keys, and f to find', () => {
     const rows = paneRows(input({ tab: 'hubs', sort: 'out', filter: 'a' }), 90)
-    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots · sorted by out +✦ hotspot only( · .+)?$/)
+    expect(plainText(row(rows, 'hubs-head')!)).toMatch(/^Hubs and hotspots +sorted by out · ✦ hotspot only( · .+)?$/)
     expect(plainText(row(rows, 'hub-0')!)).toMatch(/ProjectScanService::scan +■ core +[━╸]+·* +119 +58 +0$/)
     const keys = rows.filter(r => r.key.startsWith('keys')).flatMap(r => r.segments.flatMap(s => (s.press ? [s.press.hotkey] : [])))
     expect(keys).toEqual(['j', 'k', 'o', 'c', 'q', 'n', 's', 'x', 'f', 'h'])
@@ -1688,7 +1688,7 @@ describe('the pane at every width and height, with a large project', () => {
 
   it('adds the dependent files and the file to a wide table, and caps its bar', () => {
     const rows = paneRows(at({ tab: 'hubs' }), 200, 40)
-    expect(plainText(row(rows, 'hub-head')!)).toMatch(/in +out +cross +files +where$/)
+    expect(plainText(row(rows, 'hub-head')!)).toMatch(/in +out +cross +dependents +where$/)
     expect(plainText(row(rows, 'hub-0')!)).toMatch(/ 500 +0 +0 +80 src\/Hub0\.php:10$/)
     const bar = row(rows, 'hub-0')!.segments.filter(s => /^[━╸·]+$/.test(s.text)).reduce((n, s) => n + [...s.text].length, 0)
     expect(bar).toBeLessThanOrEqual(30)

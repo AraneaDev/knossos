@@ -268,7 +268,7 @@ function cycleSection(input: CyclesInput, index: number, offset: number, local: 
   const shown = shownOf(cycle, index, input, columns, tier, local)
   const nodes: DiagramNode[] = shown.map((s): DiagramNode => {
     if (s.kind === 'fold') return { key: 'fold', label: `… ${s.hidden} more …`, dim: true, press: { id: `fold:${index}:${offset + s.first}`, label: `… ${s.hidden} more …` }, selected: local === cycle.nodes.length }
-    if (s.kind === 'unlisted') return { key: 'unlisted', label: `+${s.count} not listed`, dim: true }
+    if (s.kind === 'unlisted') return { key: 'unlisted', label: `+${s.count} more`, dim: true }
     const node = cycle.nodes[s.j]!
     const colour = coloured ? boundaryColour(node.boundary, hues) : undefined
     return { key: `m${s.j}`, label: node.name, ...(colour === undefined ? {} : { color: colour }), press: { id: `row:${offset + s.j}`, label: node.name }, selected: s.j === local }

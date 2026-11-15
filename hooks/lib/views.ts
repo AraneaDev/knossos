@@ -20,7 +20,7 @@ import { boundaryColour, boundaryLabel, FAINT, NO_HUES, STATUS_COLOURS } from '.
 import { DIAGRAM_MIN, neighbourhood } from './diagram'
 import type { Neighbour } from './diagram'
 import type { Hues } from './palette'
-import { absolute, placeOf, placeText } from './paths'
+import { absolute, placeText } from './paths'
 import { button, dimRow, inList, notListedRow, segmentsWidth, tintedRow } from './rows'
 import { MARK, numberWidth, tableHead, tableRow, tableSpec, withDependents } from './table'
 import { chip, SWATCH } from './chips'
@@ -195,7 +195,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
             errors: diagnostics.errors,
             warnings: diagnostics.warnings,
             infos: diagnostics.infos,
-            items: diagnostics.items.map(x => ({ severity: x.severity, text: `${x.code} ${x.message}`, path: x.path, place: placeOf(x.path, x.line), where: diagnosticWhere(x), loc: locIn(root, x.path, x.line) })),
+            items: diagnostics.items.map(x => ({ severity: x.severity, text: `${x.code} ${x.message}`, path: x.path, place: placeText(x.path, x.line), where: diagnosticWhere(x), loc: locIn(root, x.path, x.line) })),
           },
     deadCode: {
       total: countLabel(d.dead_code_candidates, d.dead_code_truncated),
@@ -638,17 +638,19 @@ function sideSection(prefix: string, side: Side, offset: number, columns: number
   const flat = side.items.length > 1 && side.items.every(i => i.edges === side.items[0]!.edges)
   const boundaries = side.items.map(i => boundaryLabel(i.boundary, hues))
   const spec = counted
-    ? { ...tableSpec(columns, side.items.map(i => i.name), boundaries, [numberWidth('', side.items.map(i => i.edges))], undefined, { tier, compact: false }), ...(flat ? { bar: 0 } : {}) }
+    ? { ...tableSpec(columns, side.items.map(i => i.name), boundaries, [numberWidth('edges', side.items.map(i => i.edges))], undefined, { tier, compact: false }), ...(flat ? { bar: 0 } : {}) }
     : { ...tableSpec(columns, side.items.map(i => i.name), boundaries, []), bar: 0 }
-  const section = (body: Row[]): Section => ({ key: prefix, title: side.title, subtitle: side.count, note: noteOf(counted ? 'edges' : ''), body })
+  // The count at the right of the title; what the figures count over them, as every table heads its columns.
+  const section = (body: Row[]): Section => ({ key: prefix, title: side.title, note: noteOf(side.count), body })
   if (side.items.length === 0) return section([none(`${prefix}-none`)])
+  const head = counted ? [tableHead(`${prefix}-cols`, spec, { name: '', boundary: '', numbers: ['edges'] })] : []
   const max = Math.max(0, ...side.items.map(i => i.edges))
   const { rows } = windowedTable(`${prefix}-window`, side.items, { columns, limit, local: inList(selected - offset, side.items.length), walk: offset }, (shown, start) =>
     shown.map((item, n) =>
       tableRow(`${prefix}-${start + n}`, { name: item.name, boundary: item.boundary, values: counted ? [item.edges] : [], max, press: `rel:${offset + start + n}`, selected: offset + start + n === selected }, spec, hues),
     ),
   )
-  return section([...rows, ...notListedRow(`${prefix}-more`, Number.parseInt(side.count, 10), side.items.length, columns)])
+  return section([...head, ...rows, ...notListedRow(`${prefix}-more`, Number.parseInt(side.count, 10), side.items.length, columns)])
 }
 
 /**
@@ -703,13 +705,14 @@ const HOOD_MIN = 3
  * `fallback`'s rows (the two lists as tables) instead.
  */
 export function hoodBlock(centre: { name: string; boundary: string | null }, usedBy: HoodSide, uses: HoodSide, selected: number, hues: Hues, fallback: (columns: number, limit: number) => Row[]): Block {
-  const note = noteOf(usedBy.items.some(i => i.edges > 0) || uses.items.some(i => i.edges > 0) ? 'edges' : '')
-  const subtitle = `used by ${usedBy.count} · uses ${uses.count}`
+  // The counts at the right of the title, then what the figures on the arrows count.
+  const edges = usedBy.items.some(i => i.edges > 0) || uses.items.some(i => i.edges > 0) ? ' · edges' : ''
+  const note = noteOf(`used by ${usedBy.count} · uses ${uses.count}${edges}`)
   return {
     key: 'hood',
     grow: { length: Math.max(usedBy.items.length, uses.items.length) + 1, min: HOOD_MIN },
     make: (columns, limit) => {
-      if (columns < DIAGRAM_MIN) return { key: 'hood', title: usedBy.title, subtitle: String(usedBy.count), note, body: fallback(columns, limit) }
+      if (columns < DIAGRAM_MIN) return { key: 'hood', title: usedBy.title, note: noteOf(`${usedBy.count}${edges}`), body: fallback(columns, limit) }
       const side = (s: HoodSide): Neighbour[] => {
         const pressed = s.items.findIndex(i => pressIndex(i.press) === selected)
         const room = s.items.length > limit || s.count > s.items.length ? Math.max(1, limit - 1) : limit
@@ -731,7 +734,7 @@ export function hoodBlock(centre: { name: string; boundary: string | null }, use
       }
       const colour = boundaryColour(centre.boundary, hues)
       const drawn = neighbourhood({ key: 'centre', label: centre.name, ...(colour === undefined ? {} : { color: colour }) }, side(usedBy), side(uses), columns, { usedBy: 'nothing uses it', uses: 'uses nothing' }, 'hood')
-      return { key: 'hood', title: 'Dependencies', subtitle, note, body: drawn.rows }
+      return { key: 'hood', title: 'Dependencies', note, body: drawn.rows }
     },
   }
 }

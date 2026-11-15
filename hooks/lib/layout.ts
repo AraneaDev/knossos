@@ -19,10 +19,10 @@ import { changesArrangement } from './changes'
 import { driftSection, fileDetailArrangement } from './files'
 import { boundaryLabel, FAINT } from './palette'
 import type { Hues } from './palette'
-import { baseName, placeOf } from './paths'
+import { baseName, placeText } from './paths'
 import { blank, clip, rowsHeight, rowWidth, inList } from './rows'
 import { bodyLine, bodyRow } from './spacing'
-import { numberWidth, tableHead, tableRow, tableSpec, tierOf, withDependents } from './table'
+import { dependentsTitle, numberWidth, tableHead, tableRow, tableSpec, tierOf, withDependents } from './table'
 import { cells, grouped } from './text'
 import type { Loc, Row, Segment } from './types'
 import type { TableSpec, Tier } from './table'
@@ -81,13 +81,14 @@ export function sharedBoundary(rows: { boundary: string | null }[]): string | nu
 /** A component's numbers as a table shows them: in, out, cross and (wide, when known) the files depending on it. */
 const degreesOf = (item: Item, withFiles: boolean): number[] => [item.in, item.out, item.cross, ...(withFiles ? [item.files ?? 0] : [])]
 
-const degreeTitles = (withFiles: boolean): string[] => ['in', 'out', 'cross', ...(withFiles ? ['files'] : [])]
+/** The degree columns' titles; the files that depend on it named as every table of the pane names them (only wide tables add the column). */
+const degreeTitles = (withFiles: boolean): string[] => ['in', 'out', 'cross', ...(withFiles ? [dependentsTitle('wide')] : [])]
 
 /** Whether a table of `items` at `tier` adds the dependent files: wide, and only when the dashboard counts them. */
 const filesColumn = (items: Item[], tier: Tier): boolean => tier === 'wide' && items.some(i => i.files !== null)
 
-/** Where a component is declared, as a table's place column shows it: its path from the project root and the line. */
-const placeIn = (item: Item): string => item.place ?? (item.loc === null ? '' : placeOf(item.loc.path, item.loc.line))
+/** Where a component is declared, as a table's place column shows it: its path from the project root and the line; one known only on disk by its full path, cut from the front like any place. */
+const placeIn = (item: Item): string => item.place ?? (item.loc === null ? '' : placeText(item.loc.path, item.loc.line))
 
 /**
  * How a table of components fits `columns`: without the boundary column when
@@ -170,9 +171,13 @@ function hubsBlock(input: PaneInput, list: Item[], selected: number, tier: Tier)
       }
       // The kinds the rows show join the note where the top edge has room; a note too long is dropped whole.
       const kinds = kindLegend(list.map(i => i.kind))
-      const keyed = [note, kinds].filter(s => s !== '').join(' · ')
-      const told = cells(`Hubs and hotspots sorted by ${input.sort}`) + cells(keyed) + NOTE_ROOM <= columns ? keyed : note
-      const section = (body: Row[]): Section => ({ key: 'hubs', title: 'Hubs and hotspots', subtitle: `sorted by ${input.sort}`, note: noteOf(told), body })
+      // The order the list stands in at the right of the title, as every card's standing; the kinds after it where there is room.
+      const sorted = `sorted by ${input.sort}`
+      const keyed = [sorted, note, kinds].filter(s => s !== '').join(' · ')
+      // Too long for the edge, the kinds go first, then the sort, which the footer's `s` also names.
+      const fits = (said: string) => cells('Hubs and hotspots') + cells(said) + NOTE_ROOM <= columns
+      const told = [keyed, [sorted, note].filter(s => s !== '').join(' · ')].find(fits) ?? note
+      const section = (body: Row[]): Section => ({ key: 'hubs', title: 'Hubs and hotspots', note: noteOf(told), body })
       if (list.length === 0) return section([...rows, bodyLine('hubs-none', input.filter === '' ? (range === null ? 'none' : 'none of the listed hubs is in this range') : `no hub matches "${input.filter}"`, columns)])
       const spec = componentSpec(list, columns, input.hues, tier)
       const local = selected < list.length ? selected : -1
