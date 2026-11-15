@@ -192,7 +192,7 @@ expect_claude "call [plugin] [marketplace] [add] [$DATA2/install/plugin] [--scop
 expect_claude 'call [plugin] [install] [knossos@knossos] [--scope] [user] [--yes]' 'the plugin is installed from it'
 expect_claude "call [mcp] [add] [knossos] [-s] [user] [-e] [KNOSSOS_DATA_DIR=$DATA2] [-e] [KNOSSOS_ROOTS_FILE=$DATA2/roots.json] [--] [$LAUNCHER2] [serve]" 'the MCP server is registered with the launcher'
 if grep -q "^call \[exec\] .*\[/opt/knossos/bin/knossos\] \[allow-root\] \[$PROJECT\] \[--execute\]\$" "$FAKE_DOCKER_STATE/calls" \
-    && grep -qF "[--mount] [type=bind,source=$PROJECT,target=$PROJECT]" "$FAKE_DOCKER_STATE/calls"; then
+    && grep -qF "[--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly]" "$FAKE_DOCKER_STATE/calls"; then
     pass "the project root is granted by the image's allow-root, through the launcher"
 else
     fail "allow-root: $(calls)"

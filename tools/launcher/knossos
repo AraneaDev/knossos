@@ -26,10 +26,16 @@
 # the installer's own pre-switch check and for tests, not for everyday use.
 #
 # Threat note (container mode). A scanned project is untrusted input, so the
-# code inside a container is treated as hostile. It can write every read-write
-# mount: the project root, the graph directory and the roots file's directory.
-# This launcher runs on the host, as you, so nothing it reads or runs may be
-# something a container could have written:
+# code inside a container is treated as hostile. The project root is mounted
+# read-only, so nothing a container does can plant a file in it that a tool on
+# the host would later run (a git hook, an editor task, an agent setting). It
+# can write the graph directory and the roots file's directory. This launcher
+# runs on the host, as you, so nothing it reads or runs may be something a
+# container could have written:
+#   - A file a command is told to write is written into a scratch directory in
+#     the graph directory and moved to the path named by the host, which never
+#     follows a link there; a file it is told to read from outside every mount
+#     is copied in. See FILE_ROLES below.
 #   - The install directory (install.json, plugin/, the update helper, the
 #     update check, the lock, containers/) is mounted read-only, as its own
 #     mount, directly below the root of the graph mount. Neither it nor its
@@ -189,10 +195,10 @@ esac
 # ---- container mode ----------------------------------------------------------
 #
 # One container per project root, started on the first call and reused by
-# every call after it through `exec`. The project root, the data directory and
-# the directory of the roots file are mounted read-write at the SAME absolute
-# paths, so a path means the same thing inside as outside and a project keeps
-# the id a native install would give it. The container runs as the caller's
+# every call after it through `exec`. The project root (read-only), the data
+# directory and the directory of the roots file are mounted at the SAME
+# absolute paths, so a path means the same thing inside as outside and a
+# project keeps the id a native install would give it. The container runs as the caller's
 # user and group with HOME=/tmp and no network. None of those directories may
 # be /, the home directory or a directory above it: the launcher refuses
 # rather than hand a container the whole home directory.
@@ -593,22 +599,25 @@ $LAUNCHER_DIRS
 HELD
 }
 
-# Every directory the container may write, each mounted at its own physical
-# path, and only through add_mount: it applies the mount rule to exactly the
-# path it mounts (no /, no home directory, nothing above it, nothing inside
-# the read-only install directory, and nothing the host trusts, see
-# guard_writable). A project or roots directory that lies inside another mount
-# is already visible through it and is not mounted twice. The graph directory
-# is always its own mount: guard_writable leaves nothing that could contain
-# it. The install directory itself is the one read-only mount, added in
-# start_container.
+# Every directory the container is given, each mounted at its own physical
+# path with its mode (`true` read-write, `false` read-only), and only through
+# add_mount: it applies the mount rule to exactly the path it mounts (no /, no
+# home directory, nothing above it, nothing inside the read-only install
+# directory, and nothing the host trusts, see guard_writable). A directory
+# that lies inside another mount of the same mode is already visible through
+# it and is not mounted twice; one of another mode is mounted on top, which the
+# runtime orders by depth. So the project, always read-only, is its own mount
+# even inside the graph directory, and the graph directory is always its own
+# read-write mount: guard_writable leaves nothing that could contain it. The
+# install directory is the read-only mount added last.
 INSTALL_PARENT=$(dirname -- "$INSTALL_REAL")
 MOUNTS=''
+# add_mount DIR KIND READ-WRITE
 add_mount() {
     path=$(physical "$1")
     [ -n "$path" ] || die "could not enter $1 to mount it"
     case $path in
-        *,* | *"$NEWLINE"*) die "a path with a comma or a newline cannot be mounted: $path" ;;
+        *,* | *'|'* | *"$NEWLINE"*) die "a path with a comma, a bar or a newline cannot be mounted: $path" ;;
     esac
     if reason=$(too_wide "$path"); then
         case $2 in
@@ -623,36 +632,326 @@ add_mount() {
     fi
     guard_writable "$path" "$2"
     kept=''
-    while IFS= read -r mounted; do
+    while IFS='|' read -r mounted rw; do
         [ -n "$mounted" ] || continue
-        if inside "$path" "$mounted"; then
+        if [ "$rw" = "$3" ] && inside "$path" "$mounted"; then
             # Unreachable for the graph directory after guard_writable; never
             # let it ride on another mount all the same.
             [ "$2" != data ] || die "the graph directory $path lies inside the mount $mounted; point KNOSSOS_DATA_DIR at a directory of its own."
             return 0
         fi
-        inside "$mounted" "$path" || kept="$kept$mounted$NEWLINE"
+        if [ "$rw" = "$3" ] && inside "$mounted" "$path"; then continue; fi
+        kept="$kept$mounted|$rw$NEWLINE"
     done <<MOUNTED
 $MOUNTS
 MOUNTED
-    MOUNTS="$kept$path$NEWLINE"
+    MOUNTS="$kept$path|$3$NEWLINE"
 }
-add_mount "$ROOT" project
-add_mount "$DATA_REAL" data
-add_mount "$ROOTS_DIR_REAL" roots
+add_mount "$ROOT" project false
+add_mount "$DATA_REAL" data true
+add_mount "$ROOTS_DIR_REAL" roots true
 # The install directory read-only, on top: always its own mount, even when a
 # read-write one contains it.
 if too_wide "$INSTALL_REAL" >/dev/null; then die "the install directory $INSTALL_REAL $(too_wide "$INSTALL_REAL"), which container mode does not mount; re-run the installer with --data-dir set to a directory of its own."; fi
+MOUNTS="$MOUNTS$INSTALL_REAL|false$NEWLINE"
 # Each mount as `docker inspect` reports it: source|destination|read-write.
 EXPECTED=$(
-    while IFS= read -r mounted; do
-        [ -n "$mounted" ] && printf '%s|%s|true\n' "$mounted" "$mounted"
+    while IFS='|' read -r mounted rw; do
+        [ -n "$mounted" ] && printf '%s|%s|%s\n' "$mounted" "$mounted" "$rw"
     done <<MOUNTED
 $MOUNTS
 MOUNTED
-    printf '%s|%s|false\n' "$INSTALL_REAL" "$INSTALL_REAL"
 )
 EXPECTED=$(printf '%s\n' "$EXPECTED" | LC_ALL=C sort)
+
+# ---- files a command names ------------------------------------------------
+#
+# The project is read-only in the container, so a file a command is told to
+# write goes through the host, and a file it is told to read that lies outside
+# every mount is copied in. FILE_ROLES says what each option (`--name`) or
+# positional argument (`@N`, `@N...` for that one and every one after it) that
+# names a file means here, one `command key role` per line:
+#   output    written by the command into a fresh scratch file, which the host
+#             moves to the path named once the command has succeeded
+#   input     read by the command: passed on as is inside a mount, else
+#             copied into the scratch directory first, read-only
+#   project   a file of the project, read through its read-only mount
+#   database  the graph database, which has to lie in the graph directory
+#   none      not a file on this host (a name, a prefix, a root to grant)
+#   refused   a command container mode leaves to the host's installer
+# `*` as the command means every command. tests/phpunit/Cli/LauncherFileRolesTest
+# reads this table and the CLI reference's usage block, and fails when an
+# option or argument that takes a file has no line here, or a line here names
+# nothing the CLI takes.
+FILE_ROLES='
+* --db database
+export-bundle --output output
+export-agent-brief --out output
+export-notes --file output
+notes-export --file output
+import-bundle @1 input
+import-notes --file input
+notes-import --file input
+quality-gate --budgets input
+quality-gate --policies input
+check-architecture --policies input
+review-diff --budgets input
+review-diff --policies input
+turn-brief --policies input
+architecture-context @2... project
+changed-files-impact @2... project
+test-impact @2... project
+review-diff @2... project
+creation-brief @2 project
+file-context @1 project
+file-detail @1 project
+annotate-component --evidence project
+session-diff --file project
+turn-brief --files project
+architecture-health --path-prefix none
+maintain-database --backup-name none
+serve --allow-root none
+install-agent-plugin --bin refused
+install-agent-plugin --data refused
+install-agent-plugin --data-dir refused
+install-agent-plugin --out refused
+install-agent-plugin --plugin-dir refused
+'
+
+# file_role COMMAND KEY [POSITION]: sets `role` for an option (`--name`) or a
+# positional argument (KEY `@`, POSITION its number), or to nothing.
+file_role() {
+    role=''
+    while read -r row_command row_key row_role; do
+        [ -n "$row_command" ] || continue
+        [ "$row_command" = '*' ] || [ "$row_command" = "$1" ] || continue
+        case $row_key in
+            @*...)
+                first=${row_key#@}
+                first=${first%...}
+                if [ "$2" != @ ] || [ "${3:-0}" -lt "$first" ]; then continue; fi
+                ;;
+            @*) if [ "$2" != @ ] || [ "@${3:-0}" != "$row_key" ]; then continue; fi ;;
+            *) [ "$2" = "$row_key" ] || continue ;;
+        esac
+        role=$row_role
+        return 0
+    done <<ROLES
+$FILE_ROLES
+ROLES
+}
+
+# absolute PATH: PATH made absolute against the working directory on the host.
+absolute() { case $1 in /*) printf '%s' "$1" ;; *) printf '%s/%s' "${HERE%/}" "$1" ;; esac; }
+
+# located PATH: the physical form of a file's directory with its name, or the
+# absolute path as given when that directory does not exist.
+located() {
+    file=$(absolute "$1")
+    dir=$(physical "$(dirname -- "$file")")
+    if [ -n "$dir" ]; then printf '%s/%s' "${dir%/}" "${file##*/}"; else printf '%s' "$file"; fi
+}
+
+# mounted PATH: whether a physical path lies in a directory the container sees.
+mounted() {
+    while IFS='|' read -r mount rw; do
+        [ -n "$mount" ] || continue
+        if inside "$1" "$mount"; then return 0; fi
+    done <<MOUNTED
+$MOUNTS
+MOUNTED
+    return 1
+}
+
+# The scratch directory: made by the host, private to you, in the graph
+# directory (read-write in the container) and removed when the call ends. A
+# container can write it too, so the host never opens anything in it by path:
+# it moves files in and out by rename from inside the directory itself, after
+# checking that it still is the directory it made, and checks what it moved
+# out in a private directory of its own before it writes the destination.
+SCRATCH=''
+SCRATCH_ID=''
+PRIVATE=''
+OUTPUT_SCRATCH=''
+OUTPUT_DEST=''
+OUTPUT_EXISTED=no
+# shellcheck disable=SC2317,SC2329 # run from the EXIT trap
+cleanup_files() {
+    [ -z "$PRIVATE" ] || rm -rf -- "$PRIVATE"
+    [ -z "$SCRATCH" ] || rm -rf -- "$SCRATCH"
+}
+scratch() {
+    [ -z "$SCRATCH" ] || return 0
+    trap cleanup_files EXIT
+    PRIVATE=$( (umask 077 && mktemp -d "${TMPDIR:-/tmp}/knossos-files.XXXXXX") ) || die 'could not create a private temporary directory'
+    SCRATCH=$( (umask 077 && mktemp -d "$DATA_REAL/.knossos-files.XXXXXX") ) || die "could not create a scratch directory in $DATA_REAL"
+    SCRATCH_ID=$(dir_id "$SCRATCH") || die "could not read the scratch directory $SCRATCH"
+}
+# in_scratch COMMAND...: run a command from inside the scratch directory, once
+# it is known to be the one this call made.
+in_scratch() {
+    (CDPATH='' cd -P -- "$SCRATCH" 2>/dev/null && [ "$(dir_id .)" = "$SCRATCH_ID" ] && "$@")
+}
+
+# The host refuses a destination it cannot place, before anything runs: its
+# directory must exist, and the name must not be a link or a directory.
+place_output() {
+    dest=$(located "$1")
+    parent=$(dirname -- "$dest")
+    [ -d "$parent" ] || die "cannot write $dest: the directory $parent does not exist."
+    [ ! -L "$dest" ] || die "$dest is a symlink; name the file itself, not a link to it."
+    [ ! -d "$dest" ] || die "$dest is a directory; name a file to write."
+    if inside "$dest" "$DATA_REAL" || inside "$dest" "$INSTALL_REAL"; then
+        die "$dest lies in the Knossos data directory, which a container can write; write it somewhere else."
+    fi
+    [ -z "$OUTPUT_DEST" ] || die "a call can name one file to write in container mode."
+    scratch
+    OUTPUT_DEST=$dest
+    OUTPUT_SCRATCH="$SCRATCH/output"
+    if [ -e "$dest" ]; then OUTPUT_EXISTED=yes; fi
+    # What the command would refuse to replace, decided here: the container
+    # writes a fresh file and cannot see the one in place.
+    case $COMMAND in
+        export-bundle)
+            if [ "$OUTPUT_EXISTED" = yes ]; then
+                printf 'KNOSSOS_INVALID_ARGUMENT: Bundle output already exists: %s\n' "$dest" >&2
+                exit 2
+            fi
+            ;;
+        export-notes | notes-export)
+            if [ "$OUTPUT_EXISTED" = yes ] && ! notes_file "$dest"; then
+                reason="NOTES_FILE_NOT_NOTES: $dest exists and is not a knossos notes file; remove it or pick another --file."
+                if [ "$COMMAND" = notes-export ]; then
+                    if [ "$JSON" = yes ]; then printf '{"status":"refused","reason":%s}\n' "$(json_text "$reason")"; else printf 'refused: %s\n' "$reason"; fi
+                    exit 0
+                fi
+                printf 'KNOSSOS_INVALID_ARGUMENT: %s\n' "$reason" >&2
+                exit 2
+            fi
+            ;;
+    esac
+}
+
+# notes_file FILE: whether a file in the way is a previous notes file, as
+# NotesFile::looksLikeNotesFile decides: JSON whose "format" is knossos-notes.
+notes_file() {
+    [ -f "$1" ] || return 1
+    [ -z "$(find "$1" -size +10240k 2>/dev/null)" ] || return 1
+    tr -d ' \t\r\n' < "$1" 2>/dev/null | grep -q '"format":"knossos-notes"'
+}
+
+# json_text TEXT: TEXT as a JSON string.
+json_text() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+
+# take_input PATH: what the command is given for a file it reads.
+take_input() {
+    file=$(located "$1")
+    if mounted "$file" || [ ! -f "$file" ]; then
+        given=$file
+        return 0
+    fi
+    scratch
+    INPUTS=$((INPUTS + 1))
+    if ! cp -- "$file" "$PRIVATE/input-$INPUTS" 2>/dev/null || ! chmod 0444 "$PRIVATE/input-$INPUTS"; then
+        die "could not read $file"
+    fi
+    in_scratch mv -f -- "$PRIVATE/input-$INPUTS" "./input-$INPUTS" || die "could not copy $file into $SCRATCH"
+    given="$SCRATCH/input-$INPUTS"
+}
+
+# take_database PATH: --db, which must lie in the graph directory.
+take_database() {
+    given=$(located "$1")
+    inside "$given" "$DATA_REAL" \
+        || die "--db names $given, outside the graph directory $DATA_REAL; in container mode the database lives there, so point KNOSSOS_DATA_DIR at its directory instead."
+}
+
+# The command's arguments, with every file it names placed as FILE_ROLES says.
+COMMAND=${1-}
+JSON=no
+INPUTS=0
+for argument in "$@"; do case $argument in --json | --json=true | --json=1) JSON=yes ;; esac; done
+if [ "$COMMAND" = install-agent-plugin ]; then
+    die 'This is a container install: its plugin is managed from the host. Run knossos self-update there, or re-run the installer.'
+fi
+if [ $# -gt 0 ]; then
+    # Each argument is taken off the front and its placed form put on the end,
+    # so after one pass the list holds the placed arguments only.
+    shift
+    count=$#
+    position=0
+    pending=''
+    ended=no
+    file_named=no
+    while [ "$count" -gt 0 ]; do
+        argument=$1
+        shift
+        count=$((count - 1))
+        if [ "$ended" = yes ]; then set -- "$@" "$argument"; continue; fi
+        if [ -n "$pending" ]; then
+            key=$pending
+            value=$argument
+            pending=''
+            file_role "$COMMAND" "$key"
+        else
+            case $argument in
+                --)
+                    ended=yes
+                    set -- "$@" "$argument"
+                    continue
+                    ;;
+                --*=*)
+                    key=${argument%%=*}
+                    value=${argument#*=}
+                    file_role "$COMMAND" "$key"
+                    ;;
+                --*)
+                    # `--name PATH`, which the CLI itself does not read, is
+                    # taken as `--name=PATH` for an option that names a file.
+                    file_role "$COMMAND" "$argument"
+                    if [ -n "$role" ] && [ "$role" != none ] && [ "$count" -gt 0 ]; then pending=$argument; fi
+                    [ -n "$pending" ] || set -- "$@" "$argument"
+                    continue
+                    ;;
+                *)
+                    position=$((position + 1))
+                    key=@
+                    value=$argument
+                    file_role "$COMMAND" @ "$position"
+                    ;;
+            esac
+        fi
+        given=$value
+        case $role in
+            output)
+                place_output "$value"
+                given=$OUTPUT_SCRATCH
+                if [ "$key" = --file ]; then file_named=yes; fi
+                ;;
+            input) take_input "$value" ;;
+            database) take_database "$value" ;;
+            refused) die "$key is not available in container mode." ;;
+        esac
+        if [ "$key" = @ ]; then set -- "$@" "$given"; else set -- "$@" "$key=$given"; fi
+    done
+    set -- "$COMMAND" "$@"
+    # export-notes and notes-export write knossos-notes.json in the project
+    # when no --file is named; the host writes it there, as any other output.
+    case $COMMAND in
+        export-notes | notes-export)
+            if [ "$file_named" = no ]; then
+                folder=$HERE
+                if [ "$COMMAND" = notes-export ]; then folder=$ROOT; fi
+                for argument in "$@"; do
+                    [ "$argument" != "$COMMAND" ] || continue
+                    case $argument in -*) ;; *) if [ "$COMMAND" = export-notes ] && [ -d "$(absolute "$argument")" ]; then folder=$(physical "$(absolute "$argument")"); fi; break ;; esac
+                done
+                place_output "${folder%/}/knossos-notes.json"
+                set -- "$@" "--file=$OUTPUT_SCRATCH"
+            fi
+            ;;
+    esac
+fi
 
 NAME="knossos-$(hash12 "$INSTALL_REAL
 $ROOT
@@ -677,13 +976,16 @@ start_container() {
     set -- "$@" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
         -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_REAL" \
         -e "KNOSSOS_DATA_DIR=$DATA_REAL" -e "KNOSSOS_ROOTS_FILE=$ROOTS_FILE_REAL"
-    while IFS= read -r mounted; do
+    while IFS='|' read -r mounted rw; do
         [ -n "$mounted" ] || continue
-        set -- "$@" --mount "type=bind,source=$mounted,target=$mounted"
+        if [ "$rw" = true ]; then
+            set -- "$@" --mount "type=bind,source=$mounted,target=$mounted"
+        else
+            set -- "$@" --mount "type=bind,source=$mounted,target=$mounted,readonly"
+        fi
     done <<MOUNTED
 $MOUNTS
 MOUNTED
-    set -- "$@" --mount "type=bind,source=$INSTALL_REAL,target=$INSTALL_REAL,readonly"
     set -- "$@" --entrypoint "$IN_IMAGE/tools/launcher/idle-stop" "$IMAGE" "$MARKER"
     attempts=0
     while :; do
@@ -749,7 +1051,7 @@ check_mounts() {
         die "container $NAME does not have the mounts that were checked, so it was removed; run the command again."
     fi
     [ "${2-}" = new ] || return 0
-    while IFS= read -r mounted; do
+    while IFS='|' read -r mounted rw; do
         [ -n "$mounted" ] || continue
         if [ "$(physical "$mounted")" != "$mounted" ]; then
             "$RUNTIME" rm -f "$NAME" >/dev/null 2>&1 </dev/null
@@ -824,10 +1126,75 @@ set -- exec -i -w "$WORKDIR" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
 forward() {
     "$RUNTIME" exec "$NAME" "$IN_IMAGE/tools/launcher/idle-stop" --signal "$1" "$CALL_ID" >/dev/null 2>&1 </dev/null
 }
+# finish_output: once the command has succeeded, the file it wrote goes to the
+# path that was named, or nothing does. It is moved out of the scratch
+# directory by rename from inside it (a link there is moved as a link, never
+# followed), checked in the private directory to be a plain file, copied into
+# a new file beside the destination and renamed over it, which replaces a name
+# without following a link there.
+finish_output() {
+    # shellcheck disable=SC2016 # the inner sh expands its own argument
+    if ! in_scratch sh -c 'if [ -e output ] || [ -L output ]; then mv -f -- output "$1/output"; fi' _ "$PRIVATE"; then
+        printf 'knossos: the scratch directory %s changed while the command ran; nothing was written to %s.\n' "$SCRATCH" "$OUTPUT_DEST" >&2
+        return 1
+    fi
+    if [ ! -e "$PRIVATE/output" ] && [ ! -L "$PRIVATE/output" ]; then return 0; fi
+    if [ -L "$PRIVATE/output" ] || [ ! -f "$PRIVATE/output" ]; then
+        printf 'knossos: the command left no plain file for %s; nothing was written.\n' "$OUTPUT_DEST" >&2
+        return 1
+    fi
+    parent=$(dirname -- "$OUTPUT_DEST")
+    if ! written=$(mktemp "$parent/.knossos-output.XXXXXX" 2>/dev/null); then
+        printf 'knossos: could not write in %s; nothing was written to %s.\n' "$parent" "$OUTPUT_DEST" >&2
+        return 1
+    fi
+    mode=$(printf '%o' $((0666 & ~0$(umask))))
+    if ! cat < "$PRIVATE/output" > "$written" || ! chmod "$mode" "$written" \
+        || [ -L "$OUTPUT_DEST" ] || [ -d "$OUTPUT_DEST" ] || ! mv -f -- "$written" "$OUTPUT_DEST"; then
+        rm -f -- "$written"
+        printf 'knossos: could not write %s; nothing was written.\n' "$OUTPUT_DEST" >&2
+        return 1
+    fi
+}
+
+# show_output: what the command printed, with the scratch path it was given
+# shown as the path that was named.
+show_output() {
+    to=$OUTPUT_DEST
+    if [ "$JSON" = yes ]; then to=$(json_text "$OUTPUT_DEST"); to=${to#\"}; to=${to%\"}; fi
+    replaced=no
+    case $COMMAND in export-notes | notes-export) replaced=$OUTPUT_EXISTED ;; esac
+    FROM=$OUTPUT_SCRATCH TO=$to REPLACED=$replaced JSONOUT=$JSON awk '
+        function swap(line, from, to,    out, i) {
+            out = ""
+            while ((i = index(line, from)) > 0) {
+                out = out substr(line, 1, i - 1) to
+                line = substr(line, i + length(from))
+            }
+            return out line
+        }
+        BEGIN { from = ENVIRON["FROM"]; to = ENVIRON["TO"] }
+        {
+            line = $0
+            # The container saw no file in the way, so it said it replaced none.
+            if (ENVIRON["REPLACED"] == "yes") {
+                if (ENVIRON["JSONOUT"] == "yes") line = swap(line, "\"replaced\":false", "\"replaced\":true")
+                else line = swap(line, from ".", to ". (replaced the previous file)")
+            }
+            print swap(line, from, to)
+        }
+    ' < "$PRIVATE/stdout"
+}
+
 # A background child of a non-interactive shell gets /dev/null as its stdin;
-# the caller's stdin is handed over explicitly.
+# the caller's stdin is handed over explicitly. A call that writes a file has
+# its output kept until the file is in place.
 exec 3<&0
-"$RUNTIME" "$@" <&3 3<&- &
+if [ -n "$OUTPUT_DEST" ]; then
+    "$RUNTIME" "$@" <&3 3<&- > "$PRIVATE/stdout" &
+else
+    "$RUNTIME" "$@" <&3 3<&- &
+fi
 CHILD=$!
 exec 3<&-
 trap 'forward TERM' TERM
@@ -840,4 +1207,8 @@ while :; do
     status=$?
     kill -0 "$CHILD" 2>/dev/null || break
 done
+if [ -n "$OUTPUT_DEST" ]; then
+    if [ "$status" -eq 0 ] && ! finish_output; then status=1; fi
+    show_output
+fi
 exit "$status"

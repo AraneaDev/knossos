@@ -94,7 +94,7 @@ $IMAGE")"
 
 reset_docker
 out=$(cd "$PROJECT/src/deep" && kn version --json </dev/null 2>&1); status=$?
-expected_run="call [run] [-d] [--rm] [--init] [--no-healthcheck] [--pull=never] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$DATA/roots.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT] [--mount] [type=bind,source=$DATA,target=$DATA] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
+expected_run="call [run] [-d] [--rm] [--init] [--no-healthcheck] [--pull=never] [--name] [$NAME] [--label] [io.knossos.install=$(hash12 "$INSTALL")] [--label] [io.knossos.root=$(hash12 "$PROJECT")] [--network] [none] [--user] [$UID_GID] [-e] [HOME=/tmp] [-e] [KNOSSOS_CONTAINER=0] [-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL] [-e] [KNOSSOS_DATA_DIR=$DATA] [-e] [KNOSSOS_ROOTS_FILE=$DATA/roots.json] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$DATA,target=$DATA] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] [--entrypoint] [/opt/knossos/tools/launcher/idle-stop] [$IMAGE] [$INSTALL/containers/$NAME]"
 if [ "$status" -eq 0 ] && grep -qxF "$expected_run" "$FAKE_DOCKER_STATE/calls"; then
     pass 'the first call runs the container with same-path mounts, the install dir as one read-only mount, the user, HOME=/tmp, no network and idle-stop'
 else
@@ -152,7 +152,7 @@ $DATA
 $DATA/roots.json
 $IMAGE")"
 if [ "$status" -eq 0 ] && grep -qF "[--name] [$OTHER_NAME]" "$FAKE_DOCKER_STATE/calls" \
-    && grep -qF "[--mount] [type=bind,source=$OTHER,target=$OTHER]" "$FAKE_DOCKER_STATE/calls"; then
+    && grep -qF "[--mount] [type=bind,source=$OTHER,target=$OTHER,readonly]" "$FAKE_DOCKER_STATE/calls"; then
     pass 'scan <path> mounts that path as the project root, in a container of its own'
 else
     fail "scan path (status $status, output $out): $(calls)"
@@ -176,7 +176,7 @@ LOOSE="$WORK/loose dir"
 mkdir -p "$LOOSE"
 : > "$FAKE_DOCKER_STATE/calls"
 (cd "$LOOSE" && kn version </dev/null >/dev/null 2>&1)
-if grep -qF "[--mount] [type=bind,source=$LOOSE,target=$LOOSE]" "$FAKE_DOCKER_STATE/calls"; then pass 'outside every listed root the working directory is the root'; else fail "loose dir: $(calls)"; fi
+if grep -qF "[--mount] [type=bind,source=$LOOSE,target=$LOOSE,readonly]" "$FAKE_DOCKER_STATE/calls"; then pass 'outside every listed root the working directory is the root'; else fail "loose dir: $(calls)"; fi
 
 # The filesystem root is refused rather than mounted.
 out=$(cd / && kn version </dev/null 2>&1); status=$?
@@ -189,13 +189,13 @@ NESTED="$PROJECT/src"
 printf '["%s","%s"]' "$PROJECT" "$NESTED" > "$DATA/roots.json"
 : > "$FAKE_DOCKER_STATE/calls"
 (cd "$NESTED/deep" && kn version </dev/null >/dev/null 2>&1)
-if grep -qF "[--mount] [type=bind,source=$NESTED,target=$NESTED]" "$FAKE_DOCKER_STATE/calls"; then pass 'a bare array works, and the nearest listed ancestor wins'; else fail "nested roots: $(calls)"; fi
+if grep -qF "[--mount] [type=bind,source=$NESTED,target=$NESTED,readonly]" "$FAKE_DOCKER_STATE/calls"; then pass 'a bare array works, and the nearest listed ancestor wins'; else fail "nested roots: $(calls)"; fi
 QUOTED="$WORK/q\"uo\\te"
 mkdir -p "$QUOTED/x"
 printf '{"roots":["%s"]}' "$WORK/q\\\"uo\\\\te" > "$DATA/roots.json"
 : > "$FAKE_DOCKER_STATE/calls"
 (cd "$QUOTED/x" && kn version </dev/null >/dev/null 2>&1)
-if grep -qF "[--mount] [type=bind,source=$QUOTED,target=$QUOTED]" "$FAKE_DOCKER_STATE/calls"; then pass 'escaped quotes and backslashes in the roots file are read'; else fail "escaped roots: $(calls)"; fi
+if grep -qF "[--mount] [type=bind,source=$QUOTED,target=$QUOTED,readonly]" "$FAKE_DOCKER_STATE/calls"; then pass 'escaped quotes and backslashes in the roots file are read'; else fail "escaped roots: $(calls)"; fi
 printf '{\n    "roots": [\n        "%s"\n    ]\n}\n' "$PROJECT" > "$DATA/roots.json"
 
 # ---- data dir, roots file and install dir apart ---------------------------------
@@ -208,7 +208,7 @@ cp "$DATA/roots.json" "$ROOTS"
 (cd "$PROJECT" && KNOSSOS_DATA_DIR="$GRAPH" KNOSSOS_ROOTS_FILE="$ROOTS" "$LAUNCHER" version </dev/null >/dev/null 2>&1)
 run_line=$(grep '^call \[run\]' "$FAKE_DOCKER_STATE/calls")
 case $run_line in
-    *"[-e] [KNOSSOS_DATA_DIR=$GRAPH] [-e] [KNOSSOS_ROOTS_FILE=$ROOTS] [--mount] [type=bind,source=$PROJECT,target=$PROJECT] [--mount] [type=bind,source=$GRAPH,target=$GRAPH] [--mount] [type=bind,source=$WORK/roots dir,target=$WORK/roots dir] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] "*)
+    *"[-e] [KNOSSOS_DATA_DIR=$GRAPH] [-e] [KNOSSOS_ROOTS_FILE=$ROOTS] [--mount] [type=bind,source=$PROJECT,target=$PROJECT,readonly] [--mount] [type=bind,source=$GRAPH,target=$GRAPH] [--mount] [type=bind,source=$WORK/roots dir,target=$WORK/roots dir] [--mount] [type=bind,source=$INSTALL,target=$INSTALL,readonly] "*)
         pass "a caller's data dir and roots file are mounted beside the project and the install directory, each at its own path"
         ;;
     *) fail "separate dirs: $run_line" ;;
@@ -535,14 +535,14 @@ mkdir -p "$HOME/proj/sub" "$HOME/other/deep"
 printf '{"roots": ["%s", "%s/proj"]}\n' "$HOME" "$HOME" > "$DATA/roots.json"
 reset_docker
 out=$(cd "$HOME/proj/sub" && kn version </dev/null 2>&1); status=$?
-if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$HOME/proj,target=$HOME/proj]" "$FAKE_DOCKER_STATE/calls"; then
+if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$HOME/proj,target=$HOME/proj,readonly]" "$FAKE_DOCKER_STATE/calls"; then
     pass 'with the home directory listed, a narrower listed root below it is used'
 else
     fail "home listed, narrower root: $status, $out, $(calls)"
 fi
 reset_docker
 out=$(cd "$HOME/other/deep" && kn version </dev/null 2>&1); status=$?
-if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$HOME/other/deep,target=$HOME/other/deep]" "$FAKE_DOCKER_STATE/calls"; then
+if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$HOME/other/deep,target=$HOME/other/deep,readonly]" "$FAKE_DOCKER_STATE/calls"; then
     pass 'with the home directory listed and nothing narrower, the working directory is the root'
 else
     fail "home listed, working directory: $status, $out, $(calls)"
@@ -566,7 +566,7 @@ run_line=$(grep '^call \[run\] \[-d\]' "$FAKE_DOCKER_STATE/calls")
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
 agree=yes
 for wanted in "[-e] [KNOSSOS_CONTAINER_INSTALL_DIR=$REAL/install]" "[-e] [KNOSSOS_DATA_DIR=$REAL/graph]" "[-e] [KNOSSOS_ROOTS_FILE=$REAL/roots/roots.json]" \
-    "[--mount] [type=bind,source=$REAL/proj,target=$REAL/proj]" "[--mount] [type=bind,source=$REAL/graph,target=$REAL/graph]" \
+    "[--mount] [type=bind,source=$REAL/proj,target=$REAL/proj,readonly]" "[--mount] [type=bind,source=$REAL/graph,target=$REAL/graph]" \
     "[--mount] [type=bind,source=$REAL/roots,target=$REAL/roots]" "[--mount] [type=bind,source=$REAL/install,target=$REAL/install,readonly]" \
     "[$REAL/install/containers/knossos-"; do
     case $run_line in *"$wanted"*) ;; *) agree=no; printf '  run lacks %s\n' "$wanted" ;; esac
@@ -876,6 +876,117 @@ out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
 if [ "$status" -eq 0 ] && [ "$(count_calls exec)" -eq 1 ]; then pass 'podman reporting localhost/<image> counts as the same image'; else fail "podman image name: $status, $out, $(calls)"; fi
 write_record "$IMAGE"
 
+# ---- the project is read-only; named files go through the host -------------------------
+
+# scratch_left: scratch or private directories this test's calls left behind.
+scratch_left() { find "$DATA" "$WORK/tmp" -maxdepth 1 \( -name '.knossos-files.*' -o -name 'knossos-files.*' \) 2>/dev/null; }
+mkdir -p "$WORK/tmp"
+# out_call ARGS: a call from the project with a private TMPDIR, output and status kept.
+out_call() {
+    reset_docker
+    out=$(cd "$PROJECT" && TMPDIR="$WORK/tmp" kn "$@" </dev/null 2>&1); status=$?
+}
+OUT_IN="$PROJECT/out/bundle.json"
+mkdir -p "$PROJECT/out" "$WORK/outside"
+OUT_OUT="$WORK/outside/brief.md"
+
+FAKE_EXEC_WRITE='bundle bytes' out_call export-bundle project_1 "--output=$OUT_IN" --json
+exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
+case $exec_line in *"[--output=$DATA/.knossos-files."*"/output]"*) via=scratch ;; *) via=other ;; esac
+if [ "$status" -eq 0 ] && [ "$via" = scratch ] && [ "$(cat "$OUT_IN" 2>/dev/null)" = 'bundle bytes' ] && [ -z "$(scratch_left)" ]; then
+    pass 'an --output in the read-only project is written by the command into a scratch file and moved there by the host'
+else
+    fail "output into the project: $status, $out, $exec_line, $(cat "$OUT_IN" 2>&1), left $(scratch_left)"
+fi
+case $out in *"$OUT_IN"*) case $out in *.knossos-files.*) fail "the scratch path was printed: $out" ;; *) pass 'the command prints the path that was named, not the scratch path' ;; esac ;; *) fail "named path not printed: $out" ;; esac
+rm -f "$OUT_IN"
+
+FAKE_EXEC_WRITE='brief text' out_call export-agent-brief "$PROJECT" --out "$OUT_OUT"
+if [ "$status" -eq 0 ] && [ "$(cat "$OUT_OUT" 2>/dev/null)" = 'brief text' ]; then pass '--out PATH, spaced, to a path outside every mount is written too'; else fail "spaced --out outside: $status, $out"; fi
+rm -f "$OUT_OUT"
+
+(cd "$PROJECT/out" && FAKE_EXEC_WRITE=rel TMPDIR="$WORK/tmp" kn export-bundle project_1 --output=rel.json </dev/null >/dev/null 2>&1)
+if [ "$(cat "$PROJECT/out/rel.json" 2>/dev/null)" = rel ]; then pass 'a relative --output is resolved against the working directory on the host'; else fail "relative output: $(ls "$PROJECT/out")"; fi
+rm -f "$PROJECT/out/rel.json"
+
+printf 'old\n' > "$OUT_OUT"
+FAKE_EXEC_WRITE=new FAKE_EXEC_EXIT=3 out_call export-agent-brief "$PROJECT" "--out=$OUT_OUT"
+if [ "$status" -eq 3 ] && [ "$(cat "$OUT_OUT")" = old ] && [ -z "$(scratch_left)" ]; then pass 'a command that fails writes nothing at the destination, and its scratch file is removed'; else fail "failed output: $status, $(cat "$OUT_OUT"), left $(scratch_left)"; fi
+
+ln -s "$SENTINEL" "$WORK/outside/link.md"
+FAKE_EXEC_WRITE=x out_call export-agent-brief "$PROJECT" "--out=$WORK/outside/link.md"
+if [ "$status" -eq 1 ] && [ "$out" = "knossos: $WORK/outside/link.md is a symlink; name the file itself, not a link to it." ] && [ "$(count_calls run)" -eq 0 ] && [ "$(count_calls exec)" -eq 0 ] && sentinel_intact; then
+    pass 'a destination that is a symlink is refused before anything runs'
+else
+    fail "symlinked destination: $status, $out, $(calls)"
+fi
+FAKE_EXEC_WRITE=x out_call export-agent-brief "$PROJECT" "--out=$WORK/no such dir/brief.md"
+if [ "$status" -eq 1 ] && [ "$out" = "knossos: cannot write $WORK/no such dir/brief.md: the directory $WORK/no such dir does not exist." ] && [ "$(count_calls run)" -eq 0 ] && [ ! -e "$WORK/no such dir" ]; then
+    pass 'a destination whose directory does not exist is refused before any run, and nothing is created'
+else
+    fail "missing parent: $status, $out, $(calls)"
+fi
+# A command that leaves a link where its output belongs: nothing is copied through it.
+FAKE_EXEC_LINK="$SENTINEL" out_call export-agent-brief "$PROJECT" "--out=$WORK/outside/linked.md"
+if [ "$status" -eq 1 ] && [ ! -e "$WORK/outside/linked.md" ] && [ ! -L "$WORK/outside/linked.md" ]; then
+    pass 'a link left in the scratch directory is never followed to the destination'
+else
+    fail "link in scratch: $status, $out, $(ls -l "$WORK/outside")"
+fi
+FAKE_EXEC_WRITE=x out_call export-bundle project_1 "--output=$DATA/bundle.json"
+case $out in *'lies in the Knossos data directory, which a container can write'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'a destination in the graph directory is refused'; else fail "output in graph: $status, $out"; fi
+printf 'x\n' > "$OUT_IN"
+FAKE_EXEC_WRITE=y out_call export-bundle project_1 "--output=$OUT_IN"
+if [ "$status" -eq 2 ] && [ "$out" = "KNOSSOS_INVALID_ARGUMENT: Bundle output already exists: $OUT_IN" ] && [ "$(count_calls run)" -eq 0 ] && [ "$(cat "$OUT_IN")" = x ]; then
+    pass 'export-bundle still refuses an existing output, before anything runs'
+else
+    fail "existing bundle: $status, $out"
+fi
+rm -f "$OUT_IN"
+
+# export-notes and notes-export write knossos-notes.json in the project by default.
+FAKE_EXEC_WRITE='{"format": "knossos-notes"}' out_call notes-export "$PROJECT" --json
+case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *"[--file=$DATA/.knossos-files."*) via=scratch ;; *) via=other ;; esac
+if [ "$status" -eq 0 ] && [ "$via" = scratch ] && [ -f "$PROJECT/knossos-notes.json" ]; then pass 'notes-export writes the project knossos-notes.json through the host'; else fail "notes-export default: $status, $out"; fi
+printf 'not notes\n' > "$PROJECT/knossos-notes.json"
+FAKE_EXEC_WRITE=x out_call notes-export "$PROJECT" --json
+case $out in '{"status":"refused","reason":"NOTES_FILE_NOT_NOTES: '"$PROJECT"'/knossos-notes.json exists and is not a knossos notes file; remove it or pick another --file."}') said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(cat "$PROJECT/knossos-notes.json")" = 'not notes' ] && [ "$(count_calls run)" -eq 0 ]; then
+    pass 'notes-export refuses to replace a file that is not a notes file, as the pane expects'
+else
+    fail "notes-export over another file: $status, $out"
+fi
+rm -f "$PROJECT/knossos-notes.json"
+(cd "$PROJECT/src" && FAKE_EXEC_WRITE='{"format":"knossos-notes"}' TMPDIR="$WORK/tmp" kn export-notes </dev/null >/dev/null 2>&1)
+if [ -f "$PROJECT/src/knossos-notes.json" ]; then pass 'export-notes without --file writes knossos-notes.json in the folder it runs from'; else fail 'export-notes default'; fi
+rm -f "$PROJECT/src/knossos-notes.json"
+
+# A file to read outside every mount is copied in, read-only; one inside is passed on.
+printf 'bundle in\n' > "$WORK/outside/in.json"
+out_call import-bundle "$WORK/outside/in.json"
+case $out in *"file:$DATA/.knossos-files."*"/input-1:read-only:bundle in"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ -z "$(scratch_left)" ]; then pass 'an input outside every mount is copied into the scratch directory, read-only'; else fail "input outside: $status, $out"; fi
+printf 'budgets\n' > "$PROJECT/budgets.json"
+out_call quality-gate "$PROJECT" snap_1 --budgets=budgets.json
+case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *"[--budgets=$PROJECT/budgets.json]"*) said=yes ;; *) said=no ;; esac
+if [ "$said" = yes ]; then pass 'an input inside the project is passed on at its absolute path'; else fail "input inside: $(calls)"; fi
+rm -f "$PROJECT/budgets.json"
+
+# --db must lie in the graph directory; install-agent-plugin is the host's.
+out_call scan "$PROJECT" "--db=$WORK/outside/other.sqlite"
+case $out in *"--db names $WORK/outside/other.sqlite, outside the graph directory $DATA"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass '--db outside the graph directory is refused'; else fail "db outside: $status, $out"; fi
+out_call scan "$PROJECT" "--db=$DATA/other.sqlite"
+if [ "$status" -eq 0 ]; then pass '--db inside the graph directory is accepted'; else fail "db inside: $status, $out"; fi
+out_call install-agent-plugin --out=/tmp/x
+case $out in *'its plugin is managed from the host'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'install-agent-plugin is refused in container mode before anything runs'; else fail "plugin refused: $status, $out"; fi
+# After the -- of enricher add, nothing is a file to place.
+out_call enricher add tool -- tool --output=/nowhere/x
+case $(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1) in *'[--] [tool] [--output=/nowhere/x]') said=yes ;; *) said=no ;; esac
+if [ "$said" = yes ]; then pass 'arguments after -- are passed on as given'; else fail "after --: $status, $out"; fi
+
 # ---- a root with a colon is never passed as an extra allowed root ------------------------
 
 mkdir -p "$WORK/c:olon/proj"
@@ -884,7 +995,7 @@ printf '{"roots": ["%s"]}\n' "$WORK/colon link" > "$DATA/roots.json"
 reset_docker
 out=$(cd "$WORK/c:olon/proj" && kn version </dev/null 2>&1); status=$?
 exec_line=$(grep '^call \[exec\]' "$FAKE_DOCKER_STATE/calls" | head -n 1)
-if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$WORK/c:olon/proj,target=$WORK/c:olon/proj]" "$FAKE_DOCKER_STATE/calls"; then
+if [ "$status" -eq 0 ] && grep -qF "[--mount] [type=bind,source=$WORK/c:olon/proj,target=$WORK/c:olon/proj,readonly]" "$FAKE_DOCKER_STATE/calls"; then
     case $exec_line in
         *KNOSSOS_ALLOWED_ROOTS*) fail "a root with a colon was passed in KNOSSOS_ALLOWED_ROOTS: $exec_line" ;;
         *) pass 'a root with a colon, listed through a symlink, is mounted but not added to KNOSSOS_ALLOWED_ROOTS' ;;

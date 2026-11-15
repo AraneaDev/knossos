@@ -15,7 +15,9 @@
 #   pull-fails             present: `pull` fails
 #   copy/<path>            what `run ... cat <path>` prints, for files read out of an image
 #
-# `exec` prints `exec:` and the argument list after the container name (a
+# `exec` writes FAKE_EXEC_WRITE (or a link to FAKE_EXEC_LINK) to the file its
+# --output, --out or --file names, prints each scratch file it is given, and
+# prints `exec:` and the argument list after the container name (a
 # bare `version` prints `Knossos $FAKE_IMAGE_VERSION` instead), then
 # reads stdin when FAKE_EXEC_STDIN=1, waits for a signal when FAKE_EXEC_WAIT=1
 # (it ends with 143 once `exec ... idle-stop --signal` has been called) and
@@ -205,6 +207,27 @@ case $command in
             for a in "$@"; do printf '[%s]' "$a"; done
             printf '\n'
         fi
+        # FAKE_EXEC_WRITE: text the command writes to the file its --output,
+        # --out or --file names; FAKE_EXEC_LINK: a link to that path instead.
+        for a in "$@"; do
+            case $a in
+                --output=* | --out=* | --file=*)
+                    if [ -n "${FAKE_EXEC_LINK:-}" ]; then ln -s "$FAKE_EXEC_LINK" "${a#*=}"
+                    elif [ -n "${FAKE_EXEC_WRITE:-}" ]; then printf '%s\n' "$FAKE_EXEC_WRITE" > "${a#*=}"; fi
+                    ;;
+            esac
+        done
+        # Each argument that is a file in a scratch directory, with what it holds.
+        for a in "$@"; do
+            case $a in
+                */.knossos-files.*/*)
+                    if [ -f "$a" ]; then
+                        if [ -w "$a" ]; then mode=writable; else mode=read-only; fi
+                        printf 'file:%s:%s:%s\n' "$a" "$mode" "$(cat "$a")"
+                    fi
+                    ;;
+            esac
+        done
         if [ "${FAKE_EXEC_STDIN:-}" = 1 ]; then
             printf 'stdin:'
             cat
