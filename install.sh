@@ -13,7 +13,8 @@
 # <data dir>/current at it and writes one launcher, <bin dir>/knossos, that the
 # MCP registration and the plugin's hooks call.
 #
-# Container mode needs only Docker or Podman, with its daemon running. It pulls
+# Container mode is experimental and opt-in (--mode=container). It needs only
+# Docker or Podman, with its daemon running. It pulls
 # the release image (ghcr.io/araneadev/knossos:<version>), checks that it
 # starts and passes doctor, and writes install.json naming the image by digest
 # into the install directory, and the same launcher, which then runs each
@@ -22,9 +23,11 @@
 # ${XDG_DATA_HOME:-~/.local/share}/knossos) holds everything the host trusts
 # and lies outside every data directory; the data directory holds the graph
 # only, and must be empty, new, or hold only what Knossos puts there, since
-# every container can write it. Without --mode, native mode is chosen when the
-# host has all of the above, else container mode when a container runtime
-# answers.
+# every container can write it. Without --mode, the installer uses native mode
+# when the host has all of the above, and otherwise stops before it writes
+# anything, lists what is missing and names the two ways out: install it, or
+# run again with --mode=container. It never picks container mode by itself;
+# only a reinstall or an update of an existing container install keeps it.
 #
 # --no-plugin skips both the plugin and the MCP registration, in either mode.
 #
@@ -66,6 +69,9 @@
 {
 set -eu
 
+# What container mode has and has not been tested on.
+CONTAINER_MODE_DOCS='https://araneadev.github.io/knossos/operate/container-mode'
+
 say() { printf '%s\n' "${1-}"; }
 log() { printf '  %s\n' "$1"; }
 warn() { printf 'warning: %s\n' "$1" >&2; }
@@ -80,6 +86,10 @@ usage: install.sh [--mode=native|container] [--version=V] [--data-dir=DIR]
                   [--install-dir=DIR] [--bin-dir=DIR] [--no-plugin] [--no-roots]
                   [--dry-run] [--force-clean]
 
+  --mode         native (the default) or container; container mode is
+                 experimental, needs Docker or Podman with its daemon running,
+                 and is used only when asked for, or when a container install
+                 is already in the install directory
   --install-dir  container mode: where the record, the update helper, the
                  plugin, the roots list and the settings go (default:
                  ${XDG_DATA_HOME:-~/.local/share}/knossos); run the installer
@@ -1338,9 +1348,6 @@ main() {
     done
     no_container_runtime() {
         if [ -n "$stopped_runtime" ]; then
-            if [ -n "$missing" ] && [ "$MODE" != container ]; then
-                die "$stopped_runtime is installed, but its daemon is not running ($stopped_runtime info failed): start it and run the installer again, or install what is listed above"
-            fi
             die "$stopped_runtime is installed, but its daemon is not running ($stopped_runtime info failed): start it and run the installer again"
         fi
         die "$1"
@@ -1352,31 +1359,42 @@ main() {
             die 'container mode needs sha256sum or shasum on the host, and neither was found; install one (coreutils or perl) and run the installer again'
         fi
     }
+    # Container mode is experimental and opt-in: only --mode=container, or a
+    # container install that is already there, gets it. Without --mode, a
+    # reinstall or an update of the container install whose graph directory
+    # this data directory is keeps container mode, so opting in once is
+    # enough. Anything else without --mode is native mode, or a stop that
+    # says what is missing; the installer never picks container mode by
+    # itself, whether or not a runtime answers.
+    if [ "$MODE" = auto ] && [ -n "$(container_install_of "$DATA_DIR")" ]; then
+        say "Keeping container mode: the container install in $INSTALL_DIR uses $DATA_DIR."
+        MODE=container
+    fi
     case $MODE in
         container)
             [ -n "$container_runtime" ] || no_container_runtime 'container mode needs Docker or Podman, with its daemon running; neither was found'
             no_checksum_tool
+            say "Container mode is experimental: $CONTAINER_MODE_DOCS says what has been tested and what has not."
             ;;
         native | auto)
             if [ -n "$missing" ]; then
                 {
                     say 'This host cannot run Knossos natively. Missing:'
-                    printf '%s\n' "$missing"
+                    printf '%s\n' "${missing#?}"
+                    say 'Nothing was installed. Two ways out:'
+                    say '  - install what is listed above and run the installer again'
+                    say '  - run the installer with --mode=container, which is experimental and needs'
+                    say '    Docker or Podman with its daemon running; see'
+                    say "    $CONTAINER_MODE_DOCS"
                 } >&2
-                if [ "$MODE" = native ]; then
-                    if [ -n "$container_runtime" ]; then
-                        die "install what is listed above and run the installer again, or re-run it with --mode=container: $container_runtime is available"
-                    fi
-                    die 'install what is listed above and run the installer again, or install Docker or Podman and re-run it with --mode=container'
+                if [ -n "$container_runtime" ]; then
+                    die "native mode cannot run on this host. $container_runtime answers here, so --mode=container can run now."
+                elif [ -n "$stopped_runtime" ]; then
+                    die "native mode cannot run on this host. $stopped_runtime is installed, but its daemon is not running ($stopped_runtime info failed), so start it before you use --mode=container."
                 fi
-                [ -n "$container_runtime" ] \
-                    || no_container_runtime 'install what is listed above and run the installer again, or install Docker or Podman (with its daemon running) and re-run it with --mode=container'
-                no_checksum_tool
-                say "Using container mode: $container_runtime is available."
-                MODE=container
-            else
-                MODE=native
+                die 'native mode cannot run on this host. Neither Docker nor Podman answers here, so --mode=container needs one installed, with its daemon running, first.'
             fi
+            MODE=native
             ;;
     esac
 

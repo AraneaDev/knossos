@@ -386,11 +386,41 @@ if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/nd" ]; then pass '-
 reset_docker
 out=$(PATH="$BARE" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 KNOSSOS_INSTALL_DIR="$WORK/auto/install dir" sh "$INSTALL_SH" --no-plugin --no-roots \
     --data-dir="$WORK/auto/data dir" --bin-dir="$WORK/auto/bin dir" --version=1.0.0 2>&1 </dev/null); status=$?
-case $out in *'php not found'*'Using container mode: docker is available.'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(field "$WORK/auto/install dir/install.json" mode)" = container ]; then
-    pass 'without --mode, a host without php but with a running docker gets container mode'
+case $out in *'php not found'*'error: native mode cannot run on this host. docker answers here, so --mode=container can run now.'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/auto" ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(count_calls run)" -eq 0 ]; then
+    pass 'without --mode, a host without php but with a running docker stops and writes nothing'
 else
     fail "auto mode: $status, $out"
+fi
+
+# The experimental notice: once per run of --mode=container, the dry run included.
+NOTICE='Container mode is experimental: https://araneadev.github.io/knossos/operate/container-mode says what has been tested and what has not.'
+reset_docker
+out=$(ci "$WORK/notice" --version=1.0.0 --no-plugin --no-roots); status=$?
+if [ "$status" -eq 0 ] && [ "$(printf '%s\n' "$out" | grep -cxF "$NOTICE")" -eq 1 ] && [ "$(printf '%s\n' "$out" | head -n 1)" = "$NOTICE" ]; then
+    pass '--mode=container says once, first, that container mode is experimental and where the docs are'
+else
+    fail "experimental notice: $status, $out"
+fi
+out=$(ci "$WORK/notice dry" --version=1.0.0 --no-plugin --no-roots --dry-run); status=$?
+if [ "$status" -eq 0 ] && [ "$(printf '%s\n' "$out" | grep -cxF "$NOTICE")" -eq 1 ] && [ ! -e "$WORK/notice dry" ]; then
+    pass '--dry-run with --mode=container says it too'
+else
+    fail "experimental notice in a dry run: $status, $out"
+fi
+
+# A reinstall or an update of a container install without --mode keeps
+# container mode, on a host that lacks native mode's requirements.
+reset_docker
+out=$(PATH="$BARE" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 KNOSSOS_INSTALL_DIR="$WORK/notice/install dir" sh "$INSTALL_SH" --no-plugin --no-roots \
+    --data-dir="$WORK/notice/data dir" --bin-dir="$WORK/notice/bin dir" --version=1.0.0 2>&1 </dev/null); status=$?
+case $out in *"Keeping container mode: the container install in $WORK/notice/install dir uses $WORK/notice/data dir."*) said=yes ;; *) said=no ;; esac
+case $out in *'Missing:'*) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(printf '%s\n' "$out" | grep -cxF "$NOTICE")" -eq 1 ] && has_call "call [pull] [$REPO:1.0.0]" \
+    && [ "$(field "$WORK/notice/install dir/install.json" mode)" = container ]; then
+    pass 'a reinstall of a container install without --mode keeps container mode'
+else
+    fail "reinstall without --mode: $status, $out"
 fi
 
 reset_docker
@@ -804,30 +834,61 @@ detect() {
     (cd "$WORK/elsewhere" && PATH="$front" KNOSSOS_RELEASE_BASE="$WORK/no releases" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 KNOSSOS_INSTALL_DIR="$dir/install dir" \
         sh "$INSTALL_SH" --data-dir="$dir/data dir" --bin-dir="$dir/bin dir" --version=1.0.0 --no-plugin --no-roots "$@" 2>&1 </dev/null)
 }
+# The stop on a host that lacks something native mode needs: the list, the
+# two ways out, and whether a container runtime answers, word for word. It
+# never falls back to container mode, whether or not one answers.
+WAYS_OUT='Nothing was installed. Two ways out:
+  - install what is listed above and run the installer again
+  - run the installer with --mode=container, which is experimental and needs
+    Docker or Podman with its daemon running; see
+    https://araneadev.github.io/knossos/operate/container-mode'
+RUNTIME_ANSWERS='error: native mode cannot run on this host. docker answers here, so --mode=container can run now.'
+NO_RUNTIME='error: native mode cannot run on this host. Neither Docker nor Podman answers here, so --mode=container needs one installed, with its daemon running, first.'
+STOPPED_RUNTIME='error: native mode cannot run on this host. docker is installed, but its daemon is not running (docker info failed), so start it before you use --mode=container.'
+# missing_out LINE... : what the installer prints for those missing lines, then the ways out.
+missing_out() {
+    printf 'This host cannot run Knossos natively. Missing:\n'
+    for line in "$@"; do printf '  - %s\n' "$line"; done
+    printf '%s\n' "$WAYS_OUT"
+}
 reset_docker
 out=$(STUB_PHP_LACKS='mbstring pdo_sqlite ' detect "$STUB:$BARE" "$WORK/no mbstring"); status=$?
-case $out in *'This host cannot run Knossos natively. Missing:'*'  - the PHP extension(s) mbstring, pdo_sqlite (not loaded by php)'*'Using container mode: docker is available.'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(field "$WORK/no mbstring/install dir/install.json" mode)" = container ]; then
-    pass 'a PHP without mbstring and pdo_sqlite is named, and container mode is used when Docker answers'
+expected="$(missing_out 'the PHP extension(s) mbstring, pdo_sqlite (not loaded by php)')
+$RUNTIME_ANSWERS"
+if [ "$status" -ne 0 ] && [ "$out" = "$expected" ] && [ ! -e "$WORK/no mbstring" ] && [ "$(count_calls pull)" -eq 0 ] && [ "$(count_calls run)" -eq 0 ]; then
+    pass 'missing extensions with Docker answering: it stops, names both ways out, says Docker answers, and writes nothing'
 else
     fail "missing extensions with docker: $status, $out"
 fi
 reset_docker
 out=$(detect "$NOGIT:$BARE" "$WORK/no git"); status=$?
-case $out in *'  - Git (git not found)'*'Using container mode: docker is available.'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a host without git is not given native mode'; else fail "no git: $status, $out"; fi
+expected="$(missing_out 'Git (git not found)')
+$RUNTIME_ANSWERS"
+if [ "$status" -ne 0 ] && [ "$out" = "$expected" ] && [ ! -e "$WORK/no git" ]; then pass 'a host without git is not given native mode, nor container mode'; else fail "no git: $status, $out"; fi
 reset_docker
 out=$(STUB_PHP_LACKS='pdo_sqlite ' detect "$STUB:$NODOCKER_BARE" "$WORK/no runtime"); status=$?
-case $out in *'  - the PHP extension(s) pdo_sqlite (not loaded by php)'*'error: install what is listed above and run the installer again, or install Docker or Podman (with its daemon running) and re-run it with --mode=container'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/no runtime" ]; then
-    pass 'without Docker or Podman it stops before writing anything, names what is missing and both ways out'
+expected="$(missing_out 'the PHP extension(s) pdo_sqlite (not loaded by php)')
+$NO_RUNTIME"
+if [ "$status" -ne 0 ] && [ "$out" = "$expected" ] && [ ! -e "$WORK/no runtime" ]; then
+    pass 'missing requirements without Docker or Podman: it stops, names both ways out, says none answers, and writes nothing'
 else
     fail "missing extension, no docker: $status, $out"
 fi
 reset_docker
+: > "$FAKE_DOCKER_STATE/daemon-down"
+out=$(STUB_PHP_LACKS='pdo_sqlite ' detect "$STUB:$BARE" "$WORK/stopped runtime"); status=$?
+expected="$(missing_out 'the PHP extension(s) pdo_sqlite (not loaded by php)')
+$STOPPED_RUNTIME"
+if [ "$status" -ne 0 ] && [ "$out" = "$expected" ] && [ ! -e "$WORK/stopped runtime" ]; then
+    pass 'missing requirements with a stopped Docker daemon: it says the daemon is not running, and writes nothing'
+else
+    fail "missing extension, stopped docker: $status, $out"
+fi
+reset_docker
 out=$(STUB_PHP_LACKS='mbstring ' detect "$STUB:$BARE" "$WORK/forced native" --mode=native); status=$?
-case $out in *'  - the PHP extension(s) mbstring (not loaded by php)'*'error: install what is listed above and run the installer again, or re-run it with --mode=container: docker is available'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/forced native" ] && [ "$(count_calls pull)" -eq 0 ]; then
+expected="$(missing_out 'the PHP extension(s) mbstring (not loaded by php)')
+$RUNTIME_ANSWERS"
+if [ "$status" -ne 0 ] && [ "$out" = "$expected" ] && [ ! -e "$WORK/forced native" ] && [ "$(count_calls pull)" -eq 0 ]; then
     pass '--mode=native on such a host stops the same way, and points at --mode=container'
 else
     fail "forced native: $status, $out"
@@ -835,7 +896,12 @@ fi
 reset_docker
 out=$(detect "$STUB:$BARE" "$WORK/all there" --dry-run); status=$?
 case $out in *'mode:       native'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a host with everything doctor checks gets native mode'; else fail "all there: $status, $out"; fi
+case $out in *'Missing:'* | *'ontainer mode'* | *'experimental'*) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(count_calls pull)" -eq 0 ]; then
+    pass 'a host with everything doctor checks gets native mode, with Docker answering, and container mode goes unmentioned'
+else
+    fail "all there: $status, $out"
+fi
 reset_docker
 out=$(STUB_PHP_WARN=1 detect "$STUB:$BARE" "$WORK/php warns" --dry-run); status=$?
 case $out in *'mode:       native'*) said=yes ;; *) said=no ;; esac
@@ -843,10 +909,26 @@ case $out in *'Missing:'*) said=no ;; esac
 if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a PHP startup warning on stdout is not read as a missing extension'; else fail "php warning: $status, $out"; fi
 reset_docker
 out=$(STUB_PHP_LACKS='tokenizer ' detect "$STUB:$BARE" "$WORK/no tokenizer"); status=$?
-case $out in *'  - the PHP extension(s) tokenizer (not loaded by php)'*'Using container mode: docker is available.'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a PHP without tokenizer, which the PHP worker needs, is not given native mode'; else fail "no tokenizer: $status, $out"; fi
-rm -rf "${WORK:?}/php warns" "${WORK:?}/no tokenizer"
-rm -rf "${WORK:?}/no mbstring" "${WORK:?}/no git" "${WORK:?}/all there"
+expected="$(missing_out 'the PHP extension(s) tokenizer (not loaded by php)')
+$RUNTIME_ANSWERS"
+if [ "$status" -ne 0 ] && [ "$out" = "$expected" ] && [ ! -e "$WORK/no tokenizer" ]; then pass 'a PHP without tokenizer, which the PHP worker needs, is not given native mode'; else fail "no tokenizer: $status, $out"; fi
+# A container install stays one: on a host that passes native mode's checks,
+# a reinstall without --mode keeps container mode rather than refusing.
+reset_docker
+out=$(detect "$STUB:$BARE" "$WORK/kept" --mode=container); status=$?
+if [ "$status" -eq 0 ] && [ "$(field "$WORK/kept/install dir/install.json" mode)" = container ]; then pass 'a container install on a host that could run natively, with --mode=container'; else fail "kept, first install: $status, $out"; fi
+reset_docker
+out=$(detect "$STUB:$BARE" "$WORK/kept"); status=$?
+case $out in *"Keeping container mode: the container install in $WORK/kept/install dir uses $WORK/kept/data dir."*) said=yes ;; *) said=no ;; esac
+case $out in *'Missing:'* | *'mode:       native'*) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ] && [ "$(printf '%s\n' "$out" | grep -cxF "$NOTICE")" -eq 1 ] && has_call "call [pull] [$REPO:1.0.0]" \
+    && [ "$(field "$WORK/kept/install dir/install.json" mode)" = container ] && [ ! -e "$WORK/kept/data dir/versions" ]; then
+    pass 'and its reinstall without --mode keeps container mode, though native mode could run'
+else
+    fail "kept, reinstall: $status, $out"
+fi
+rm -rf "${WORK:?}/php warns" "${WORK:?}/kept"
+rm -rf "${WORK:?}/all there"
 
 # ---- a root container mode never mounts is not granted -------------------------------------
 

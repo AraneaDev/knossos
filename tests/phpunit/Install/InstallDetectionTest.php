@@ -13,7 +13,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
  * Native mode is chosen only on a host that would pass `knossos doctor`, so
  * the extension list in the installer's probe must be DoctorService's list.
  * One that drifts either chooses native mode on a host doctor then fails, or
- * sends a working host to container mode.
+ * turns a working host away.
  */
 final class InstallDetectionTest extends KnossosTestCase
 {
