@@ -257,10 +257,12 @@ describe('the marked heat map cell', () => {
     expect(view.items[0]).toMatchObject({ source: 'CheckoutView.get', target: 'Client::get', sourceCanonical: 'route:3f9a1c27e0b4d6a8', targetCanonical: 'App\\Http\\Client::get' })
     const text = couplingSection(input, { from: 0, to: 1 }, view, 100)!.body.map(plainText).join('\n')
     expect(text).toMatch(/CheckoutView\.get +──► Client::get +9/)
-    // Under the pair, where each side is declared; a pair with no place says none.
-    expect(text).toMatch(/\n +views\.py:12 → Client\.php:40\n/)
+    // Under the pair, where each side is declared, each under its own side as the pane says a place; a pair with no place says none.
+    const lines = text.split('\n')
+    const pair = lines.findIndex(line => line.includes('CheckoutView.get'))
+    expect([lines[pair + 1], lines[pair + 1]!.indexOf('src/'), lines[pair]!.indexOf('Client::get')]).toEqual(['   checkout/views.py:12 src/Http/Client.php:40', 24, 24])
     expect(text).not.toMatch(/3f9a1c27e0b4d6a8/)
-    expect(text.split('\n').filter(line => line.includes('→') && !line.includes('──►') && !line.includes('│'))).toHaveLength(1)
+    expect(lines.filter(line => line.includes('.php') || line.includes('.py'))).toHaveLength(1)
   })
 
   it('is spelled out as A → B, its deps, and the pairs behind it, most first, at every width', () => {
@@ -271,8 +273,8 @@ describe('the marked heat map cell', () => {
       for (const r of section.body) expect(rowWidth(r), `${columns} ${r.key}`).toBeLessThanOrEqual(columns)
     }
     const section = couplingSection(input, { from: 0, to: 1 }, couplingView({ phase: 'done', answer }), 80)!
-    // The two boundaries drawn, the dependencies on the arrow between them.
-    expect(rawText(section.body[1]!)).toMatch(/^│ tests ├─+ 10,779 deps ─+►│ core │$/)
+    // The two boundaries drawn at the body, the dependencies on the arrow between them.
+    expect(rawText(section.body[1]!)).toMatch(/^ {3}│ tests ├─+ 10,779 deps ─+►│ core │$/)
     // Under them the pairs behind it, in columns: the sources padded, an arrow, the targets, the counts.
     expect(plainText(section.body[4]!)).toMatch(/^ {3}ScanTest::scan +──► StableId +812$/)
     expect(plainText(section.body[5]!)).toMatch(/^ {3}Fixtures +──► SqliteConnection::open +97$/)

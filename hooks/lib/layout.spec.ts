@@ -866,7 +866,7 @@ describe('the cycles tab', () => {
     expect([...frames].filter(c => /_FOR_SUBAGENTS_ONLY$/.test(c ?? '')).length).toBe(2)
     expect(label('Index::read_bounded')?.press?.id).toBe('row:2')
     expect(drawn.flatMap(r => r.segments).some(s => s.text.includes('╫') || s.text.includes('╪'))).toBe(true)
-    expect(plainText(row(rows, 'cycle-legend')!)).toBe('■ python-worker  ■ core  ╫ crosses a boundary')
+    expect(plainText(row(rows, 'cycle-legend')!)).toBe('   ■ python-worker  ■ core  ╫ crosses a boundary') // at the body, over the boxes
     // The list under it names each cycle, the marked one tinted.
     expect(plainText(row(rows, 'cycle-0')!)).toBe('›  cycle 1 · 5 members · ■ python-worker +1 boundary')
     expect(row(rows, 'cycle-0')!.tint).toBe('userMessageBackground')

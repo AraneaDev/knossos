@@ -21,7 +21,7 @@ describe('the Churn tab', () => {
   it('says what it is doing, or why there is nothing to rank', () => {
     expect(text(null)).toContain('Reading the last 30 days of commits…')
     expect(text(state(null, 'done'))).toContain('knossos did not answer')
-    expect(text(state({ status: 'no-git', files: [] }))).toContain('▲  No git repository, or git did not answer: there is no history to rank.')
+    expect(text(state({ status: 'no-git', files: [] }))).toContain(' ▲ No git repository, or git did not answer: there is no history to rank.')
     expect(text(state(answer(0)))).toContain('No file the graph holds changed in the last 30 days.')
   })
 
@@ -29,7 +29,7 @@ describe('the Churn tab', () => {
     const unread = parseChurn(JSON.stringify({ status: 'unreadable', days: 30, head: 'abc', commits: 0, truncated: false, files: [] }))
     expect(unread?.status).toBe('unreadable')
     const t = text(state(unread))
-    expect(t).toContain('▲  Could not read the git history')
+    expect(t).toContain(' ▲ Could not read the git history')
     expect(t).not.toContain('No file the graph holds changed')
   })
 
