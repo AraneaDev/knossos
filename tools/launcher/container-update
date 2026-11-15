@@ -211,11 +211,24 @@ record_check() {
 
 # ---- the image -------------------------------------------------------------------------
 
+# run_once ARGS: every run of an image this helper makes, in one place: a
+# throwaway container as the caller, with no network and only the mounts in
+# ARGS. Rootless Podman maps the caller's ids into the container only with
+# --userns=keep-id, as the launcher does too; without it the caller's uid is a
+# subordinate one that cannot write the caller's own files.
+run_once() {
+    if [ "$RUNTIME" = podman ]; then
+        "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" --userns=keep-id "$@"
+    else
+        "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" "$@"
+    fi
+}
+
 # A throwaway run of an image, as the caller, with no network and no mount.
 run_image() {
     image=$1
     shift
-    "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    run_once -e HOME=/tmp \
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
         --entrypoint "$IN_IMAGE/bin/knossos" "$image" "$@" </dev/null
 }
@@ -266,13 +279,17 @@ stop_containers() {
     done
 }
 
+# The name of an idle marker: the launcher's pattern, word for word
+# (tests/shell/install-container.sh compares them).
+MARKER_GLOB='knossos-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
+
 # forget_markers: the markers of this installation's containers, after every
 # one of them was stopped. idle-stop is the only reader, a container started
 # later writes its own again, and without this each update would leave one
 # per project and image behind.
 forget_markers() {
     [ -d "$INSTALL/containers" ] && [ ! -L "$INSTALL/containers" ] || return 0
-    find "$INSTALL/containers" -type f -name 'knossos-????????????' -exec rm -f {} + 2>/dev/null
+    find "$INSTALL/containers" -type f -name "$MARKER_GLOB" -exec rm -f {} + 2>/dev/null
     return 0
 }
 
@@ -300,7 +317,7 @@ dir_id() {
 # call. Nothing here ever recreates the install directory, so an update or a
 # rollback bakes in the same numbers the installer did.
 render_launcher() {
-    "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$1" "$IN_IMAGE/launcher/knossos" > "$WORKDIR/template" 2>/dev/null </dev/null \
+    run_once --entrypoint cat "$1" "$IN_IMAGE/launcher/knossos" > "$WORKDIR/template" 2>/dev/null </dev/null \
         || return 1
     quoted=$(printf '%s' "$INSTALL" | sed "s/'/'\\\\''/g")
     pin=$(dir_id "$INSTALL") || return 1
@@ -330,7 +347,7 @@ render_launcher() {
 # plugin file anyway.
 write_plugin() {
     if [ -L "$INSTALL/plugin" ] || [ ! -d "$INSTALL/plugin" ]; then die "$INSTALL/plugin is not a plain directory; run the installer again with --install-dir=$INSTALL."; fi
-    "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    run_once -e HOME=/tmp \
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
         --mount "$(bind_spec "$INSTALL/plugin")" \
         --entrypoint "$IN_IMAGE/bin/knossos" "$1" \
@@ -399,7 +416,7 @@ switch_to() {
     # This script, from the image switched to, beside install.json: the
     # launcher runs it from there, so the next update works even when that
     # image is gone from the host by then.
-    if ! "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$1" "$IN_IMAGE/tools/launcher/container-update" \
+    if ! run_once --entrypoint cat "$1" "$IN_IMAGE/tools/launcher/container-update" \
         > "$WORKDIR/container-update" 2>/dev/null </dev/null || ! sh -n "$WORKDIR/container-update" 2>/dev/null; then
         rm -f "$NEW_LAUNCHER"
         die "the image $1 has no usable update helper at $IN_IMAGE/tools/launcher/container-update; nothing was changed"

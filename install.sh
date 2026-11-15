@@ -516,12 +516,24 @@ version_gt() {
     [ "$as" != "$bs" ] && [ "$(printf '%s\n%s\n' "$as" "$bs" | LC_ALL=C sort | tail -n 1)" = "$as" ]
 }
 
+# run_once ARGS: every run of an image this installer makes, in one place: a
+# throwaway container as this user, with no network. Rootless Podman maps the
+# caller's ids into the container only with --userns=keep-id, as the launcher
+# and the update helper do too.
+run_once() {
+    if [ "$RUNTIME" = podman ]; then
+        "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" --userns=keep-id "$@"
+    else
+        "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" "$@"
+    fi
+}
+
 # A throwaway run of the image as this user: no network, no mount, a scratch
 # data directory inside the container.
 run_image() {
     image=$1
     shift
-    "$RUNTIME" run --rm --pull=never --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    run_once -e HOME=/tmp \
         -e KNOSSOS_DATA_DIR=/tmp/knossos-check -e KNOSSOS_ROOTS_FILE=/tmp/knossos-check/roots.json \
         --entrypoint /opt/knossos/bin/knossos "$image" "$@" </dev/null
 }
@@ -942,7 +954,9 @@ refuse_install_dir() {
     # What the runtime says: a running Knossos container whose read-write
     # mount holds the install directory could rewrite it.
     [ -n "${container_runtime:-}" ] || return 0
-    names=$("$container_runtime" ps --filter label=io.knossos.install --format '{{.Names}}' 2>/dev/null </dev/null) || return 0
+    # A runtime that cannot be asked gives no answer, which is not "none".
+    names=$("$container_runtime" ps --filter label=io.knossos.install --format '{{.Names}}' 2>/dev/null </dev/null) \
+        || die "could not ask $container_runtime which containers run, so the installer cannot tell whether one can write the install directory $inst; check that $container_runtime ps works and run the installer again. Nothing was changed."
     for name in $names; do
         sources=$("$container_runtime" container inspect --format '{{range .Mounts}}{{if .RW}}{{.Source}}{{"\n"}}{{end}}{{end}}' "$name" 2>/dev/null </dev/null) || continue
         while IFS= read -r source; do
@@ -1061,7 +1075,7 @@ install_container() {
         cat "$TMP/doctor.out" >&2
         die "knossos doctor failed in $REF; nothing was changed"
     fi
-    if ! "$RUNTIME" run --rm --pull=never --network none --entrypoint cat "$REF" /opt/knossos/tools/launcher/container-update \
+    if ! run_once --entrypoint cat "$REF" /opt/knossos/tools/launcher/container-update \
         > "$TMP/container-update" 2>/dev/null </dev/null || [ ! -s "$TMP/container-update" ]; then
         die "the image $REF has no install helper; it is older than container mode. Nothing was changed"
     fi
@@ -1251,10 +1265,12 @@ main() {
         esac
     fi
     [ -z "$INSTALL_DIR" ] || INSTALL_DIR=$(absolute "$INSTALL_DIR")
-    # All three end up in install.json, the launcher and the hooks, which are
-    # line based: a newline or another control character would break them.
-    case $DATA_DIR$BIN_DIR$INSTALL_DIR in
-        *[[:cntrl:]]*) die 'the data, install and bin directories must not contain a newline or another control character' ;;
+    # They end up in install.json, the launcher and the hooks, which are line
+    # based: a newline or another control character would break them. The
+    # install directory is checked once the mode is known: native mode only
+    # reads it, and ignores one it cannot use.
+    case $DATA_DIR$BIN_DIR in
+        *[[:cntrl:]]*) die 'the data and bin directories must not contain a newline or another control character' ;;
     esac
 
     # ---- detect ------------------------------------------------------------
@@ -1428,9 +1444,16 @@ main() {
 
     if [ "$MODE" = container ]; then
         [ -n "$INSTALL_DIR" ] || die 'HOME is not set; pass --install-dir'
+        case $INSTALL_DIR in
+            *[[:cntrl:]]*) die 'the install directory must not contain a newline or another control character' ;;
+        esac
         refuse_foreign_entries "$DATA_DIR"
     elif [ "$INSTALL_DIR_GIVEN" = 1 ]; then
         die '--install-dir is for container mode; a native install keeps its release in the data directory (--data-dir)'
+    else
+        # Native mode: KNOSSOS_INSTALL_DIR and XDG_DATA_HOME only say where a
+        # container install could be; one that cannot name a directory names none.
+        case $INSTALL_DIR in *[[:cntrl:]]*) INSTALL_DIR='' ;; esac
     fi
     refuse_other_mode
     if [ "$MODE" = container ]; then

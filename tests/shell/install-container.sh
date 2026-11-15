@@ -85,7 +85,7 @@ if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_
 else
     fail "image checks: $(calls)"
 fi
-if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--entrypoint] [cat] [$REPO:1.0.0] [/opt/knossos/tools/launcher/container-update]"; then
+if has_call "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [--entrypoint] [cat] [$REPO:1.0.0] [/opt/knossos/tools/launcher/container-update]"; then
     pass 'the install helper is read out of the image without network and without a pull'
 else
     fail "helper read: $(calls)"
@@ -519,7 +519,7 @@ if grep -qxF "FROM_IMAGE='$NEW_DIGEST'" "$LIB" && grep -qxF "KNOSSOS_INSTALLED_D
 else
     fail "plugin after update: $(cat "$LIB")"
 fi
-if [ "$(cat "$LAUNCHER2")" = "$launcher_before" ] && has_call "call [run] [--rm] [--pull=never] [--network] [none] [--entrypoint] [cat] [$NEW_DIGEST] [/opt/knossos/launcher/knossos]"; then
+if [ "$(cat "$LAUNCHER2")" = "$launcher_before" ] && has_call "call [run] [--rm] [--pull=never] [--network] [none] [--user] [$UID_GID] [--entrypoint] [cat] [$NEW_DIGEST] [/opt/knossos/launcher/knossos]"; then
     pass 'the launcher is rewritten from the new image'
 else
     fail "launcher after update: $(calls)"
@@ -672,6 +672,12 @@ else
     fail "old-image container after update: $status, $(running) running, $out"
 fi
 if [ -z "$(find "$INST2/containers" -name 'knossos-*' 2>/dev/null)" ]; then pass 'the update removes the markers of the containers it stopped'; else fail "markers after update: $(ls "$INST2/containers")"; fi
+# Only names of that pattern: a file of another name there is left.
+: > "$INST2/containers/knossos-NOTAHEXNAMEX"
+: > "$REL/knossos-1.3.1-linux-x86_64.tar.gz"
+FAKE_IMAGE_VERSION=1.3.1 kn self-update --version=1.3.1 >/dev/null
+if [ -f "$INST2/containers/knossos-NOTAHEXNAMEX" ]; then pass 'the update removes only names of the marker pattern'; else fail 'the update removed a file that is no marker'; fi
+rm -f "$INST2/containers/knossos-NOTAHEXNAMEX"
 rm -f "$FAKE_DOCKER_STATE/after-stop"
 
 # ---- a data directory that holds things of yours ------------------------------------------
@@ -742,6 +748,13 @@ if [ "$status" -eq 0 ]; then pass 'and once it is gone, the reinstall works'; el
 if [ -z "$(find "$WORK/known bin.install/containers" -name 'knossos-*' 2>/dev/null)" ]; then pass "the installer's own check leaves no marker in the install directory"; else fail "probe marker left: $(ls "$WORK/known bin.install/containers")"; fi
 rm -rf "${CODE:?}" "${KNOWN:?}" "${WORK:?}/known bin" "${WORK:?}/known bin.install"
 
+# One pattern for the names of idle markers, in the launcher and the helper.
+marker_of() { grep "^MARKER_GLOB='" "$1"; }
+if [ -n "$(marker_of "$ROOT/tools/launcher/knossos")" ] && [ "$(marker_of "$ROOT/tools/launcher/knossos")" = "$(marker_of "$ROOT/tools/launcher/container-update")" ]; then
+    pass 'the launcher and the update helper name idle markers by the same pattern'
+else
+    fail 'the marker patterns of the launcher and the helper differ'
+fi
 # The lists the installer checks against are the launcher's, word for word.
 entries_of() { awk '/^GRAPH_ENTRIES=/ { on = 1 } on { print } on && /^foreign_entry\(\) \{/ { last = 1 } last && /^}$/ { exit }' "$1"; }
 if [ -n "$(entries_of "$ROOT/tools/launcher/knossos")" ] && [ "$(entries_of "$ROOT/tools/launcher/knossos")" = "$(entries_of "$INSTALL_SH")" ]; then
@@ -881,6 +894,15 @@ for dry in no yes; do
     fi
 done
 rm -rf "$HOSTILE" "$SECRET"
+
+# A runtime that cannot be asked which containers run: the installer cannot
+# tell whether one can write the install directory, and refuses.
+reset_docker
+: > "$FAKE_DOCKER_STATE/ps-fails"
+out=$(ci "$WORK/ps fails" --version=1.0.0 --no-plugin --no-roots); status=$?
+rm -f "$FAKE_DOCKER_STATE/ps-fails"
+case $out in *"could not ask docker which containers run, so the installer cannot tell whether one can write the install directory"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/ps fails" ] && [ "$(count_calls pull)" -eq 0 ]; then pass 'the installer refuses when the runtime cannot be asked which containers run'; else fail "installer with ps failing: $status, $out"; fi
 
 # ---- the reproductions of the review rounds, in this layout ------------------------------
 
@@ -1074,6 +1096,19 @@ reset_docker
 out=$(detect "$STUB:$BARE" "$WORK/native install dir" --mode=native --install-dir="$WORK/native install dir/inst"); status=$?
 case $out in *'--install-dir is for container mode; a native install keeps its release in the data directory (--data-dir)'*) said=yes ;; *) said=no ;; esac
 if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/native install dir" ]; then pass 'native mode refuses --install-dir'; else fail "native --install-dir: $status, $out"; fi
+# Native mode only reads where a container install could be: a control
+# character in KNOSSOS_INSTALL_DIR or XDG_DATA_HOME changes nothing for it.
+NL='
+'
+reset_docker
+out=$(cd "$WORK/elsewhere" && PATH="$STUB:$BARE" KNOSSOS_RELEASE_BASE="$WORK/no releases" KNOSSOS_INSTALL_DIR="$WORK/odd${NL}dir" XDG_DATA_HOME="/x${NL}y" \
+    sh "$INSTALL_SH" --mode=native --data-dir="$WORK/native ctl/data" --bin-dir="$WORK/native ctl/bin" --version=1.0.0 --no-plugin --no-roots --dry-run 2>&1 </dev/null); status=$?
+case $out in *'mode:       native'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'native mode ignores a control character in KNOSSOS_INSTALL_DIR and XDG_DATA_HOME'; else fail "native with an odd install dir: $status, $out"; fi
+out=$(cd "$WORK/elsewhere" && PATH="$BARE" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 KNOSSOS_INSTALL_DIR="$WORK/odd${NL}dir" \
+    sh "$INSTALL_SH" --mode=container --data-dir="$WORK/ctl/data" --bin-dir="$WORK/ctl/bin" --version=1.0.0 --no-plugin --no-roots 2>&1 </dev/null); status=$?
+case $out in *'the install directory must not contain a newline or another control character'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -ne 0 ] && [ "$said" = yes ] && [ ! -e "$WORK/ctl" ]; then pass 'container mode refuses an install directory with a control character'; else fail "container odd install dir: $status, $out"; fi
 # Native mode into the graph directory of a container install that the
 # install directory records: its containers could plant the release it runs.
 reset_docker
@@ -1092,6 +1127,47 @@ reset_docker
 out=$(ci "$WORK/failed fresh" --version=1.0.0 --no-plugin --no-roots); status=$?
 if [ "$status" -eq 0 ]; then pass 'and the next run installs'; else fail "after a failed fresh install: $status, $out"; fi
 rm -rf "${WORK:?}/failed fresh"
+
+# ---- the runtime's user arguments: --userns=keep-id on every Podman run, none with Docker ----
+
+# Rootless Podman maps the caller's ids into a container only with
+# --userns=keep-id; without it the plugin step cannot write the plugin.
+PODMAN_BARE="$WORK/podman path"
+mkdir -p "$PODMAN_BARE"
+for tool in "$BARE"/*; do
+    [ "${tool##*/}" != docker ] || continue
+    if [ -L "$tool" ]; then ln -s "$(readlink "$tool")" "$PODMAN_BARE/${tool##*/}"; else ln -s "$tool" "$PODMAN_BARE/${tool##*/}"; fi
+done
+cp "$HERE/fixtures/fake-docker" "$PODMAN_BARE/podman"
+chmod +x "$PODMAN_BARE/podman"
+# every_run_has RUNTIME-PATH WANT: install with the plugin, update, roll back,
+# and change both settings through the launcher, then compare every run.
+every_run_has() {
+    path=$1 want=$2
+    reset_docker
+    UR="$WORK/userns $want"
+    mkdir -p "$UR/proj"
+    : > "$REL/knossos-1.4.0-linux-x86_64.tar.gz"
+    (cd "$WORK/elsewhere" && PATH="$path" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.0.0 \
+        sh "$INSTALL_SH" --mode=container --data-dir="$UR/data" --install-dir="$UR/install" --bin-dir="$UR/bin" --version=1.0.0 --no-roots </dev/null >/dev/null 2>&1)
+    for step in "self-update --version=1.4.0" "self-update --rollback" "enricher add tool -- tool" "autostart $UR/proj --set=on" "version"; do
+        # shellcheck disable=SC2086 # the step is words on purpose
+        (cd "$UR/proj" && PATH="$path" KNOSSOS_RELEASE_BASE="$REL" KNOSSOS_IMAGE_REPOSITORY=$REPO FAKE_IMAGE_VERSION=1.4.0 \
+            env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$UR/bin/knossos" $step </dev/null >/dev/null 2>&1)
+    done
+    runs=$(grep -c '^call \[run\]' "$FAKE_DOCKER_STATE/calls")
+    with=$(grep '^call \[run\]' "$FAKE_DOCKER_STATE/calls" | grep -c '\[--userns=keep-id\]')
+    plugin=$(grep '^call \[run\]' "$FAKE_DOCKER_STATE/calls" | grep -c 'install-agent-plugin')
+    rm -rf "$UR"
+}
+every_run_has "$PODMAN_BARE" podman
+if [ "$runs" -ge 10 ] && [ "$with" -eq "$runs" ] && [ "$plugin" -ge 2 ]; then
+    pass "with Podman every run of the image carries --userns=keep-id, the plugin step and the image checks included ($runs runs)"
+else
+    fail "podman runs: $with of $runs carry --userns=keep-id ($plugin plugin steps): $(grep '^call \[run\]' "$FAKE_DOCKER_STATE/calls" | grep -v 'keep-id' | head -n 3)"
+fi
+every_run_has "$BARE" docker
+if [ "$runs" -ge 10 ] && [ "$with" -eq 0 ] && [ "$plugin" -ge 2 ]; then pass "with Docker no run carries --userns=keep-id ($runs runs)"; else fail "docker runs: $with of $runs carry --userns=keep-id"; fi
 
 # A lookup that never returns, cut off as the session hook's timeout cuts it
 # off: the attempt is already recorded, so the next session does not retry.
