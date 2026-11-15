@@ -56,6 +56,15 @@ printf '{"mode":"native","version":"1.0.0"}\n' > "$DATA/install.json"
 out=$("$LAUNCHER" version 2>&1); status=$?
 if [ "$status" -eq 0 ]; then pass 'reads compact install.json'; else fail "compact install.json (status $status, output $out)"; fi
 
+# A symlinked install.json is read through the link, as every release has read it.
+mv "$DATA/install.json" "$WORK/record.json"
+ln -s "$WORK/record.json" "$DATA/install.json"
+out=$(env -u KNOSSOS_DATA_DIR -u KNOSSOS_ROOTS_FILE "$LAUNCHER" version 2>&1); status=$?
+case $out in *'release:1.0.0'*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 0 ] && [ "$said" = yes ]; then pass 'a symlinked install.json in native mode runs the release, as released'; else fail "symlinked install.json (status $status, output $out)"; fi
+rm -f "$DATA/install.json"
+mv "$WORK/record.json" "$DATA/install.json"
+
 # A caller's KNOSSOS_DATA_DIR says where the graph goes and is passed on, and
 # so is a caller's roots file; the release still comes from the install
 # directory, even when the foreign directory holds a release of its own.

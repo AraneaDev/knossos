@@ -109,12 +109,11 @@ if [ -n "$INSTALL_PIN" ] && [ "$INSTALL_DIR" = "$BAKED_INSTALL_DIR" ]; then
 fi
 
 # install.json, joined into one line: pretty-printed or not, with or without a
-# space after the colon. A missing file means native. No release writes it as
-# a symlink, and one is not read: that is an unreadable mode below.
+# space after the colon. A missing file means native. It is read through a
+# symlink, as every native release has read it; container mode refuses a
+# symlinked one below, before it uses anything from it.
 record=''
-if [ -L "$INSTALL_DIR/install.json" ]; then
-    record='{"mode": "symlink"}'
-elif [ -r "$INSTALL_DIR/install.json" ]; then
+if [ -r "$INSTALL_DIR/install.json" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
         record="$record$line"
     done < "$INSTALL_DIR/install.json"
@@ -228,6 +227,9 @@ die() {
     exit 1
 }
 
+# No release writes install.json as a symlink, and in container mode one is
+# never used: refused before anything from it is.
+[ ! -L "$INSTALL_DIR/install.json" ] || die "$INSTALL_DIR/install.json is a symlink; re-run the installer to repair the install directory $INSTALL_DIR."
 field image
 IMAGE=$value
 field runtime
@@ -670,7 +672,7 @@ MARKER="$INSTALL_REAL/containers/$NAME"
 start_container() {
     set -- run -d --rm --init --no-healthcheck --pull=never --name "$NAME" \
         --label "io.knossos.install=$INSTALL_HASH" --label "io.knossos.root=$(hash12 "$ROOT")" \
-        --network none --user "$(id -u):$(id -g)"
+        --network none --user "$USER_SPEC"
     if [ "$RUNTIME" = podman ]; then set -- "$@" --userns=keep-id; fi
     set -- "$@" -e HOME=/tmp -e KNOSSOS_CONTAINER=0 \
         -e "KNOSSOS_CONTAINER_INSTALL_DIR=$INSTALL_REAL" \
@@ -687,6 +689,7 @@ MOUNTED
     while :; do
         found=$("$RUNTIME" container inspect --format "$INSPECT" "$NAME" 2>/dev/null) || found=absent
         state=${found%%"$NEWLINE"*}
+        state=${state%%|*}
         case $state in
             running)
                 check_mounts "$found"
@@ -712,16 +715,33 @@ MOUNTED
         sleep 1
     done
 }
-# The state and the mounts of a container in one inspect, so reusing a running
-# container costs no extra call.
-INSPECT='{{.State.Status}}{{range .Mounts}}{{"\n"}}{{.Source}}|{{.Destination}}|{{.RW}}{{end}}'
+# The state, the image, the network, the user and the mounts of a container in
+# one inspect, so reusing a running container costs no extra call. The first
+# line is `state|image|network|user`, then one `source|destination|rw` line per
+# mount.
+INSPECT='{{.State.Status}}|{{.Config.Image}}|{{.HostConfig.NetworkMode}}|{{.Config.User}}{{range .Mounts}}{{"\n"}}{{.Source}}|{{.Destination}}|{{.RW}}{{end}}'
+USER_SPEC="$(id -u):$(id -g)"
 
-# check_mounts INSPECT-OUTPUT [new]: refuse a container whose mounts are not
-# exactly the ones checked, and remove it so it is never exec'd into. On a new
-# one, each source must also still be its own physical path: the runtime resolves
-# symlinks in a bind source when it mounts, so a component swapped for a link
-# between the check and the run would have widened the mount.
+# check_mounts INSPECT-OUTPUT [new]: refuse a container that does not run the
+# image, the network and the user this launcher starts it with, or whose mounts
+# are not exactly the ones checked, and remove it so it is never exec'd into.
+# Podman reports a short image name in its fully qualified form, which counts
+# as the same image. On a new one, each source must also still be its own
+# physical path: the runtime resolves symlinks in a bind source when it
+# mounts, so a component swapped for a link between the check and the run
+# would have widened the mount.
 check_mounts() {
+    config=${1%%"$NEWLINE"*}
+    config=${config#*|}
+    same=no
+    for image in "$IMAGE" "localhost/$IMAGE" "docker.io/$IMAGE" "docker.io/library/$IMAGE"; do
+        if [ "$config" = "$image|none|$USER_SPEC" ]; then same=yes; fi
+        [ "$RUNTIME" = podman ] || break
+    done
+    if [ "$same" = no ]; then
+        "$RUNTIME" rm -f "$NAME" >/dev/null 2>&1 </dev/null
+        die "container $NAME does not run the image, network or user that were checked, so it was removed; run the command again."
+    fi
     got=$(printf '%s\n' "${1#*"$NEWLINE"}" | sed '/^$/d' | LC_ALL=C sort)
     case $1 in *"$NEWLINE"*) ;; *) got='' ;; esac
     if [ "$got" != "$EXPECTED" ]; then

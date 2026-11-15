@@ -43,13 +43,18 @@ final readonly class PluginTarget
     /**
      * The target for the code at `$root`, with the `--plugin-dir` and `--bin` options applied.
      *
-     * @throws InvalidArgumentException for a relative path, or one inside an installed release's `versions/`
+     * @throws InvalidArgumentException for a relative path, one inside an installed release's `versions/`, or
+     *         code running in a container of a container install, whose plugin only the host writes
      * @throws \Knossos\Install\InstallException when an installed release cannot tell where its launcher is, or when
      *         the code sits in a `versions/` directory whose `install.json` does not record it
      */
     public static function resolve(string $root, ?string $directory, ?string $bin): self
     {
         $installation = new Installation($root);
+        // Inside a container of a container install the plugin directory is read-only, and only the host may write it.
+        if ($installation->mode() === 'container') {
+            throw new InvalidArgumentException('This is a container install: its plugin is managed from the host. Run knossos self-update there, or re-run the installer.');
+        }
         // Under versions/ without a record that names it: making the plugin here would put it back inside versions/.
         $installation->assertNotUnrecorded();
         $installDir = $installation->installDir;

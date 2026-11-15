@@ -633,8 +633,8 @@ mv "$INSTALL/install.json" "$WORK/install.json.real"
 ln -s "$WORK/install.json.real" "$INSTALL/install.json"
 reset_docker
 out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
-case $out in *'unreadable mode'*'re-run the installer'*) said=yes ;; *) said=no ;; esac
-if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ "$(count_calls run)" -eq 0 ]; then pass 'a symlinked install.json is not read, and nothing runs'; else fail "planted install.json: $status, $out"; fi
+case $out in *"$INSTALL/install.json is a symlink; re-run the installer"*) said=yes ;; *) said=no ;; esac
+if [ "$status" -eq 1 ] && [ "$said" = yes ] && [ ! -s "$FAKE_DOCKER_STATE/calls" ]; then pass 'a symlinked install.json is refused in container mode, and nothing runs'; else fail "planted install.json: $status, $out"; fi
 rm -f "$INSTALL/install.json"
 mv "$WORK/install.json.real" "$INSTALL/install.json"
 
@@ -835,6 +835,46 @@ for layout in default inside-graph roots-apart; do
 done
 rm -rf "$DATA/projects"
 if [ "$all_graph" = yes ]; then pass 'the graph directory is always its own read-write mount, the install directory read-only below it'; else fail 'a layout ran without the graph directory as its own mount'; fi
+
+# ---- a reused container runs the image, network and user that were checked --------------
+
+# reuse_refused WHAT CONFIG: a running container whose inspect reports CONFIG
+# (`image|network|user`) is removed and the call refused, with nothing exec'd.
+reuse_refused() {
+    reset_docker
+    (cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+    printf '%s\n' "$2" > "$FAKE_DOCKER_STATE/containers/$NAME.config"
+    : > "$FAKE_DOCKER_STATE/calls"
+    out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+    case $out in *"container $NAME does not run the image, network or user that were checked, so it was removed; run the command again."*) said=yes ;; *) said=no ;; esac
+    if [ "$status" -eq 1 ] && [ "$said" = yes ] && has_call "call [rm] [-f] [$NAME]" && [ "$(count_calls exec)" -eq 0 ] && [ "$(count_calls container)" -eq 1 ]; then
+        pass "a running container with $1 is removed in the same inspect that reads its mounts, never reused"
+    else
+        fail "reuse with $1: $status, $out, $(calls)"
+    fi
+}
+reuse_refused 'another image' "ghcr.io/araneadev/knossos:latest|none|$UID_GID"
+reuse_refused 'a network' "$IMAGE|bridge|$UID_GID"
+reuse_refused 'another user' "$IMAGE|none|0:0"
+# The same for a container just started that the runtime reports differently.
+reset_docker
+out=$(cd "$PROJECT" && FAKE_CONFIG="$IMAGE|host|$UID_GID" kn version </dev/null 2>&1); status=$?
+if [ "$status" -eq 1 ] && has_call "call [rm] [-f] [$NAME]" && [ "$(count_calls exec)" -eq 0 ]; then
+    pass 'a new container that does not run as asked is removed before anything runs in it'
+else
+    fail "config mismatch on create: $status, $out, $(calls)"
+fi
+# Podman reports a short image name fully qualified.
+cp "$HERE/fixtures/fake-docker" "$FAKE_BIN/podman"
+write_record knossos:local podman
+reset_docker
+(cd "$PROJECT" && kn version </dev/null >/dev/null 2>&1)
+PNAME=$(sed -n 's/^call \[run\] .*\[--name\] \[\([^]]*\)\].*/\1/p' "$FAKE_DOCKER_STATE/calls" | head -n 1)
+printf 'localhost/knossos:local|none|%s\n' "$UID_GID" > "$FAKE_DOCKER_STATE/containers/$PNAME.config"
+: > "$FAKE_DOCKER_STATE/calls"
+out=$(cd "$PROJECT" && kn version </dev/null 2>&1); status=$?
+if [ "$status" -eq 0 ] && [ "$(count_calls exec)" -eq 1 ]; then pass 'podman reporting localhost/<image> counts as the same image'; else fail "podman image name: $status, $out, $(calls)"; fi
+write_record "$IMAGE"
 
 # ---- a root with a colon is never passed as an extra allowed root ------------------------
 
