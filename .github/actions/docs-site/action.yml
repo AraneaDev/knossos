@@ -1,0 +1,46 @@
+name: Documentation site
+description: >-
+  Builds the documentation under docs/ as a static site with VitePress, checks
+  the result, and optionally uploads it as the GitHub Pages artifact. The caller
+  checks the repository out first. Deploying is the caller's job, because it
+  needs permissions this action must not hold.
+inputs:
+  docs-ref:
+    description: >-
+      The ref the site documents (a release tag, or main). Links from a page to
+      a file outside docs/ point at the repository at this ref.
+    required: false
+    default: main
+  upload:
+    description: "'true' to upload the build as the Pages artifact; a pull request only builds."
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: "24"
+    # The site's dependencies live in website/ alone, so the root package and
+    # its audit gate never see them. --ignore-scripts: nothing here needs an
+    # install script, and a dependency of the docs build has no business running one.
+    - name: Install the site's dependencies
+      shell: bash
+      run: npm --prefix website ci --ignore-scripts
+    # VitePress fails the build on a dead link, and on a page under docs/ that
+    # docs/README.md does not list.
+    - name: Build the site
+      shell: bash
+      env:
+        KNOSSOS_DOCS_REF: ${{ inputs.docs-ref }}
+      run: npm --prefix website run build
+    - name: Check the built site
+      shell: bash
+      env:
+        KNOSSOS_DOCS_REF: ${{ inputs.docs-ref }}
+      run: npm --prefix website run check
+    - name: Upload the site as the Pages artifact
+      if: ${{ inputs.upload == 'true' }}
+      uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      with:
+        path: website/.vitepress/dist

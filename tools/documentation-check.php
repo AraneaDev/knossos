@@ -216,6 +216,13 @@ function headingSlugs(string $contents): array
             continue;
         }
         $text = (string) preg_replace('/!?\[([^]]*)]\([^)]*\)/', '$1', $heading[1]);
+        // `_emphasis_` is markup, not part of the anchor; a code span and an
+        // underscore inside a word (`file_context`) keep theirs.
+        $text = (string) preg_replace_callback(
+            '/`[^`]*`|(?<![\p{L}\p{N}])_+([^_]+?)_+(?![\p{L}\p{N}])/u',
+            static fn(array $match): string => $match[1] ?? $match[0],
+            $text,
+        );
         $text = strtolower(str_replace('`', '', $text));
         $slug = str_replace(' ', '-', (string) preg_replace('/[^\p{L}\p{N}_ -]/u', '', $text));
         $count = $seen[$slug] ?? 0;
