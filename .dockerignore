@@ -45,3 +45,8 @@ docs/audits
 .claude/settings.local.json
 .claude-plugin/types
 tools/capture/out
+# The documentation site's own dependencies and build output. The quality
+# stage copies website/ so its scripts are linted; these must not come along.
+website/node_modules
+website/.vitepress/dist
+website/.vitepress/cache

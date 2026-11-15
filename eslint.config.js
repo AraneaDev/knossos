@@ -8,6 +8,9 @@ export default [
             "workers/**/node_modules/**",
             "vendor/**",
             "tools/capture/out/**",
+            "website/node_modules/**",
+            "website/.vitepress/dist/**",
+            "website/.vitepress/cache/**",
         ],
     },
     js.configs.recommended,
@@ -49,6 +52,33 @@ export default [
             ecmaVersion: 2024,
             sourceType: "module",
             globals: { console: "readonly", process: "readonly" },
+        },
+    },
+    {
+        // The documentation site: its VitePress config and check run under Node.
+        files: ["website/*.mjs", "website/.vitepress/*.mjs"],
+        languageOptions: {
+            ecmaVersion: 2024,
+            sourceType: "module",
+            globals: {
+                console: "readonly",
+                process: "readonly",
+                URL: "readonly",
+            },
+        },
+    },
+    {
+        // The site's theme, which runs in the reader's browser.
+        files: ["website/.vitepress/theme/*.mjs"],
+        languageOptions: {
+            ecmaVersion: 2024,
+            sourceType: "module",
+            globals: {
+                document: "readonly",
+                setTimeout: "readonly",
+                Element: "readonly",
+                HTMLImageElement: "readonly",
+            },
         },
     },
     {

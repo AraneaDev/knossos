@@ -589,7 +589,10 @@ php	tests/phpunit/Cli/CoverageMergeTest.php
 php	tests/phpunit/Cli/CreationBriefCommandTest.php
 php	tests/phpunit/Cli/DependencyFanoutTest.php
 php	tests/phpunit/Cli/DockerIgnoreTest.php
+php	tests/phpunit/Cli/DocsSiteWorkflowTest.php
 php	tests/phpunit/Cli/DocstringCoverageTest.php
+php	tests/phpunit/Cli/DocumentationAnchorTest.php
+php	tests/phpunit/Cli/DocumentationIndexTest.php
 php	tests/phpunit/Cli/DocumentationTest.php
 php	tests/phpunit/Cli/EnricherCommandTest.php
 php	tests/phpunit/Cli/GateReportTest.php
@@ -1577,6 +1580,12 @@ js	web/public/app.mjs
 js	web/public/draw.mjs
 js	web/server.spec.ts
 js	web/server.ts
+js	website/.vitepress/config.mjs
+js	website/.vitepress/links.mjs
+js	website/.vitepress/navigation.mjs
+js	website/.vitepress/slug.mjs
+js	website/.vitepress/theme/index.mjs
+js	website/check.mjs
 js	workers/typescript/bin/worker.js
 js	workers/typescript/src/__tests__/ambient-declarations.test.js
 js	workers/typescript/src/__tests__/angular-inject.test.js
