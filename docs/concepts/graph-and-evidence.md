@@ -90,7 +90,7 @@ one holds. The Overview tile (`28 +6 inferred`) and the Boundaries tab
 declare, and the inferred ones that still label something. `list_boundaries` lists every boundary, including
 inferred ones that label nothing, so its count can be higher.
 
-![The Boundaries tab: 34 boundaries, the first five listed with their components and dependencies in and out, what the marked tests boundary depends on and what uses it, and the tests to Query flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
+![The Boundaries tab: 33 declared boundaries and 1 inferred, the first five listed with their components and dependencies in and out, what the marked tests boundary depends on and what uses it, and the tests to Query flow drawn with the component pairs behind it](../images/claude-code/boundaries.png)
 
 Roles come from classification rules that run after the workers: file-name and
 path conventions, framework conventions, manifest entry points and test
