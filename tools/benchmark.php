@@ -237,8 +237,10 @@ try {
     writeJsonReport($reportPath, $report, 'benchmark report', 0o755);
     if ($violations !== []) {
         fwrite(STDERR, implode("\n", $violations) . "\n");
-        exit(1);
     }
 } finally {
     removeTree($temporaryRoot);
 }
+// Outside the try: exit() ends the script without running a finally block,
+// so exiting from inside it left the whole corpus in the temp directory.
+exit($violations === [] ? 0 : 1);

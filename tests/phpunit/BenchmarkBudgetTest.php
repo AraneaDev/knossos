@@ -34,6 +34,7 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         require_once self::guardTool('lib/benchmark-budgets.php');
         $this->directory = sys_get_temp_dir() . '/knossos-benchmark-budget-' . bin2hex(random_bytes(6));
         mkdir($this->directory . '/data', 0o700, true);
+        mkdir($this->directory . '/tmp', 0o700);
     }
 
     protected function tearDown(): void
@@ -66,6 +67,8 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         assertSame(1, $exit, $output . $errors);
         assertSame(1, preg_match('/^tiny\.query_seconds \d+\.\d\d exceeds 0\.00$/m', $errors), $errors);
         assertSame(false, $this->report()['passed']);
+        // exit() inside the try skipped its finally, and the corpus stayed behind.
+        assertSame([], array_values(array_diff((array) scandir($this->directory . '/tmp'), ['.', '..'])));
     }
 
     /** A file with no sizes ran no scan and passed; a run that measured nothing proves nothing. */
@@ -142,7 +145,7 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         file_put_contents($file, json_encode($budgets, JSON_THROW_ON_ERROR));
 
         return $this->runFixtureCommandOutput([
-            'env', 'KNOSSOS_DATA_DIR=' . $this->directory . '/data',
+            'env', 'KNOSSOS_DATA_DIR=' . $this->directory . '/data', 'TMPDIR=' . $this->directory . '/tmp',
             PHP_BINARY, self::guardTool('benchmark.php'), '--budgets=' . $file, '--report=' . $this->directory . '/report.json',
         ]);
     }
