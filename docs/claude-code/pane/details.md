@@ -80,7 +80,7 @@ brings the tab under it back as it was.
 
 ## A route between two components
 
-![A route from ServeCommand::run to ResultEnvelope: three routes found, the strongest drawn as boxes with the call and its file and line on each hop](../../images/claude-code/route.png)
+![A route from ServeCommand::run to ResultEnvelope: two routes found, the strongest drawn as boxes down the pane with the call and its file and line on each hop](../../images/claude-code/route.png)
 
 `p` on a component's detail starts a route. The finder opens, offering
 components only, and the one you open is where the route ends.

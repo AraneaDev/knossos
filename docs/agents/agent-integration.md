@@ -242,6 +242,9 @@ Use `annotate_component` to record a durable judgment on a component and
 `list_annotations` to read it back. Annotations are the one part of the graph
 that comes from a person or an agent and not from a scan. A person reads and
 writes them in the pane: see [notes on components](../claude-code/pane/notes.md).
+A note shows on its component's detail there, under the blast radius:
+
+![ResultEnvelope's detail with a note recorded under Notes: every MCP answer is built here](../images/claude-code/note-on-detail.png)
 
 Every annotation records its author. A note written in the pane is the
 person's (`user`); one written through `annotate_component` or the

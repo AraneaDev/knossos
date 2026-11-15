@@ -148,16 +148,16 @@ concentrate.
 
 Hubs: the most depended-on components, with the marked one's neighbourhood beside the list.
 
-![The Cycles tab: a 4-member dependency cycle in the Python worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and the list of both cycles below](docs/images/claude-code/cycles.png)
+![The Cycles tab: a 4-member cycle inside ProjectModuleIndex in the Python worker drawn as a loop of boxes, an arrow from each member to the next and a return edge, and the list of all seven cycles below](docs/images/claude-code/cycles.png)
 
 Cycles: each dependency cycle drawn as boxes, from its first member back to the start.
 
-![The Changes tab after a turn edited hooks/lib/paths.ts: two scans from this session, the file with its three dependents and the 31 tests that reach it, and its detail with the diff since the session began](docs/images/claude-code/changes-diff.png)
+![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 15 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](docs/images/claude-code/changes-diff.png)
 
 Changes: every file changed since the session began, its dependents, the tests that reach it,
 and its diff.
 
-![The Branch tab: this checkout against main, the verdict that it broke nothing (no new cycles, crossings, hubs that grew, dead code or violations), and what it changed by boundary with its lines and the files it reaches](docs/images/claude-code/branch.png)
+![The Branch tab: a detached checkout four commits ahead of main, 14 things to look at, most of them new dependencies across boundaries, and what it changed by boundary with its lines and its reach](docs/images/claude-code/branch.png)
 
 Branch: whether this branch broke anything against main, then what it changed by boundary.
 
@@ -169,7 +169,7 @@ Notes: every note on the project, yours and the agent's, by where it lives.
 
 The finder: `f`, a few letters of a name, and Enter opens that component.
 
-![After the turn, with the pane shut: the band above the prompt reads knossos, 1 file, 3 dependents, 20 tests, with details and hide](docs/images/claude-code/band.png)
+![After a turn that edited hooks/lib/paths.ts, with the pane closed: the band above the prompt reads knossos, 1 file, 15 dependents, 20 tests, as of 26s ago, with details and hide](docs/images/claude-code/band.png)
 
 The band: after a turn that edited files, how far the change reaches, with the pane shut.
 
