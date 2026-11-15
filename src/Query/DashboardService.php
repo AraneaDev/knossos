@@ -36,6 +36,11 @@ use PDO;
  * lists of {@see ProjectFindings} (summary, boundaries, diagnostics, largest
  * files and policy violations), whose own flags say when a figure is a floor,
  * and the {@see BoundaryMatrix} over the boundaries that label components.
+ * Beside the declared boundaries' names, `boundaries.inferred` names the
+ * inferred ones that label a component (`inferred_truncated` past 200, as
+ * `declared_truncated`): with the declared ones that label a component they
+ * are what the matrix's axes list, however few of them it holds (see
+ * {@see BoundaryLabels::inferred()}).
  *
  * For the pane's charts: `in_degree` buckets every component the hub ranking
  * could hold by how many depend on it (five buckets, `truncated` with the
@@ -135,6 +140,12 @@ final readonly class DashboardService
         $nearest = $this->topDependents($ranked);
         $fanInListed = array_slice($fanIn, 0, $this->fanInCap);
         $fanInTop = (new FileFanInQuery($this->pdo))->topDependents($id, array_column(array_slice($fanInListed, 0, self::TOP), 'path'), self::TOP_DEPENDENTS);
+        // Every node's label, read once for the matrix and the inferred boundaries named beside the declared ones.
+        $labelled = $labels->forProject($id);
+        $boundaries = $labels->listed(self::BOUNDARIES) + $labels->inferred($labelled);
+        // A `knossos.json` that cannot be read marks no cell forbidden; `policy` below carries the loader's message.
+        $matrix = (new BoundaryMatrix($this->pdo, $this->clock))->build($id, $labels, FileViolationQuery::policies($root, null)['policies'], min($boundaryAxes, BoundaryMatrix::AXES), $labelled);
+        unset($labelled);
 
         return [
             'status' => 'ok',
@@ -186,9 +197,8 @@ final readonly class DashboardService
             'fan_in' => array_map(static fn(array $f): array => isset($fanInTop[$f['path']]) ? $f + ['top_dependents' => $fanInTop[$f['path']]] : $f, $fanInListed),
             'fan_in_truncated' => count($fanIn) > $this->fanInCap,
             'summary' => $findings->summary($id),
-            'boundaries' => $labels->listed(self::BOUNDARIES),
-            // A `knossos.json` that cannot be read marks no cell forbidden; `policy` below carries the loader's message.
-            'boundary_matrix' => (new BoundaryMatrix($this->pdo, $this->clock))->build($id, $labels, FileViolationQuery::policies($root, null)['policies'], min($boundaryAxes, BoundaryMatrix::AXES)),
+            'boundaries' => $boundaries,
+            'boundary_matrix' => $matrix,
             'diagnostics' => $findings->diagnostics($id),
             'complexity_hotspots' => $findings->complexityHotspots($id),
             'over_budget' => $findings->overBudget($id, $root),

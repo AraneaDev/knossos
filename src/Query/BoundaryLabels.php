@@ -9,8 +9,9 @@ use Knossos\Store\ChunkedInQuery;
 use PDO;
 
 /**
- * The one boundary the architecture pane labels a component with, and the
- * project's boundaries with how many components each holds.
+ * The one boundary the architecture pane labels a component with, the
+ * project's boundaries with how many components each holds, and the inferred
+ * ones that label a component.
  *
  * A component usually sits in several boundaries: a declared one, a package,
  * a namespace and the repository-wide package of a single-package project.
@@ -216,5 +217,36 @@ final readonly class BoundaryLabels
             'declared' => array_slice($declared, 0, $declaredLimit),
             'declared_truncated' => count($declared) > $declaredLimit,
         ];
+    }
+
+    /**
+     * The inferred boundaries that label at least one component, by name in
+     * name order (`inferred`, at most `$limit`, `inferred_truncated` past
+     * it): beside `declared`, the boundaries the heat map lists. An inferred
+     * boundary every member of which a declared or a closer inferred one
+     * labels is not among them, and neither is a name a declared boundary
+     * also has, since the map lists that name once, as declared.
+     *
+     * @param array<string, string> $labelled the label of each node, as {@see self::forProject()} reads them
+     * @return array{inferred: list<string>, inferred_truncated: bool}
+     */
+    public function inferred(array $labelled, int $limit = self::DECLARED): array
+    {
+        $declared = [];
+        foreach ($this->sources as $id => $source) {
+            if ($source === 'explicit') {
+                $declared[$this->ranks[$id][3]] = true;
+            }
+        }
+        $names = [];
+        foreach ($labelled as $label) {
+            if (!isset($declared[$label])) {
+                $names[$label] = true;
+            }
+        }
+        $names = array_map('strval', array_keys($names));
+        sort($names, SORT_STRING);
+
+        return ['inferred' => array_slice($names, 0, $limit), 'inferred_truncated' => count($names) > $limit];
     }
 }

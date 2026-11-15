@@ -106,7 +106,7 @@ final class DashboardServiceTest extends KnossosTestCase
             assertSame([], $d['fan_in']);
             assertSame([], $d['dead_code']);
             assertSame(0, $d['summary']['components']);
-            assertSame(['items' => [], 'truncated' => false, 'declared' => [], 'declared_truncated' => false], $d['boundaries']);
+            assertSame(['items' => [], 'truncated' => false, 'declared' => [], 'declared_truncated' => false, 'inferred' => [], 'inferred_truncated' => false], $d['boundaries']);
             assertSame(0, $d['diagnostics']['total']);
             assertSame([], $d['complexity_hotspots']);
             assertSame(null, $d['over_budget']);

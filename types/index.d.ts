@@ -170,8 +170,12 @@ export type Dashboard = {
    * The largest boundaries with their member counts, and (absent from an
    * older knossos) the name of every declared one, at most 200
    * (`declared_truncated` past that), whether or not the short list has room.
+   * `inferred` (absent from a knossos older still) names the inferred
+   * boundaries that label at least one component, at most 200
+   * (`inferred_truncated` past that): with the declared ones that label a
+   * component, the boundaries the heat map lists.
    */
-  boundaries?: { items: { name: string; source: string; members: number }[]; truncated: boolean; declared?: string[]; declared_truncated?: boolean }
+  boundaries?: { items: { name: string; source: string; members: number }[]; truncated: boolean; declared?: string[]; declared_truncated?: boolean; inferred?: string[]; inferred_truncated?: boolean }
   diagnostics?: { total: number; errors: number; warnings: number; infos: number; items: Diagnostic[] }
   /**
    * The files a change is riskiest in: lines times dependent files, the

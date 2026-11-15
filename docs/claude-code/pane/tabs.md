@@ -19,6 +19,12 @@ figure counts cycles between types only; the ones that stay inside one type
 show on the Cycles tab alone. A tile
 draws its trend as a sparkline when it has room and five or more snapshots
 move. `dead code` counts the candidates the Issues tab lists and has no delta.
+`boundaries` counts the boundaries you declare in `knossos.json`. Beside it, a
+dim `+6 inferred` counts the inferred boundaries that hold components none of
+yours covers, so the two figures add up to what the Boundaries tab lists. The
+note shows only when such a boundary exists, and goes first when the tiles run
+out of room. Without a declared boundary the figure counts the inferred ones
+and has no note.
 The `drifted` label is a button that lists the drifted files, as `d` does. The
 labels of the other figures that count a list are buttons too, each opening the
 tab that lists them with the marker on the first item: `components` opens Hubs,
@@ -145,6 +151,15 @@ grows to two or three rows tall and stays square.
 dependencies from other boundaries into it) and `out` (its dependencies into
 other boundaries). A component counts in one boundary, the one the pane labels
 it with.
+
+The tab lists every boundary that labels at least one component, and its title
+counts them the way the Overview tile does: `28 declared · 6 inferred` is the
+boundaries you declare and the inferred ones that label the components none of
+yours covers. An inferred boundary whose components all sit in a declared one
+labels nothing, so it is not listed and not counted. Without an inferred one the
+title reads `28 declared`, and without a declared one `6 boundaries`. A figure
+with `+` is a floor: there were more than the dashboard names. When the pane is
+narrow, the edge count goes before the boundary counts do.
 
 `j` and `k` mark a boundary, and two cards spell it out:
 

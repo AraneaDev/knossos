@@ -793,6 +793,7 @@ php	tests/phpunit/Query/ArchitectureContextBoundsTest.php
 php	tests/phpunit/Query/AuditBatch2Test.php
 php	tests/phpunit/Query/BlastRadiusTestReachTest.php
 php	tests/phpunit/Query/BoundaryCouplingsServiceTest.php
+php	tests/phpunit/Query/BoundaryLabelsInferredTest.php
 php	tests/phpunit/Query/BoundaryTest.php
 php	tests/phpunit/Query/BranchComparisonIdentityTest.php
 php	tests/phpunit/Query/BranchComparisonViolationCountTest.php
@@ -1319,6 +1320,7 @@ js	hooks/lib/band.ts
 js	hooks/lib/baseline.ts
 js	hooks/lib/boundaries.spec.ts
 js	hooks/lib/boundaries.ts
+js	hooks/lib/boundary-counts.spec.ts
 js	hooks/lib/branch-rows.ts
 js	hooks/lib/branch.spec.ts
 js	hooks/lib/branch.ts
