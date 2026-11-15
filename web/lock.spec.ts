@@ -342,6 +342,33 @@ describe('claim', () => {
     }
   })
 
+  it('reads no more than the start of an answer that is not a pane server, however long it streams', async () => {
+    const data = scratch()
+    const root = scratch()
+    let sent = 0
+    // Another program on a port used again, streaming without end and never naming the pane's page.
+    const server = await serve((_req, res) => {
+      res.writeHead(200)
+      const chunk = Buffer.alloc(16 * 1024, 'x')
+      const more = () => {
+        while (!res.destroyed && res.write(chunk)) sent += chunk.length
+        if (!res.destroyed) res.once('drain', more)
+      }
+      more()
+    })
+    try {
+      mkdirSync(join(data, 'web'), { recursive: true })
+      writeFileSync(lockFile(data, root), JSON.stringify({ pid: process.ppid, port: server.port }))
+      const started = Date.now()
+      expect((await claim(data, root, TOKEN)).kind).toBe('mine')
+      // Read up to its limit and let go at once, not read on until the probe's time is up.
+      expect(Date.now() - started).toBeLessThan(PATIENCE_MS[0] + PATIENCE_MS[1])
+      expect(sent).toBeLessThan(4 * 1024 * 1024)
+    } finally {
+      server.close()
+    }
+  })
+
   it("takes over a lock whose pid is alive but whose port answers as another project's server: a pid used again after a restart", async () => {
     const data = scratch()
     const root = scratch()

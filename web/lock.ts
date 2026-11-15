@@ -96,6 +96,29 @@ function held(file: string): { pid: unknown; port: unknown } | null {
 
 /** What every pane server's page has loaded since the first one: how a server from before {@link PANE_HEADER} is still known. */
 const OLD_PAGE_MARK = '/static/app.mjs'
+/** The most of an answer read to look for {@link OLD_PAGE_MARK}: the old page is well under 1 KB, and a program that streams forever is cut off here. */
+const OLD_PAGE_MAX = 64 * 1024
+
+/** Whether the first {@link OLD_PAGE_MAX} bytes of `body` hold the old page's mark; the rest is never read. */
+async function oldPage(body: ReadableStream<Uint8Array> | null): Promise<boolean> {
+  if (body === null) return false
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  let size = 0
+  try {
+    while (size < OLD_PAGE_MAX) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      text += decoder.decode(value, { stream: true })
+      if (text.includes(OLD_PAGE_MARK)) return true
+    }
+    return false
+  } finally {
+    await reader.cancel().catch(() => undefined)
+  }
+}
 
 /**
  * What answers at `url` (its token in it) within `ms`: a pane server (`pane`), something else or nothing
@@ -115,7 +138,7 @@ async function probe(url: string, ms: number): Promise<'pane' | 'other' | 'silen
       await res.body?.cancel()
       return 'pane'
     }
-    return (await res.text()).includes(OLD_PAGE_MARK) ? 'pane' : 'other'
+    return (await oldPage(res.body)) ? 'pane' : 'other'
   } catch (error) {
     return (error as Error).name === 'TimeoutError' ? 'silent' : 'other'
   }
