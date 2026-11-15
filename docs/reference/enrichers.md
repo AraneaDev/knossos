@@ -115,8 +115,13 @@ must exist there:
   same path, read-only. Put it there on the host, then add it, for example
   `knossos enricher add endpoints -- python3 ~/.knossos/install/settings/endpoints.py`.
 
-A command in the graph directory is refused when you add it, because any
-project's container could replace it. A file in one of your projects is only
+An enricher must not read or run anything from the graph directory, in any
+way: the graph directory is shared by every project of the installation, and
+any project's container can write it. A command in the graph directory is
+refused when you add it, because any project's container could replace it. That
+check only catches a path given as a word of its own, so it does not catch a
+path built inside a shell command or an environment value. Keep what an
+enricher runs and reads in `<data dir>/install/settings`. A file in one of your projects is only
 mounted while that project is scanned. A command that does not exist in the
 container makes the scan report `ENRICHER_FAILED` with the reason
 `missing_command`, and the enricher's previous facts are kept.

@@ -1,13 +1,122 @@
 # Installation
 
-You install Knossos once and point it at as many projects as you like. There are
-two ways to run it: from a checkout with the installer, which is what most
-people want, or in Docker. Both end with an MCP server registered in your
-client and a data directory holding the graph.
+You install Knossos once and point it at as many projects as you like. There
+are three ways in: the installer, which downloads a release and needs no
+checkout; a checkout, for developing Knossos; and Docker by hand. All of them
+end with an MCP server registered in your client and a data directory holding
+the graph.
+
+## Install from a release
+
+Run the installer from the project you want to scan first:
+
+```sh
+cd /absolute/path/to/your-project
+curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install.sh | sh
+```
+
+It needs `curl` and `sh`, and one of two things on the host:
+
+- **Native mode**: PHP 8.3 or newer, Node 24 or newer and Python 3.11 or newer.
+  The release runs on the host. Release tarballs exist for Linux and macOS,
+  on x86_64 and arm64.
+- **Container mode**: Docker or Podman with its daemon running. The release
+  runs in a container, one per project, and the host needs none of the
+  runtimes above. See [container mode](../operate/container-mode.md).
+
+### What the installer decides
+
+Without `--mode`, it uses native mode when all three runtimes are present at
+their minimum version, and container mode when they are not and `docker` or
+`podman` answers `info`. Docker is tried before Podman. When the runtimes are
+missing it prints what is missing and says it is using container mode:
+
+```text
+This host cannot run Knossos natively. Missing:
+  - PHP 8.3 or newer (php not found)
+Using container mode: docker is available.
+```
+
+Pass options after `sh -s --`, or download the script and run it:
+
+```sh
+curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install.sh | sh -s -- --mode=container --dry-run
+```
+
+| Option                     | Meaning                                                                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `--mode=native\|container` | Skip the detection. A forced mode that the host cannot run stops with the reason.                                                |
+| `--version=V`              | Install this release instead of the latest.                                                                                      |
+| `--data-dir=DIR`           | The install directory, which also holds the graph. Default `~/.knossos`.                                                         |
+| `--bin-dir=DIR`            | Where the `knossos` launcher goes. Default `~/.local/bin`.                                                                       |
+| `--no-plugin`              | Skip the Claude Code plugin and the MCP registration.                                                                            |
+| `--no-roots`               | Do not allow the current directory.                                                                                              |
+| `--dry-run`                | Say what would happen and change nothing.                                                                                        |
+| `--force-clean`            | Remove the entries of the other mode that stand in the way (see [the pitfalls](#installation-pitfalls)). Never the graph itself. |
+
+The environment variables of the installer:
+
+| Variable                   | Default                                | Meaning                                                              |
+| -------------------------- | -------------------------------------- | -------------------------------------------------------------------- |
+| `KNOSSOS_DATA_DIR`         | `~/.knossos`                           | The install directory, when `--data-dir` is not given.               |
+| `KNOSSOS_ROOTS_FILE`       | native: `<data dir>/roots.json`        | The roots file, when `--data-dir` is not given.                      |
+| `KNOSSOS_BIN_DIR`          | `~/.local/bin`                         | Where the launcher goes.                                             |
+| `KNOSSOS_ALLOW_ROOT`       | the directory you ran the installer in | The project to allow.                                                |
+| `KNOSSOS_MCP_NAME`         | `knossos`                              | The name of the registered server.                                   |
+| `KNOSSOS_MCP_SCOPE`        | `user`                                 | `claude mcp` scope: local, user, project.                            |
+| `KNOSSOS_RELEASE_BASE`     | the GitHub releases of Knossos         | A releases URL, or a directory holding the tarball and `SHA256SUMS`. |
+| `KNOSSOS_IMAGE`            | `<repository>:<version>`               | Container mode: the image to install, for example one built here.    |
+| `KNOSSOS_IMAGE_REPOSITORY` | `ghcr.io/araneadev/knossos`            | Container mode: where release images come from.                      |
+
+Piped from `/` or your home directory, with no terminal, the installer allows
+no project, because nothing says which one you meant. It tells you, and
+`knossos allow-root <path> --execute` adds one later. It does not scan the
+project it allows: start Knossos there (`/knossos` in a session, or `knossos`
+in the folder) and that scans it.
+
+### What it writes
+
+In native mode, under the install directory (`~/.knossos` unless you chose
+another):
+
+- `versions/<version>`, the unpacked release, and `current`, a link to it.
+  After an update the previous version stays beside it, for
+  [a rollback](../operate/updating.md#roll-back).
+- `install.json`, the record of the mode, the version and where the launcher is.
+- `plugin/`, the Claude Code plugin, whose hooks call the launcher.
+- `roots.json`, the allow-list, and the graph database beside it.
+
+In container mode, the install directory is `<data dir>/install`, which every
+container can only read, and the graph stays in `<data dir>`:
+
+- `<data dir>/install/install.json`, which names the image by digest.
+- `<data dir>/install/plugin`, the plugin, written out of the image.
+- `<data dir>/install/roots.json`, the allow-list, which only the launcher
+  changes.
+- `<data dir>/install/settings`, the enricher list, and `containers/`, the
+  launcher's own records.
+
+In both modes, the launcher is one file, `~/.local/bin/knossos` by default, and
+it is what the MCP registration and the plugin's hooks call. If its directory
+is not on your `PATH`, the installer prints the line to add. It registers the
+server with `claude mcp add` at user scope and installs the plugin with
+`claude plugin marketplace add` and `claude plugin install`. Without the
+`claude` CLI it prints the command to run later.
+
+The installer changes nothing until the download is checked and the new
+release has passed `knossos doctor`, run against a throwaway data directory.
+A failed install leaves the previous release working. The checksum comes from
+the same origin as the tarball: it guards against a corrupted download and is
+not a signature. Releases are not signed yet.
+
+Restart Claude Code afterwards, or reload its MCP servers. Then
+[scan your first project](first-scan.md). To change or remove the release
+later, see [updating](../operate/updating.md).
 
 ## Install from a checkout
 
-Run the installer from the project you want to scan first:
+This is the path for developing Knossos. Run the installer from the project
+you want to scan first:
 
 ```sh
 cd /absolute/path/to/your-project
@@ -104,6 +213,9 @@ begins adds nothing. In a container, or when you want to write the file
 yourself, run `knossos allow-root /absolute/path` to preview the change and add
 `--execute` to write it. Editing the file by hand works too.
 
+In container mode the list is `<data dir>/install/roots.json`, which no container
+can write, and `knossos allow-root` and `knossos claim` change it on the host.
+
 `--allow-root=PATH` and `KNOSSOS_ALLOWED_ROOTS` are unioned with the file. Use
 them for a root that has to survive without a mutable file, and the file for
 everything else.
@@ -120,9 +232,12 @@ Two tools help from inside a session:
 
 A rejected path reports the roots in force and the file to add it to.
 
-## Docker
+## Docker by hand
 
-Docker is the reproducible distribution and needs no host PHP or Node:
+If you would rather run the image yourself than let the installer do it,
+Docker is the reproducible distribution and needs no host PHP or Node. Releases
+publish the image as `ghcr.io/araneadev/knossos:<version>`, and from a checkout
+you build it:
 
 ```sh
 docker build --target runtime -t knossos:dev .
@@ -130,7 +245,9 @@ docker run --rm knossos:dev doctor --json
 ```
 
 [Running Knossos in Docker](../operate/container.md) has the MCP configuration,
-where to mount each project, compose files, volumes and the HTTP profile.
+where to mount each project, compose files, volumes and the HTTP profile. The
+installer's own container mode, which does the mounting for you, is on
+[container mode](../operate/container-mode.md).
 
 ## Native stdio (repository checkout)
 
@@ -175,29 +292,63 @@ for any other stdio client are on [Codex and other MCP clients](../agents/client
 
 ## Installation pitfalls
 
-- **No PHP or Composer on the host.** `tools/mcp-serve` cannot start without
-  them. Use the Docker image instead.
+### Refusals from the installer
+
+Each of these stops the installer before it changes anything. Messages begin
+with `error:`.
+
+| Message                                                                                                                 | Cause and what to do                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `install the runtimes listed above (or Docker or Podman, with its daemon running) and run the installer again`          | A runtime is missing or too old, and no container runtime answers. Install what the list names, or start Docker or Podman.                                                                                      |
+| `docker is installed, but its daemon is not running (docker info failed): start it and run the installer again`         | The binary exists and the daemon does not answer. Start the daemon.                                                                                                                                             |
+| `container mode needs Docker or Podman, with its daemon running; neither was found`                                     | You passed `--mode=container` on a host without either.                                                                                                                                                         |
+| `<dir> holds a native install (...); remove those entries or pick another --data-dir, or re-run with --force-clean ...` | You are installing container mode over a native install in the same data directory, or the reverse. The message lists the entries. Pick another `--data-dir`, or `--force-clean` removes exactly those entries. |
+| `checksum mismatch for <file> (expected ..., got ...); nothing was changed`                                             | The download does not match `SHA256SUMS`. Run the installer again. If it repeats, do not install that file.                                                                                                     |
+| `knossos doctor failed on the new release; the previous release, if any, is untouched`                                  | The release does not run on this host. The output above the message says why.                                                                                                                                   |
+| `could not pull <image>; nothing was changed`                                                                           | Container mode could not fetch the image. Check the network and that the version exists.                                                                                                                        |
+| `<path> is a directory; move it away and run the installer again`                                                       | The launcher's path is taken by a directory. Move it, or pass another `--bin-dir`.                                                                                                                              |
+| `the directory of the knossos launcher <dir> lies inside the Knossos data directory ...` (container mode)               | A container can write the data directory, so the launcher may not live in it. Pass `--bin-dir` outside it.                                                                                                      |
+| `<dir> contains the Knossos data directory ...`, or `... contains <dir>, the directory of the knossos launcher ...`     | The project you ran the installer in contains the data directory or the launcher's directory. Run it from another directory, or move `--data-dir` or `--bin-dir` out of the project.                            |
+| `--data-dir <dir> lies in <graph>, the graph directory of a container install, which its containers can write; ...`     | The data directory sits inside the graph directory of another container install. Pick one outside it.                                                                                                           |
+| `HOME is not set; pass --data-dir`                                                                                      | `HOME` is unset. Pass `--data-dir` and `--bin-dir`.                                                                                                                                                             |
+| `the data and bin directories must not contain a newline or another control character`                                  | Rename the directory.                                                                                                                                                                                           |
+
+`--dry-run` shows the mode, the version, the directories and what would be
+granted, and changes nothing.
+
+### Other pitfalls
+
+- **No PHP or Composer on the host, and no container runtime.** The release
+  installer needs one of the two, and `tools/mcp-serve` from a checkout needs
+  PHP and Composer. Install Docker or Podman and run the installer again, or
+  use the image by hand.
 - **An unqualified `docker build`.** It builds the last stage of the
   Dockerfile, the CI `quality` stage, not the server. Always pass
-  `--target runtime`. The image is not published, so `docker pull` cannot stand
-  in for the build.
+  `--target runtime`. Releases publish the image as
+  `ghcr.io/araneadev/knossos:<version>`, with version tags only and no
+  `latest`; a local build is for a checkout.
 - **`-t` on Docker stdio.** Use `-i` and never `-t`: terminal framing corrupts
   the NDJSON stream. A socket permission error from Docker means the user
   starting your client cannot reach Docker; fix that before you start Codex or
   Claude Code.
 - **An unpinned data directory.** Keep `KNOSSOS_DATA_DIR` and
   `KNOSSOS_ROOTS_FILE` explicit and absolute; see
-  [one data directory](#one-data-directory).
+  [one data directory](#one-data-directory). The installer pins both in the
+  registration it writes.
 - **Different paths inside the container.** Mount each allowed project
   read-only at the same absolute path inside the container, and pass that path
   to `--allow-root`. Otherwise the host paths in MCP requests match nothing in
-  the container.
+  the container. Container mode does this for you.
 - **Git's `dubious ownership`.** The image runs as `www-data`, so a checkout
   owned by another user trips Git's ownership check. Scanning still works, but
   the Git-backed answers degrade. Set `KNOSSOS_GIT_SAFE_DIRECTORY` to the
   mounted project's absolute path, and Knossos passes it to every git call as
   `-c safe.directory=`. The Claude Code plugin's container hooks do this for
   you.
+
+For the refusals container mode itself gives at run time (a project in your
+home directory, a data directory inside a project), see
+[container mode](../operate/container-mode.md#refusals).
 
 ## Native runtimes
 

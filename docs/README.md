@@ -7,8 +7,9 @@ is the short version.
 
 ## Get started
 
-- [Installation](get-started/installation.md): how do I install Knossos and
-  register it with Claude Code, and what goes wrong?
+- [Installation](get-started/installation.md): how do I install Knossos from a
+  release, a checkout or Docker, register it with Claude Code, and what goes
+  wrong?
 - [First scan](get-started/first-scan.md): how do I scan a project, check the
   result, and what does an answer look like?
 - [Project configuration](get-started/project-configuration.md): how do I tell
@@ -114,8 +115,13 @@ help text and schemas they come from, never the Markdown.
 
 - [Watch mode](operate/watch-mode.md): how do I keep a graph current as files
   change?
+- [Updating](operate/updating.md): how do I update an installed Knossos or roll
+  it back, and what does the update notice send over the network?
+- [Container mode](operate/container-mode.md): how does the installer run
+  Knossos on a host with Docker or Podman and no PHP, and what can a container
+  reach?
 - [Running in Docker](operate/container.md): what does the image guarantee, and
-  how do I mount, compose and install the plugin for it?
+  how do I mount, compose and install the plugin for it by hand?
 - [Project and database maintenance](operate/maintenance.md): how do I remove a
   project, clean up failed scans, and check, compact or back up the database?
 - [Fault recovery matrix](operate/recovery-matrix.md): what happens when a scan

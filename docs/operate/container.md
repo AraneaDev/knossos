@@ -1,5 +1,13 @@
 # Running Knossos in Docker
 
+Use this page to run the image yourself with `docker run` or compose: you choose
+the mounts, the volumes and the registration. If you only want Knossos on a
+host without PHP, Node and Python, the installer does that for you and keeps
+one container per project; see [container mode](container-mode.md). Releases
+publish the image as `ghcr.io/araneadev/knossos:<version>`, with version tags
+only and no `latest`, and everything below works with it in place of
+`knossos:dev`.
+
 The Docker distribution supplies the matched PHP, Node, Python, Composer, SQLite, and
 Knossos versions. The scanned project needs none of these runtimes installed on
 the host.

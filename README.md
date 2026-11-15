@@ -32,10 +32,11 @@ Claude Code, Codex or any MCP client.
 Facts that static analysis cannot prove are labelled with their confidence and origin.
 Nothing in the scan installs dependencies, imports a module or boots a framework.
 
-> **Status:** pre-release. Knossos is **not yet published to Packagist or any container
-> registry**. The source is public on [GitHub](https://github.com/AraneaDev/knossos), so install
-> from a checkout (see [Installation](#installation)). Image names such as `knossos:dev` are
-> built locally by you; there is no `docker pull` to fetch them yet.
+> **Status:** pre-release. Knossos is not published to Packagist. Each release publishes
+> tarballs on [GitHub](https://github.com/AraneaDev/knossos/releases) and a container image on
+> `ghcr.io/araneadev/knossos`, tagged with the version and never `latest`. The
+> [installer](#installation) picks between them; installing from a checkout is for developing
+> Knossos. Image names such as `knossos:dev` are built locally by you.
 
 ---
 
@@ -81,10 +82,26 @@ tabs and a search, then an edit, the band summing up the change, and its diff in
 
 ## Installation
 
-You need PHP 8.3 or newer with JSON, PDO and PDO SQLite, Node 24 or newer, Python 3.11 or newer,
-Composer 2 and Git. Cargo 1.82 or newer is optional and adds Rust scanning.
+```sh
+curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/install.sh | sh
+```
 
-Clone the repository, then run the installer from the project you want to scan first:
+Run it from the project you want to scan first. It downloads the latest release, checks it
+against the release's `SHA256SUMS`, writes a `knossos` launcher to `~/.local/bin`, allows the
+current project, installs the Claude Code plugin and registers the MCP server. It runs Knossos
+natively when the host has PHP 8.3 or newer, Node 24 or newer and Python 3.11 or newer, and in a
+container when it has Docker or Podman instead. [Installation](docs/get-started/installation.md)
+covers what it decides and how to override it, and
+[Updating](docs/operate/updating.md) covers `knossos self-update`.
+
+Start a new session. The brief appears at its start, and `/knossos` opens the pane.
+
+### From a checkout
+
+To develop Knossos, or to run it from source, you need PHP 8.3 or newer with JSON, PDO and PDO
+SQLite, Node 24 or newer, Python 3.11 or newer, Composer 2 and Git. Cargo 1.82 or newer is
+optional and adds Rust scanning. Clone the repository, then run the installer from the project
+you want to scan first:
 
 ```sh
 git clone https://github.com/AraneaDev/knossos.git /absolute/path/to/knossos
@@ -106,19 +123,20 @@ knossos install-agent-plugin                                        # preview
 knossos install-agent-plugin --data-dir="$HOME/.knossos" --execute
 ```
 
-Start a new session. The brief appears at its start, and `/knossos` opens the pane.
-
 - **Codex or another MCP client**: [Codex and other MCP clients](docs/agents/clients.md). The
   native pane and the messages are Claude Code hooks; every other client gets the MCP tools
   and can use the [web client](#web-client) to browse the graph.
-- **No PHP on the host**: [Running Knossos in Docker](docs/operate/container.md).
+- **No PHP on the host**: the installer uses container mode, see
+  [Container mode](docs/operate/container-mode.md). To run the image by hand instead, see
+  [Running Knossos in Docker](docs/operate/container.md).
 - **When it does not start**: [installation pitfalls](docs/get-started/installation.md#installation-pitfalls),
   such as an unpinned data directory that gives the server and the plugin two different graphs.
-- **Updating, removing, or trying the plugin for one session**: [the plugin guide](docs/claude-code/plugin.md).
+- **Updating, removing, or trying the plugin for one session**: [Updating](docs/operate/updating.md)
+  and [the plugin guide](docs/claude-code/plugin.md).
 
 ## Quick start
 
-The installer scanned your project. To scan another, start Knossos in it: type `/knossos` in a
+The installer allowed the project you ran it from. To scan it, or another, start Knossos in it: type `/knossos` in a
 Claude Code session there, or run `knossos` in its folder. Starting it is the consent to scan,
 so the folder is allowed and scanned for you. A session that only begins never allows or scans
 anything. If you prefer to do it by hand, with the data directory the server uses:
@@ -284,7 +302,7 @@ processes through the [scanner SDK](docs/reference/scanner-sdk.md).
 - Scanning never installs dependencies, executes project code or boots a framework. Workers are
   supervised and resource-capped, and their output is untrusted until it passes validation.
 - The allow-list is a security boundary. `serve` refuses to start without a root, and Knossos
-  never writes the roots file during normal operation: only `tools/install` and
+  never writes the roots file during normal operation: only the installers and
   `knossos allow-root --execute` do, so widening it stays a deliberate act on disk.
 - The database is derived and rebuildable, and source mounts stay read-only.
 - The Git-backed tools run `git` with repository-controlled hooks, pagers and drivers forced off.

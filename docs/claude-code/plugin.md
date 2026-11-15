@@ -8,9 +8,10 @@ One plugin brings Knossos into Claude Code. It carries:
 - the [mod](pane/index.md): the band, the pane, the live watcher, and the
   [messages for the model](model-messages.md).
 
-You install it from the same checkout that runs your Knossos server, because
-the plugin ships no binary of its own: its hooks run the `knossos` already on
-your machine.
+The plugin ships no binary of its own: its hooks run the `knossos` already on
+your machine. The [installer](../get-started/installation.md#install-from-a-release)
+installs it for you, and the rest of this page is for a checkout or for doing
+it by hand.
 
 ## Install
 
@@ -51,9 +52,13 @@ Start a new session afterwards. The brief appears at its start, and `/knossos`
 opens the pane once the project is scanned.
 
 A release installed with `install.sh` picks its own defaults: the plugin goes
-to `plugin/` in the install directory and the hooks call the launcher, so a
-`knossos self-update` never leaves them on an old version. Neither option may
-point inside that install's `versions/`.
+to `plugin/` in the install directory (`<data dir>/install/plugin` in
+[container mode](../operate/container-mode.md)) and the hooks call the
+launcher, so a `knossos self-update` never leaves them on an old version: it
+rewrites that directory in place, which Claude Code has registered. Restart
+Claude Code afterwards. Neither option may point inside that install's
+`versions/`. In container mode `install-agent-plugin` is refused, because the
+plugin is managed from the host.
 
 For a containerised server, use `--out` instead; see
 [the container guide](../operate/container.md#agent-orientation-plugin-for-a-containerised-install).
@@ -150,6 +155,9 @@ command puts it back.
 
 ## Update
 
+An installed release updates its plugin with `knossos self-update`; see
+[updating](../operate/updating.md). The rest of this section is for a checkout.
+
 Claude Code reads a plugin installed from a local directory in place:
 `claude plugin list --json` shows `.plugin/` as its `readFromFolder`. After you
 update your checkout, or change a hook script, the skill or the mod, rewrite
@@ -203,9 +211,10 @@ is the MCP server's registration.
 
 A clone from a public marketplace would have no `vendor/`, so its own
 `bin/knossos` could not run, and the hooks fail silent on every error. Such an
-install would produce nothing, forever, with nothing to diagnose. Installing
-from a checkout that already runs the server is the one source that can supply
-the working binary the hooks need.
+install would produce nothing, forever, with nothing to diagnose. The plugin
+needs a working binary beside it: the installer writes one into the plugin as
+the launcher, and from a checkout the one that already runs the server is the
+source.
 
 ## The plugin and the MCP server are separate installs
 
@@ -213,6 +222,7 @@ Registering the server with an MCP client (see
 [installation](../get-started/installation.md)) does not need the plugin, and
 installing the plugin does not register a server.
 
-A containerised installation does not run a local `knossos` binary at all, so
-folding server registration into the plugin install would either duplicate an
-existing registration or assume one that is not there.
+A containerised installation you run by hand does not have a local `knossos`
+binary at all, so folding server registration into the plugin install would
+either duplicate an existing registration or assume one that is not there. The
+installer registers the server and installs the plugin as two steps.
