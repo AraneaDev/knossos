@@ -71,8 +71,12 @@ jobs:
           curl --fail --silent --show-error --location --retry 3 https://claude.ai/install.sh \
             | bash -s "$CLAUDE_CODE_VERSION"
           ~/.local/bin/claude --version
+      # Theseus pulls nothing unless told to, and --pull would also look for
+      # the guest image prepare.sh builds locally, so the private daemon's
+      # image is pulled here.
       - name: Prepare both rehearsals
         run: |
+          docker pull --quiet docker:28-dind
           sh tests/theseus/prepare.sh --claude="$HOME/.local/bin/claude" --container
       - name: Native rehearsal
         run: ~/.local/theseus/bin/theseus run --headless --recipe tests/theseus/theseus.toml
