@@ -24,6 +24,7 @@ final class ReleaseAssetsWorkflowTest extends KnossosTestCase
         self::assertStringContainsString('needs: [release-please, tarballs, image]', $assets);
         self::assertStringContainsString('dist/* --repo', $assets);
         self::assertStringContainsString('cp ../install.sh install.sh', $assets);
+        self::assertStringContainsString('cp ../uninstall.sh uninstall.sh', $assets);
     }
 
     #[Group('packaging')]

@@ -28,6 +28,8 @@ shell	tests/shell/release-tarball.sh
 shell	tests/shell/run.sh
 shell	tests/shell/self-update.sh
 shell	tests/shell/session-brief-hook.sh
+shell	tests/shell/uninstall.sh
+shell	tests/theseus/prepare.sh
 shell	tools/benchmark
 shell	tools/chaos-loop
 shell	tools/check-commit-style.sh
@@ -53,6 +55,7 @@ shell	tools/release-lifecycle
 shell	tools/release-tarball
 shell	tools/runtime-image-key
 shell	tools/supply-chain
+shell	uninstall.sh
 shell	web/fixtures/knossos-run.sh
 php	.php-cs-fixer.dist.php
 php	bin/http-router.php

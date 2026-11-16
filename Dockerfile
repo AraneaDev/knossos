@@ -433,9 +433,9 @@ COPY --chown=knossos:knossos .gitignore .dockerignore ./
 COPY --chown=knossos:knossos eslint.config.js phpstan.neon pyproject.toml .pre-commit-config.yaml .coveragerc ./
 COPY --chown=knossos:knossos phpunit.xml infection.json5 ./
 COPY --chown=knossos:knossos README.md CONTRIBUTING.md CHANGELOG.md LICENSE ./
-# The release installer: listed for the linters and run by tests/shell, never
-# part of the runtime image.
-COPY --chown=knossos:knossos install.sh ./
+# The release installer and uninstaller: listed for the linters and run by
+# tests/shell, never part of the runtime image.
+COPY --chown=knossos:knossos install.sh uninstall.sh ./
 COPY --chown=knossos:knossos version.txt release-please-config.json .release-please-manifest.json ./
 COPY --chown=knossos:knossos coverage-budgets.json ./
 COPY --chown=knossos:knossos maintainability-budgets.json ./

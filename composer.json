@@ -52,6 +52,7 @@
       "sh tests/shell/run.sh tests/shell/release-tarball.sh",
       "sh tests/shell/run.sh tests/shell/install-native.sh",
       "sh tests/shell/run.sh tests/shell/install-container.sh",
+      "sh tests/shell/run.sh tests/shell/uninstall.sh",
       "sh tests/shell/run.sh tests/shell/self-update.sh"
     ],
     "check:quick": [

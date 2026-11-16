@@ -50,3 +50,9 @@ tools/capture/out
 website/node_modules
 website/.vitepress/dist
 website/.vitepress/cache
+
+# What tests/theseus/prepare.sh downloads, builds and renders for the lifecycle
+# rehearsal: two release tarballs and the recipe written from its template.
+tests/theseus/artifacts
+tests/theseus/theseus.toml
+tests/theseus/.theseus-runs
