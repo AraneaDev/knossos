@@ -102,7 +102,7 @@ if [ "$NO_CLAUDE" = 0 ] && [ -z "$CLAUDE" ]; then
 fi
 if [ -n "$CLAUDE" ]; then
     CLAUDE=$(readlink -f -- "$CLAUDE") || die "cannot resolve $CLAUDE"
-    [ -f "$CLAUDE" ] && [ -x "$CLAUDE" ] || die "$CLAUDE is not an executable file"
+    if [ ! -f "$CLAUDE" ] || [ ! -x "$CLAUDE" ]; then die "$CLAUDE is not an executable file"; fi
     case $(head -c 4 "$CLAUDE" | od -An -c | tr -d ' ') in
         177ELF) ;;
         *) die "$CLAUDE is not a Linux binary (a script or a shim?); pass the binary itself with --claude=PATH" ;;
