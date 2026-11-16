@@ -1,0 +1,100 @@
+name: Lifecycle
+
+# Rehearses install.sh, an upgrade from the previous release and uninstall.sh
+# with Theseus (https://github.com/AraneaDev/theseus), in disposable guests,
+# in both install modes: native, and container mode, whose guest gets a
+# private Docker daemon (a privileged docker:dind sidecar the run owns) with
+# this checkout's runtime image loaded into it. Claude Code is a pinned
+# release from Anthropic's installer, copied into the guest, where it runs
+# with no network and no credentials. tests/theseus/prepare.sh says what each
+# rehearsal needs and checks.
+#
+# It runs only when what it rehearses changes, and is not a required check:
+# it depends on Theseus, Anthropic's installer and a privileged container, and
+# none of those should block a merge that does not touch installation. Start it
+# by hand to rehearse any ref, such as main before a release.
+on:
+  pull_request:
+    paths:
+      - "install.sh"
+      - "uninstall.sh"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "tools/release-tarball"
+      - "tests/theseus/**"
+      - ".github/workflows/lifecycle.yml"
+  push:
+    branches: [main]
+    paths:
+      - "install.sh"
+      - "uninstall.sh"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "tools/release-tarball"
+      - "tests/theseus/**"
+      - ".github/workflows/lifecycle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  THESEUS_VERSION: v0.1.0
+  CLAUDE_CODE_VERSION: 2.1.326
+
+jobs:
+  rehearsal:
+    name: lifecycle rehearsal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Restore Theseus
+        id: theseus
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/theseus
+          key: theseus-${{ env.THESEUS_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Build Theseus
+        if: steps.theseus.outputs.cache-hit != 'true'
+        run: |
+          cargo install --locked --root ~/.local/theseus --bin theseus \
+            --git https://github.com/AraneaDev/theseus --tag "$THESEUS_VERSION" theseus
+      - name: Install Claude Code
+        run: |
+          curl --fail --silent --show-error --location --retry 3 https://claude.ai/install.sh \
+            | bash -s "$CLAUDE_CODE_VERSION"
+          ~/.local/bin/claude --version
+      # Theseus pulls nothing unless told to, and --pull would also look for
+      # the guest image prepare.sh builds locally, so the private daemon's
+      # image is pulled here.
+      - name: Prepare both rehearsals
+        run: |
+          docker pull --quiet docker:28-dind
+          sh tests/theseus/prepare.sh --claude="$HOME/.local/bin/claude" --container
+      - name: Native rehearsal
+        run: ~/.local/theseus/bin/theseus run --headless --recipe tests/theseus/theseus.toml
+      - name: Container-mode rehearsal
+        if: ${{ !cancelled() }}
+        run: ~/.local/theseus/bin/theseus run --headless --recipe tests/theseus/container.toml
+      - name: Nothing left on the runner's daemon
+        if: ${{ !cancelled() }}
+        run: |
+          docker ps --all --filter label=io.theseus.run
+          test -z "$(docker ps --all --quiet --filter label=io.theseus.run)"
+          test -z "$(docker volume ls --quiet --filter dangling=true)"
+      - name: Upload the run reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lifecycle-reports
+          path: tests/theseus/.theseus-runs
+          retention-days: 7
+          if-no-files-found: ignore
+          include-hidden-files: true
