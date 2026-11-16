@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.0](https://github.com/AraneaDev/knossos/compare/v0.49.2...v0.50.0) (2026-11-16)
+
+
+### Features
+
+* add uninstall.sh, and rehearse the install lifecycle with Theseus ([#519](https://github.com/AraneaDev/knossos/issues/519)) ([115f3c0](https://github.com/AraneaDev/knossos/commit/115f3c02f3a194f81f6286920a08cce975350a51))
+
 ## [0.49.2](https://github.com/AraneaDev/knossos/compare/v0.49.1...v0.49.2) (2026-11-15)
 
 
