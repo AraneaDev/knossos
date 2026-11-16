@@ -165,8 +165,42 @@ the same origin as the tarball: it guards against a corrupted download and is
 not a signature. Releases are not signed yet.
 
 Restart Claude Code afterwards, or reload its MCP servers. Then
-[scan your first project](first-scan.md). To change or remove the release
-later, see [updating](../operate/updating.md).
+[scan your first project](first-scan.md). To change the release later, see
+[updating](../operate/updating.md); to remove it, see [uninstall](#uninstall).
+
+## Uninstall
+
+The uninstaller removes what the installer and `knossos self-update` put on
+the host:
+
+```sh
+curl -fsSL https://github.com/AraneaDev/knossos/releases/latest/download/uninstall.sh | sh
+```
+
+It removes the releases, `install.json`, the plugin's files and the launcher.
+When the `claude` CLI is there, it also unregisters the MCP server and the
+plugin, each only when Claude Code has it pointing at this installation: a
+registration of a checkout or of another installation is left alone. Without
+the CLI it prints the commands to run later. In container mode it first stops
+the installation's containers and then removes the install directory; the
+image stays in the container runtime, and the run prints the `docker image rm`
+line for it.
+
+Your graph and your settings stay: `knossos.sqlite` and what belongs to it,
+`roots.json`, `enrichers.json` and `pane-autostart.json`. A later install into
+the same data directory picks them up again. The options:
+
+- `--purge` removes the graph and the settings too, and the data directory
+  once it is empty.
+- `--dry-run` lists what would be removed and removes nothing.
+- `--no-plugin` never calls `claude`.
+- `--data-dir`, `--install-dir` and `--bin-dir` name an installation that is
+  not in the default places, as they do for the installer. Pass them after
+  `sh -s --` when you pipe the script.
+
+Only entries Knossos itself makes are removed, each by name. Anything else in
+the data directory stays, and the run names it. A launcher that belongs to
+another installation, or a link in its place, is left alone.
 
 ## Install from a checkout
 

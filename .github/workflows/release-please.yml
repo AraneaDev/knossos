@@ -475,6 +475,7 @@ jobs:
           rm ./*.sha256
           sha256sum --check SHA256SUMS
           cp ../install.sh install.sh
+          cp ../uninstall.sh uninstall.sh
           ls -l
 
       - name: Keep the assets as a workflow artifact (dry run)

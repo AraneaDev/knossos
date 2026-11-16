@@ -1,0 +1,151 @@
+# The lifecycle of a native Knossos install, rehearsed by Theseus in a
+# disposable container: install, scan a project, upgrade, run, uninstall.
+# tests/theseus/prepare.sh writes theseus.toml from this file and puts the two
+# releases under artifacts/. Run:
+#
+#   theseus run --headless --recipe tests/theseus/theseus.toml
+#
+# clean:   install this checkout, scan, run, uninstall
+# upgrade: install the previous published release with its own installer,
+#          scan, install this checkout over it, run, uninstall
+#
+# The guest has no network and no Claude Code CLI, so the installer takes the
+# local release directory and its "Claude CLI not found" path. /tmp is
+# observed for what a step leaves behind there.
+schema_version = 9
+scenarios = ["clean", "upgrade"]
+name = "knossos native install lifecycle"
+image = "knossos-theseus-guest:local"
+network = "none"
+observe = ["/home/theseus", "/tmp"]
+
+# What a host needs before install.sh can install natively: the runtimes
+# `knossos doctor` checks, and the tools the installer unpacks and checks a
+# release with. Theseus probes these before the first step and skips the
+# lifecycle when the image lacks one, instead of failing inside the installer.
+[[requires]]
+id = "php-8.3"
+script = "php -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);'"
+
+[[requires]]
+id = "php-extensions"
+script = """php -r 'foreach (["json", "mbstring", "pdo", "pdo_sqlite", "tokenizer"] as $e) { if (!extension_loaded($e)) { fwrite(STDERR, "missing $e\n"); exit(1); } }'"""
+
+[[requires]]
+id = "node-24"
+script = "node -e 'process.exit(Number(process.versions.node.split(\".\")[0]) >= 24 ? 0 : 1)'"
+
+[[requires]]
+id = "python-3.11"
+script = "python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'"
+
+[[requires]]
+id = "git"
+script = "git --version"
+
+[[requires]]
+id = "tar-and-sha256sum"
+script = "command -v tar && command -v sha256sum"
+
+[artifacts]
+base = "artifacts/base"
+target = "artifacts/target"
+
+[profiles.user.steps.install_base]
+script = "KNOSSOS_RELEASE_BASE=/inputs/base sh /inputs/base/install.sh --version=@BASE_VERSION@"
+
+[profiles.user.steps.install_target]
+script = "KNOSSOS_RELEASE_BASE=/inputs/target sh /inputs/target/install.sh --version=@TARGET_VERSION@"
+
+# Real state for the upgrade and the uninstall to keep: a scanned project in
+# the graph, under the root the installer granted (its working directory).
+[profiles.user.steps.configure]
+script = "cp -R /inputs/target/project /workspace/project && knossos scan /workspace/project --json"
+
+[profiles.user.steps.upgrade]
+script = "KNOSSOS_RELEASE_BASE=/inputs/target sh /inputs/target/install.sh --version=@TARGET_VERSION@"
+
+[profiles.user.steps.exercise]
+script = "knossos doctor && knossos architecture-summary /workspace/project --json"
+
+[profiles.user.steps.uninstall]
+script = "sh /inputs/target/uninstall.sh"
+
+[[profiles.user.checks]]
+id = "base-version"
+checkpoint = "base_installed"
+kind = "executable"
+name = "knossos"
+resolved_path = "/home/theseus/.local/bin/knossos"
+args = ["version"]
+expected_exit = 0
+stdout_contains = "Knossos @BASE_VERSION@"
+
+[[profiles.user.checks]]
+id = "target-version"
+checkpoint = "target_installed"
+kind = "executable"
+name = "knossos"
+resolved_path = "/home/theseus/.local/bin/knossos"
+args = ["version"]
+expected_exit = 0
+stdout_contains = "Knossos @TARGET_VERSION@"
+
+# What uninstall.sh removes.
+[[profiles.user.checks]]
+id = "launcher-removed"
+checkpoint = "uninstalled"
+kind = "absent"
+path = "/home/theseus/.local/bin/knossos"
+
+[[profiles.user.checks]]
+id = "releases-removed"
+checkpoint = "uninstalled"
+kind = "absent"
+path = "/home/theseus/.knossos/versions"
+
+[[profiles.user.checks]]
+id = "current-removed"
+checkpoint = "uninstalled"
+kind = "absent"
+path = "/home/theseus/.knossos/current"
+
+[[profiles.user.checks]]
+id = "record-removed"
+checkpoint = "uninstalled"
+kind = "absent"
+path = "/home/theseus/.knossos/install.json"
+
+[[profiles.user.checks]]
+id = "plugin-removed"
+checkpoint = "uninstalled"
+kind = "absent"
+path = "/home/theseus/.knossos/plugin"
+
+# What it keeps without --purge: the graph, and the roots exactly as granted.
+[[profiles.user.checks]]
+id = "data-directory-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos"
+expected_kind = "directory"
+
+[[profiles.user.checks]]
+id = "migration-lock-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos/knossos.sqlite.migrate.lock"
+expected_kind = "file"
+
+[[profiles.user.checks]]
+id = "graph-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos/knossos.sqlite"
+expected_kind = "file"
+
+[[profiles.user.checks]]
+id = "roots-kept"
+checkpoint = "uninstalled"
+kind = "preserved"
+path = "/home/theseus/.knossos/roots.json"
