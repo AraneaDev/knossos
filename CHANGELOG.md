@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.1](https://github.com/AraneaDev/knossos/compare/v0.50.0...v0.50.1) (2026-11-16)
+
+
+### Fixes
+
+* unregister from Claude Code before stopping containers in uninstall.sh ([#522](https://github.com/AraneaDev/knossos/issues/522)) ([d4716fa](https://github.com/AraneaDev/knossos/commit/d4716faf429f4de14c985af1d3a77d02aae99be3))
+
 ## [0.50.0](https://github.com/AraneaDev/knossos/compare/v0.49.2...v0.50.0) (2026-11-16)
 
 
