@@ -181,10 +181,10 @@ It removes the releases, `install.json`, the plugin's files and the launcher.
 When the `claude` CLI is there, it also unregisters the MCP server and the
 plugin, each only when Claude Code has it pointing at this installation: a
 registration of a checkout or of another installation is left alone. Without
-the CLI it prints the commands to run later. In container mode it first stops
-the installation's containers and then removes the install directory; the
-image stays in the container runtime, and the run prints the `docker image rm`
-line for it.
+the CLI it prints the commands to run later. In container mode it then stops
+the installation's containers (after Claude Code, whose lookup of the server
+starts one) and removes the install directory; the image stays in the
+container runtime, and the run prints the `docker image rm` line for it.
 
 Your graph and your settings stay: `knossos.sqlite` and what belongs to it,
 `roots.json`, `enrichers.json` and `pane-autostart.json`. A later install into

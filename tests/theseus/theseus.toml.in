@@ -9,9 +9,16 @@
 # upgrade: install the previous published release with its own installer,
 #          scan, install this checkout over it, run, uninstall
 #
-# The guest has no network and no Claude Code CLI, so the installer takes the
-# local release directory and its "Claude CLI not found" path. /tmp is
-# observed for what a step leaves behind there.
+# The guest has no network, so the installer takes the local release
+# directory. Claude Code is this host's binary, copied in by prepare.sh: the
+# installer really registers the plugin and the MCP server, and the
+# uninstaller really unregisters them. It has no credentials and makes no
+# model call. Every step sources tools/env.sh, which puts it on PATH and its
+# configuration in /var/tmp/claude-config, outside the observed roots: what
+# Claude Code keeps is checked through claude itself. /tmp is observed for
+# what a step leaves behind there.
+#
+# Lines between @CLAUDE@ markers are dropped by prepare.sh --no-claude.
 schema_version = 9
 scenarios = ["clean", "upgrade"]
 name = "knossos native install lifecycle"
@@ -47,15 +54,21 @@ script = "git --version"
 id = "tar-and-sha256sum"
 script = "command -v tar && command -v sha256sum"
 
+# @CLAUDE@ begin
+[[requires]]
+id = "claude"
+script = ". /inputs/target/tools/env.sh && claude --version"
+# @CLAUDE@ end
+
 [artifacts]
 base = "artifacts/base"
 target = "artifacts/target"
 
 [profiles.user.steps.install_base]
-script = "KNOSSOS_RELEASE_BASE=/inputs/base sh /inputs/base/install.sh --version=@BASE_VERSION@"
+script = ". /inputs/target/tools/env.sh && KNOSSOS_RELEASE_BASE=/inputs/base sh /inputs/base/install.sh --version=@BASE_VERSION@"
 
 [profiles.user.steps.install_target]
-script = "KNOSSOS_RELEASE_BASE=/inputs/target sh /inputs/target/install.sh --version=@TARGET_VERSION@"
+script = ". /inputs/target/tools/env.sh && KNOSSOS_RELEASE_BASE=/inputs/target sh /inputs/target/install.sh --version=@TARGET_VERSION@"
 
 # Real state for the upgrade and the uninstall to keep: a scanned project in
 # the graph, under the root the installer granted (its working directory).
@@ -63,13 +76,13 @@ script = "KNOSSOS_RELEASE_BASE=/inputs/target sh /inputs/target/install.sh --ver
 script = "cp -R /inputs/target/project /workspace/project && knossos scan /workspace/project --json"
 
 [profiles.user.steps.upgrade]
-script = "KNOSSOS_RELEASE_BASE=/inputs/target sh /inputs/target/install.sh --version=@TARGET_VERSION@"
+script = ". /inputs/target/tools/env.sh && KNOSSOS_RELEASE_BASE=/inputs/target sh /inputs/target/install.sh --version=@TARGET_VERSION@"
 
 [profiles.user.steps.exercise]
 script = "knossos doctor && knossos architecture-summary /workspace/project --json"
 
 [profiles.user.steps.uninstall]
-script = "sh /inputs/target/uninstall.sh"
+script = ". /inputs/target/tools/env.sh && sh /inputs/target/uninstall.sh"
 
 [[profiles.user.checks]]
 id = "base-version"
@@ -90,6 +103,73 @@ resolved_path = "/home/theseus/.local/bin/knossos"
 args = ["version"]
 expected_exit = 0
 stdout_contains = "Knossos @TARGET_VERSION@"
+
+# @CLAUDE@ begin
+# What the installer registers with Claude Code.
+[[profiles.user.checks]]
+id = "mcp-registered"
+checkpoint = "target_installed"
+kind = "command"
+script = ". /inputs/target/tools/env.sh && claude mcp get knossos"
+expected_exit = 0
+stdout_contains = "/home/theseus/.local/bin/knossos"
+
+[[profiles.user.checks]]
+id = "plugin-installed"
+checkpoint = "target_installed"
+kind = "command"
+script = ". /inputs/target/tools/env.sh && claude plugin list"
+expected_exit = 0
+stdout_contains = "knossos@knossos"
+
+# What uninstall.sh unregisters.
+[[profiles.user.checks]]
+id = "mcp-unregistered"
+checkpoint = "uninstalled"
+kind = "command"
+script = ". /inputs/target/tools/env.sh && if claude mcp list | grep -q knossos; then echo still registered; else echo unregistered; fi"
+expected_exit = 0
+stdout_contains = "unregistered"
+
+[[profiles.user.checks]]
+id = "plugin-uninstalled"
+checkpoint = "uninstalled"
+kind = "command"
+script = ". /inputs/target/tools/env.sh && if claude plugin list | grep -q knossos@knossos; then echo still installed; else echo uninstalled; fi"
+expected_exit = 0
+stdout_contains = "uninstalled"
+
+[[profiles.user.checks]]
+id = "marketplace-removed"
+checkpoint = "uninstalled"
+kind = "command"
+script = ". /inputs/target/tools/env.sh && if claude plugin marketplace list | grep -q /home/theseus/.knossos/plugin; then echo still there; else echo removed; fi"
+expected_exit = 0
+stdout_contains = "removed"
+# Claude Code health-checks a server whenever it is asked about one, so the
+# uninstaller's own lookup starts `knossos serve` once more. What that server
+# writes belongs to the graph, which is kept.
+[[profiles.user.checks]]
+id = "server-log-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos/mcp-serve.log"
+expected_kind = "file"
+
+[[profiles.user.checks]]
+id = "graph-wal-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos/knossos.sqlite-wal"
+expected_kind = "file"
+
+[[profiles.user.checks]]
+id = "graph-shm-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos/knossos.sqlite-shm"
+expected_kind = "file"
+# @CLAUDE@ end
 
 # What uninstall.sh removes.
 [[profiles.user.checks]]

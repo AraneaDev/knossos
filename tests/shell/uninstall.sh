@@ -229,6 +229,31 @@ rm -f "$T9/bin dir/knossos.calls"
 out=$(run_uninstall --install-dir="$INST" --data-dir="$GRAPH" --purge); status=$?
 if [ "$status" -eq 0 ] && [ ! -e "$GRAPH" ]; then pass '--purge with --data-dir removes the graph a container install left'; else fail "container purge: status $status, output $out"; fi
 
+# Claude Code first, then the stop: asking claude about the server starts a
+# container in container mode, which a stop before it would leave running.
+T10="$WORK/container order"
+INST10="$T10/install dir"
+mkdir -p "$INST10/plugin" "$T10/graph dir"
+printf '{\n  "mode": "container",\n  "layout": "install-dir",\n  "version": "1.0.0",\n  "image": "sha256:abc",\n  "bin_dir": "%s",\n  "data_dir": "%s"\n}\n' "$T10/bin dir" "$T10/graph dir" > "$INST10/install.json"
+mkdir -p "$T10/bin dir"
+{
+    printf '#!/bin/sh\n'
+    printf "INSTALL_DIR='%s'\n" "$INST10"
+    # shellcheck disable=SC2016 # written into the launcher, expanded when it runs
+    printf 'printf "launcher %%s\\n" "$*" >> "$CLAUDE_STUB_DIR/calls"\n'
+} > "$T10/bin dir/knossos"
+chmod 0755 "$T10/bin dir/knossos"
+printf 'knossos:\n  Command: %s\n' "$T10/bin dir/knossos" > "$CLAUDE_STUB_DIR/mcp"
+printf '  knossos\n    Source: Directory (%s)\n' "$INST10/plugin" > "$CLAUDE_STUB_DIR/marketplaces"
+: > "$CLAUDE_STUB_DIR/calls"
+out=$(CLAUDE_PATH=$STUB run_uninstall --install-dir="$INST10"); status=$?
+order=$(grep -n -e '^mcp remove' -e '^launcher stop --all' "$CLAUDE_STUB_DIR/calls" | cut -d: -f2- | tr '\n' '|')
+if [ "$status" -eq 0 ] && [ "$order" = 'mcp remove knossos -s user|launcher stop --all|' ]; then
+    pass 'a container install is unregistered from Claude Code before its containers are stopped'
+else
+    fail "unregister and stop order: status $status, order $order, output $out"
+fi
+
 # ---- refusals --------------------------------------------------------------
 
 out=$(run_uninstall --data-dir="$HOME"); status=$?
