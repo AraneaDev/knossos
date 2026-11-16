@@ -323,8 +323,15 @@ describe('knossos (the terminal pane)', () => {
     await run.until(text => text.split(ASK_BACKGROUND).length === 3, 'a second question')
     const before = run.out().length
     run.child.stdin.write('\x1b]11;rgb:0d0d/1111/1717\x1b\\')
-    await run.until(text => text.slice(before).includes('\x1b[30;1H'), 'the pane painted again')
-    expect(run.out().slice(before)).not.toContain('48;2;30;30;30')
+    // Frame by frame, each ended by the cursor's state: the status line's clock repaints row 30 every second,
+    // and a tick that lands before the reply is read still lays the theme's ground.
+    // eslint-disable-next-line no-control-regex -- a frame ends in a control sequence
+    const frames = (text: string) => text.slice(before).split(/\x1b\[\?25[lh]/)
+    const whole = (frame: string) => frame.includes('\x1b[2;1H') && frame.includes('\x1b[30;1H')
+    const themed = (frame: string) => frame.includes('48;2;30;30;30')
+    await run.until(text => frames(text).some(f => whole(f) && !themed(f)), 'the pane painted again')
+    const all = frames(run.out())
+    expect(all.slice(all.findIndex(f => whole(f) && !themed(f))).filter(themed)).toEqual([])
     run.child.stdin.write('q')
     expect(await run.exited).toBe(0)
   })
