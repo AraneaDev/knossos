@@ -8,10 +8,32 @@ name: Lifecycle
 # release from Anthropic's installer, copied into the guest, where it runs
 # with no network and no credentials. tests/theseus/prepare.sh says what each
 # rehearsal needs and checks.
+#
+# It runs only when what it rehearses changes, and is not a required check:
+# it depends on Theseus, Anthropic's installer and a privileged container, and
+# none of those should block a merge that does not touch installation. Start it
+# by hand to rehearse any ref, such as main before a release.
 on:
   pull_request:
+    paths:
+      - "install.sh"
+      - "uninstall.sh"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "tools/release-tarball"
+      - "tests/theseus/**"
+      - ".github/workflows/lifecycle.yml"
   push:
     branches: [main]
+    paths:
+      - "install.sh"
+      - "uninstall.sh"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "tools/release-tarball"
+      - "tests/theseus/**"
+      - ".github/workflows/lifecycle.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
