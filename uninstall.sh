@@ -27,9 +27,10 @@
 # plugin are unregistered only when Claude Code has them pointing here: a
 # registration of a checkout or of another installation is left alone.
 #
-# Container mode: the installation's running containers are stopped first
-# (`knossos stop --all`). The image stays in the container runtime; the run
-# says how to remove it.
+# Container mode: the installation's running containers are stopped
+# (`knossos stop --all`) after Claude Code is unregistered, since asking
+# Claude Code about the server starts one. The image stays in the container
+# runtime; the run says how to remove it.
 #
 # Environment:
 #   KNOSSOS_DATA_DIR      the data directory, when --data-dir is not given
@@ -379,8 +380,12 @@ main() {
     esac
     [ "$DRY_RUN" = 0 ] || say 'Dry run: nothing is removed or changed.'
 
-    # ---- stop, unregister --------------------------------------------------
+    # ---- unregister, stop --------------------------------------------------
 
+    # Claude Code health-checks a server whenever it is asked about one, and
+    # in container mode that starts a container: unregister first, so the
+    # stop below is the last thing that touches the containers.
+    if [ "$MODE" != none ]; then unregister_claude; fi
     IMAGE=''
     if [ "$MODE" = container ]; then
         IMAGE=$(json_field "$INSTALL_DIR/install.json" image)
@@ -394,7 +399,6 @@ main() {
             fi
         fi
     fi
-    if [ "$MODE" != none ]; then unregister_claude; fi
 
     # ---- files -------------------------------------------------------------
 

@@ -1,0 +1,197 @@
+# The lifecycle of a container-mode Knossos install, rehearsed by Theseus:
+# install, scan a project, run, uninstall. tests/theseus/prepare.sh
+# --container writes container.toml from this file and builds the runtime
+# image of this checkout, knossos-theseus:@TARGET_VERSION@. Run:
+#
+#   theseus run --headless --recipe tests/theseus/container.toml
+#
+# Container mode runs every knossos command in a container. The guest never
+# reaches this host's Docker: Theseus gives it a private daemon in a sidecar
+# it owns (the [docker] block, recipe schema 10), loads the runtime image into
+# it, and removes the daemon with everything Knossos started in it. The
+# launcher bind-mounts the install directory, the graph directory and the
+# project, and the probe the installer runs from TMPDIR, so the paths they lie
+# under are shared with the daemon.
+#
+# Claude Code, its configuration and the @CLAUDE@ markers are as in
+# theseus.toml.in.
+schema_version = 10
+scenarios = ["clean"]
+name = "knossos container-mode install lifecycle"
+image = "knossos-theseus-guest:local"
+network = "none"
+observe = ["/home/theseus", "/tmp"]
+
+[docker]
+image = "docker:28-dind"
+load = ["knossos-theseus:@TARGET_VERSION@"]
+share = ["/home/theseus", "/workspace", "/tmp"]
+
+# What a host needs before install.sh can install in container mode: a Docker
+# client that reaches a daemon, and sha256sum, which the launcher names its
+# containers with.
+[[requires]]
+id = "docker-client"
+script = "docker --version"
+
+[[requires]]
+id = "docker-daemon"
+script = "docker version --format '{{.Server.Version}}'"
+
+[[requires]]
+id = "runtime-image"
+script = "docker image inspect --format '{{.Id}}' knossos-theseus:@TARGET_VERSION@"
+
+[[requires]]
+id = "sha256sum"
+script = "command -v sha256sum"
+
+# @CLAUDE@ begin
+[[requires]]
+id = "claude"
+script = ". /inputs/target/tools/env.sh && claude --version"
+# @CLAUDE@ end
+
+[artifacts]
+target = "artifacts/target"
+
+[profiles.user.steps.install_target]
+script = ". /inputs/target/tools/env.sh && KNOSSOS_IMAGE=knossos-theseus:@TARGET_VERSION@ sh /inputs/target/install.sh --mode=container"
+timeout_seconds = 600
+
+[profiles.user.steps.configure]
+script = "cp -R /inputs/target/project /workspace/project && knossos scan /workspace/project --json"
+timeout_seconds = 600
+
+[profiles.user.steps.exercise]
+script = "knossos doctor && knossos architecture-summary /workspace/project --json"
+timeout_seconds = 300
+
+[profiles.user.steps.uninstall]
+script = ". /inputs/target/tools/env.sh && sh /inputs/target/uninstall.sh"
+timeout_seconds = 300
+
+[[profiles.user.checks]]
+id = "target-version"
+checkpoint = "target_installed"
+kind = "executable"
+name = "knossos"
+resolved_path = "/home/theseus/.local/bin/knossos"
+args = ["version"]
+expected_exit = 0
+stdout_contains = "Knossos @TARGET_VERSION@"
+timeout_seconds = 300
+
+[[profiles.user.checks]]
+id = "container-record"
+checkpoint = "target_installed"
+kind = "command"
+script = "cat /home/theseus/.local/share/knossos/install.json"
+expected_exit = 0
+stdout_contains = "\"mode\": \"container\""
+
+# @CLAUDE@ begin
+[[profiles.user.checks]]
+id = "mcp-registered"
+checkpoint = "target_installed"
+kind = "command"
+script = ". /inputs/target/tools/env.sh && claude mcp get knossos"
+expected_exit = 0
+stdout_contains = "/home/theseus/.local/bin/knossos"
+timeout_seconds = 300
+
+[[profiles.user.checks]]
+id = "plugin-installed"
+checkpoint = "target_installed"
+kind = "command"
+script = ". /inputs/target/tools/env.sh && claude plugin list"
+expected_exit = 0
+stdout_contains = "knossos@knossos"
+# @CLAUDE@ end
+
+# Knossos ran its work in containers on the private daemon.
+[[profiles.user.checks]]
+id = "ran-in-containers"
+checkpoint = "configured"
+kind = "command"
+script = "if test -n \"$(docker ps --all --quiet --filter label=io.knossos.install)\"; then echo ran in containers; fi"
+expected_exit = 0
+stdout_contains = "ran in containers"
+
+# What uninstall.sh removes: the containers first, then the installation.
+[[profiles.user.checks]]
+id = "containers-stopped"
+checkpoint = "uninstalled"
+kind = "command"
+script = "if test -z \"$(docker ps --quiet --filter label=io.knossos.install)\"; then echo none running; fi"
+expected_exit = 0
+stdout_contains = "none running"
+
+[[profiles.user.checks]]
+id = "launcher-removed"
+checkpoint = "uninstalled"
+kind = "absent"
+path = "/home/theseus/.local/bin/knossos"
+
+[[profiles.user.checks]]
+id = "install-directory-removed"
+checkpoint = "uninstalled"
+kind = "absent"
+path = "/home/theseus/.local/share/knossos"
+
+# @CLAUDE@ begin
+[[profiles.user.checks]]
+id = "mcp-unregistered"
+checkpoint = "uninstalled"
+kind = "command"
+script = ". /inputs/target/tools/env.sh && if claude mcp list | grep -q knossos; then echo still registered; else echo unregistered; fi"
+expected_exit = 0
+stdout_contains = "unregistered"
+
+[[profiles.user.checks]]
+id = "plugin-uninstalled"
+checkpoint = "uninstalled"
+kind = "command"
+script = ". /inputs/target/tools/env.sh && if claude plugin list | grep -q knossos@knossos; then echo still installed; else echo uninstalled; fi"
+expected_exit = 0
+stdout_contains = "uninstalled"
+# @CLAUDE@ end
+
+# What it keeps without --purge: the graph directory, which in container mode
+# holds the graph only.
+[[profiles.user.checks]]
+id = "graph-directory-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos"
+expected_kind = "directory"
+
+[[profiles.user.checks]]
+id = "graph-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos/knossos.sqlite"
+expected_kind = "file"
+
+[[profiles.user.checks]]
+id = "migration-lock-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos/knossos.sqlite.migrate.lock"
+expected_kind = "file"
+
+# The containers are stopped without a checkpoint of the graph, so its
+# write-ahead log stays beside it.
+[[profiles.user.checks]]
+id = "graph-wal-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos/knossos.sqlite-wal"
+expected_kind = "file"
+
+[[profiles.user.checks]]
+id = "graph-shm-kept"
+checkpoint = "uninstalled"
+kind = "present"
+path = "/home/theseus/.knossos/knossos.sqlite-shm"
+expected_kind = "file"
