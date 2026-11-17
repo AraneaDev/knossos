@@ -43,7 +43,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  THESEUS_VERSION: v0.1.0
+  # A commit, not a tag: a tag can be moved, and this build runs a privileged
+  # daemon on the runner.
+  THESEUS_REV: 9bb29b7a7e9aef6ebd66b65dde231d9db97e7fdb # v1.0.0
   CLAUDE_CODE_VERSION: 2.1.326
 
 jobs:
@@ -60,12 +62,12 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/theseus
-          key: theseus-${{ env.THESEUS_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+          key: theseus-${{ env.THESEUS_REV }}-${{ runner.os }}-${{ runner.arch }}
       - name: Build Theseus
         if: steps.theseus.outputs.cache-hit != 'true'
         run: |
           cargo install --locked --root ~/.local/theseus --bin theseus \
-            --git https://github.com/AraneaDev/theseus --tag "$THESEUS_VERSION" theseus
+            --git https://github.com/AraneaDev/theseus --rev "$THESEUS_REV" theseus
       - name: Install Claude Code
         run: |
           curl --fail --silent --show-error --location --retry 3 https://claude.ai/install.sh \
@@ -82,7 +84,10 @@ jobs:
         run: ~/.local/theseus/bin/theseus run --headless --recipe tests/theseus/theseus.toml
       - name: Container-mode rehearsal
         if: ${{ !cancelled() }}
-        run: ~/.local/theseus/bin/theseus run --headless --recipe tests/theseus/container.toml
+        # The guest controls a privileged Docker daemon, which is root on the
+        # host. The runner is a throwaway VM the job already has sudo on, so
+        # the opt-in grants nothing the job does not have.
+        run: ~/.local/theseus/bin/theseus run --headless --allow-privileged-daemon --recipe tests/theseus/container.toml
       - name: Nothing left on the runner's daemon
         if: ${{ !cancelled() }}
         run: |

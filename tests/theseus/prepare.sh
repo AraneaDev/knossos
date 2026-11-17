@@ -27,7 +27,12 @@
 # Then:
 #
 #   theseus run --headless --recipe tests/theseus/theseus.toml
-#   theseus run --headless --recipe tests/theseus/container.toml
+#   theseus run --headless --allow-privileged-daemon --recipe tests/theseus/container.toml
+#
+# The container recipe's guest controls a privileged Docker daemon, which
+# gives it root-equivalent access to the host; Theseus runs it only with
+# --allow-privileged-daemon. Run it on a machine you are willing to give that,
+# such as a disposable CI runner, and only from a checkout you trust.
 #
 # Claude Code is the binary `claude` on PATH resolves to (through mise, when
 # that is how it is installed), or --claude=PATH. It has to be a Linux binary
@@ -175,5 +180,5 @@ echo
 echo 'Prepared. Run:'
 echo '  theseus run --headless --recipe tests/theseus/theseus.toml'
 if [ "$CONTAINER" = 1 ]; then
-    echo '  theseus run --headless --recipe tests/theseus/container.toml'
+    echo '  theseus run --headless --allow-privileged-daemon --recipe tests/theseus/container.toml'
 fi
