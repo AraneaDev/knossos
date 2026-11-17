@@ -45,7 +45,7 @@ concurrency:
 env:
   # A commit, not a tag: a tag can be moved, and this build runs a privileged
   # daemon on the runner.
-  THESEUS_REV: 9bb29b7a7e9aef6ebd66b65dde231d9db97e7fdb # v1.0.0
+  THESEUS_REV: dea1e4f0b25331ecb1d1f9ae17eca13dd9ef3d20 # v1.0.1
   CLAUDE_CODE_VERSION: 2.1.326
 
 jobs:
