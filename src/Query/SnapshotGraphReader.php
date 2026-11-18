@@ -7,8 +7,8 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Scanner\Protocol\ErasedTypeEdge;
-use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SnapshotBounds;
+use Knossos\Store\SnapshotFacts;
 use Knossos\Store\SnapshotPayload;
 use PDO;
 
@@ -75,8 +75,8 @@ final readonly class SnapshotGraphReader
             $select = array_map(static fn(string $column): string => $table === 'edges' && $column === 'attributes_json'
                 ? sprintf("CASE WHEN kind IN ('%s') THEN attributes_json END AS attributes_json", implode("', '", ErasedTypeEdge::KINDS))
                 : $column, $columns);
-            // Native rows only, as the archive stores them ({@see EnrichedFacts}).
-            $native = EnrichedFacts::nativeCondition($table);
+            // The rows the archive stores ({@see SnapshotFacts}).
+            $native = SnapshotFacts::condition($table);
             // Sorted by id here rather than in SQL. Ordered by the id index,
             // SQLite would walk every project's rows; sorting the project's
             // rows itself, it spilled them to a temporary file, 1.5 s for
