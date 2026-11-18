@@ -147,7 +147,11 @@ function assignability(checker, pin, owner, member) {
                 ? functionArgument(argument)
                 : undefined;
         const written = !IMPLEMENTATION_APIS.has(pin.api)
-            ? fits(checker, argument, expected)
+            ? fits(
+                  checker,
+                  value.typed ? argument : castLiteral(argument),
+                  expected,
+              )
             : inferred === undefined
               ? null
               : inferredReturnFits(checker, inferred, expected);
@@ -159,6 +163,19 @@ function assignability(checker, pin, owner, member) {
     } catch {
         return UNKNOWN;
     }
+}
+
+/**
+ * The object or array literal a value cast to `any` was written as, which
+ * still says what it holds (`{ id: '1' } as any` has no `email`); any other
+ * value as it stands.
+ */
+function castLiteral(argument) {
+    const value = stripCast(argument);
+    return ts.isObjectLiteralExpression(value) ||
+        ts.isArrayLiteralExpression(value)
+        ? value
+        : argument;
 }
 
 /**

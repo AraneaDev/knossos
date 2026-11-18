@@ -240,6 +240,32 @@ describe("a pinned value held as written", () => {
         expect(pinned(9).assignable).toBe(false);
         expect(pinned(10)).toMatchObject({ assignable: false, typed: true });
     });
+
+    it("holds a literal cast to any as written, to no declared type", () => {
+        const { nodes } = scan({
+            "src/row.ts": ROW,
+            "tests/cast.test.ts":
+                "import { vi } from 'vitest';\n" +
+                "import { Repo, Row } from '../src/row';\n" +
+                "const repo = new Repo();\n" +
+                "const loose: any = {};\n" +
+                "vi.spyOn(repo, 'fetch').mockResolvedValue({ id: 'a', status: 'open' } as any);\n" +
+                "vi.spyOn(repo, 'load').mockReturnValue(loose as any);\n" +
+                "vi.spyOn(repo, 'fetch').mockResolvedValue({ id: 'a' } as any);\n" +
+                "vi.spyOn(repo, 'load').mockReturnValue({ id: 'a', status: 'gone' } as unknown as Row);\n",
+        });
+        const pinned = (line) =>
+            doubleAt(nodes, "tests/cast.test.ts", line).attributes.members[0]
+                .returns[0];
+
+        // Healthy twins: a whole literal, and a value with nothing written to hold.
+        expect(pinned(5)).toMatchObject({ assignable: true, typed: false });
+        expect(pinned(6)).toMatchObject({ assignable: true, typed: false });
+        // Planted (Nemesis UserService.spec.ts:17): the literal lacks `status`.
+        expect(pinned(7)).toMatchObject({ assignable: false, typed: false });
+        // A cast to a named type is that type, as the checker reads it.
+        expect(pinned(8)).toMatchObject({ assignable: true, typed: true });
+    });
 });
 
 describe("a spy on a module namespace", () => {
