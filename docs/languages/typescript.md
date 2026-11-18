@@ -366,7 +366,8 @@ the cache can make `b.ts` report TS2589 and resolve a type differently (a
 (`--mode=full`) settles them. Rescanning every file on every edit would be a
 full rebuild. A program the compiler
 cannot build or check at all reports `TS_PROGRAM_FAILED` for its files and costs
-no other program's facts.
+no other program's facts. A test file whose test doubles or test cases cannot be
+read reports the warning `TS_TEST_FACTS_FAILED` and keeps every other fact.
 
 ## Processes it starts
 
