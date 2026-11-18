@@ -239,9 +239,11 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `framework` (`vitest` or `jest`), `pattern` (how it was made, such as
   `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`), `target`
   (`{kind, specifier?, export?, member?}`, `kind` one of `module`, `class`,
-  `instance-member`, `global`, `unknown`), `automock`, `invocations` (call sites
-  of the double in its file), `test_case` (canonical name of the enclosing test,
-  optional) and `members`: the members the test configures, each
+  `instance-member`, `global`, `unknown`; a virtual module mock, made with
+  `{ virtual: true }`, names no file and carries no `specifier`), `automock`,
+  `invocations` (call sites of the double in its file), `test_case` (canonical
+  name of the enclosing test, optional) and `members`: the members the test
+  configures, each
   `{name, line, api, params?, returns}` where `params` is the signature shape
   above and each `returns` entry is `{api, line, once, assignable, typed}`
   (`assignable` is `true`, `false` or `"unknown"`).

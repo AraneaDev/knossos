@@ -16,7 +16,8 @@ use PHPUnit\Framework\Attributes\Group;
 /**
  * The drift rules over what the real TypeScript worker emits: names that exist
  * without a node of their own (constants, aliases, accessors, parameter
- * properties) are not ghosts, and a name that is gone is.
+ * properties) are not ghosts, nor is a virtual module mock, and a name that
+ * is gone is.
  */
 #[Group('test-fidelity')]
 #[Group('typescript-scanner')]
@@ -48,6 +49,12 @@ final class DriftEndToEndTest extends KnossosTestCase
                 vi.spyOn(cart, 'totalCent');
             });
             TS,
+        'tests/virtual.test.ts' => <<<'TS'
+            import { it, vi } from 'vitest';
+            vi.mock('./virtual-thing', () => ({ run: vi.fn() }), { virtual: true });
+            vi.mock('../src/virtual-config', () => ({}), { virtual: true });
+            it('mocks modules no file holds', () => {});
+            TS,
     ];
 
     /** @return list<TestFinding> */
@@ -61,6 +68,13 @@ final class DriftEndToEndTest extends KnossosTestCase
         $healthy = array_filter($this->findings(), static fn(TestFinding $finding): bool => $finding->evidence->relativePath === 'tests/healthy.test.ts');
 
         assertSame([], array_map(static fn(TestFinding $finding): string => $finding->message, array_values($healthy)));
+    }
+
+    public function testAVirtualModuleMockIsNoGhost(): void
+    {
+        $virtual = array_filter($this->findings(), static fn(TestFinding $finding): bool => $finding->evidence->relativePath === 'tests/virtual.test.ts');
+
+        assertSame([], array_map(static fn(TestFinding $finding): string => $finding->message, array_values($virtual)));
     }
 
     public function testAPlantedGhostIsFoundAndNothingElse(): void

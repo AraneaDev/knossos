@@ -343,6 +343,37 @@ describe("a module mock", () => {
             members: [],
         });
     });
+
+    it("keeps no specifier for a virtual module, which no file holds", () => {
+        const { nodes, edges } = scan({
+            "tests/virtual.test.ts":
+                "import { vi } from 'vitest';\n" +
+                "import { jest } from '@jest/globals';\n" +
+                "vi.mock('./virtual-thing', () => ({ run: vi.fn() }), { virtual: true });\n" +
+                "jest.mock('virtual-pkg', () => ({}), { virtual: true } as any);\n" +
+                "vi.mock('./real-thing', () => ({}), { virtual: false });\n",
+        });
+        const virtual = doubleAt(nodes, "tests/virtual.test.ts", 3, "vi.mock");
+        const cast = doubleAt(nodes, "tests/virtual.test.ts", 4, "jest.mock");
+        const real = doubleAt(nodes, "tests/virtual.test.ts", 5, "vi.mock");
+
+        expect(virtual.attributes.target).toEqual({ kind: "module" });
+        expect(virtual.attributes.members.map((member) => member.name)).toEqual(
+            ["run"],
+        );
+        expect(cast.attributes.target).toEqual({ kind: "module" });
+        expect(real.attributes.target).toEqual({
+            kind: "module",
+            specifier: "./real-thing",
+        });
+        expect(
+            edges.filter(
+                (edge) =>
+                    edge.kind === "doubles" &&
+                    [virtual.local_id, cast.local_id].includes(edge.source),
+            ),
+        ).toEqual([]);
+    });
 });
 
 describe("what makes no double or member", () => {

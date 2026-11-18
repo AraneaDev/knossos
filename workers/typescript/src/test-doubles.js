@@ -188,9 +188,12 @@ class TestDoubleFile {
     }
 
     moduleMock(node, name) {
-        const [specifier, factory] = node.arguments;
+        const [specifier, factory, options] = node.arguments;
         const literal =
             specifier !== undefined && ts.isStringLiteralLike(specifier);
+        // A virtual module (`{ virtual: true }`) exists only as the mock: its
+        // specifier names no file to hold the double against, so none is kept.
+        const named = literal && !isVirtual(options);
         const automock = MODULE_AUTOMOCKS.has(name) || factory === undefined;
         const members = [];
         for (const property of factoryObject(factory)?.properties ?? []) {
@@ -207,12 +210,12 @@ class TestDoubleFile {
         }
         const double = this.add(node, {
             pattern: name,
-            target: literal
+            target: named
                 ? { kind: "module", specifier: specifier.text }
-                : { kind: "unknown" },
+                : { kind: literal ? "module" : "unknown" },
             automock,
             members,
-            edge: literal
+            edge: named
                 ? this.context.moduleTarget(specifier.text, specifier)
                 : null,
         });
@@ -556,6 +559,21 @@ function castName(expression, sourceFile) {
     return ts.isTypeReferenceNode(value.type)
         ? value.type.typeName.getText(sourceFile)
         : castName(value.expression, sourceFile);
+}
+
+/** Whether a module mock's options are an object literal setting `virtual: true`. */
+function isVirtual(options) {
+    const object = options === undefined ? undefined : stripCast(options);
+    return (
+        object !== undefined &&
+        ts.isObjectLiteralExpression(object) &&
+        object.properties.some(
+            (property) =>
+                ts.isPropertyAssignment(property) &&
+                staticName(property.name) === "virtual" &&
+                property.initializer.kind === ts.SyntaxKind.TrueKeyword,
+        )
+    );
 }
 
 function displayName(double) {
