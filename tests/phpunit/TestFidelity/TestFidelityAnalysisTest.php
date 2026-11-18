@@ -125,6 +125,47 @@ final class TestFidelityAnalysisTest extends KnossosTestCase
         ], $report->warnings);
     }
 
+    public function testARuleThatThrowsOnABadFactLosesItsOutputWithAWarning(): void
+    {
+        $kept = self::finding('a.test.ts', 1, 'test.fidelity.tautology.v1');
+        $throwing = new class implements TestFidelityRule {
+            public function id(): string
+            {
+                return 'test.fidelity.ghost_member.v1';
+            }
+
+            public function findings(TestFidelityGraph $graph): iterable
+            {
+                yield new TestFinding('ts:test_double:a.test.ts#double:1:1', null, FindingCategory::GhostMember, FindingConfidence::Warning, 'test.fidelity.ghost_member.v1', 'missing_member', 'partial', new Evidence('a.test.ts', 1, 1));
+                throw new InvalidArgumentException('bad worker text');
+            }
+        };
+
+        $report = (new TestFidelityAnalysis($throwing, self::rule('test.fidelity.tautology.v1', [$kept])))
+            ->report(self::emitting($kept->doubleOrCaseReference));
+
+        assertSame(['stub'], array_map(static fn(TestFinding $finding): string => $finding->message, $report->findings));
+        assertSame(['TEST_FINDING_RULE_FAILED: 1 test-fidelity rule(s) failed on this scan\'s facts and their findings were dropped (test.fidelity.ghost_member.v1).'], $report->warnings);
+    }
+
+    public function testACoreLogicErrorInARuleStillSurfaces(): void
+    {
+        $broken = new class implements TestFidelityRule {
+            public function id(): string
+            {
+                return 'test.fidelity.ghost_member.v1';
+            }
+
+            public function findings(TestFidelityGraph $graph): iterable
+            {
+                throw new \DomainException('programming error');
+            }
+        };
+
+        $this->expectException(\DomainException::class);
+        (new TestFidelityAnalysis($broken))->report([]);
+    }
+
     public function testRuleIdsAreSorted(): void
     {
         $analysis = new TestFidelityAnalysis(self::rule('test.fidelity.tautology.v1', []), self::rule('test.fidelity.ghost_member.v1', []));

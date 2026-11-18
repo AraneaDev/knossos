@@ -163,4 +163,33 @@ final class TestFidelityGraphTest extends KnossosTestCase
 
         assertNull($graph->member($child, 'absent'));
     }
+
+    public function testMemberNamesCoverTheWholeHierarchySorted(): void
+    {
+        [$graph, $child] = self::hierarchy();
+
+        assertSame(['deep', 'greet', 'name', 'own'], $graph->memberNames($child));
+        assertFalse($graph->hasUnseenAncestor($child));
+    }
+
+    public function testAnAncestorOutsideTheScanIsUnseen(): void
+    {
+        $class = self::node('class', 'src/a.ts#A', 'A');
+        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.typescript:file:src/a.ts', [$class], [self::edge('extends', $class, 'ts:class:lib#Base')])]);
+
+        assertTrue($graph->hasUnseenAncestor($class));
+    }
+
+    public function testAModuleReExportingAnotherResolvesItsMembers(): void
+    {
+        $facade = self::node('module', 'src/index.ts', 'index.ts');
+        $inner = self::node('module', 'src/inner.ts', 'inner.ts');
+        $fn = self::node('function', 'src/inner.ts#helper', 'helper');
+        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.typescript:file:src', [$facade, $inner, $fn], [
+            self::edge('re_exports', $facade, $inner->localId),
+            self::edge('contains', $inner, $fn->localId),
+        ])]);
+
+        assertSame('src/inner.ts#helper', $graph->member($facade, 'helper')?->canonicalName);
+    }
 }

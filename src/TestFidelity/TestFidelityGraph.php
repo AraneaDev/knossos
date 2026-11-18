@@ -23,8 +23,8 @@ use Knossos\TestFidelity\Facts\TestDouble;
  */
 final readonly class TestFidelityGraph
 {
-    /** Edge kinds that put another type's members in scope on the source type, as reconciliation reads them. */
-    private const INHERITANCE_KINDS = ['uses_trait', 'extends', 'implements'];
+    /** Edge kinds that put another node's members in scope on the source: a type's parents, and what a module re-exports. */
+    private const INHERITANCE_KINDS = ['uses_trait', 'extends', 'implements', 're_exports'];
 
     /**
      * @param array<string, NodeFact> $nodes every node by reference; the first contribution to emit one wins
@@ -152,6 +152,64 @@ final readonly class TestFidelityGraph
         }
 
         return null;
+    }
+
+    /**
+     * Every name `$owner` declares or inherits, sorted, for a suggestion.
+     *
+     * @return list<string>
+     */
+    public function memberNames(NodeFact $owner): array
+    {
+        $names = [];
+        foreach ($this->reachable($owner)[0] as $type) {
+            foreach ($this->children[$type] ?? [] as $reference) {
+                if (isset($this->nodes[$reference])) {
+                    $names[$this->nodes[$reference]->displayName] = true;
+                }
+            }
+        }
+        $names = array_map(strval(...), array_keys($names));
+        sort($names, SORT_STRING);
+
+        return $names;
+    }
+
+    /**
+     * Whether `$owner` has an ancestor, or a re-exported module, that the scan
+     * does not hold or that lies outside the project: a name it lacks may
+     * still be inherited from there, so its absence proves nothing.
+     */
+    public function hasUnseenAncestor(NodeFact $owner): bool
+    {
+        return $this->reachable($owner)[1];
+    }
+
+    /**
+     * The references reachable from `$owner` through inheritance edges, itself
+     * first and nearest first, and whether one of them is unseen or external.
+     *
+     * @return array{list<string>, bool}
+     */
+    private function reachable(NodeFact $owner): array
+    {
+        $queue = [$owner->localId];
+        $visited = [$owner->localId => true];
+        $unseen = false;
+        for ($i = 0; $i < count($queue); $i++) {
+            foreach ($this->parents[$queue[$i]] ?? [] as $parent) {
+                $node = $this->nodes[$parent] ?? null;
+                if ($node === null || ($node->attributes['external'] ?? false) === true || str_starts_with($node->kind, 'external_')) {
+                    $unseen = true;
+                }
+                if (!isset($visited[$parent]) && $node !== null) {
+                    $visited[$parent] = true;
+                    $queue[] = $parent;
+                }
+            }
+        }
+
+        return [$queue, $unseen];
     }
 
     /** Whether a node reference names a node some contribution of the scan emitted. */

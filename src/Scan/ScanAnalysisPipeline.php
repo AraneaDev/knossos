@@ -28,6 +28,7 @@ use Knossos\Classification\{
 };
 use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\ScanContribution;
+use Knossos\TestFidelity\Rules\{ArityMismatchRule, GhostMemberRule, ReturnDriftRule, VisibilityBreachRule};
 use Knossos\TestFidelity\TestFidelityAnalysis;
 
 /**
@@ -41,7 +42,14 @@ use Knossos\TestFidelity\TestFidelityAnalysis;
 final readonly class ScanAnalysisPipeline
 {
     /** @param TestFidelityAnalysis $testFidelity the test-fidelity rules every scan runs */
-    public function __construct(private TestFidelityAnalysis $testFidelity = new TestFidelityAnalysis()) {}
+    public function __construct(
+        private TestFidelityAnalysis $testFidelity = new TestFidelityAnalysis(
+            new GhostMemberRule(),
+            new ArityMismatchRule(),
+            new ReturnDriftRule(),
+            new VisibilityBreachRule(),
+        ),
+    ) {}
 
     /**
      * Derive roles, boundaries and test-fidelity findings once the whole graph is present.

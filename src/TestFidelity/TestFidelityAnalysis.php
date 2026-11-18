@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Knossos\TestFidelity;
 
+use InvalidArgumentException;
 use Knossos\Scanner\Protocol\ScanContribution;
 use LogicException;
+use Throwable;
 
 /**
  * Runs the test-fidelity rules over a scan's facts.
@@ -60,6 +62,9 @@ final readonly class TestFidelityAnalysis
      * data, and one bad fact must not fail a scan.
      *
      * @param list<ScanContribution> $contributions
+     * A rule that throws on a scan's facts loses its findings for that scan and
+     * is named in a warning, whatever it threw except a core logic error.
+     *
      * @throws LogicException when a rule reports a finding under another rule's id
      */
     public function report(array $contributions): TestFidelityReport
@@ -68,9 +73,22 @@ final readonly class TestFidelityAnalysis
             return new TestFidelityReport([]);
         }
         $graph = TestFidelityGraph::fromContributions($contributions);
-        $findings = $dropped = $untargeted = [];
+        $findings = $dropped = $untargeted = $failed = [];
         foreach ($this->rules as $rule) {
-            foreach ($rule->findings($graph) as $finding) {
+            try {
+                $produced = [...$rule->findings($graph)];
+            } catch (LogicException $error) {
+                // A programming error in the core surfaces; only a bad fact a rule trips over (InvalidArgumentException) is contained.
+                if (!$error instanceof InvalidArgumentException) {
+                    throw $error;
+                }
+                $failed[$rule->id()] = 1;
+                continue;
+            } catch (Throwable) {
+                $failed[$rule->id()] = 1;
+                continue;
+            }
+            foreach ($produced as $finding) {
                 if ($finding->ruleId !== $rule->id()) {
                     throw new LogicException(sprintf('Rule %s reported a finding as %s.', $rule->id(), $finding->ruleId));
                 }
@@ -85,10 +103,12 @@ final readonly class TestFidelityAnalysis
                 $findings[] = $finding;
             }
         }
+        ksort($failed, SORT_STRING);
         usort($findings, self::compare(...));
 
         return new TestFidelityReport($findings, [
             ...self::warning('TEST_FINDING_DROPPED', $dropped, 'named a test double or test case not in the scan and were dropped'),
+            ...($failed === [] ? [] : [sprintf('TEST_FINDING_RULE_FAILED: %d test-fidelity rule(s) failed on this scan\'s facts and their findings were dropped (%s).', count($failed), implode(', ', array_keys($failed)))]),
             ...self::warning('TEST_FINDING_TARGET_UNRESOLVED', $untargeted, 'named a target not in the scan and were kept without one'),
         ]);
     }
