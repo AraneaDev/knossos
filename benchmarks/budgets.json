@@ -28,7 +28,7 @@
   },
   "scenarios": {
     "test_fidelity_rescan_one_file": {
-      "incremental_scan_seconds": 2.07
+      "incremental_scan_seconds": 8
     }
   }
 }

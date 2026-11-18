@@ -112,3 +112,20 @@ function benchmarkScenarioViolations(string $scenario, float $limit, float $seco
 {
     return $seconds > $limit ? [sprintf('scenarios.%s.incremental_scan_seconds %.2f exceeds %.2f', $scenario, $seconds, $limit)] : [];
 }
+
+/**
+ * Why a scenario's rescan does not measure what it is for, or null when it
+ * does: the edit has to make the scan parse the production file and every
+ * test file again, or the median would time a rescan of fewer files and
+ * pass for the wrong reason.
+ */
+function benchmarkScenarioParseError(string $scenario, int $round, int $expected, mixed $parsed): ?string
+{
+    return $parsed === $expected ? null : sprintf(
+        'scenarios.%s round %d parsed %s files, not the %d its edit reaches; it would not measure the rescan it is for.',
+        $scenario,
+        $round + 1,
+        is_int($parsed) ? (string) $parsed : 'an unknown number of',
+        $expected,
+    );
+}

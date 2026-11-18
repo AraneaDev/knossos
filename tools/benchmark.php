@@ -134,7 +134,8 @@ const SCENARIO_ROUNDS = 5;
  * Run the `test_fidelity_rescan_one_file` scenario under `$directory`: a cold
  * scan of its corpus, then rounds of editing the one production file and
  * scanning again. Each round reads the five test files of its twenty doubles
- * again and judges every double; the median round is the measurement.
+ * again and judges every double, and a round that parsed any other number of
+ * files fails the run; the median round is the measurement.
  *
  * @return array<string, mixed>
  */
@@ -151,11 +152,18 @@ function runTestFidelityScenario(string $directory, float $limit): array
     jsonObject($cold);
     $rounds = [];
     $stages = [];
+    // The production file and every test file of its doubles.
+    $reached = 1 + (int) $generation['test_files'];
     for ($round = 0; $round < SCENARIO_ROUNDS; ++$round) {
         $production = $corpus . '/' . $generation['production_file'];
         file_put_contents($production, (string) file_get_contents($production) . sprintf("\nexport const benchmarkChange%d = true;\n", $round));
         $incremental = $scan('incremental', $limit * 1.5 + 5);
-        $stages[] = jsonObject($incremental)['data']['metrics']['stages_ms'] ?? [];
+        $result = jsonObject($incremental);
+        $error = benchmarkScenarioParseError('test_fidelity_rescan_one_file', $round, $reached, $result['data']['parsed_files'] ?? null);
+        if ($error !== null) {
+            throw new RuntimeException($error);
+        }
+        $stages[] = $result['data']['metrics']['stages_ms'] ?? [];
         $rounds[] = $incremental['seconds'];
     }
     $sorted = $rounds;
@@ -166,6 +174,7 @@ function runTestFidelityScenario(string $directory, float $limit): array
         'corpus_sha256' => $generation['corpus_sha256'],
         'cold_scan_seconds' => $cold['seconds'],
         'incremental_scan_seconds' => $median,
+        'incremental_parsed_files' => $reached,
         'incremental_rounds_seconds' => $rounds,
         'incremental_stages_ms' => $stages[array_search($median, $rounds, true)],
     ];

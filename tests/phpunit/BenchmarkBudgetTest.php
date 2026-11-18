@@ -109,6 +109,8 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         assertSame(1, preg_match('/^scenarios\.test_fidelity_rescan_one_file\.incremental_scan_seconds \d+\.\d\d exceeds 0\.00$/m', $errors), $errors);
         $actual = $this->report()['scenarios']['test_fidelity_rescan_one_file']['actual'];
         assertSame(5, count($actual['incremental_rounds_seconds']));
+        // Every round parsed the production file and its five test files again.
+        assertSame(6, $actual['incremental_parsed_files']);
         assertSame(true, in_array($actual['incremental_scan_seconds'], $actual['incremental_rounds_seconds'], true));
     }
 
@@ -133,6 +135,20 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         assertSame(
             ['scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds 2.08 exceeds 2.07'],
             \benchmarkScenarioViolations('test_fidelity_rescan_one_file', 2.07, 2.08),
+        );
+    }
+
+    /** A rescan that parsed fewer files than its edit reaches would time something else, and pass for it. */
+    public function testAScenarioRoundParsingOtherFilesIsRefused(): void
+    {
+        assertSame(null, \benchmarkScenarioParseError('test_fidelity_rescan_one_file', 0, 6, 6));
+        assertSame(
+            'scenarios.test_fidelity_rescan_one_file round 2 parsed 1 files, not the 6 its edit reaches; it would not measure the rescan it is for.',
+            \benchmarkScenarioParseError('test_fidelity_rescan_one_file', 1, 6, 1),
+        );
+        assertSame(
+            'scenarios.test_fidelity_rescan_one_file round 1 parsed an unknown number of files, not the 6 its edit reaches; it would not measure the rescan it is for.',
+            \benchmarkScenarioParseError('test_fidelity_rescan_one_file', 0, 6, null),
         );
     }
 
