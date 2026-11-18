@@ -249,9 +249,9 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   (`assignable` is `true`, `false` or `"unknown"`).
 - `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
   `subjects` (canonical names of the production modules those calls land in),
-  `should_panic` (optional) and `assertions`, each `{api, line, negated?,
-operands}` (`api` is the matcher's name; `negated` is `true` when the matcher
-  is called through `.not`) with operands
+  `should_panic` (optional) and `assertions`, each
+  `{api, line, negated?, operands}` (`api` is the matcher's name; `negated` is
+  `true` when the matcher is called through `.not`) with operands
   `{source, text?, value?, double?, unconfigured_spy?}`, `source` one of
   `mock-config`, `mock-call`, `production`, `literal`, `parameter`, `unknown`.
   `text` is the operand's own source text, left out when evaluating it again
