@@ -7,6 +7,7 @@ namespace Knossos\Query;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Store\EnrichedFacts;
+use Knossos\Store\SnapshotFacts;
 use PDO;
 
 /**
@@ -17,8 +18,9 @@ use PDO;
  * apart, one question each: {@see FlowQuery}, {@see ImpactAnalysisQuery},
  * {@see DependencyCycleQuery} and {@see ArchitectureHealthQuery}.
  *
- * Node and relationship counts leave out what an enricher contributed
- * ({@see EnrichedFacts}): the summary describes the native graph.
+ * Node, relationship and role counts leave out what an enricher contributed
+ * and the test doubles and test cases a scan derives from test code
+ * ({@see SnapshotFacts}): the summary describes the native architecture.
  */
 final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
 {
@@ -32,8 +34,8 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
         $files = $this->counts('files', $projectId, $limit, 'language');
         $roles = $this->counts('classifications', $projectId, $limit, 'role');
         $diagnostics = $this->scalar('SELECT COUNT(*) FROM diagnostics WHERE project_id = :project' . EnrichedFacts::nativeCondition('diagnostics'), $projectId);
-        $totalNodes = $this->scalar('SELECT COUNT(*) FROM nodes WHERE project_id = :project' . EnrichedFacts::nativeCondition('nodes'), $projectId);
-        $totalEdges = $this->scalar('SELECT COUNT(*) FROM edges WHERE project_id = :project' . EnrichedFacts::nativeCondition('edges'), $projectId);
+        $totalNodes = $this->scalar('SELECT COUNT(*) FROM nodes WHERE project_id = :project' . SnapshotFacts::condition('nodes'), $projectId);
+        $totalEdges = $this->scalar('SELECT COUNT(*) FROM edges WHERE project_id = :project' . SnapshotFacts::condition('edges'), $projectId);
 
         return new ResultEnvelope(
             $projectId,
@@ -125,7 +127,7 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
             'SELECT %1$s AS kind, COUNT(*) AS count FROM %2$s WHERE project_id = :project%3$s GROUP BY %1$s ORDER BY count DESC, %1$s LIMIT :limit',
             $column,
             $table,
-            EnrichedFacts::nativeCondition($table),
+            SnapshotFacts::condition($table),
         ));
         $statement->bindValue(':project', $projectId);
         $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
@@ -143,7 +145,7 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
     /** Count of distinct values, used for the graph-size figures. */
     private function distinctCount(string $table, string $projectId, string $column = 'kind'): int
     {
-        return $this->scalar(sprintf('SELECT COUNT(DISTINCT %s) FROM %s WHERE project_id = :project%s', $column, $table, EnrichedFacts::nativeCondition($table)), $projectId);
+        return $this->scalar(sprintf('SELECT COUNT(DISTINCT %s) FROM %s WHERE project_id = :project%s', $column, $table, SnapshotFacts::condition($table)), $projectId);
     }
 
     /**
