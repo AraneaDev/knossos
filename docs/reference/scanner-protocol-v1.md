@@ -209,6 +209,36 @@ The rule does not depend on the order facts arrive in, so a worker need not
 sort or merge its edges, and an incremental scan collapses exactly as a full
 scan does.
 
+#### Test facts
+
+A worker that reads test files may send `test_double` and `test_case` nodes and
+the `doubles` edge. All of it is optional: the protocol stays at `1.0`, a
+worker that sends none of it stays valid, and the core ignores what it does not
+know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
+`schemas/scanner/v1/contribution.schema.json`.
+
+- `test_double`, named `<file>#double:<line>:<col>`: a mock, spy, stub or fake.
+  `framework` (`vitest` or `jest`), `pattern` (how it was made, such as
+  `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`), `target`
+  (`{kind, specifier?, export?, member?}`, `kind` one of `module`, `class`,
+  `instance-member`, `global`, `unknown`), `automock`, `invocations` (call sites
+  of the double in its file), `test_case` (canonical name of the enclosing test,
+  optional) and `members`: the members the test configures, each
+  `{name, line, api, params?, returns}` where `params` is the signature shape
+  above and each `returns` entry is `{api, line, once, assignable, typed}`
+  (`assignable` is `true`, `false` or `"unknown"`).
+- `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
+  `subjects` (canonical names of the production modules those calls land in),
+  `should_panic` (optional) and `assertions`, each `{api, line, operands}` with
+  operands `{source, text?, double?, unconfigured_spy?}`, `source` one of
+  `mock-config`, `mock-call`, `production`, `literal`, `parameter`, `unknown`.
+- `doubles` edge: from a `test_double` to the production class, interface,
+  function, method or module it replaces, with the confidence the worker has in
+  that link. A `contains` edge ties a module to its doubles and test cases.
+
+A fact whose attributes break the schema is dropped by the readers rather than
+failing the scan.
+
 #### Route nodes
 
 A `route` node carries the same three attributes whichever worker emits it,
