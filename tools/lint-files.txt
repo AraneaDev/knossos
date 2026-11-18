@@ -1284,6 +1284,7 @@ php	tests/phpunit/TestFidelity/ScansTypeScript.php
 php	tests/phpunit/TestFidelity/TautologyEndToEndTest.php
 php	tests/phpunit/TestFidelity/TestFidelityAnalysisTest.php
 php	tests/phpunit/TestFidelity/TestFidelityGraphTest.php
+php	tests/phpunit/TestFidelity/TypeScriptAcceptanceTest.php
 php	tests/phpunit/Watch/ExternalScanProbeTest.php
 php	tests/phpunit/Watch/ProcessScannerTest.php
 php	tests/phpunit/Watch/SessionLinkTest.php
@@ -1306,6 +1307,7 @@ php	tools/file-length-check.php
 php	tools/gate-report.php
 php	tools/generate-benchmark-corpus.php
 php	tools/generate-reference.php
+php	tools/generate-test-fidelity-corpus.php
 php	tools/inspector-tools-check.php
 php	tools/lib/benchmark-budgets.php
 php	tools/lib/budget-numbers.php

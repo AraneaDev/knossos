@@ -18,6 +18,12 @@ require_once __DIR__ . '/budget-numbers.php';
 const BENCHMARK_METRICS = ['cold_scan_seconds', 'incremental_scan_seconds', 'query_seconds', 'peak_rss_mb', 'sqlite_mb'];
 
 /**
+ * The scenarios a budget file may hold, each with its own corpus and the one
+ * limit it declares: the median incremental scan after an edit.
+ */
+const BENCHMARK_SCENARIOS = ['test_fidelity_rescan_one_file'];
+
+/**
  * Why the benchmark budgets cannot be enforced as they stand; empty when they can.
  *
  * @return list<string>
@@ -42,6 +48,31 @@ function benchmarkBudgetErrors(mixed $budgets): array
             if ($error !== null) {
                 $errors[] = $error;
             }
+        }
+    }
+
+    return [...$errors, ...benchmarkScenarioErrors($budgets['scenarios'] ?? [])];
+}
+
+/**
+ * Why the optional scenarios cannot be enforced; empty when they can.
+ *
+ * @return list<string>
+ */
+function benchmarkScenarioErrors(mixed $scenarios): array
+{
+    if (!is_array($scenarios) || ($scenarios !== [] && array_is_list($scenarios))) {
+        return ['scenarios must be an object of scenarios.'];
+    }
+    $errors = [];
+    foreach ($scenarios as $name => $limits) {
+        if (!in_array($name, BENCHMARK_SCENARIOS, true)) {
+            $errors[] = sprintf('scenarios.%s is not a scenario the benchmark runs (%s).', (string) $name, implode(', ', BENCHMARK_SCENARIOS));
+            continue;
+        }
+        $error = budgetNumberError(sprintf('scenarios.%s.incremental_scan_seconds', $name), is_array($limits) ? ($limits['incremental_scan_seconds'] ?? null) : null, 0.0);
+        if ($error !== null) {
+            $errors[] = $error;
         }
     }
 
@@ -70,4 +101,14 @@ function benchmarkViolations(string $size, array $limits, array $actual, bool $m
     }
 
     return $violations;
+}
+
+/**
+ * The scenario's limit its median incremental scan broke, if it broke it.
+ *
+ * @return list<string>
+ */
+function benchmarkScenarioViolations(string $scenario, float $limit, float $seconds): array
+{
+    return $seconds > $limit ? [sprintf('scenarios.%s.incremental_scan_seconds %.2f exceeds %.2f', $scenario, $seconds, $limit)] : [];
 }

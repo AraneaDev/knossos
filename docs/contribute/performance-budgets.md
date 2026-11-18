@@ -63,6 +63,25 @@ are intentionally high enough for shared CI runners but low enough to catch
 hangs, lost incremental behavior, runaway workers, and gross storage
 regressions. They are regression limits, not expected performance.
 
+## Scenarios
+
+A scenario is a fixed corpus of its own with one limit, under `scenarios` in
+the same file. After a cold scan the runner edits the corpus's one production
+file and scans again, five times, and holds the median incremental scan to
+`incremental_scan_seconds`. The report lists each round under `scenarios`.
+
+| scenario                        | corpus                                                      | incremental scan |
+| ------------------------------- | ----------------------------------------------------------- | ---------------: |
+| `test_fidelity_rescan_one_file` | one TypeScript class, five test files with 20 doubles of it |            2.08s |
+
+`test_fidelity_rescan_one_file` measures what test fidelity adds to a rescan:
+the edit makes all five test files read again and every double judged. Its
+limit is 110% of the same scenario on commit `e9e156c2`, the commit before
+test fidelity, on the same machine (1.89s there, 1.90s with it, each the
+median of three runs). Unlike the sizes it is set against that baseline, not
+against shared CI runners, so measure it again on the runner that enforces it
+before relying on it there.
+
 Timing and RSS values vary with hardware, load, filesystem, and cold runtime
 caches. Compare trends from equivalent pinned runners. Tightening a budget
 requires a successful report from representative CI; relaxing one requires the

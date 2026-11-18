@@ -25,5 +25,10 @@
       "peak_rss_mb": 700,
       "sqlite_mb": 48
     }
+  },
+  "scenarios": {
+    "test_fidelity_rescan_one_file": {
+      "incremental_scan_seconds": 2.08
+    }
   }
 }

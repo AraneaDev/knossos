@@ -6,6 +6,8 @@ declare(strict_types=1);
  *   tools/benchmark [--budgets=FILE] [--report=FILE]
  *   tools/benchmark [BUDGETS [REPORT]]
  *
+ * Runs each size of the budget file, then each of its scenarios.
+ *
  * Exit 0 passes, 1 means a limit was exceeded or nothing was measured, 2 or
  * higher that the budget file is invalid or a run failed.
  */
@@ -125,6 +127,50 @@ function removeTree(string $path): void
     rmdir($path);
 }
 
+/** How many edit-and-rescan rounds a scenario's median is taken over. */
+const SCENARIO_ROUNDS = 5;
+
+/**
+ * Run the `test_fidelity_rescan_one_file` scenario under `$directory`: a cold
+ * scan of its corpus, then rounds of editing the one production file and
+ * scanning again. Each round reads the five test files of its twenty doubles
+ * again and judges every double; the median round is the measurement.
+ *
+ * @return array<string, mixed>
+ */
+function runTestFidelityScenario(string $directory, float $limit): array
+{
+    $corpus = $directory . '/corpus';
+    $database = $directory . '/knossos.sqlite';
+    $generation = jsonObject(runMeasured([PHP_BINARY, __DIR__ . '/generate-test-fidelity-corpus.php', $corpus], 30));
+    $scan = static fn(string $mode, float $timeout): array => runMeasured([
+        PHP_BINARY, BENCHMARK_ROOT . '/bin/knossos', 'scan', $corpus,
+        '--mode=' . $mode, '--snapshot-retention=2', '--db=' . $database, '--json',
+    ], $timeout);
+    $cold = $scan('full', $limit * 3 + 30);
+    jsonObject($cold);
+    $rounds = [];
+    $stages = [];
+    for ($round = 0; $round < SCENARIO_ROUNDS; ++$round) {
+        $production = $corpus . '/' . $generation['production_file'];
+        file_put_contents($production, (string) file_get_contents($production) . sprintf("\nexport const benchmarkChange%d = true;\n", $round));
+        $incremental = $scan('incremental', $limit * 1.5 + 5);
+        $stages[] = jsonObject($incremental)['data']['metrics']['stages_ms'] ?? [];
+        $rounds[] = $incremental['seconds'];
+    }
+    $sorted = $rounds;
+    sort($sorted);
+    $median = $sorted[intdiv(count($sorted), 2)];
+
+    return [
+        'corpus_sha256' => $generation['corpus_sha256'],
+        'cold_scan_seconds' => $cold['seconds'],
+        'incremental_scan_seconds' => $median,
+        'incremental_rounds_seconds' => $rounds,
+        'incremental_stages_ms' => $stages[array_search($median, $rounds, true)],
+    ];
+}
+
 $budgetPath = BENCHMARK_ROOT . '/benchmarks/budgets.json';
 $reportPath = BENCHMARK_ROOT . '/coverage/benchmarks/report.json';
 $positional = [];
@@ -224,6 +270,15 @@ try {
         ));
     }
 
+    $scenarios = [];
+    foreach ($budgets['scenarios'] ?? [] as $scenario => $limits) {
+        $limit = (float) $limits['incremental_scan_seconds'];
+        $actual = runTestFidelityScenario($temporaryRoot . '/scenario-' . $scenario, $limit);
+        $scenarios[$scenario] = ['limits' => $limits, 'actual' => $actual];
+        $violations = [...$violations, ...benchmarkScenarioViolations((string) $scenario, $limit, $actual['incremental_scan_seconds'])];
+        fwrite(STDOUT, sprintf("%s: cold=%.2fs incremental=%.2fs (median of %d)\n", $scenario, $actual['cold_scan_seconds'], $actual['incremental_scan_seconds'], SCENARIO_ROUNDS));
+    }
+
     $report = [
         'schema_version' => 1,
         'passed' => $violations === [],
@@ -232,6 +287,7 @@ try {
             'platform' => PHP_OS_FAMILY . '-' . php_uname('m'),
         ],
         'results' => $results,
+        'scenarios' => $scenarios,
         'violations' => $violations,
     ];
     writeJsonReport($reportPath, $report, 'benchmark report', 0o755);
