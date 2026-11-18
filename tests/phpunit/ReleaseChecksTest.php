@@ -155,6 +155,48 @@ final class ReleaseChecksTest extends KnossosTestCase
         assertContains('0 finding(s), all on the allowlist', $output);
     }
 
+    /**
+     * An npm advisory not on the allowlist fails, as `--audit-level=high` did;
+     * a listed one passes until its date and fails after it; one below HIGH
+     * or only depended on is not counted twice.
+     */
+    public function testAnNpmAdvisoryIsHeldToADatedAllowlist(): void
+    {
+        $allowlist = $this->write('npm-allowlist.txt', "# known\nGHSA-aaaa-bbbb-cccc\tpicomatch\t2026-12-18\nGHSA-gone-gone-gone\tminimist\t2026-12-18\n");
+        $known = $this->npmReport('root.json', ['GHSA-aaaa-bbbb-cccc' => ['picomatch', 'high'], 'GHSA-low0-low0-low0' => ['glob', 'moderate']]);
+        $worker = $this->npmReport('worker.json', ['GHSA-aaaa-bbbb-cccc' => ['picomatch', 'high']]);
+
+        [$exit, $output, $errors] = $this->auditCheck($allowlist, '2026-11-18', $known, $worker);
+        assertSame(0, $exit, $errors);
+        assertContains('1 HIGH or CRITICAL advisory(ies), all accepted by the allowlist', $output);
+        assertContains('no longer found, remove from the allowlist: GHSA-gone-gone-gone minimist', $output);
+
+        [$exit, , $errors] = $this->auditCheck($allowlist, '2026-12-19', $known);
+        assertSame(1, $exit, 'an advisory past its date passed');
+        assertContains('accepted until 2026-12-18, which has passed', $errors);
+
+        $planted = $this->npmReport('planted.json', ['GHSA-aaaa-bbbb-cccc' => ['picomatch', 'high'], 'GHSA-new0-new0-new0' => ['undici', 'critical']]);
+        [$exit, , $errors] = $this->auditCheck($allowlist, '2026-11-18', $known, $planted);
+        assertSame(1, $exit, 'a new CRITICAL advisory passed');
+        assertContains('1 advisory(ies) not accepted by', $errors);
+        assertContains('CRITICAL GHSA-new0-new0-new0 in undici', $errors);
+
+        [$exit, , $errors] = $this->auditCheck($allowlist, '2026-11-18', $this->write('offline.json', '{"error": {"summary": "request to registry failed"}}'));
+        assertSame(1, $exit, 'an audit that never reached the registry passed');
+        assertContains('it has no vulnerabilities: request to registry failed', $errors);
+    }
+
+    /** The committed npm allowlist is well formed, so the release lane reads it rather than refusing it. */
+    public function testTheRepositoryNpmAllowlistIsWellFormed(): void
+    {
+        [$exit, $output, $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('npm-audit-allowlist.php'), $this->npmReport('empty.json', [])]);
+
+        assertSame(0, $exit, $errors);
+        assertContains('0 HIGH or CRITICAL advisory(ies)', $output);
+        $quality = (string) file_get_contents(self::guardTool('quality'));
+        assertContains('php tools/npm-audit-allowlist.php "$audit_dir/root.json" "$audit_dir/typescript-worker.json"', $quality);
+    }
+
     private function write(string $name, string $contents): string
     {
         file_put_contents($this->directory . '/' . $name, $contents);
@@ -199,5 +241,30 @@ final class ReleaseChecksTest extends KnossosTestCase
         $report = $this->write('report.json', json_encode($results === null ? ['SchemaVersion' => 2] : ['Results' => $results], JSON_THROW_ON_ERROR));
 
         return $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('trivy-allowlist.php'), '--allowlist=' . $allowlist, ...($reportOnly ? ['--report-only'] : []), $report]);
+    }
+
+    /**
+     * An `npm audit --json` report: each advisory under the package it names,
+     * plus a dependent that lists it by name only, as npm does.
+     *
+     * @param array<string, array{0: string, 1: string}> $advisories GHSA id => [package, severity]
+     */
+    private function npmReport(string $name, array $advisories): string
+    {
+        $vulnerabilities = [];
+        foreach ($advisories as $id => [$package, $severity]) {
+            $vulnerabilities[$package] = ['name' => $package, 'severity' => $severity, 'via' => [
+                ['source' => 1, 'name' => $package, 'title' => 'planted', 'url' => 'https://github.com/advisories/' . $id, 'severity' => $severity],
+            ]];
+            $vulnerabilities['dependent-of-' . $package] = ['name' => 'dependent-of-' . $package, 'severity' => $severity, 'via' => [$package]];
+        }
+
+        return $this->write($name, json_encode(['auditReportVersion' => 2, 'vulnerabilities' => (object) $vulnerabilities], JSON_THROW_ON_ERROR));
+    }
+
+    /** @return array{0: int, 1: string, 2: string} */
+    private function auditCheck(string $allowlist, string $today, string ...$reports): array
+    {
+        return $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('npm-audit-allowlist.php'), '--allowlist=' . $allowlist, '--today=' . $today, ...$reports]);
     }
 }

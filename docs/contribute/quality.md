@@ -314,6 +314,13 @@ The Cosign signature check is a smoke test and says so: the key pair is made on
 the spot and thrown away, so it shows that signing and verifying work, not who
 built the image.
 
+`npm audit` of the root and TypeScript worker trees holds its HIGH and CRITICAL
+advisories to `tools/npm-audit-advisories.txt` (`tools/npm-audit-allowlist.php`),
+where each accepted advisory carries the last day it is accepted. An advisory
+with no patched release would otherwise fail every push to `main` until upstream
+ships one. An advisory not listed, or listed but still found after its date,
+fails the lane, and so does a report npm could not produce.
+
 ## The Claude Code mod
 
 The mod has three checks of its own, and

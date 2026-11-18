@@ -1275,6 +1275,7 @@ php	tools/lifecycle-restore-check.php
 php	tools/lint-files.php
 php	tools/maintainability-report.php
 php	tools/mutation-gate
+php	tools/npm-audit-allowlist.php
 php	tools/pcov-prepend.php
 php	tools/pcov-report.php
 php	tools/phpunit-shard
