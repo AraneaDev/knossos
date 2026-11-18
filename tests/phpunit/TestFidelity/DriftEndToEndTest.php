@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\TestFidelity;
 
-use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\TestFidelity\Rules\{ArityMismatchRule, GhostMemberRule, ReturnDriftRule, VisibilityBreachRule};
 use Knossos\TestFidelity\TestFidelityAnalysis;
 use Knossos\TestFidelity\TestFinding;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use Knossos\Tests\Phpunit\Support\ScanLimits;
 
 use function PHPUnit\Framework\assertSame;
 
@@ -24,6 +22,8 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('typescript-scanner')]
 final class DriftEndToEndTest extends KnossosTestCase
 {
+    use ScansTypeScript;
+
     private const FILES = [
         'tsconfig.json' => '{"compilerOptions":{"strict":true,"module":"esnext","target":"es2022","moduleResolution":"bundler"}}',
         'src/config.ts' => "export const API_URL = 'x';\nexport function helper(): void {}\nexport { helper as h };\n",
@@ -53,36 +53,7 @@ final class DriftEndToEndTest extends KnossosTestCase
     /** @return list<TestFinding> */
     private function findings(): array
     {
-        $root = sys_get_temp_dir() . '/knossos-drift-e2e-' . bin2hex(random_bytes(6));
-        foreach (self::FILES as $path => $contents) {
-            if (!is_dir(dirname($root . '/' . $path))) {
-                mkdir(dirname($root . '/' . $path), 0o777, true);
-            }
-            file_put_contents($root . '/' . $path, $contents);
-        }
-        $client = $this->typescriptWorkerClient();
-        try {
-            /** @var list<ScanContribution> $contributions */
-            $contributions = [...$client->scan([
-                'limits' => ScanLimits::DEFAULT,
-                'root' => $root,
-                'files' => array_values(array_filter(array_keys(self::FILES), static fn(string $path): bool => str_ends_with($path, '.ts'))),
-                'config_files' => ['tsconfig.json'],
-            ])];
-        } finally {
-            $client->shutdown();
-            self::removeTree($root);
-        }
-
-        return (new TestFidelityAnalysis(new GhostMemberRule(), new ArityMismatchRule(), new ReturnDriftRule(), new VisibilityBreachRule()))->analyze($contributions);
-    }
-
-    private static function removeTree(string $path): void
-    {
-        foreach (is_dir($path) ? array_diff(scandir($path) ?: [], ['.', '..']) : [] as $entry) {
-            is_dir($path . '/' . $entry) ? self::removeTree($path . '/' . $entry) : unlink($path . '/' . $entry);
-        }
-        is_dir($path) ? rmdir($path) : null;
+        return (new TestFidelityAnalysis(new GhostMemberRule(), new ArityMismatchRule(), new ReturnDriftRule(), new VisibilityBreachRule()))->analyze($this->scanTypeScript(self::FILES));
     }
 
     public function testHealthyStubsOfNamesWithoutNodesGiveNoFinding(): void

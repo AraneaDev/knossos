@@ -28,7 +28,7 @@ use Knossos\Classification\{
 };
 use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\ScanContribution;
-use Knossos\TestFidelity\Rules\{ArityMismatchRule, GhostMemberRule, ReturnDriftRule, VisibilityBreachRule};
+use Knossos\TestFidelity\Rules\{ArityMismatchRule, GhostMemberRule, MocksSubjectRule, ReturnDriftRule, TautologyRule, VisibilityBreachRule};
 use Knossos\TestFidelity\TestFidelityAnalysis;
 
 /**
@@ -48,6 +48,8 @@ final readonly class ScanAnalysisPipeline
             new ArityMismatchRule(),
             new ReturnDriftRule(),
             new VisibilityBreachRule(),
+            new TautologyRule(),
+            new MocksSubjectRule(),
         ),
     ) {}
 
