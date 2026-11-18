@@ -22,7 +22,8 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
  * Where the facts run out it is silent: an operand with no text cannot be
  * shown equal to anything, a negated matcher is not a self-comparison, and a
  * test that runs production may reach a double through it, so neither
- * `unconfigured_spy` nor `zero_reach` speaks there.
+ * `unconfigured_spy` nor `zero_reach` speaks there, and neither does
+ * `zero_reach` for a double of a package, which code outside the project may reach.
  */
 final readonly class TautologyRule implements TestFidelityRule
 {
@@ -168,11 +169,13 @@ final readonly class TautologyRule implements TestFidelityRule
      * TAUT-005, less what no assertion names: a double with a pinned value
      * that nothing in its file calls or hands on, whose tests run no
      * production that could reach it. A double made outside any test answers
-     * to every test of its file, and to none when the file has none.
+     * to every test of its file, and to none when the file has none. A double
+     * of something outside the project is never zero-reach: code outside the
+     * project, which no production count sees, may call it.
      */
     private static function isZeroReach(TestDouble $double, TestFidelityGraph $graph): bool
     {
-        if ($double->invocations !== 0 || !self::isPinned($double)) {
+        if ($double->invocations !== 0 || !self::isPinned($double) || $graph->isExternal($double)) {
             return false;
         }
         $tests = DoubleTests::of($double, $graph);

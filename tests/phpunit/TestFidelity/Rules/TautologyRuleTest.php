@@ -242,6 +242,18 @@ final class TautologyRuleTest extends KnossosTestCase
         assertSame([], self::subRules(self::judge(CaseFixtures::double(6, members: $pinned))));
     }
 
+    public function testZeroReachIsSilentOnADoubleOfAPackage(): void
+    {
+        // Code outside the project, which a test's production count does not
+        // see, may reach what replaces a package export (Nemesis packageMock.spec.ts).
+        $quiet = CaseFixtures::testCase([]);
+        $package = CaseFixtures::double(6, target: ['kind' => 'module', 'specifier' => 'node:fs', 'member' => 'readFileSync'], members: [CaseFixtures::member('readFileSync')], testCase: $quiet->canonicalName);
+        $local = CaseFixtures::double(7, target: ['kind' => 'module', 'specifier' => '../src/fs', 'member' => 'readFileSync'], members: [CaseFixtures::member('readFileSync')], testCase: $quiet->canonicalName);
+
+        assertSame([], self::subRules(self::judge($quiet, $package)));
+        assertSame(['zero_reach'], self::subRules(self::judge($quiet, $local)));
+    }
+
     public function testZeroReachOfAFileLevelDoubleNeedsEveryTestOfItsFileQuiet(): void
     {
         $quiet = CaseFixtures::testCase([]);
