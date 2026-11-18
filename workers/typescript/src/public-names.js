@@ -93,3 +93,29 @@ export function typeMembers(checker, node) {
     const list = sorted(names);
     return list.length > MAX_NAMES ? null : { members: list, open };
 }
+
+/** The `exports` attributes of a module node: none for a file that lists none. */
+export function exportAttributes(checker, sourceFile) {
+    const listed = moduleExports(checker, sourceFile);
+    if (listed === null) return {};
+    return {
+        exports: listed.exports,
+        ...(listed.open ? { exports_open: true } : {}),
+    };
+}
+
+/** The `member_names` attributes of a class or interface node, none for another declaration. */
+export function memberAttributes(checker, node) {
+    if (
+        checker === undefined ||
+        !(ts.isClassDeclaration(node) || ts.isInterfaceDeclaration(node))
+    ) {
+        return {};
+    }
+    const listed = typeMembers(checker, node);
+    if (listed === null) return {};
+    return {
+        member_names: listed.members,
+        ...(listed.open ? { member_names_open: true } : {}),
+    };
+}

@@ -1681,11 +1681,13 @@ js	workers/typescript/src/__tests__/location-keys.test.js
 js	workers/typescript/src/__tests__/member-visibility.test.js
 js	workers/typescript/src/__tests__/nestjs-handlers.test.js
 js	workers/typescript/src/__tests__/nestjs-routes.test.js
+js	workers/typescript/src/__tests__/overloads.test.js
 js	workers/typescript/src/__tests__/path-literals.test.js
 js	workers/typescript/src/__tests__/program-environment.test.js
 js	workers/typescript/src/__tests__/program-too-deep.test.js
 js	workers/typescript/src/__tests__/program-wide-diagnostics.test.js
 js	workers/typescript/src/__tests__/project-compiler-defaults.test.js
+js	workers/typescript/src/__tests__/public-names.test.js
 js	workers/typescript/src/__tests__/react-hooks.test.js
 js	workers/typescript/src/__tests__/read-attribution.test.js
 js	workers/typescript/src/__tests__/read-table.test.js
@@ -1734,6 +1736,7 @@ js	workers/typescript/src/program-cache.js
 js	workers/typescript/src/program-diagnostics.js
 js	workers/typescript/src/program-host.js
 js	workers/typescript/src/project-paths.js
+js	workers/typescript/src/public-names.js
 js	workers/typescript/src/read-table.js
 js	workers/typescript/src/request-validation.js
 js	workers/typescript/src/scan-thread-exit.js

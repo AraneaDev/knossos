@@ -26,20 +26,14 @@ import {
     isObjectLiteralBinding,
     isTypeOnlyDeclaration,
     memberDeclaration,
-    moduleExports,
     objectLiteralContract,
     referenceableDeclaration,
-    typeMembers,
     unalias,
     valueReferencePosition,
 } from "./declaration-kinds.js";
 import { DynamicImportCollector } from "./dynamic-import-collector.js";
 import { FactAccumulator } from "./fact-accumulator.js";
-import {
-    hasMainGuard,
-    importMetaUrlModule,
-    startsWithShebang,
-} from "./module-entry.js";
+import { importMetaUrlModule, moduleAttributes } from "./module-entry.js";
 import { NestJsFactEnricher } from "./nestjs-fact-enricher.js";
 import { LaunchFacts } from "./launch-facts.js";
 import { nodeBuiltinPackage } from "./node-builtins.js";
@@ -49,12 +43,7 @@ import {
     normalize,
     relativeInside,
 } from "./project-paths.js";
-import {
-    isClassicScript,
-    REQUIRE_SUFFIXES,
-    runsOnLoad,
-    storeMemberNames,
-} from "./syntax-predicates.js";
+import { REQUIRE_SUFFIXES, storeMemberNames } from "./syntax-predicates.js";
 import { TableDispatch } from "./table-dispatch.js";
 import {
     importsModule,
@@ -114,14 +103,7 @@ export class TypeScriptLanguageFactCollector {
             this.relative,
             path.basename(this.relative),
             this.sourceFile,
-            {
-                declaration_file: this.sourceFile.isDeclarationFile,
-                executable:
-                    startsWithShebang(this.sourceFile.text) ||
-                    hasMainGuard(this.sourceFile, this.checker) ||
-                    isClassicScript(this.sourceFile) ||
-                    runsOnLoad(this.sourceFile),
-            },
+            moduleAttributes(this.sourceFile, this.checker),
         );
     }
 
@@ -136,14 +118,6 @@ export class TypeScriptLanguageFactCollector {
     finish() {
         this.tables.finish();
         this.frameworks.finish();
-        const exported = moduleExports(this.checker, this.sourceFile);
-        if (exported !== null) {
-            const attributes = this.accumulator.nodesById.get(
-                this.moduleId,
-            ).attributes;
-            attributes.exports = exported.exports;
-            if (exported.open) attributes.exports_open = true;
-        }
         if (this.untypedCalls.size === 0) return;
         this.accumulator.nodesById.get(
             this.moduleId,
@@ -327,7 +301,7 @@ export class TypeScriptLanguageFactCollector {
     }
 
     declaration(node) {
-        const descriptor = declarationDescriptor(node, this.sourceFile);
+        const descriptor = declarationDescriptor(node, this);
         if (descriptor === null) return false;
         const parent = this.container.at(-1) ?? {
             id: this.moduleId,
@@ -384,20 +358,6 @@ export class TypeScriptLanguageFactCollector {
             fact.attributes = { ...fact.attributes, nestjs_roles: nest.roles };
         }
 
-        if (
-            kept &&
-            (ts.isClassDeclaration(node) || ts.isInterfaceDeclaration(node))
-        ) {
-            const listed = typeMembers(this.checker, node);
-            const fact = this.accumulator.nodesById.get(id);
-            if (listed !== null && fact.attributes.member_names === undefined) {
-                fact.attributes = {
-                    ...fact.attributes,
-                    member_names: listed.members,
-                    ...(listed.open ? { member_names_open: true } : {}),
-                };
-            }
-        }
         this.heritageEdges(node, id);
         this.objectLiteralContracts(node, id);
         this.returnEdges(node, id);

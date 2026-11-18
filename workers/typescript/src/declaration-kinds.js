@@ -22,10 +22,10 @@ import {
 } from "./typescript-fact-utils.js";
 import { signatureOf } from "./signatures.js";
 
-// What a declaration offers by name, read where its kind is: see public-names.js.
-export { moduleExports, typeMembers } from "./public-names.js";
+import { memberAttributes } from "./public-names.js";
 
-export function declarationDescriptor(node, sourceFile) {
+/** @param {{sourceFile: ts.SourceFile, checker: ts.TypeChecker}} context */
+export function declarationDescriptor(node, { sourceFile, checker }) {
     const name = declarationName(node, sourceFile);
     if (name === null) return null;
     const kind = declarationKind(node, "class");
@@ -51,6 +51,7 @@ export function declarationDescriptor(node, sourceFile) {
                 : {}),
             ...visibilityOf(modifiers),
             ...signatureAttribute(kind, node, sourceFile),
+            ...memberAttributes(checker, node),
         },
     };
 }

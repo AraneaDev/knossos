@@ -17,6 +17,8 @@ import {
     normalize,
     relativeInside,
 } from "./project-paths.js";
+import { exportAttributes } from "./public-names.js";
+import { isClassicScript, runsOnLoad } from "./syntax-predicates.js";
 
 // Source extensions a module URL can name; an asset URL names none of them.
 const MODULE_URL_EXTENSION = /\.(?:[cm]?[jt]sx?)$/;
@@ -424,4 +426,17 @@ export function unwrapParentheses(expression) {
 // interpreter is irrelevant. A byte-order mark may precede it.
 export function startsWithShebang(text) {
     return text.replace(/^\uFEFF/, "").startsWith("#!");
+}
+
+/** The attributes of a source file's `module` node: what it is, whether it runs, what it exports. */
+export function moduleAttributes(sourceFile, checker) {
+    return {
+        declaration_file: sourceFile.isDeclarationFile,
+        ...exportAttributes(checker, sourceFile),
+        executable:
+            startsWithShebang(sourceFile.text) ||
+            hasMainGuard(sourceFile, checker) ||
+            isClassicScript(sourceFile) ||
+            runsOnLoad(sourceFile),
+    };
 }
