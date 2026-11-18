@@ -1,0 +1,13 @@
+# HIGH and CRITICAL npm advisories the release lane accepts until a date
+# (tools/npm-audit-allowlist.php). One `ID<tab>package<tab>YYYY-MM-DD` per line.
+# The lane fails on any advisory not listed, and on a listed one still found
+# after its date, so each entry is a decision to look again, not a silence.
+# An entry no longer found is reported so the list can shrink.
+#
+# Published 2026-11-17, ReDoS through repeated extglobs. It covers every
+# picomatch up to 4.0.7, the newest release, so there is no version to move to;
+# npm's suggested fix is a downgrade to vitest 3.1.4. picomatch reaches both
+# trees only through vitest and vite, which run our own test globs and are not
+# shipped: the runtime image carries no node dev dependencies. Remove this once
+# a fixed picomatch is released and both lockfiles take it.
+GHSA-fc5q-39xc-vjpf	picomatch	2026-12-18

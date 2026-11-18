@@ -267,8 +267,15 @@ fi
 
 if [ "$profile" = "full" ] && in_lane release; then
     composer audit --locked --no-interaction
-    npm audit --audit-level=high
-    npm --prefix workers/typescript audit --audit-level=high
+    # npm audit exits 1 on any finding, including one with no fixed release
+    # yet, so its verdict is left to a dated allowlist of HIGH and CRITICAL
+    # advisories (tools/npm-audit-allowlist.php). A report it cannot read,
+    # such as npm failing to reach the registry, still fails.
+    audit_dir=$(mktemp -d)
+    npm audit --json > "$audit_dir/root.json" || true
+    npm --prefix workers/typescript audit --json > "$audit_dir/typescript-worker.json" || true
+    php tools/npm-audit-allowlist.php "$audit_dir/root.json" "$audit_dir/typescript-worker.json"
+    rm -rf "$audit_dir"
     if quality_has cargo-audit 'cargo audit of the Rust worker'; then
         cargo audit --file workers/rust/Cargo.lock
     fi
