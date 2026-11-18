@@ -180,7 +180,7 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
      * the test file is parsed again (directly, through a barrel, or through
      * a base class in another file alike); a test file the edit did not
      * reach is reused and keeps its findings. That a reused contribution is
-     * judged against a changed one is pinned in ScanAnalysisPipelineTest.
+     * judged against a changed one is pinned in ReusedContributionTest.
      */
     public function testFindingsFollowAnEditToTheTargetInBothDirections(): void
     {
