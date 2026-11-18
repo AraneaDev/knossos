@@ -77,7 +77,19 @@ export class FactAccumulator {
         attributes = {},
         origin = "ast",
     ) {
-        if (this.nodesById.has(id)) return true;
+        const existing = this.nodesById.get(id);
+        if (existing !== undefined) {
+            // A second declaration under one id is an overload (or a merged
+            // declaration): the kept node carries only the first signature,
+            // so it says that it is not the whole story.
+            if (
+                existing.attributes.signature !== undefined &&
+                attributes.signature !== undefined
+            ) {
+                existing.attributes.overloaded = true;
+            }
+            return true;
+        }
         // The module itself starts past its own text when that text is blank.
         if (
             this.ownEnd !== Infinity &&

@@ -44,6 +44,16 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertSame([], self::judge(true, true));
     }
 
+    public function testAnOverloadedMemberIsSilent(): void
+    {
+        $graph = DriftFixtures::graph(
+            [DriftFixtures::method('total', ['signature' => ['params' => [], 'returns' => 'number'], 'overloaded' => true])],
+            [DriftFixtures::stub('total', null, [['api' => 'mockReturnValue', 'line' => 9, 'once' => false, 'assignable' => false, 'typed' => true]])],
+        );
+
+        assertSame([], [...(new ReturnDriftRule())->findings($graph)]);
+    }
+
     public function testUntypedIsAWarning(): void
     {
         assertSame(FindingConfidence::Warning, self::judge(false, false, null)[0]->confidence);

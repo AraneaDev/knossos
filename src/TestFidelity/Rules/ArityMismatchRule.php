@@ -14,7 +14,8 @@ use Knossos\TestFidelity\TestFinding;
  * replaces takes: the extra ones are handed nothing on every call.
  *
  * Fewer parameters is ordinary and is not reported. Silent for a cut-short
- * signature, a rest parameter on the production side, or a member without one.
+ * signature, an overloaded member, a rest parameter on the production side, or a
+ * member without a signature.
  * Definite when every parameter on both sides is typed; a warning otherwise.
  */
 final readonly class ArityMismatchRule extends DriftRule
@@ -25,7 +26,7 @@ final readonly class ArityMismatchRule extends DriftRule
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
     {
         $actual = SignatureShape::ofParams($pair->stub->params);
-        $declared = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes['signature'] ?? null);
+        $declared = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
         if ($actual === null || $declared === null || $declared->isVariadic() || $actual->fixedCount() <= count($declared->params)) {
             return null;
         }

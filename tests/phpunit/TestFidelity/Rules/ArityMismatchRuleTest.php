@@ -60,6 +60,17 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertSame([], self::judge(['params' => [['name' => 'a'], ['name' => 'b']]], [['name' => 'a']]));
     }
 
+    public function testAnOverloadedMemberIsSilentWhateverTheFirstSignatureSays(): void
+    {
+        // `find(id)` and `find(id, deep)`: the node holds the first, the double matches the second.
+        $graph = DriftFixtures::graph(
+            [DriftFixtures::method('find', ['signature' => ['params' => [['name' => 'id', 'type' => 'string']]], 'overloaded' => true])],
+            [DriftFixtures::stub('find', [['name' => 'id', 'type' => 'string'], ['name' => 'deep', 'type' => 'boolean']])],
+        );
+
+        assertSame([], [...(new ArityMismatchRule())->findings($graph)]);
+    }
+
     public function testNoDoubleParametersOrNoSignatureIsSilent(): void
     {
         $graph = DriftFixtures::graph([DriftFixtures::method('find')], [DriftFixtures::stub('find', [['name' => 'a']]), DriftFixtures::stub('other')]);

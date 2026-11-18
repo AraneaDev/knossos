@@ -174,6 +174,9 @@ as the source writes it:
   A signature that lost a parameter or part of a type says `"truncated": true`.
 - Control characters and line separators in a type are replaced by a space:
   the text is shown to an agent as one line.
+- A TypeScript function or method declared with overload signatures keeps the
+  first signature on its one node and carries `"overloaded": true` beside it;
+  a reader must not judge a call against that signature alone.
 
 Every packaged worker sends it. TypeScript and Rust types are the text as
 written; PHP types are the native declarations with class names resolved

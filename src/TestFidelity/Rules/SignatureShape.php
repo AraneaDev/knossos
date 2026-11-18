@@ -13,10 +13,16 @@ final readonly class SignatureShape
     /** @param list<array{type: ?string, variadic: bool}> $params */
     private function __construct(public array $params, public ?string $returns) {}
 
-    /** A production member's `signature` attribute; null when absent, malformed or cut short. */
-    public static function ofMember(mixed $raw): ?self
+    /**
+     * A production member's `signature` attribute; null when absent, malformed, cut short,
+     * or the node is marked overloaded (it carries only the first of several signatures).
+     *
+     * @param array<string, mixed> $attributes the member node's attributes
+     */
+    public static function ofMember(array $attributes): ?self
     {
-        if (!is_array($raw) || ($raw['truncated'] ?? false) !== false) {
+        $raw = $attributes['signature'] ?? null;
+        if (!is_array($raw) || ($raw['truncated'] ?? false) !== false || ($attributes['overloaded'] ?? false) === true) {
             return null;
         }
         $params = self::params($raw['params'] ?? null);
