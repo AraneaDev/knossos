@@ -7,6 +7,8 @@ import { callSitesInto, destructuresUntyped } from "./call-argument-sites.js";
 import { inRootFile } from "./input-reads.js";
 import { TypeScriptLanguageFactCollector } from "./language-fact-collector.js";
 import { relativeInside } from "./project-paths.js";
+import { isTestModule } from "./test-module-paths.js";
+import { collectTestDoubles } from "./test-doubles.js";
 
 // Every contribution's owner key is this prefix and the file's project path.
 export const OWNER_KEY_PREFIX = "knossos.typescript:file:";
@@ -112,9 +114,14 @@ class FactCollector {
     }
 
     collect() {
-        this.language.initialize();
-        this.visit(this.language.sourceFile);
-        this.language.finish();
+        const language = this.language;
+        language.initialize();
+        this.visit(language.sourceFile);
+        language.finish();
+        // A test module's mocks, spies and stubs, for the core to hold
+        // against the code they stand in for.
+        if (isTestModule(language.relative))
+            collectTestDoubles(language.sourceFile, language.checker, language);
     }
 
     visit(node) {

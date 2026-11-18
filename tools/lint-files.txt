@@ -530,6 +530,12 @@ php	src/Store/SqliteTransactions.php
 php	src/Store/SqliteValues.php
 php	src/Store/StableId.php
 php	src/Store/Upsert.php
+php	src/TestFidelity/Facts/Assertion.php
+php	src/TestFidelity/Facts/Operand.php
+php	src/TestFidelity/Facts/PinnedValue.php
+php	src/TestFidelity/Facts/StubbedMember.php
+php	src/TestFidelity/Facts/TestCaseFact.php
+php	src/TestFidelity/Facts/TestDouble.php
 php	src/Watch/ExternalScanProbe.php
 php	src/Watch/ProcessScanner.php
 php	src/Watch/ScanTimeoutException.php
@@ -1239,6 +1245,8 @@ php	tests/phpunit/Support/SyntheticGraph.php
 php	tests/phpunit/Support/TempRootGuard.php
 php	tests/phpunit/Support/TempTrees.php
 php	tests/phpunit/Support/WorkerClients.php
+php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
+php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
 php	tests/phpunit/Watch/ExternalScanProbeTest.php
 php	tests/phpunit/Watch/ProcessScannerTest.php
 php	tests/phpunit/Watch/SessionLinkTest.php
@@ -1666,6 +1674,7 @@ js	workers/typescript/src/__tests__/support/require-candidates.mjs
 js	workers/typescript/src/__tests__/support/scan-limits.mjs
 js	workers/typescript/src/__tests__/table-dispatch.test.js
 js	workers/typescript/src/__tests__/template-dynamic-imports.test.js
+js	workers/typescript/src/__tests__/test-doubles.test.js
 js	workers/typescript/src/__tests__/typescript-fact-utils.test.js
 js	workers/typescript/src/__tests__/untyped-member-calls.test.js
 js	workers/typescript/src/__tests__/worker-startup.test.js
@@ -1708,6 +1717,11 @@ js	workers/typescript/src/source-caches.js
 js	workers/typescript/src/source-reading.js
 js	workers/typescript/src/syntax-predicates.js
 js	workers/typescript/src/table-dispatch.js
+js	workers/typescript/src/test-double-reach.js
+js	workers/typescript/src/test-double-syntax.js
+js	workers/typescript/src/test-double-types.js
+js	workers/typescript/src/test-doubles.js
+js	workers/typescript/src/test-module-paths.js
 js	workers/typescript/src/typescript-application-enricher.js
 js	workers/typescript/src/typescript-fact-utils.js
 js	workers/typescript/vitest.config.js
