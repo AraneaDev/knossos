@@ -362,4 +362,19 @@ final class ProtocolTest extends KnossosTestCase
         assertSame(['$.attributes: missing target'], $this->nodeSchemaErrors($double));
         assertSame(1, count($this->nodeSchemaErrors($badMember)));
     }
+
+    #[Group('protocol')]
+    public function testContributionSchemaRejectsAMalformedStubbedMember(): void
+    {
+        $double = self::wireNode('test_double', [
+            'framework' => 'vitest',
+            'pattern' => 'vi.spyOn',
+            'target' => ['kind' => 'class'],
+            'automock' => false,
+            'invocations' => 0,
+            'members' => [['line' => 8, 'api' => 'spyOn', 'returns' => []]],
+        ]);
+
+        assertSame(1, count($this->nodeSchemaErrors($double)));
+    }
 }

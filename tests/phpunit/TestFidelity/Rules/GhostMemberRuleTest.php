@@ -143,6 +143,13 @@ final class GhostMemberRuleTest extends KnossosTestCase
         }
     }
 
+    public function testASpecifierWithALoaderQueryIsSilent(): void
+    {
+        foreach (['./worker.ts?worker', './x.js?raw'] as $specifier) {
+            assertSame([], self::judge(DriftFixtures::moduleGraph($specifier)), $specifier);
+        }
+    }
+
     public function testControlCharactersInANameDoNotReachTheMessage(): void
     {
         $graph = DriftFixtures::graph([], [DriftFixtures::stub("bad\n\x1bname")]);
