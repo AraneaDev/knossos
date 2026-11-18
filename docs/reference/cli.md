@@ -53,6 +53,8 @@ Usage:
   knossos untested-code <path|project-id> [--granularity=files|components] [--path=PREFIX]
                         [--limit=N] [--offset=N] [--max-nodes=N] [--timeout-ms=N] [--json]
   knossos creation-brief <path|project-id> <file> [--json]
+  knossos audit-tests <path|project-id> [--path=PREFIX] [--confidence=definite|warning]
+                      [--category=CATEGORY] [--limit=N] [--offset=N] [--json]
   knossos explain-flow <path|project-id> <from> <to> [--max-depth=N] [--max-paths=N]
                        [--edge-kind=KIND] [--min-confidence=LEVEL] [--timeout-ms=N]
                        [--both-directions] [--profile=NAME] [--json]

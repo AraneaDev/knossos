@@ -225,6 +225,7 @@ php	src/Install/UpdateNotice.php
 php	src/Install/VersionSwitch.php
 php	src/Maintenance/DatabaseMaintenanceService.php
 php	src/Maintenance/ProjectMoveService.php
+php	src/Mcp/AuditTestsToolDefinition.php
 php	src/Mcp/BoundaryLegend.php
 php	src/Mcp/ComponentLegend.php
 php	src/Mcp/CreationBriefToolDefinition.php
@@ -373,6 +374,7 @@ php	src/Query/StalenessProbe.php
 php	src/Query/StalenessSnapshot.php
 php	src/Query/StandInExpansion.php
 php	src/Query/SupertypeMethods.php
+php	src/Query/TestFidelityQueryService.php
 php	src/Query/TestReachSearch.php
 php	src/Query/Truncation.php
 php	src/Query/TurnBriefService.php
@@ -759,6 +761,7 @@ php	tests/phpunit/LintFilesTest.php
 php	tests/phpunit/MaintainabilityBudgetTest.php
 php	tests/phpunit/Maintenance/DatabaseMaintenanceServiceTest.php
 php	tests/phpunit/Maintenance/ProjectMoveServiceTest.php
+php	tests/phpunit/Mcp/AuditTestsToolTest.php
 php	tests/phpunit/Mcp/BoundaryLegendTest.php
 php	tests/phpunit/Mcp/CancellationBookkeepingTest.php
 php	tests/phpunit/Mcp/ComponentLegendShapeTest.php
@@ -975,6 +978,7 @@ php	tests/phpunit/Query/SuggestionArgumentsTest.php
 php	tests/phpunit/Query/SuggestionTest.php
 php	tests/phpunit/Query/SuggestionTruncationTest.php
 php	tests/phpunit/Query/SupertypeMethodsTest.php
+php	tests/phpunit/Query/TestFidelityQueryServiceTest.php
 php	tests/phpunit/Query/TestImpactReportTest.php
 php	tests/phpunit/Query/TestImpactTest.php
 php	tests/phpunit/Query/TestReachSearchTest.php

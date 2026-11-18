@@ -45,6 +45,7 @@ final readonly class QueryServices
         public FileContextQueryService $fileContextQueries,
         public CreationBriefQueryService $creationBriefQueries,
         public DiagnosticsQueryService $diagnosticsQueries,
+        public TestFidelityQueryService $testFidelityQueries,
         public RefreshPolicy $refreshPolicy,
     ) {}
 
@@ -106,6 +107,7 @@ final readonly class QueryServices
             fileContextQueries: new FileContextQueryService($pdo, $clock),
             creationBriefQueries: new CreationBriefQueryService($pdo, $clock),
             diagnosticsQueries: new DiagnosticsQueryService($pdo, $clock),
+            testFidelityQueries: new TestFidelityQueryService($pdo, $clock),
             refreshPolicy: $refreshPolicy,
         );
     }
