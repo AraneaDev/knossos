@@ -61,10 +61,10 @@ final readonly class TestFidelityAnalysis
      * Either is counted in a warning rather than thrown: findings are derived
      * data, and one bad fact must not fail a scan.
      *
-     * @param list<ScanContribution> $contributions
      * A rule that throws on a scan's facts loses its findings for that scan and
      * is named in a warning, whatever it threw except a core logic error.
      *
+     * @param list<ScanContribution> $contributions
      * @throws LogicException when a rule reports a finding under another rule's id
      */
     public function report(array $contributions): TestFidelityReport

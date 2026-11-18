@@ -13,8 +13,9 @@ use Knossos\TestFidelity\TestFinding;
 /**
  * A double stubs a member, export or module that its target no longer has.
  *
- * Silent where the evidence runs out: an external target, a type with an
- * ancestor the scan cannot see, a member found through inheritance.
+ * Silent where the evidence runs out: an external target, a target whose worker
+ * sent no complete name list, a type with an ancestor the scan cannot see, a
+ * member found through inheritance.
  */
 final readonly class GhostMemberRule extends DriftRule
 {
@@ -27,7 +28,7 @@ final readonly class GhostMemberRule extends DriftRule
     private const SUGGESTION_LENGTH = 64;
 
     /** Files a project imports that are not code, so no node stands for them. */
-    private const ASSET_EXTENSIONS = '/\.(?:css|scss|sass|less|json|svg|png|jpe?g|gif|webp|ico|md|html|txt|ya?ml|vue|svelte|astro)$/Di';
+    private const ASSET_EXTENSIONS = '/\.(?:css|scss|sass|less|json|svg|png|jpe?g|gif|webp|ico|md|mdx|html|txt|csv|ya?ml|vue|svelte|astro|graphql|gql|wasm|woff2?|ttf|otf|eot|mp3|mp4|webm|wav|ogg)$/Di';
 
     /**
      * The stubbed members the target lacks, then the modules that resolve to nothing.
@@ -39,7 +40,9 @@ final readonly class GhostMemberRule extends DriftRule
         yield from parent::findings($graph);
         foreach ($graph->doubles() as $double) {
             $specifier = $double->target['specifier'] ?? '';
-            if ($double->target['kind'] !== 'module' || $specifier === '' || $graph->target($double) !== null || $graph->isExternal($double) || preg_match(self::ASSET_EXTENSIONS, $specifier) === 1) {
+            // A double with an edge was resolved, to a node the scan may merely not hold (an excluded path).
+            $path = explode('?', explode('#', $specifier)[0])[0];
+            if ($double->target['kind'] !== 'module' || $specifier === '' || $graph->hasTarget($double) || $graph->isExternal($double) || preg_match(self::ASSET_EXTENSIONS, $path) === 1) {
                 continue;
             }
             $finding = self::moduleFinding($graph->nodeOf($double), $specifier);
@@ -60,10 +63,11 @@ final readonly class GhostMemberRule extends DriftRule
     /** Reports a stub the target neither declares nor could inherit. */
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
     {
-        if ($pair->member !== null || $graph->hasUnseenAncestor($pair->target)) {
+        $names = self::completeNames($pair);
+        if ($names === null || $pair->member !== null || in_array($pair->stub->name, $names, true) || $graph->hasUnseenAncestor($pair->target)) {
             return null;
         }
-        $suggestion = self::suggestion($pair->stub->name, $graph->memberNames($pair->target));
+        $suggestion = self::suggestion($pair->stub->name, $names);
 
         return $pair->finding(
             FindingCategory::GhostMember,
@@ -79,6 +83,26 @@ final readonly class GhostMemberRule extends DriftRule
             ),
             $suggestion === null ? [] : ['suggestion' => DriftText::clean($suggestion)],
         );
+    }
+
+    /**
+     * Every name the target offers, when the worker said it is the complete list; null otherwise.
+     *
+     * A module lists its `exports`, a class or interface its `member_names`; either marked open
+     * (`exports_open`, `member_names_open`) could not be completed, and a node with no list says nothing.
+     *
+     * @return list<string>|null
+     */
+    private static function completeNames(DriftPair $pair): ?array
+    {
+        $attributes = $pair->target->attributes;
+        $module = $pair->target->kind === 'module';
+        $names = $attributes[$module ? 'exports' : 'member_names'] ?? null;
+        if (!is_array($names) || !array_is_list($names) || ($attributes[$module ? 'exports_open' : 'member_names_open'] ?? false) !== false) {
+            return null;
+        }
+
+        return array_values(array_filter($names, is_string(...)));
     }
 
     /**

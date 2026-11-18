@@ -110,6 +110,39 @@ final class GhostMemberRuleTest extends KnossosTestCase
         assertSame([], self::judge(DriftFixtures::moduleGraph('./styles.css')));
     }
 
+    public function testANameTheListHoldsWithoutANodeIsNotAGhost(): void
+    {
+        // `export const API_URL`, a getter or a parameter property have no node, but the worker lists them.
+        $graph = DriftFixtures::graph([], [DriftFixtures::stub('API_URL'), DriftFixtures::stub('total')], ['kind' => 'module', 'specifier' => './config'], targetKind: 'module', targetAttributes: ['exports' => ['API_URL', 'total']]);
+
+        assertSame([], self::judge($graph));
+    }
+
+    public function testATargetWithoutACompleteListIsSilent(): void
+    {
+        foreach ([[], ['member_names' => ['a'], 'member_names_open' => true], ['member_names' => 'a']] as $attributes) {
+            assertSame([], self::judge(DriftFixtures::graph([], [DriftFixtures::stub('gone')], targetAttributes: $attributes)));
+        }
+        assertSame([], self::judge(DriftFixtures::graph([], [DriftFixtures::stub('gone')], ['kind' => 'module', 'specifier' => './c'], targetKind: 'module', targetAttributes: ['exports' => ['a'], 'exports_open' => true])));
+    }
+
+    public function testASpecifierTheWorkerResolvedToANodeOutsideTheScanIsNotAGhost(): void
+    {
+        $double = DriftFixtures::node('test_double', 'tests/a.test.ts#double:2:1', 'vi.mock', [
+            'framework' => 'vitest', 'pattern' => 'vi.mock', 'target' => ['kind' => 'module', 'specifier' => './generated/client'], 'automock' => true, 'invocations' => 0, 'members' => [],
+        ], 2);
+        $graph = \Knossos\TestFidelity\TestFidelityGraph::fromContributions([new \Knossos\Scanner\Protocol\ScanContribution('knossos.typescript:file:tests/a.test.ts', [$double], [DriftFixtures::edge('doubles', $double, 'ts:module:src/generated/client.ts')])]);
+
+        assertSame([], self::judge($graph));
+    }
+
+    public function testAssetSpecifiersWithQueriesAreNotGhosts(): void
+    {
+        foreach (['./icon.svg?react', './x.css?inline', './q.graphql', './m.wasm', './f.woff2', './a.mp4'] as $specifier) {
+            assertSame([], self::judge(DriftFixtures::moduleGraph($specifier)), $specifier);
+        }
+    }
+
     public function testControlCharactersInANameDoNotReachTheMessage(): void
     {
         $graph = DriftFixtures::graph([], [DriftFixtures::stub("bad\n\x1bname")]);

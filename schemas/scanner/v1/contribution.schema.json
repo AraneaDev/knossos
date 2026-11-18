@@ -46,7 +46,33 @@
         },
         "confidence": { "enum": ["certain", "probable", "possible"] },
         "evidence": { "$ref": "#/$defs/evidence" },
-        "attributes": { "type": "object" }
+        "attributes": {
+          "type": "object",
+          "properties": {
+            "exports": {
+              "description": "A module node: every name it exports, sorted ('default' for the default export). Sent only when the worker could read the whole list.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "exports_open": {
+              "description": "True when exports cannot be complete (an `export *` from a module that does not resolve, an `export =`).",
+              "type": "boolean"
+            },
+            "member_names": {
+              "description": "A class or interface node: every member it declares or inherits, sorted, static members included.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "member_names_open": {
+              "description": "True when members cannot be complete (a base type that does not resolve, an index signature).",
+              "type": "boolean"
+            },
+            "overloaded": {
+              "description": "A function or method node declared with overload signatures: its signature attribute is the first one only.",
+              "type": "boolean"
+            }
+          }
+        }
       }
     },
     "node": {
@@ -161,7 +187,7 @@
         "automock": { "type": "boolean" },
         "invocations": { "type": "integer", "minimum": 0 },
         "test_case": { "type": "string", "minLength": 1 },
-        "members": {
+        "member_names": {
           "type": "array",
           "items": { "$ref": "#/$defs/stubbedMember" }
         }

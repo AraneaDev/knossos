@@ -22,6 +22,9 @@ import {
 } from "./typescript-fact-utils.js";
 import { signatureOf } from "./signatures.js";
 
+// What a declaration offers by name, read where its kind is: see public-names.js.
+export { moduleExports, typeMembers } from "./public-names.js";
+
 export function declarationDescriptor(node, sourceFile) {
     const name = declarationName(node, sourceFile);
     if (name === null) return null;

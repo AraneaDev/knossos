@@ -123,6 +123,12 @@ final readonly class TestFidelityGraph
         return $reference === null ? null : ($this->nodes[$reference] ?? null);
     }
 
+    /** Whether the double has a `doubles` edge at all, to a node the scan holds or not. */
+    public function hasTarget(TestDouble $double): bool
+    {
+        return isset($this->targets[$this->nodeOf($double)->localId]);
+    }
+
     /**
      * The node `$owner` declares or inherits under `$name`: a class's method
      * or property, an interface's, a module's declaration.

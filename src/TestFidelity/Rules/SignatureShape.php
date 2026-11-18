@@ -10,7 +10,7 @@ namespace Knossos\TestFidelity\Rules;
  */
 final readonly class SignatureShape
 {
-    /** @param list<array{type: ?string, variadic: bool}> $params */
+    /** @param list<array{type: ?string, optional: bool, variadic: bool}> $params */
     private function __construct(public array $params, public ?string $returns) {}
 
     /**
@@ -70,16 +70,22 @@ final readonly class SignatureShape
         return true;
     }
 
-    /** The parameters before a rest parameter: the ones that take one argument each. */
+    /** The parameters that take one argument each, a rest parameter apart. */
     public function fixedCount(): int
     {
         return count(array_filter($this->params, static fn(array $param): bool => !$param['variadic']));
     }
 
+    /** The parameters a caller must supply: not optional, not defaulted, not a rest parameter. */
+    public function requiredCount(): int
+    {
+        return count(array_filter($this->params, static fn(array $param): bool => !$param['variadic'] && !$param['optional']));
+    }
+
     /**
      * The parameters of a list as the wire states them; null when it is not a list of named parameters.
      *
-     * @return list<array{type: ?string, variadic: bool}>|null
+     * @return list<array{type: ?string, optional: bool, variadic: bool}>|null
      */
     private static function params(mixed $raw): ?array
     {
@@ -95,7 +101,7 @@ final readonly class SignatureShape
             if ($type !== null && !is_string($type)) {
                 return null;
             }
-            $params[] = ['type' => $type === '' ? null : $type, 'variadic' => ($param['variadic'] ?? false) === true];
+            $params[] = ['type' => $type === '' ? null : $type, 'optional' => ($param['optional'] ?? false) === true, 'variadic' => ($param['variadic'] ?? false) === true];
         }
 
         return $params;

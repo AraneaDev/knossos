@@ -54,6 +54,16 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertSame([], [...(new ReturnDriftRule())->findings($graph)]);
     }
 
+    public function testATruncatedOrMissingSignatureIsSilent(): void
+    {
+        $pinned = [['api' => 'mockReturnValue', 'line' => 9, 'once' => false, 'assignable' => false, 'typed' => false]];
+        foreach ([['signature' => ['params' => [], 'truncated' => true]], []] as $attributes) {
+            $graph = DriftFixtures::graph([DriftFixtures::method('total', $attributes)], [DriftFixtures::stub('total', null, $pinned)]);
+
+            assertSame([], [...(new ReturnDriftRule())->findings($graph)]);
+        }
+    }
+
     public function testUntypedIsAWarning(): void
     {
         assertSame(FindingConfidence::Warning, self::judge(false, false, null)[0]->confidence);

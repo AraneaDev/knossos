@@ -16,7 +16,9 @@ use Knossos\TestFidelity\TestFinding;
  * The worker judges assignability; this rule only reads its verdict. Silent
  * for `true` and for `"unknown"`. A `false` the worker reached with both
  * types declared is definite, one resting on an inferred or untyped side a warning.
- * Silent for an overloaded member, whose node holds only one of its signatures.
+ * Silent for a member with no signature, a cut-short one, or an overloaded one,
+ * whose node holds only one of its signatures. Only a whole signature that
+ * declares no return type is called inferred.
  */
 final readonly class ReturnDriftRule extends DriftRule
 {
@@ -26,11 +28,12 @@ final readonly class ReturnDriftRule extends DriftRule
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
     {
         $pinned = self::worst($pair->stub->returns);
-        if ($pair->member === null || $pinned === null || ($pair->member->attributes['overloaded'] ?? false) === true) {
+        // A missing, truncated or overloaded signature says nothing reliable about the return type.
+        $signature = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
+        if ($signature === null || $pinned === null) {
             return null;
         }
-        $declared = SignatureShape::ofMember($pair->member->attributes)?->returns;
-        $declared ??= 'an inferred type';
+        $declared = $signature->returns ?? 'an inferred type';
 
         return $pair->finding(
             FindingCategory::ReturnDrift,

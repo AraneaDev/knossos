@@ -10,10 +10,11 @@ use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\TestFidelity\TestFinding;
 
 /**
- * A double's replacement function declares more parameters than the member it
+ * A double's replacement function requires more parameters than the member it
  * replaces takes: the extra ones are handed nothing on every call.
  *
- * Fewer parameters is ordinary and is not reported. Silent for a cut-short
+ * Fewer parameters is ordinary and is not reported, and an optional, defaulted or
+ * rest parameter of the double is not required, so it is not counted. Silent for a cut-short
  * signature, an overloaded member, a rest parameter on the production side, or a
  * member without a signature.
  * Definite when every parameter on both sides is typed; a warning otherwise.
@@ -27,7 +28,7 @@ final readonly class ArityMismatchRule extends DriftRule
     {
         $actual = SignatureShape::ofParams($pair->stub->params);
         $declared = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
-        if ($actual === null || $declared === null || $declared->isVariadic() || $actual->fixedCount() <= count($declared->params)) {
+        if ($actual === null || $declared === null || $declared->isVariadic() || $actual->requiredCount() <= count($declared->params)) {
             return null;
         }
 
@@ -36,8 +37,8 @@ final readonly class ArityMismatchRule extends DriftRule
             $actual->isTyped() && $declared->isTyped() ? FindingConfidence::Definite : FindingConfidence::Warning,
             self::ID,
             'signature',
-            sprintf('%s takes %d argument(s); the double passes %d', DriftText::clean($pair->stub->name), count($declared->params), $actual->fixedCount()),
-            ['expected' => count($declared->params), 'actual' => $actual->fixedCount()],
+            sprintf('%s takes %d argument(s); the double passes %d', DriftText::clean($pair->stub->name), count($declared->params), $actual->requiredCount()),
+            ['expected' => count($declared->params), 'actual' => $actual->requiredCount()],
         );
     }
 }

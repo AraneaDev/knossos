@@ -71,6 +71,15 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertSame([], [...(new ArityMismatchRule())->findings($graph)]);
     }
 
+    public function testOptionalDefaultedAndRestParametersOfTheDoubleAreNotRequired(): void
+    {
+        $declared = ['params' => [['name' => 'id', 'type' => 'string']]];
+
+        assertSame([], self::judge($declared, [['name' => 'id', 'type' => 'string'], ['name' => 'opts', 'type' => 'Opts', 'optional' => true]]));
+        assertSame([], self::judge($declared, [['name' => 'id', 'type' => 'string'], ['name' => 'rest', 'type' => 'string[]', 'variadic' => true]]));
+        assertCount(1, self::judge($declared, [['name' => 'id'], ['name' => 'extra'], ['name' => 'opts', 'optional' => true]]));
+    }
+
     public function testNoDoubleParametersOrNoSignatureIsSilent(): void
     {
         $graph = DriftFixtures::graph([DriftFixtures::method('find')], [DriftFixtures::stub('find', [['name' => 'a']]), DriftFixtures::stub('other')]);

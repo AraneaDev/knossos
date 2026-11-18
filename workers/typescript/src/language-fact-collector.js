@@ -26,8 +26,10 @@ import {
     isObjectLiteralBinding,
     isTypeOnlyDeclaration,
     memberDeclaration,
+    moduleExports,
     objectLiteralContract,
     referenceableDeclaration,
+    typeMembers,
     unalias,
     valueReferencePosition,
 } from "./declaration-kinds.js";
@@ -134,6 +136,14 @@ export class TypeScriptLanguageFactCollector {
     finish() {
         this.tables.finish();
         this.frameworks.finish();
+        const exported = moduleExports(this.checker, this.sourceFile);
+        if (exported !== null) {
+            const attributes = this.accumulator.nodesById.get(
+                this.moduleId,
+            ).attributes;
+            attributes.exports = exported.exports;
+            if (exported.open) attributes.exports_open = true;
+        }
         if (this.untypedCalls.size === 0) return;
         this.accumulator.nodesById.get(
             this.moduleId,
@@ -374,6 +384,20 @@ export class TypeScriptLanguageFactCollector {
             fact.attributes = { ...fact.attributes, nestjs_roles: nest.roles };
         }
 
+        if (
+            kept &&
+            (ts.isClassDeclaration(node) || ts.isInterfaceDeclaration(node))
+        ) {
+            const listed = typeMembers(this.checker, node);
+            const fact = this.accumulator.nodesById.get(id);
+            if (listed !== null && fact.attributes.member_names === undefined) {
+                fact.attributes = {
+                    ...fact.attributes,
+                    member_names: listed.members,
+                    ...(listed.open ? { member_names_open: true } : {}),
+                };
+            }
+        }
         this.heritageEdges(node, id);
         this.objectLiteralContracts(node, id);
         this.returnEdges(node, id);

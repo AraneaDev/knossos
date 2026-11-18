@@ -186,6 +186,21 @@ A Rust parameter bound by a pattern rather than a name is listed as `_`. A node
 whose function cannot be read, such as a property assigned the result of a
 call, has no `signature`.
 
+#### Complete name lists
+
+All of it optional. A TypeScript module node may carry `exports` and a class
+or interface node `member_names`: the sorted names the worker read through its
+type checker, so a core can tell a name that is gone from one that has no node
+of its own (`export const`, `export { a as b }`, accessors, constructor
+parameter properties, static members). `exports` names every export, the
+default export as `"default"`, and follows `export *` and aliases; `member_names`
+names every member the type declares or inherits. A list is sent only when the
+worker could read it, and a list that cannot be complete says so with
+`exports_open: true` (an `export *` from a module that does not resolve, an
+`export =`) or `member_names_open: true` (a base type that does not resolve, an
+index signature). A reader judges a name absent only from a list that is
+present, complete and not open; a node without one says nothing.
+
 #### Repeated edges
 
 A worker reports an edge once per site it saw: `helper(); helper();` is two

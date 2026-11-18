@@ -164,6 +164,16 @@ final class TestFidelityGraphTest extends KnossosTestCase
         assertNull($graph->member($child, 'absent'));
     }
 
+    public function testHasTargetIsTrueForAnEdgeWhateverItPointsAt(): void
+    {
+        $double = self::double('tests/a.test.ts#double:7:1', ['kind' => 'module', 'specifier' => './x']);
+        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.typescript:file:tests/a.test.ts', [$double], [self::edge('doubles', $double, 'ts:module:src/x.ts')])]);
+
+        assertTrue($graph->hasTarget($graph->doubles()[0]));
+        assertNull($graph->target($graph->doubles()[0]));
+        assertFalse(TestFidelityGraph::fromContributions(self::contributions())->hasTarget(TestFidelityGraph::fromContributions(self::contributions())->doubles()[2]));
+    }
+
     public function testMemberNamesCoverTheWholeHierarchySorted(): void
     {
         [$graph, $child] = self::hierarchy();
