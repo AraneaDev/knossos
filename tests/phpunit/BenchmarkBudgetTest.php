@@ -129,10 +129,10 @@ final class BenchmarkBudgetTest extends KnossosTestCase
 
     public function testAScenarioWithinItsLimitBreaksNothing(): void
     {
-        assertSame([], \benchmarkScenarioViolations('test_fidelity_rescan_one_file', 2.08, 2.08));
+        assertSame([], \benchmarkScenarioViolations('test_fidelity_rescan_one_file', 2.07, 2.07));
         assertSame(
-            ['scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds 2.09 exceeds 2.08'],
-            \benchmarkScenarioViolations('test_fidelity_rescan_one_file', 2.08, 2.09),
+            ['scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds 2.08 exceeds 2.07'],
+            \benchmarkScenarioViolations('test_fidelity_rescan_one_file', 2.07, 2.08),
         );
     }
 

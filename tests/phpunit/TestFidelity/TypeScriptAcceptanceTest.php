@@ -168,11 +168,14 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
     }
 
     /**
-     * Findings are judged over every contribution, reused ones included: a
-     * test file left as it was is held to its production file as that file
-     * is now, and a test file the change did not reach keeps its findings.
+     * Findings follow an edit to the target, in both directions, though the
+     * test file is not edited. The worker's read set reaches the target, so
+     * the test file is parsed again (directly, through a barrel, or through
+     * a base class in another file alike); a test file the edit did not
+     * reach is reused and keeps its findings. That a reused contribution is
+     * judged against a changed one is pinned in ScanAnalysisPipelineTest.
      */
-    public function testAnUntouchedTestFileIsJudgedAgainstItsChangedTarget(): void
+    public function testFindingsFollowAnEditToTheTargetInBothDirections(): void
     {
         [$pdo, $service, $root] = $this->scanned(['momus' => '']);
         $before = self::findings($pdo);
@@ -183,7 +186,7 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
         $changed = $service->scan($root);
         $drift = array_values(array_filter(self::findings($pdo), static fn(string $finding): bool => str_starts_with($finding, 'RETURN_DRIFT/')));
 
-        // Only the edited file and the test that reads it were parsed again.
+        // The edited file and the test that reads it were parsed again; the rest were reused.
         assertSame([2, 10], [$changed->data['parsed_files'], $changed->data['unchanged_files']]);
         assertSame(['RETURN_DRIFT/return_type/definite@tests/assignability.test.ts:16'], $drift);
         assertSame(array_values(array_filter($before, static fn(string $finding): bool => !str_contains($finding, 'assignability'))), array_values(array_filter(self::findings($pdo), static fn(string $finding): bool => !str_contains($finding, 'assignability'))));
@@ -194,7 +197,8 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
         assertSame($before, self::findings($pdo));
     }
 
-    public function testAnUntouchedTestFileFindsTheGhostOfARenamedMember(): void
+    /** A member renamed in the target makes its double a ghost, and renaming it back clears it. */
+    public function testAGhostFollowsARenameOfTheTargetInBothDirections(): void
     {
         [$pdo, $service, $root] = $this->scanned(self::NEMESIS);
         $production = $root . '/src/UserService.ts';

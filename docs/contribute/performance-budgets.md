@@ -72,12 +72,12 @@ file and scans again, five times, and holds the median incremental scan to
 
 | scenario                        | corpus                                                      | incremental scan |
 | ------------------------------- | ----------------------------------------------------------- | ---------------: |
-| `test_fidelity_rescan_one_file` | one TypeScript class, five test files with 20 doubles of it |            2.08s |
+| `test_fidelity_rescan_one_file` | one TypeScript class, five test files with 20 doubles of it |            2.07s |
 
 `test_fidelity_rescan_one_file` measures what test fidelity adds to a rescan:
 the edit makes all five test files read again and every double judged. Its
-limit is 110% of the same scenario on commit `e9e156c2`, the commit before
-test fidelity, on the same machine (1.89s there, 1.90s with it, each the
+limit is 109.5% of the same scenario on commit `e9e156c2` (no more than 110%), the commit
+before test fidelity, on the same machine (1.89s there, 1.90s with it, each the
 median of three runs). Unlike the sizes it is set against that baseline, not
 against shared CI runners, so measure it again on the runner that enforces it
 before relying on it there.
