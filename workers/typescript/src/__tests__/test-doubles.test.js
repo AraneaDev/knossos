@@ -155,6 +155,51 @@ describe("a spy", () => {
     });
 });
 
+describe("an implementation that declares no return type", () => {
+    it("does not read a widened literal as drift", () => {
+        const { nodes } = scan(fixture("momus"));
+        // The healthy twin: `status: 'open'` widens to `string` in the
+        // inferred return, yet fits `'open' | 'closed'` as written.
+        expect(
+            doubleAt(nodes, "tests/signature.fixture.ts", 12).attributes
+                .members[0].returns,
+        ).toMatchObject([{ api: "mockImplementation", assignable: true }]);
+    });
+
+    it("holds each returned expression of an inferred implementation", () => {
+        const { nodes } = scan({
+            "src/row.ts":
+                "export interface Row { id: string; status: 'open' | 'closed' }\n" +
+                "export class Repo {\n" +
+                "  load(): Row { throw new Error(); }\n" +
+                "  async fetch(): Promise<Row> { throw new Error(); }\n" +
+                "}\n",
+            "tests/widen.test.ts":
+                "import { vi } from 'vitest';\n" +
+                "import { Repo } from '../src/row';\n" +
+                "const repo = new Repo();\n" +
+                "vi.spyOn(repo, 'load').mockImplementation(() => ({ id: 'a', status: 'open' }));\n" +
+                "vi.spyOn(repo, 'load').mockImplementation(() => { if (repo) return { id: 'a', status: 'closed' }; return { id: 'b', status: 'open' }; });\n" +
+                "vi.spyOn(repo, 'load').mockImplementation(() => ({ id: 'a', status: 'gone' }));\n" +
+                "vi.spyOn(repo, 'fetch').mockImplementation(async () => ({ id: 'a', status: 'open' }));\n" +
+                "vi.spyOn(repo, 'load').mockImplementation(() => ({ id: 1, status: 'open' }));\n" +
+                "vi.spyOn(repo, 'load').mockImplementation(() => ({ status: 'open' }));\n",
+        });
+        const assignable = (line) =>
+            doubleAt(nodes, "tests/widen.test.ts", line).attributes.members[0]
+                .returns[0].assignable;
+
+        expect([4, 5, 6, 7, 8, 9].map(assignable)).toEqual([
+            true,
+            true,
+            false,
+            true,
+            false,
+            false,
+        ]);
+    });
+});
+
 describe("a module mock", () => {
     it("records module mocks with their factory keys", () => {
         const { nodes, edges } = scan({

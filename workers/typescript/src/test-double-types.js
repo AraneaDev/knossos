@@ -10,7 +10,8 @@
 
 import ts from "typescript";
 import { relativeInside, belowNodeModules } from "./project-paths.js";
-import { stripCast } from "./test-double-syntax.js";
+import { inferredReturnFits } from "./test-double-returns.js";
+import { functionArgument, stripCast } from "./test-double-syntax.js";
 import { unwrapExpression } from "./typescript-fact-utils.js";
 
 /** Pinning APIs whose argument is the member's return value. */
@@ -108,8 +109,19 @@ function assignability(checker, pin, owner, member) {
         const typed = declared.typed && value.typed;
         if (containsTypeParameter(checker, expected))
             return { assignable: "unknown", typed };
+        // An inferred return widens what it builds; what it returns is held
+        // to the declared type as written instead.
+        const inferred =
+            IMPLEMENTATION_APIS.has(pin.api) && !value.typed
+                ? functionArgument(argument)
+                : undefined;
+        const written =
+            inferred === undefined
+                ? null
+                : inferredReturnFits(checker, inferred, expected);
         return {
-            assignable: checker.isTypeAssignableTo(value.type, expected),
+            assignable:
+                written ?? checker.isTypeAssignableTo(value.type, expected),
             typed,
         };
     } catch {

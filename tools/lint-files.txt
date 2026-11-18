@@ -1718,6 +1718,7 @@ js	workers/typescript/src/source-reading.js
 js	workers/typescript/src/syntax-predicates.js
 js	workers/typescript/src/table-dispatch.js
 js	workers/typescript/src/test-double-reach.js
+js	workers/typescript/src/test-double-returns.js
 js	workers/typescript/src/test-double-syntax.js
 js	workers/typescript/src/test-double-types.js
 js	workers/typescript/src/test-doubles.js
