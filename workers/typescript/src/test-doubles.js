@@ -42,6 +42,7 @@ import {
 } from "./test-double-syntax.js";
 import {
     declaredInProject,
+    moduleNamespace,
     namedTarget,
     ownerOf,
     pinnedValue,
@@ -228,18 +229,34 @@ class TestDoubleFile {
         const [object, member] = node.arguments;
         if (object === undefined || member === undefined) return;
         const memberName = ts.isStringLiteralLike(member) ? member.text : null;
-        const owner = ownerOf(this.checker, object);
+        // `vi.spyOn(ns, 'f')` on `import * as ns` replaces a module's export.
+        const namespace = moduleNamespace(this.checker, object);
+        const owner = namespace?.owner ?? ownerOf(this.checker, object);
         const written = owner?.name ?? castName(object, this.sourceFile);
         const implementation = chainedImplementation(node);
+        const memberTarget = memberName === null ? {} : { member: memberName };
         const double = this.add(node, {
             pattern,
-            target: {
-                kind: "instance-member",
-                ...(written === undefined ? {} : { export: written }),
-                ...(memberName === null ? {} : { member: memberName }),
-            },
+            target:
+                namespace !== null
+                    ? {
+                          kind: "module",
+                          specifier: namespace.specifier.text,
+                          ...memberTarget,
+                      }
+                    : {
+                          kind: "instance-member",
+                          ...(written === undefined ? {} : { export: written }),
+                          ...memberTarget,
+                      },
             owner,
-            edge: this.edgeTo(owner),
+            edge:
+                namespace !== null
+                    ? this.context.moduleTarget(
+                          namespace.specifier.text,
+                          namespace.specifier,
+                      )
+                    : this.edgeTo(owner),
             members:
                 memberName === null
                     ? []
@@ -540,6 +557,6 @@ function castName(expression, sourceFile) {
 
 function displayName(double) {
     const { export: name, member, specifier } = double.target;
-    const subject = specifier ?? [name, member].filter(Boolean).join(".");
+    const subject = [specifier ?? name, member].filter(Boolean).join(".");
     return subject === "" ? double.pattern : `${double.pattern} ${subject}`;
 }

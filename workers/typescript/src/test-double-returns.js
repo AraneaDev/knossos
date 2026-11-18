@@ -11,7 +11,7 @@
  */
 
 import ts from "typescript";
-import { staticName } from "./test-double-syntax.js";
+import { dottedName, staticName } from "./test-double-syntax.js";
 
 /**
  * True, false, or `"unknown"` when a returned expression cannot be held to
@@ -59,8 +59,12 @@ function all(answers) {
     return answers.includes("unknown") ? "unknown" : true;
 }
 
-/** Whether one expression, as written, fits a type. */
-function fits(checker, expression, expected) {
+/**
+ * Whether one expression, as written, fits a type: true, false, or
+ * `"unknown"` when only a type inferred from it, which may have widened what
+ * it builds, could say.
+ */
+export function fits(checker, expression, expected) {
     let value = expression;
     while (ts.isParenthesizedExpression(value)) value = value.expression;
     if (expected.flags & ts.TypeFlags.AnyOrUnknown) return true;
@@ -71,6 +75,13 @@ function fits(checker, expression, expected) {
         ]);
     if (ts.isObjectLiteralExpression(value))
         return objectFits(checker, value, expected);
+    // `await x` and `Promise.resolve(x)` hand on `x`: hold `x` itself to
+    // what the promise must resolve to.
+    if (ts.isAwaitExpression(value))
+        return resolvedFits(checker, value.expression, expected);
+    const awaited = checker.getAwaitedType(expected) ?? expected;
+    if (awaited !== expected && promiseResolve(value) !== undefined)
+        return resolvedFits(checker, value, awaited);
     if (ts.isArrayLiteralExpression(value)) {
         const element = checker.getIndexTypeOfType(
             expected,
@@ -85,13 +96,54 @@ function fits(checker, expression, expected) {
                 ),
             );
     }
-    return checker.isTypeAssignableTo(
+    return checkerAnswer(
+        checker,
+        value,
         checker.getTypeAtLocation(value),
         expected,
     );
 }
 
-/** Whether an object literal fits a type: some member of a union, or every property. */
+/** Whether what `value` resolves to fits `expected`. */
+function resolvedFits(checker, value, expected) {
+    const resolved = promiseResolve(value);
+    if (resolved !== undefined) return fits(checker, resolved, expected);
+    const type = checker.getTypeAtLocation(value);
+    return checkerAnswer(
+        checker,
+        value,
+        checker.getAwaitedType(type) ?? type,
+        expected,
+    );
+}
+
+/** `x` in `Promise.resolve(x)`, past parentheses. */
+function promiseResolve(expression) {
+    let value = expression;
+    while (ts.isParenthesizedExpression(value)) value = value.expression;
+    return ts.isCallExpression(value) &&
+        value.arguments.length === 1 &&
+        dottedName(value.expression) === "Promise.resolve"
+        ? value.arguments[0]
+        : undefined;
+}
+
+/**
+ * The checker's answer for an expression's type. A generic call or `new`
+ * infers its type from its arguments, widening their literals with no
+ * context to hold them, so a refusal there proves nothing.
+ */
+function checkerAnswer(checker, value, type, expected) {
+    if (checker.isTypeAssignableTo(type, expected)) return true;
+    if (!ts.isCallExpression(value) && !ts.isNewExpression(value)) return false;
+    const declaration = checker.getResolvedSignature(value)?.getDeclaration();
+    return (declaration?.typeParameters?.length ?? 0) > 0 ? "unknown" : false;
+}
+
+/**
+ * Whether an object literal fits a type: some member of a union, every
+ * part of an intersection, or every property.
+ */
 function objectFits(checker, literal, expected) {
     if (expected.isUnion()) {
         const answers = expected.types.map((part) =>
@@ -100,6 +152,10 @@ function objectFits(checker, literal, expected) {
         if (answers.includes(true)) return true;
         return answers.includes("unknown") ? "unknown" : false;
     }
+    if (expected.isIntersection())
+        return all(
+            expected.types.map((part) => objectFits(checker, literal, part)),
+        );
     if (!(expected.flags & ts.TypeFlags.Object))
         return checker.isTypeAssignableTo(
             checker.getTypeAtLocation(literal),

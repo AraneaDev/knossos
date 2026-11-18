@@ -10,7 +10,7 @@
 
 import ts from "typescript";
 import { relativeInside, belowNodeModules } from "./project-paths.js";
-import { inferredReturnFits } from "./test-double-returns.js";
+import { fits, inferredReturnFits } from "./test-double-returns.js";
 import { functionArgument, stripCast } from "./test-double-syntax.js";
 import { unwrapExpression } from "./typescript-fact-utils.js";
 
@@ -33,8 +33,38 @@ export function namedTarget(type) {
         return null;
     const symbol = type.aliasSymbol ?? type.getSymbol();
     const name = symbol?.getName();
-    if (name === undefined || name.startsWith("__")) return null;
+    // A module's symbol is named by its file's absolute path: a module is
+    // named by the specifier that imports it instead (`moduleNamespace`).
+    if (
+        name === undefined ||
+        name.startsWith("__") ||
+        symbol.flags & ts.SymbolFlags.ValueModule
+    )
+        return null;
     return { symbol, name, type };
+}
+
+/**
+ * The module an identifier bound by `import * as ns from 'x'` stands for:
+ * its specifier, and its type when the checker resolved the module.
+ */
+export function moduleNamespace(checker, expression) {
+    const value = stripCast(expression);
+    if (!ts.isIdentifier(value)) return null;
+    const binding = checker
+        .getSymbolAtLocation(value)
+        ?.declarations?.find((item) => ts.isNamespaceImport(item));
+    const specifier = binding?.parent.parent.moduleSpecifier;
+    if (specifier === undefined || !ts.isStringLiteral(specifier)) return null;
+    const type = checker.getTypeAtLocation(value);
+    const module = type.getSymbol();
+    return {
+        specifier,
+        owner:
+            module !== undefined && module.flags & ts.SymbolFlags.ValueModule
+                ? { symbol: module, name: specifier.text, type }
+                : null,
+    };
 }
 
 /**
@@ -109,16 +139,18 @@ function assignability(checker, pin, owner, member) {
         const typed = declared.typed && value.typed;
         if (containsTypeParameter(checker, expected))
             return { assignable: "unknown", typed };
-        // An inferred return widens what it builds; what it returns is held
-        // to the declared type as written instead.
+        // A value with no context to type it, and an inferred return, widen
+        // the literals they build; each is held to the declared type as
+        // written instead.
         const inferred =
             IMPLEMENTATION_APIS.has(pin.api) && !value.typed
                 ? functionArgument(argument)
                 : undefined;
-        const written =
-            inferred === undefined
-                ? null
-                : inferredReturnFits(checker, inferred, expected);
+        const written = !IMPLEMENTATION_APIS.has(pin.api)
+            ? fits(checker, argument, expected)
+            : inferred === undefined
+              ? null
+              : inferredReturnFits(checker, inferred, expected);
         return {
             assignable:
                 written ?? checker.isTypeAssignableTo(value.type, expected),

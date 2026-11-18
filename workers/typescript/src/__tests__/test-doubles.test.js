@@ -43,6 +43,7 @@ function scan(files) {
         (c) => contributions.push(c),
     );
     return {
+        root,
         nodes: contributions.flatMap((c) => c.nodes),
         edges: contributions.flatMap((c) => c.edges),
     };
@@ -197,6 +198,79 @@ describe("an implementation that declares no return type", () => {
             false,
             false,
         ]);
+    });
+});
+
+const ROW =
+    "export interface Row { id: string; status: 'open' | 'closed' }\n" +
+    "export interface Stamp { at: number }\n" +
+    "export class Repo {\n" +
+    "  load(): Row { throw new Error(); }\n" +
+    "  fetch(): Promise<Row> { throw new Error(); }\n" +
+    "  both(): Row & Stamp { throw new Error(); }\n" +
+    "}\n";
+
+describe("a pinned value held as written", () => {
+    it("fits a literal union whatever form pins it", () => {
+        const { nodes } = scan({
+            "src/row.ts": ROW,
+            "tests/pins.test.ts":
+                "import { vi } from 'vitest';\n" +
+                "import { Repo } from '../src/row';\n" +
+                "const repo = new Repo();\n" +
+                "vi.spyOn(repo, 'load').mockReturnValue({ id: 'a', status: 'open' });\n" +
+                "vi.spyOn(repo, 'fetch').mockResolvedValue({ id: 'a', status: 'open' });\n" +
+                "vi.spyOn(repo, 'fetch').mockImplementation(() => Promise.resolve({ id: 'a', status: 'open' }));\n" +
+                "vi.spyOn(repo, 'both').mockImplementation(() => ({ id: 'a', status: 'open', at: 1 }));\n" +
+                "vi.spyOn(repo, 'load').mockReturnValue({ id: 'a', status: 'gone' });\n" +
+                "vi.spyOn(repo, 'both').mockImplementation(() => ({ id: 'a', status: 'open' }));\n" +
+                "vi.spyOn(repo, 'fetch').mockResolvedValue({ id: 'a', status: 'gone' });\n",
+        });
+        const pinned = (line) =>
+            doubleAt(nodes, "tests/pins.test.ts", line).attributes.members[0]
+                .returns[0];
+
+        // Healthy twins: no drift from a literal the checker would widen.
+        expect(pinned(4)).toMatchObject({ assignable: true, typed: true });
+        expect(pinned(5)).toMatchObject({ assignable: true, typed: true });
+        expect(pinned(6).assignable).toBe(true);
+        expect(pinned(7).assignable).toBe(true);
+        // Planted: a status the union lacks, a property the intersection needs.
+        expect(pinned(8)).toMatchObject({ assignable: false, typed: true });
+        expect(pinned(9).assignable).toBe(false);
+        expect(pinned(10)).toMatchObject({ assignable: false, typed: true });
+    });
+});
+
+describe("a spy on a module namespace", () => {
+    it("targets the module and names no absolute path", () => {
+        const { root, nodes, edges } = scan({
+            "src/util.ts": "export function f(): number { return 1; }\n",
+            "tests/n.test.ts":
+                "import { vi } from 'vitest';\n" +
+                "import * as util from '../src/util';\n" +
+                "vi.spyOn(util, 'f').mockReturnValue(2);\n" +
+                "util.f();\n",
+        });
+        const spy = doubleAt(nodes, "tests/n.test.ts", 3);
+
+        expect(spy.attributes).toMatchObject({
+            target: { kind: "module", specifier: "../src/util", member: "f" },
+            invocations: 1,
+            members: [
+                { name: "f", returns: [{ assignable: true, typed: true }] },
+            ],
+        });
+        expect(spy.attributes.target.export).toBeUndefined();
+        expect(JSON.stringify(spy)).not.toContain(root);
+        expect(
+            edges
+                .filter(
+                    (edge) =>
+                        edge.kind === "doubles" && edge.source === spy.local_id,
+                )
+                .map((edge) => edge.target),
+        ).toEqual(["ts:module:src/util.ts"]);
     });
 });
 
