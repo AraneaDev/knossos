@@ -129,7 +129,14 @@
     "testDoubleAttributes": {
       "description": "What a test_double node carries: the mocking framework, the pattern that made the double, what it replaces, whether it is an automock, how often its file calls it, the test_case it belongs to and the members the test configures. Optional: a worker that does not read tests emits none of these nodes.",
       "type": "object",
-      "required": ["framework", "pattern", "target", "automock", "invocations", "members"],
+      "required": [
+        "framework",
+        "pattern",
+        "target",
+        "automock",
+        "invocations",
+        "members"
+      ],
       "properties": {
         "framework": { "enum": ["vitest", "jest"] },
         "pattern": { "type": "string", "minLength": 1 },
@@ -137,7 +144,15 @@
           "type": "object",
           "required": ["kind"],
           "properties": {
-            "kind": { "enum": ["module", "class", "instance-member", "global", "unknown"] },
+            "kind": {
+              "enum": [
+                "module",
+                "class",
+                "instance-member",
+                "global",
+                "unknown"
+              ]
+            },
             "specifier": { "type": "string" },
             "export": { "type": "string" },
             "member": { "type": "string" }
@@ -146,7 +161,10 @@
         "automock": { "type": "boolean" },
         "invocations": { "type": "integer", "minimum": 0 },
         "test_case": { "type": "string", "minLength": 1 },
-        "members": { "type": "array", "items": { "$ref": "#/$defs/stubbedMember" } }
+        "members": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stubbedMember" }
+        }
       }
     },
     "stubbedMember": {
@@ -155,9 +173,20 @@
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "line": { "type": "integer", "minimum": 1 },
-        "api": { "enum": ["spyOn", "mockFactoryKey", "objectLiteralKey", "instance-member", "unknown"] },
+        "api": {
+          "enum": [
+            "spyOn",
+            "mockFactoryKey",
+            "objectLiteralKey",
+            "instance-member",
+            "unknown"
+          ]
+        },
         "params": { "type": "array" },
-        "returns": { "type": "array", "items": { "$ref": "#/$defs/pinnedValue" } }
+        "returns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pinnedValue" }
+        }
       }
     },
     "pinnedValue": {
@@ -178,9 +207,15 @@
       "properties": {
         "name": { "type": "string" },
         "production_calls": { "type": "integer", "minimum": 0 },
-        "subjects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "subjects": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
         "should_panic": { "type": "boolean" },
-        "assertions": { "type": "array", "items": { "$ref": "#/$defs/testAssertion" } }
+        "assertions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/testAssertion" }
+        }
       }
     },
     "testAssertion": {
@@ -189,15 +224,28 @@
       "properties": {
         "api": { "type": "string", "minLength": 1 },
         "line": { "type": "integer", "minimum": 1 },
-        "operands": { "type": "array", "items": { "$ref": "#/$defs/testOperand" } }
+        "operands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/testOperand" }
+        }
       }
     },
     "testOperand": {
       "type": "object",
       "required": ["source"],
       "properties": {
-        "source": { "enum": ["mock-config", "mock-call", "production", "literal", "parameter", "unknown"] },
+        "source": {
+          "enum": [
+            "mock-config",
+            "mock-call",
+            "production",
+            "literal",
+            "parameter",
+            "unknown"
+          ]
+        },
         "text": { "type": "string" },
+        "value": { "type": "string" },
         "double": { "type": "string" },
         "unconfigured_spy": { "type": "boolean" }
       }

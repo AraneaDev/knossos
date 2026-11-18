@@ -114,7 +114,7 @@ describe("an echoed stub value", () => {
         const echo = assertionAt(nodes, path, 18);
         expect(echo.api).toBe("toBe");
         expect(echo.operands).toEqual([
-            { source: "mock-config", text: "42", double: eachMock },
+            { source: "mock-config", value: "42", double: eachMock },
             { source: "literal", text: "42" },
         ]);
         expect(echo.test.canonical_name).toBe(`${path}#test:17`);
@@ -136,29 +136,28 @@ describe("an echoed stub value", () => {
         const { nodes } = scan(fixture("momus"));
         const path = "tests/before-each.test.ts";
         const configured = (line) =>
-            assertionAt(nodes, path, line).operands.map(({ source, text }) => ({
-                source,
-                text,
-            }));
+            assertionAt(nodes, path, line).operands.map(
+                ({ source, text, value }) => ({ source, text, value }),
+            );
 
         // beforeAll at module level, then the nested describes' beforeEach.
         expect(configured(22)).toEqual([
-            { source: "mock-config", text: "7" },
+            { source: "mock-config", value: "7" },
             { source: "literal", text: "7" },
         ]);
         expect(configured(39)).toEqual([
-            { source: "mock-config", text: "11" },
+            { source: "mock-config", value: "11" },
             { source: "literal", text: "11" },
         ]);
         expect(configured(49)).toEqual([
-            { source: "mock-config", text: "22" },
+            { source: "mock-config", value: "22" },
             { source: "literal", text: "22" },
         ]);
         // A stub configured in the test body itself.
         expect(
             assertionAt(nodes, "tests/ledger.test.ts", 11).operands,
         ).toMatchObject([
-            { source: "mock-config", text: "42" },
+            { source: "mock-config", value: "42" },
             { source: "literal", text: "42" },
         ]);
     });
@@ -174,6 +173,8 @@ describe("an echoed stub value", () => {
                 "  const svc = new Svc();",
                 "  vi.spyOn(svc, 'total').mockReturnValue(5);",
                 "  expect(svc.total()).toBe(5);",
+                "  const got = svc.total();",
+                "  expect(got).toBe(5);",
                 "});",
                 "it('passes through', () => {",
                 "  const svc = new Svc();",
@@ -188,12 +189,20 @@ describe("an echoed stub value", () => {
         expect(assertionAt(nodes, path, 6).operands).toEqual([
             {
                 source: "mock-config",
-                text: "5",
+                value: "5",
                 double: doubleAt(nodes, path, 5).canonical_name,
             },
             { source: "literal", text: "5" },
         ]);
-        expect(assertionAt(nodes, path, 11).operands).toEqual([
+        // A variable holding the stub's answer reads as written, and carries
+        // the value pinned.
+        expect(assertionAt(nodes, path, 8).operands[0]).toEqual({
+            source: "mock-config",
+            text: "got",
+            value: "5",
+            double: doubleAt(nodes, path, 5).canonical_name,
+        });
+        expect(assertionAt(nodes, path, 13).operands).toEqual([
             { source: "production" },
             { source: "literal", text: "1" },
         ]);

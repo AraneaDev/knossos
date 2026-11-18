@@ -174,20 +174,16 @@ export class TestScope {
         );
     }
 
-    /** An operand on the wire: `{source, text?, double?, unconfigured_spy?}`. */
+    /** An operand on the wire: `{source, text?, value?, double?, unconfigured_spy?}`. */
     operand(expression) {
         const found = this.provenance(expression);
         const operand = { source: found.source };
-        // A stub's operand reads as the value it was pinned to; any other
-        // reads as written, unless evaluating it again could give another
-        // value (a call, a `new`), when no text can show it equal to itself.
-        const text =
-            found.source === "mock-config"
-                ? found.value
-                : reevaluates(expression)
-                  ? undefined
-                  : this.text(expression);
-        if (text !== undefined) operand.text = text;
+        // An operand reads as written, unless evaluating it again could give
+        // another value (a call, a `new`): then no text can show it equal to
+        // itself. A stub's operand also carries the value it was pinned to.
+        if (!reevaluates(expression)) operand.text = this.text(expression);
+        if (found.source === "mock-config" && found.value !== undefined)
+            operand.value = found.value;
         if (found.double !== undefined) {
             operand.double = found.double.canonical;
             if (unconfiguredSpy(found.double)) operand.unconfigured_spy = true;

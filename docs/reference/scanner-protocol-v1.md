@@ -230,8 +230,12 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
 - `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
   `subjects` (canonical names of the production modules those calls land in),
   `should_panic` (optional) and `assertions`, each `{api, line, operands}` with
-  operands `{source, text?, double?, unconfigured_spy?}`, `source` one of
-  `mock-config`, `mock-call`, `production`, `literal`, `parameter`, `unknown`.
+  operands `{source, text?, value?, double?, unconfigured_spy?}`, `source` one
+  of `mock-config`, `mock-call`, `production`, `literal`, `parameter`,
+  `unknown`. `text` is the operand's own source text, left out when evaluating
+  it again could give another value (a call, a `new`); `value` is, for a
+  stubbed operand, the source text of the value the stub was configured to
+  return.
 - `doubles` edge: from a `test_double` to the production class, interface,
   function, method or module it replaces, with the confidence the worker has in
   that link. A `contains` edge ties a module to its doubles and test cases.

@@ -8,8 +8,8 @@ use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\Origin;
-use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\TestFidelity\Facts\TestCaseFact;
+use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
@@ -48,7 +48,10 @@ final class TestCaseFactTest extends KnossosTestCase
             'assertions' => [[
                 'api' => 'toBe',
                 'line' => 9,
-                'operands' => [['source' => 'mock-config'], ['source' => 'literal', 'text' => '42']],
+                'operands' => [
+                    ['source' => 'mock-config', 'text' => 'cart.total()', 'value' => '42'],
+                    ['source' => 'literal', 'text' => '42'],
+                ],
             ]],
         ];
     }
@@ -61,6 +64,9 @@ final class TestCaseFactTest extends KnossosTestCase
         assertSame('literal', $case->assertions[0]->operands[1]->source);
         assertSame('42', $case->assertions[0]->operands[1]->text);
         assertSame(false, $case->assertions[0]->operands[1]->unconfiguredSpy);
+        assertSame('cart.total()', $case->assertions[0]->operands[0]->text);
+        assertSame('42', $case->assertions[0]->operands[0]->value);
+        assertNull($case->assertions[0]->operands[1]->value);
         assertSame(['src/cart.ts'], $case->subjects);
         assertNull($case->shouldPanic);
     }
@@ -69,6 +75,14 @@ final class TestCaseFactTest extends KnossosTestCase
     {
         $attributes = self::attributes();
         $attributes['assertions'][0]['operands'][0]['source'] = 'telepathy';
+
+        assertNull(TestCaseFact::fromNode(self::node('test_case', $attributes)));
+    }
+
+    public function testReturnsNullForAValueThatIsNoString(): void
+    {
+        $attributes = self::attributes();
+        $attributes['assertions'][0]['operands'][0]['value'] = 42;
 
         assertNull(TestCaseFact::fromNode(self::node('test_case', $attributes)));
     }
