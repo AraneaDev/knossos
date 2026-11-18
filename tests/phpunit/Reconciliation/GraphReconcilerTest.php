@@ -1837,7 +1837,7 @@ final class GraphReconcilerTest extends TestCase
 
         $expected = [
             'prepare', 'archive_snapshot', 'read_existing', 'save_files', 'save_nodes',
-            'save_edges', 'save_classifications', 'save_boundaries', 'prune', 'contribution_cache',
+            'save_edges', 'save_classifications', 'save_test_findings', 'save_boundaries', 'prune', 'contribution_cache',
             'save_diagnostics', 'commit',
         ];
         assertSame($expected, array_keys($result->phaseMilliseconds));
@@ -2699,6 +2699,8 @@ final class FakeGraphRepository implements GraphRepository
     /** @var list<array<int, mixed>> */
     public array $classifications = [];
     /** @var list<array<int, mixed>> */
+    public array $testFindings = [];
+    /** @var list<array<int, mixed>> */
     public array $boundaries = [];
     /** @var list<array<int, mixed>> */
     public array $boundaryMemberships = [];
@@ -2722,6 +2724,7 @@ final class FakeGraphRepository implements GraphRepository
         $this->edges = [];
         $this->diagnostics = [];
         $this->classifications = [];
+        $this->testFindings = [];
         $this->boundaries = [];
         $this->boundaryMemberships = [];
         $this->contributionCaches = [];
@@ -2911,22 +2914,15 @@ final class FakeGraphRepository implements GraphRepository
     /** @param list<array<string, mixed>> $classifications */
     public function saveClassifications(array $classifications, string $projectId, string $scanId): void
     {
-        foreach ($classifications as $classification) {
-            $this->saveClassification(
-                $classification['id'],
-                $projectId,
-                $classification['node_id'],
-                $classification['role'],
-                $classification['origin'],
-                $classification['confidence'],
-                $classification['rule_id'],
-                $classification['file_id'],
-                $classification['start_line'],
-                $classification['end_line'],
-                $classification['attributes'],
-                $scanId,
-            );
+        foreach ($classifications as $c) {
+            $this->saveClassification($c['id'], $projectId, $c['node_id'], $c['role'], $c['origin'], $c['confidence'], $c['rule_id'], $c['file_id'], $c['start_line'], $c['end_line'], $c['attributes'], $scanId);
         }
+    }
+
+    /** @param list<array<string, mixed>> $findings */
+    public function saveTestFindings(array $findings, string $projectId, string $scanId): void
+    {
+        $this->testFindings = array_map(static fn(array $finding): array => [$projectId, $scanId, $finding], $findings);
     }
 
     /** @param list<array<string, mixed>> $memberships */

@@ -74,6 +74,7 @@ This file is generated from enforced PHP interface docblocks and the isolated PH
 - `saveEdges(array $edges, string $projectId, string $scanId): void`: Persist a batch of occurrence-level, evidence-backed directed graph edges
 - `saveFiles(array $files, string $projectId, string $scanId): void`: Persist a batch of discovered files as one multi-row upsert
 - `saveClassifications(array $classifications, string $projectId, string $scanId): void`: Persist a batch of role classifications as one multi-row insert
+- `saveTestFindings(array $findings, string $projectId, string $scanId): void`: Replace the project's test-fidelity findings with this scan's
 - `saveBoundaryMemberships(array $memberships, string $projectId, string $scanId): void`: Persist a batch of boundary memberships as one multi-row insert
 - `saveDiagnostic(string $id, string $projectId, string $scanId, ?string $fileId, string $severity, string $code, string $message, ?int $startLine, ?int $endLine, string $ownerKey): void`: Persist one bounded scanner or reconciliation diagnostic
 - `saveClassification(string $id, string $projectId, string $nodeId, string $role, string $origin, string $confidence, string $ruleId, ?string $fileId, ?int $startLine, ?int $endLine, array $attributes, string $scanId): void`: Persist one deterministic role classification with rule provenance
@@ -83,6 +84,11 @@ This file is generated from enforced PHP interface docblocks and the isolated PH
 - `findNodesByName(string $projectId, string $name, int $limit = 20): array`: Return bounded exact and display-name component matches
 - `outgoing(string $projectId, string $nodeId, ?string $kind = null, int $limit = 100): array`: Return bounded outgoing adjacency rows for one node
 - `incoming(string $projectId, string $nodeId, ?string $kind = null, int $limit = 100): array`: Return bounded incoming adjacency rows for one node
+
+### `Knossos\TestFidelity\TestFidelityRule`
+
+- `id(): string`: The id every finding of this rule carries: `test.fidelity.<category in lowercase>.v<N>`
+- `findings(Knossos\TestFidelity\TestFidelityGraph $graph): iterable`: What this rule finds in the scan's graph, in any order
 
 ## Isolated worker APIs
 

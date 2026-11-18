@@ -536,6 +536,12 @@ php	src/TestFidelity/Facts/PinnedValue.php
 php	src/TestFidelity/Facts/StubbedMember.php
 php	src/TestFidelity/Facts/TestCaseFact.php
 php	src/TestFidelity/Facts/TestDouble.php
+php	src/TestFidelity/FindingCategory.php
+php	src/TestFidelity/FindingConfidence.php
+php	src/TestFidelity/TestFidelityAnalysis.php
+php	src/TestFidelity/TestFidelityGraph.php
+php	src/TestFidelity/TestFidelityRule.php
+php	src/TestFidelity/TestFinding.php
 php	src/Watch/ExternalScanProbe.php
 php	src/Watch/ProcessScanner.php
 php	src/Watch/ScanTimeoutException.php
@@ -993,6 +999,7 @@ php	tests/phpunit/Reconciliation/ReconciliationExceptionTest.php
 php	tests/phpunit/Reconciliation/ReconciliationResultTest.php
 php	tests/phpunit/Reconciliation/ReconciliationTest.php
 php	tests/phpunit/Reconciliation/RouteTemplatesTest.php
+php	tests/phpunit/Reconciliation/TestFindingsPersistenceTest.php
 php	tests/phpunit/Reconciliation/UrlTemplateTest.php
 php	tests/phpunit/Reconciliation/WatchTest.php
 php	tests/phpunit/ReleaseChecksTest.php
@@ -1247,6 +1254,8 @@ php	tests/phpunit/Support/TempTrees.php
 php	tests/phpunit/Support/WorkerClients.php
 php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
 php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
+php	tests/phpunit/TestFidelity/TestFidelityAnalysisTest.php
+php	tests/phpunit/TestFidelity/TestFidelityGraphTest.php
 php	tests/phpunit/Watch/ExternalScanProbeTest.php
 php	tests/phpunit/Watch/ProcessScannerTest.php
 php	tests/phpunit/Watch/SessionLinkTest.php

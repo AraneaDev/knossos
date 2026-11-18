@@ -6,6 +6,7 @@ namespace Knossos\Reconciliation;
 
 use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
+use Knossos\Scanner\Protocol\Origin;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Store\SharedNodeKinds;
 use Knossos\Store\StableId;
@@ -65,7 +66,52 @@ final readonly class GraphAssembler
             $this->resolveBoundaries($projectId, $request->boundaries, $nodeMap),
             [...$nodeWarnings, ...$edgeWarnings, ...$binding->warnings],
             count($externalNodes),
+            $this->resolveTestFindings($projectId, $request->testFindings, $nodeMap, $fileIds),
         );
+    }
+
+    /**
+     * Resolve test findings onto node ids, as classifications are resolved.
+     *
+     * A finding's ids follow from what it says, so an identical workspace
+     * stores the same ids; two rules reporting the same thing keep one row.
+     *
+     * @param list<\Knossos\TestFidelity\TestFinding> $findings
+     * @param array<string, string> $nodeMap
+     * @param array<string, string> $fileIds
+     * @return list<array<string, mixed>>
+     */
+    private function resolveTestFindings(string $projectId, array $findings, array $nodeMap, array $fileIds): array
+    {
+        $resolved = [];
+        foreach ($findings as $finding) {
+            $nodeId = $nodeMap[$finding->doubleOrCaseReference] ?? null;
+            $targetId = $finding->targetReference === null ? null : ($nodeMap[$finding->targetReference] ?? null);
+            if ($nodeId === null || ($finding->targetReference !== null && $targetId === null)) {
+                throw new ReconciliationException(sprintf('Test finding node was not emitted: %s', $nodeId === null ? $finding->doubleOrCaseReference : $finding->targetReference));
+            }
+            $fileId = $fileIds[$finding->evidence->relativePath] ?? null;
+            if ($fileId === null) {
+                throw new ReconciliationException(sprintf('Test finding evidence file was not discovered: %s', $finding->evidence->relativePath));
+            }
+            $id = StableId::testFinding($projectId, $nodeId, $finding->ruleId, $finding->subRule, (string) $finding->evidence->startLine, $finding->message);
+            $resolved[$id] ??= [
+                'id' => $id,
+                'node_id' => $nodeId,
+                'target_node_id' => $targetId,
+                'category' => $finding->category->value,
+                'origin' => Origin::Derived->value,
+                'confidence' => $finding->confidence->value,
+                'rule_id' => $finding->ruleId,
+                'sub_rule' => $finding->subRule,
+                'message' => $finding->message,
+                'file_id' => $fileId,
+                'start_line' => $finding->evidence->startLine,
+                'end_line' => $finding->evidence->endLine,
+                'attributes' => $finding->attributes,
+            ];
+        }
+        return array_values($resolved);
     }
 
     /**

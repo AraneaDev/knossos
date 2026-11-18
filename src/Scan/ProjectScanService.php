@@ -17,6 +17,7 @@ use Knossos\Scan\Conventions\FolderFactsRefresher;
 use Knossos\Store\ProjectRepository;
 use Knossos\Store\ScanBusyException;
 use Knossos\Store\SqliteGraphRepository;
+use Knossos\TestFidelity\TestFidelityAnalysis;
 use PDO;
 
 /**
@@ -50,6 +51,8 @@ final class ProjectScanService implements ProjectScanner
      *        reason; null keeps none, as for an in-memory database.
      * @param ?FolderCompanionsBuilder $companions injected so a test can drive
      *        the companions' git run without a subprocess.
+     * @param ?TestFidelityAnalysis $testFidelity the test-fidelity rules, injected
+     *        so a test can run stand-in rules end to end; production runs its own.
      */
     public function __construct(
         private PDO $pdo,
@@ -60,6 +63,7 @@ final class ProjectScanService implements ProjectScanner
         ?EnrichersFile $enrichers = null,
         private ?ScanFailureLog $failures = null,
         ?FolderCompanionsBuilder $companions = null,
+        ?TestFidelityAnalysis $testFidelity = null,
     ) {
         $this->planner = new ScanPlanner($pdo, $allowedRoots, $gitHead, $dirtyPaths);
         $this->workerPool = new LanguageWorkerPool();
@@ -70,7 +74,7 @@ final class ProjectScanService implements ProjectScanner
             installationRoot: $installationRoot,
             pdo: $pdo,
         );
-        $this->analysisPipeline = new ScanAnalysisPipeline();
+        $this->analysisPipeline = $testFidelity === null ? new ScanAnalysisPipeline() : new ScanAnalysisPipeline($testFidelity);
         $this->snapshotValidator = new ScanSnapshotValidator();
         $this->resultFactory = new ScanResultFactory($installationRoot);
         $this->enrichment = new EnrichmentPhase($pdo, $enrichers);
@@ -387,6 +391,7 @@ final class ProjectScanService implements ProjectScanner
             $language->readGroups,
             $enrichers,
             $scanId,
+            $analysis->testFindings,
         );
     }
 

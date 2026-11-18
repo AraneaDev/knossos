@@ -8,8 +8,8 @@ use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\Origin;
-use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\TestFidelity\Facts\TestDouble;
+use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;

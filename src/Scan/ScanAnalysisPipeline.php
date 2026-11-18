@@ -27,18 +27,24 @@ use Knossos\Classification\{
     TypeScriptFrameworkRoleRule
 };
 use Knossos\Scanner\Protocol\Confidence;
+use Knossos\Scanner\Protocol\ScanContribution;
+use Knossos\TestFidelity\TestFidelityAnalysis;
 
 /**
- * Derives roles and boundaries from facts the workers reported.
+ * Derives roles, boundaries and test-fidelity findings from facts the workers reported.
  *
- * Runs after reconciliation because it reasons over the whole graph — a role rule
+ * Reasons over the whole set of contributions, reused ones included — a role rule
  * may depend on a class's inheritance, which is only known once every file's facts
- * are present.
+ * are present, and a test double is judged against the code it replaces as that
+ * code is now.
  */
 final readonly class ScanAnalysisPipeline
 {
+    /** @param TestFidelityAnalysis $testFidelity the test-fidelity rules every scan runs */
+    public function __construct(private TestFidelityAnalysis $testFidelity = new TestFidelityAnalysis()) {}
+
     /**
-     * Derive roles and boundaries once the whole graph is present.
+     * Derive roles, boundaries and test-fidelity findings once the whole graph is present.
      *
      * @param list<object> $contributions
      */
@@ -93,6 +99,10 @@ final readonly class ScanAnalysisPipeline
                 $plan->preparation->explicitBoundaries,
             ),
             $warnings,
+            $this->testFidelity->analyze(array_values(array_filter(
+                $contributions,
+                static fn(object $contribution): bool => $contribution instanceof ScanContribution,
+            ))),
         );
     }
 
