@@ -354,6 +354,7 @@ php	src/Query/RescanService.php
 php	src/Query/ReviewDiffService.php
 php	src/Query/ReviewSection.php
 php	src/Query/ScannerFactory.php
+php	src/Query/SearchExclusions.php
 php	src/Query/SemanticRanker.php
 php	src/Query/SessionBrief.php
 php	src/Query/SessionBriefRenderer.php
@@ -517,6 +518,7 @@ php	src/Store/ProjectRepository.php
 php	src/Store/ScanBusyException.php
 php	src/Store/SharedNodeKinds.php
 php	src/Store/SnapshotBounds.php
+php	src/Store/SnapshotFacts.php
 php	src/Store/SnapshotPayload.php
 php	src/Store/SnapshotPayloadWriter.php
 php	src/Store/SqliteBusy.php
@@ -1283,6 +1285,8 @@ php	tests/phpunit/TestFidelity/Rules/TautologyRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/VisibilityBreachRuleTest.php
 php	tests/phpunit/TestFidelity/ScansTypeScript.php
 php	tests/phpunit/TestFidelity/TautologyEndToEndTest.php
+php	tests/phpunit/TestFidelity/TestFactsSearchTest.php
+php	tests/phpunit/TestFidelity/TestFactsSnapshotTest.php
 php	tests/phpunit/TestFidelity/TestFidelityAnalysisTest.php
 php	tests/phpunit/TestFidelity/TestFidelityGraphTest.php
 php	tests/phpunit/TestFidelity/TypeScriptAcceptanceTest.php
@@ -1694,6 +1698,7 @@ js	workers/typescript/src/__tests__/input-hashes-unread-program.test.js
 js	workers/typescript/src/__tests__/launches.test.js
 js	workers/typescript/src/__tests__/location-keys.test.js
 js	workers/typescript/src/__tests__/member-visibility.test.js
+js	workers/typescript/src/__tests__/module-mock-options.test.js
 js	workers/typescript/src/__tests__/nestjs-handlers.test.js
 js	workers/typescript/src/__tests__/nestjs-routes.test.js
 js	workers/typescript/src/__tests__/overloads.test.js
@@ -1720,6 +1725,7 @@ js	workers/typescript/src/__tests__/template-dynamic-imports.test.js
 js	workers/typescript/src/__tests__/test-case-twins.test.js
 js	workers/typescript/src/__tests__/test-cases.test.js
 js	workers/typescript/src/__tests__/test-doubles.test.js
+js	workers/typescript/src/__tests__/test-facts-failure.test.js
 js	workers/typescript/src/__tests__/typescript-fact-utils.test.js
 js	workers/typescript/src/__tests__/untyped-member-calls.test.js
 js	workers/typescript/src/__tests__/worker-startup.test.js

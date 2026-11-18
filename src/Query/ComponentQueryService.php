@@ -9,7 +9,6 @@ use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\NodeQueries;
-use Knossos\Store\SnapshotFacts;
 use PDO;
 
 /**
@@ -105,7 +104,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
     {
         $declared = $this->pdo->prepare(
             'SELECT n.*, f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id ' .
-            'WHERE f.project_id = :project AND f.relative_path = :path AND ' . self::notDerivedTestFact('n') . " ORDER BY CASE WHEN n.kind = 'module' THEN 0 ELSE 1 END, n.start_line, n.canonical_name LIMIT :fetch_limit",
+            'WHERE f.project_id = :project AND f.relative_path = :path AND ' . SearchExclusions::notDerivedTestFact('n') . " ORDER BY CASE WHEN n.kind = 'module' THEN 0 ELSE 1 END, n.start_line, n.canonical_name LIMIT :fetch_limit",
         );
         $declared->bindValue(':project', $projectId);
         $declared->bindValue(':path', $path);
@@ -516,7 +515,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             // An attribute's words and numbers, never its name, a true or false, the scanner's bookkeeping or a
             // list of the names something else declares: the raw JSON's LIKE narrows first.
             $attribute = "(n.attributes_json LIKE :$key ESCAPE '!' AND EXISTS (SELECT 1 FROM json_tree(n.attributes_json) jt WHERE jt.type IN ('text', 'integer', 'real') " .
-                "AND jt.key NOT IN ('scanner', 'scanner_local_id')" . self::outsideNameLists('jt') . " AND jt.atom LIKE :$key ESCAPE '!'))";
+                "AND jt.key NOT IN ('scanner', 'scanner_local_id')" . SearchExclusions::outsideNameLists('jt') . " AND jt.atom LIKE :$key ESCAPE '!'))";
             $matches = "(n.canonical_name LIKE :$key ESCAPE '!' OR n.display_name LIKE :$key ESCAPE '!' OR $attribute " .
                 "OR EXISTS (SELECT 1 FROM classifications cq WHERE cq.node_id = n.id AND cq.role LIKE :$key ESCAPE '!'))";
             $own[] = $matches;
@@ -529,7 +528,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             'WHEN ' . implode(' AND ', $own) . ' THEN 4 ELSE 5 END AS rank' . ($anyTerm ? ", $matched AS matched" : '') . ' ' .
             'FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.project_id = :project AND ' .
             ($anyTerm ? '(' . implode(' OR ', $either) . ')' : implode(' AND ', $either));
-        $sql .= $kinds === [] ? ' AND ' . self::notDerivedTestFact('n') : $this->filterClause('n.kind', 'kind', $kinds, $params);
+        $sql .= $kinds === [] ? ' AND ' . SearchExclusions::notDerivedTestFact('n') : $this->filterClause('n.kind', 'kind', $kinds, $params);
         $sql .= $this->filterClause('n.confidence', 'confidence', $confidences, $params);
         if ($roles !== []) {
             $clause = $this->filterClause('cr.role', 'role', $roles, $params);
@@ -616,38 +615,6 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         );
         $statement->execute(['project' => $projectId, 'name' => $canonicalName]);
         return $statement->fetchAll();
-    }
-
-    /**
-     * The attributes that list the names a node's members or exports declare
-     * (inherited ones included), which search never matches: every subclass
-     * of a class would otherwise match each name its parent declares.
-     */
-    private const NAME_LIST_ATTRIBUTES = ['exports', 'exports_open', 'member_names', 'member_names_open'];
-
-    /**
-     * A condition, joined with a leading ` AND `, holding for a `json_tree`
-     * row outside every {@see self::NAME_LIST_ATTRIBUTES} list.
-     */
-    private static function outsideNameLists(string $alias): string
-    {
-        // SQLite quotes a key holding anything but letters and digits (`$."member_names"[0]`); without the quotes the key reads the same either way.
-        $path = "replace({$alias}.fullkey, '\"', '')";
-        $outside = array_map(
-            static fn(string $name): string => "{$path} <> '\$.{$name}' AND {$path} NOT GLOB '\$.{$name}[[]*'",
-            self::NAME_LIST_ATTRIBUTES,
-        );
-
-        return ' AND ' . implode(' AND ', $outside);
-    }
-
-    /**
-     * A condition holding for a node that is not a test double or test case:
-     * facts derived from test code, found only when a kind filter asks for them.
-     */
-    private static function notDerivedTestFact(string $alias): string
-    {
-        return sprintf("%s.kind NOT IN ('%s')", $alias, implode("', '", SnapshotFacts::DERIVED_NODE_KINDS));
     }
 
     /**
