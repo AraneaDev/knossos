@@ -1674,6 +1674,7 @@ js	workers/typescript/src/__tests__/support/require-candidates.mjs
 js	workers/typescript/src/__tests__/support/scan-limits.mjs
 js	workers/typescript/src/__tests__/table-dispatch.test.js
 js	workers/typescript/src/__tests__/template-dynamic-imports.test.js
+js	workers/typescript/src/__tests__/test-cases.test.js
 js	workers/typescript/src/__tests__/test-doubles.test.js
 js	workers/typescript/src/__tests__/typescript-fact-utils.test.js
 js	workers/typescript/src/__tests__/untyped-member-calls.test.js
@@ -1717,6 +1718,9 @@ js	workers/typescript/src/source-caches.js
 js	workers/typescript/src/source-reading.js
 js	workers/typescript/src/syntax-predicates.js
 js	workers/typescript/src/table-dispatch.js
+js	workers/typescript/src/test-case-flow.js
+js	workers/typescript/src/test-case-production.js
+js	workers/typescript/src/test-cases.js
 js	workers/typescript/src/test-double-reach.js
 js	workers/typescript/src/test-double-returns.js
 js	workers/typescript/src/test-double-syntax.js

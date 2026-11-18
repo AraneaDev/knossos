@@ -142,7 +142,10 @@ class TestDoubleFile {
 
     bind(name, double) {
         const symbol = name && this.checker.getSymbolAtLocation(name);
-        if (symbol !== undefined) this.bindings.set(symbol, double);
+        if (symbol === undefined) return;
+        this.bindings.set(symbol, double);
+        // The test-case facts name a double by the variable that holds it.
+        double.binding = symbol;
     }
 
     /** The double an identifier holds, read as the value a shorthand property copies. */

@@ -7,6 +7,7 @@ import { callSitesInto, destructuresUntyped } from "./call-argument-sites.js";
 import { inRootFile } from "./input-reads.js";
 import { TypeScriptLanguageFactCollector } from "./language-fact-collector.js";
 import { relativeInside } from "./project-paths.js";
+import { collectTestCases } from "./test-cases.js";
 import { isTestModule } from "./test-module-paths.js";
 import { collectTestDoubles } from "./test-doubles.js";
 
@@ -119,9 +120,11 @@ class FactCollector {
         this.visit(language.sourceFile);
         language.finish();
         // A test module's mocks, spies and stubs, for the core to hold
-        // against the code they stand in for.
-        if (isTestModule(language.relative))
-            collectTestDoubles(language.sourceFile, language.checker, language);
+        // against the code they stand in for, and its tests' assertions.
+        if (!isTestModule(language.relative)) return;
+        const { sourceFile, checker } = language;
+        const doubles = collectTestDoubles(sourceFile, checker, language);
+        collectTestCases(sourceFile, checker, doubles, language);
     }
 
     visit(node) {
