@@ -73,6 +73,62 @@ final class GhostMemberRuleTest extends KnossosTestCase
         assertSame([], self::judge($graph));
     }
 
+    public function testAnExternalAncestorMakesAbsenceProveNothing(): void
+    {
+        // The ancestor is in the scan, as the worker's stand-in for a class outside the project.
+        $emitter = DriftFixtures::node('external_class', 'events#EventEmitter', 'EventEmitter');
+        $graph = DriftFixtures::graph(
+            [DriftFixtures::method('save')],
+            [DriftFixtures::stub('on')],
+            extra: [$emitter],
+            extraEdges: [DriftFixtures::edge('extends', DriftFixtures::node('class', 'src/UserService.ts#UserService', 'UserService'), $emitter->localId)],
+        );
+
+        assertSame([], self::judge($graph));
+    }
+
+    public function testANameReExportedThroughAChainIsNotAGhost(): void
+    {
+        assertSame([], self::judge(self::reExportChain('helper', [])));
+    }
+
+    public function testANameAbsentFromAReExportChainWithACompleteListIsAGhost(): void
+    {
+        $findings = self::judge(self::reExportChain('gone', ['helper']));
+
+        assertCount(1, $findings);
+        assertSame('missing_export', $findings[0]->subRule);
+        assertSame('vi.spyOn stubs gone, which UserService no longer has', $findings[0]->message);
+    }
+
+    /**
+     * A barrel module, the double's target, re-exporting a module that
+     * re-exports another, which declares `helper`.
+     *
+     * @param list<string> $exports the barrel's complete export list
+     */
+    private static function reExportChain(string $stubbed, array $exports): \Knossos\TestFidelity\TestFidelityGraph
+    {
+        $barrel = DriftFixtures::node('module', 'src/UserService.ts#UserService', 'UserService');
+        $middle = DriftFixtures::node('module', 'src/middle.ts', 'middle.ts', ['exports' => ['helper']]);
+        $helpers = DriftFixtures::node('module', 'src/helpers.ts', 'helpers.ts', ['exports' => ['helper']]);
+        $helper = DriftFixtures::node('function', 'src/helpers.ts#helper', 'helper');
+
+        return DriftFixtures::graph(
+            [],
+            [DriftFixtures::stub($stubbed)],
+            ['kind' => 'module', 'specifier' => './UserService'],
+            extra: [$middle, $helpers, $helper],
+            extraEdges: [
+                DriftFixtures::edge('re_exports', $barrel, $middle->localId),
+                DriftFixtures::edge('re_exports', $middle, $helpers->localId),
+                DriftFixtures::edge('contains', $helpers, $helper->localId),
+            ],
+            targetKind: 'module',
+            targetAttributes: ['exports' => $exports],
+        );
+    }
+
     public function testModuleTargetIsAMissingExport(): void
     {
         $graph = DriftFixtures::graph([], [DriftFixtures::stub('gone')], ['kind' => 'module', 'specifier' => './UserService'], targetKind: 'module');
