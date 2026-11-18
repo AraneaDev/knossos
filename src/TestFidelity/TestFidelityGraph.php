@@ -30,7 +30,8 @@ final readonly class TestFidelityGraph
      * @param array<string, NodeFact> $nodes every node by reference; the first contribution to emit one wins
      * @param array<string, NodeFact> $factNodes the test double and test case nodes, by canonical name
      * @param list<TestDouble> $doubles
-     * @param list<TestCaseFact> $testCases
+     * @param array<string, TestCaseFact> $testCases by canonical name, in canonical-name order
+     * @param array<string, list<TestCaseFact>> $testCasesByFile the same, by the file each is in
      * @param array<string, string> $targets double reference => target reference
      * @param array<string, list<string>> $children container reference => contained references
      * @param array<string, list<string>> $parents type reference => the types it extends, implements or uses, in edge order
@@ -40,6 +41,7 @@ final readonly class TestFidelityGraph
         private array $factNodes,
         private array $doubles,
         private array $testCases,
+        private array $testCasesByFile,
         private array $targets,
         private array $children,
         private array $parents,
@@ -85,8 +87,12 @@ final readonly class TestFidelityGraph
         }
         ksort($doubles, SORT_STRING);
         ksort($testCases, SORT_STRING);
+        $byFile = [];
+        foreach ($testCases as $case) {
+            $byFile[self::fileOf($case->canonicalName)][] = $case;
+        }
 
-        return new self($nodes, $factNodes, array_values($doubles), array_values($testCases), $targets, $children, $parents);
+        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents);
     }
 
     /**
@@ -106,7 +112,29 @@ final readonly class TestFidelityGraph
      */
     public function testCases(): array
     {
-        return $this->testCases;
+        return array_values($this->testCases);
+    }
+
+    /** The test case of that canonical name, or null when the scan holds none. */
+    public function testCase(string $canonicalName): ?TestCaseFact
+    {
+        return $this->testCases[$canonicalName] ?? null;
+    }
+
+    /**
+     * Every test case of one file, by canonical name.
+     *
+     * @return list<TestCaseFact>
+     */
+    public function testCasesIn(string $file): array
+    {
+        return $this->testCasesByFile[$file] ?? [];
+    }
+
+    /** The file a test fact's canonical name is in: what comes before its `#`. */
+    public static function fileOf(string $canonicalName): string
+    {
+        return explode('#', $canonicalName)[0];
     }
 
     /** The node a double or test case was read from: its reference, display name and evidence. */

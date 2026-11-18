@@ -163,7 +163,31 @@ final class TestFidelityAnalysisTest extends KnossosTestCase
         };
 
         $this->expectException(\DomainException::class);
-        (new TestFidelityAnalysis($broken))->report([]);
+        (new TestFidelityAnalysis($broken))->report(self::emitting('ts:test_case:a.test.ts#test:1'));
+    }
+
+    public function testNoRuleRunsOnAScanWithoutATestFact(): void
+    {
+        $broken = new class implements TestFidelityRule {
+            public function id(): string
+            {
+                return 'test.fidelity.ghost_member.v1';
+            }
+
+            public function findings(TestFidelityGraph $graph): iterable
+            {
+                throw new InvalidArgumentException('ran');
+            }
+        };
+        $production = [new ScanContribution('knossos.typescript:file:src/a.ts', [
+            new NodeFact('ts:module:src/a.ts', 'module', 'src/a.ts', 'a.ts', Origin::Ast, Confidence::Certain, new Evidence('src/a.ts', 1, 1)),
+        ])];
+
+        $report = (new TestFidelityAnalysis($broken))->report($production);
+
+        assertSame([[], []], [$report->findings, $report->warnings]);
+        // A test case alone, malformed or not, is a fact the rules read.
+        assertSame(1, count((new TestFidelityAnalysis($broken))->report([...$production, ...self::emitting('ts:test_case:a.test.ts#test:1')])->warnings));
     }
 
     public function testRuleIdsAreSorted(): void

@@ -23,20 +23,17 @@ final class DoubleTests
      */
     public static function of(TestDouble $double, TestFidelityGraph $graph): array
     {
-        $file = self::file($double->canonicalName);
-        $tests = [];
-        foreach ($graph->testCases() as $case) {
-            if ($double->testCase === null ? self::file($case->canonicalName) === $file : $case->canonicalName === $double->testCase) {
-                $tests[] = $case;
-            }
+        if ($double->testCase === null) {
+            return $graph->testCasesIn(self::file($double->canonicalName));
         }
+        $case = $graph->testCase($double->testCase);
 
-        return $tests;
+        return $case === null ? [] : [$case];
     }
 
     /** The file a test fact's canonical name is in: what comes before its `#`. */
     public static function file(string $canonicalName): string
     {
-        return explode('#', $canonicalName)[0];
+        return TestFidelityGraph::fileOf($canonicalName);
     }
 }

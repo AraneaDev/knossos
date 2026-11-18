@@ -69,7 +69,8 @@ final readonly class TestFidelityAnalysis
      */
     public function report(array $contributions): TestFidelityReport
     {
-        if ($this->rules === []) {
+        // Most scans hold no test fact at all: no rule then has anything to read.
+        if ($this->rules === [] || !self::holdsTestFacts($contributions)) {
             return new TestFidelityReport([]);
         }
         $graph = TestFidelityGraph::fromContributions($contributions);
@@ -111,6 +112,25 @@ final readonly class TestFidelityAnalysis
             ...($failed === [] ? [] : [sprintf('TEST_FINDING_RULE_FAILED: %d test-fidelity rule(s) failed on this scan\'s facts and their findings were dropped (%s).', count($failed), implode(', ', array_keys($failed)))]),
             ...self::warning('TEST_FINDING_TARGET_UNRESOLVED', $untargeted, 'named a target not in the scan and were kept without one'),
         ]);
+    }
+
+    /**
+     * Whether any contribution emits a test double or a test case node,
+     * well formed or not.
+     *
+     * @param list<ScanContribution> $contributions
+     */
+    private static function holdsTestFacts(array $contributions): bool
+    {
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->nodes as $node) {
+                if ($node->kind === 'test_double' || $node->kind === 'test_case') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
