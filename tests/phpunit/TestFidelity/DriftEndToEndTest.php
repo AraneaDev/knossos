@@ -49,6 +49,16 @@ final class DriftEndToEndTest extends KnossosTestCase
                 vi.spyOn(cart, 'totalCent');
             });
             TS,
+        'src/vault.ts' => "export class Vault {\n    private secret(): number { return 1; }\n    #hidden(): number { return 2; }\n    open(): number { return this.secret() + this.#hidden(); }\n}\n",
+        'tests/vault.test.ts' => <<<'TS'
+            import { it, vi } from 'vitest';
+            import { Vault } from '../src/vault';
+            it('reaches past the interface', () => {
+                const vault = new Vault();
+                vi.spyOn(vault as any, 'secret');
+                vi.spyOn(vault as any, '#hidden');
+            });
+            TS,
         'tests/virtual.test.ts' => <<<'TS'
             import { it, vi } from 'vitest';
             vi.mock('./virtual-thing', () => ({ run: vi.fn() }), { virtual: true });
@@ -77,6 +87,16 @@ final class DriftEndToEndTest extends KnossosTestCase
         assertSame([], array_map(static fn(TestFinding $finding): string => $finding->message, array_values($virtual)));
     }
 
+    public function testAKeywordPrivateMemberIsAWarningAndAHashPrivateOneDefinite(): void
+    {
+        $vault = array_filter($this->findings(), static fn(TestFinding $finding): bool => $finding->evidence->relativePath === 'tests/vault.test.ts');
+
+        assertSame([
+            'VISIBILITY_BREACH warning 5 secret is private; the double bypasses the public interface',
+            'VISIBILITY_BREACH definite 6 #hidden is private; a double cannot replace it',
+        ], array_map(static fn(TestFinding $finding): string => sprintf('%s %s %d %s', $finding->category->value, $finding->confidence->value, $finding->evidence->startLine, $finding->message), array_values($vault)));
+    }
+
     public function testAPlantedGhostIsFoundAndNothingElse(): void
     {
         $messages = array_map(static fn(TestFinding $finding): string => $finding->evidence->relativePath . ' ' . $finding->subRule . ' ' . $finding->message, $this->findings());
@@ -84,6 +104,8 @@ final class DriftEndToEndTest extends KnossosTestCase
         assertSame([
             'tests/ghost.test.ts missing_export vi.mock ../src/config stubs API_UR, which config.ts no longer has; did you mean API_URL?',
             'tests/ghost.test.ts missing_member vi.spyOn Cart.totalCent stubs totalCent, which Cart no longer has; did you mean totalCents?',
+            'tests/vault.test.ts visibility secret is private; the double bypasses the public interface',
+            'tests/vault.test.ts visibility #hidden is private; a double cannot replace it',
         ], $messages);
     }
 }

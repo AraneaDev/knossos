@@ -51,6 +51,13 @@ use PHPUnit\Framework\Attributes\Group;
  * 8. `dogfood-clean/tests/catalog.test.ts:1`: Momus reports MOCK-001
  *    (over-mocked), Nemesis nothing; Nemesis's silence is expected, and
  *    Knossos's MOCKS_SUBJECT fires only on a mocked sole or named-for subject.
+ * 9. `UserService.spec.ts:23`: Nemesis reports the spy on a `private` method
+ *    as a definite visibility breach, and the spec maps VISIBILITY_BREACH to
+ *    definite. TypeScript's `private` and `protected` hold at compile time
+ *    only, so `vi.spyOn(s as any, 'secret')` does replace the method; Knossos
+ *    reports a `warning` that the double bypasses the public interface. An
+ *    ECMAScript `#name` member, which no double can reach, stays `definite`.
+ *    A deviation from the spec's confidence mapping, decided in review.
  */
 #[Group('test-fidelity')]
 #[Group('typescript-scanner')]
@@ -144,7 +151,7 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
         assertSame(self::sorted([
             'GHOST_MEMBER/missing_member/definite@tests/UserService.spec.ts:7',
             'RETURN_DRIFT/return_type/warning@tests/UserService.spec.ts:17',
-            'VISIBILITY_BREACH/visibility/definite@tests/UserService.spec.ts:23',
+            'VISIBILITY_BREACH/visibility/warning@tests/UserService.spec.ts:23',
             'TAUTOLOGY/self_comparison/definite@tests/UserService.spec.ts:32',
         ]), self::findings($pdo));
     }
