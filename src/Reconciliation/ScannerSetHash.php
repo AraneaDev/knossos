@@ -21,10 +21,16 @@ final class ScannerSetHash
      * hash is what it was before enrichers existed, so a stored graph keeps
      * its fast path.
      *
+     * The test-fidelity rules count by id, which carries the rule's version:
+     * the findings a graph stores were judged by them, so adding, removing or
+     * revising one has to rebuild the graph rather than take the fast path.
+     * With no rules the hash is unchanged, as with no enrichers.
+     *
      * @param list<ScannerManifest> $scanners
      * @param list<EnricherDefinition> $enrichers
+     * @param list<string> $testFidelityRules the ids of the registered test-fidelity rules
      */
-    public static function of(array $scanners, array $enrichers = []): string
+    public static function of(array $scanners, array $enrichers = [], array $testFidelityRules = []): string
     {
         $serialized = [];
         foreach ($scanners as $scanner) {
@@ -39,6 +45,11 @@ final class ScannerSetHash
             ksort($active, SORT_STRING);
             // A key no scanner id takes, since none starts with a colon.
             $serialized[':enrichers'] = $active;
+        }
+        if ($testFidelityRules !== []) {
+            $rules = array_values(array_unique($testFidelityRules));
+            sort($rules, SORT_STRING);
+            $serialized[':test_fidelity'] = $rules;
         }
         return hash('sha256', json_encode($serialized, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
     }

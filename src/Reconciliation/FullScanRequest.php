@@ -50,6 +50,8 @@ final readonly class FullScanRequest
      *        them); null has reconciliation make one.
      * @param list<TestFinding> $testFindings what the test-fidelity rules found,
      *        stored with the scan in place of the project's previous findings.
+     * @param list<string> $testFidelityRules the ids of the rules that judged
+     *        them, hashed into the scanner set so a rule change rebuilds the graph.
      */
     public function __construct(
         public string $projectIdentity,
@@ -70,6 +72,7 @@ final readonly class FullScanRequest
         public array $enrichers = [],
         public ?string $scanId = null,
         public array $testFindings = [],
+        public array $testFidelityRules = [],
     ) {
         if ($projectIdentity === '' || $projectName === '') {
             throw new InvalidArgumentException('Project identity and name must not be empty.');

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\Reconciliation;
 
+use Knossos\Reconciliation\FullScanRequest;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanOptions;
+use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
@@ -17,7 +19,10 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
 use function PHPUnit\Framework\assertArrayHasKey;
+use function PHPUnit\Framework\assertArrayNotHasKey;
+use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
+use function PHPUnit\Framework\assertStringContainsString;
 
 use PHPUnit\Framework\Attributes\Group;
 
@@ -66,16 +71,47 @@ final class TestFindingsPersistenceTest extends KnossosTestCase
         };
     }
 
-    /** @return array{0: PDO, 1: ProjectScanService, 2: string} */
-    private function scanned(): array
+    /**
+     * A rule whose findings name nodes no worker emitted: one a target that is
+     * not in the scan, one a double that is not.
+     */
+    private static function danglingRule(): TestFidelityRule
+    {
+        return new class implements TestFidelityRule {
+            public function id(): string
+            {
+                return 'test.fidelity.ghost_member.v1';
+            }
+
+            public function findings(TestFidelityGraph $graph): iterable
+            {
+                $node = $graph->nodeOf($graph->doubles()[0]);
+                $finding = static fn(string $double, string $target, string $message): TestFinding => new TestFinding(
+                    $double,
+                    $target,
+                    FindingCategory::GhostMember,
+                    FindingConfidence::Definite,
+                    'test.fidelity.ghost_member.v1',
+                    'missing_member',
+                    $message,
+                    $node->evidence,
+                );
+                yield $finding($node->localId, 'ts:class:src/Gone.ts#Gone', 'target gone');
+                yield $finding('ts:test_double:tests/Gone.test.ts#double:1:1', 'ts:class:src/UserService.ts#UserService', 'double gone');
+            }
+        };
+    }
+
+    /** @return array{0: PDO, 1: ProjectScanService, 2: string, 3: \Knossos\Result\ResultEnvelope} */
+    private function scanned(?TestFidelityAnalysis $analysis = null): array
     {
         $root = self::scratchPath('ts-ghost');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/ts-ghost', $root);
         $pdo = $this->freshTestDatabase();
-        $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root], testFidelity: new TestFidelityAnalysis(self::ghostRule()));
-        $service->scan($root);
+        $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root], testFidelity: $analysis ?? new TestFidelityAnalysis(self::ghostRule()));
+        $result = $service->scan($root);
 
-        return [$pdo, $service, $root];
+        return [$pdo, $service, $root, $result];
     }
 
     /** @return list<array<string, mixed>> */
@@ -155,5 +191,68 @@ final class TestFindingsPersistenceTest extends KnossosTestCase
         assertSame($before, $ids());
         // Rewritten by the new scan, not left over from the first.
         assertSame(1, self::findings($pdo)[0]['on_active_scan']);
+    }
+
+    public function testADanglingReferenceNeverFailsTheScan(): void
+    {
+        [$pdo, , , $result] = $this->scanned(new TestFidelityAnalysis(self::danglingRule()));
+
+        $rows = self::findings($pdo);
+        assertSame(1, count($rows));
+        assertSame('target gone', $rows[0]['message']);
+        assertNull($rows[0]['target_name']);
+        $warnings = implode("\n", $result->warnings);
+        assertStringContainsString('TEST_FINDING_DROPPED: 1 test-fidelity finding', $warnings);
+        assertStringContainsString('TEST_FINDING_TARGET_UNRESOLVED: 1 test-fidelity finding', $warnings);
+    }
+
+    public function testReconciliationDropsWhatItCannotResolveInsteadOfFailing(): void
+    {
+        [$pdo, $reconciler, $request] = $this->reconciliationFixture();
+        $finding = static fn(string $node, ?string $target, string $message, string $path = 'src/CheckoutService.php'): TestFinding => new TestFinding(
+            $node,
+            $target,
+            FindingCategory::Tautology,
+            FindingConfidence::Warning,
+            'test.fidelity.tautology.v1',
+            'mock_only',
+            $message,
+            new Evidence($path, 7, 9),
+        );
+        $request = new FullScanRequest(
+            $request->projectIdentity,
+            $request->projectName,
+            $request->discovery,
+            $request->scanners,
+            $request->contributions,
+            testFindings: [
+                $finding('php:class:Fixture\\CheckoutService', 'php:class:Vendor\\Gone', 'kept without a target'),
+                $finding('php:class:Vendor\\Gone', null, 'dropped: no such double'),
+                $finding('php:class:Fixture\\CheckoutService', null, 'dropped: evidence outside the scan', 'src/Gone.php'),
+            ],
+        );
+
+        $reconciler->reconcile($request);
+
+        assertSame(
+            [['message' => 'kept without a target', 'target_node_id' => null]],
+            $pdo->query('SELECT message, target_node_id FROM test_findings')->fetchAll(PDO::FETCH_ASSOC),
+        );
+        assertSame(
+            ['reconciler.test_finding_unresolved' => 3],
+            array_map('intval', $pdo->query("SELECT code, COUNT(*) FROM diagnostics WHERE code = 'reconciler.test_finding_unresolved' GROUP BY code")->fetchAll(PDO::FETCH_KEY_PAIR)),
+        );
+    }
+
+    public function testAddingARuleRebuildsAnUnchangedTree(): void
+    {
+        [$pdo, , $root] = $this->scanned(new TestFidelityAnalysis());
+        $this->backdateDirectories($root, 10);
+        assertSame([], self::findings($pdo));
+
+        $result = (new ProjectScanService($pdo, self::repositoryRoot(), [$root], testFidelity: new TestFidelityAnalysis(self::ghostRule())))->scan($root);
+
+        assertArrayNotHasKey('fast_path', $result->data);
+        assertSame(1, count(self::findings($pdo)));
     }
 }

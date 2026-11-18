@@ -540,6 +540,7 @@ php	src/TestFidelity/FindingCategory.php
 php	src/TestFidelity/FindingConfidence.php
 php	src/TestFidelity/TestFidelityAnalysis.php
 php	src/TestFidelity/TestFidelityGraph.php
+php	src/TestFidelity/TestFidelityReport.php
 php	src/TestFidelity/TestFidelityRule.php
 php	src/TestFidelity/TestFinding.php
 php	src/Watch/ExternalScanProbe.php

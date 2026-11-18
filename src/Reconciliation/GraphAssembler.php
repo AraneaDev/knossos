@@ -29,11 +29,14 @@ final readonly class GraphAssembler
      */
     private const UNRESOLVABLE_TARGET_CODE = 'reconciler.unresolvable_edge_target';
 
+    /** A test-fidelity finding naming a node or file the graph does not hold; it never fails the scan. */
+    private const UNRESOLVED_TEST_FINDING_CODE = 'reconciler.test_finding_unresolved';
+
     /** Resolve the request into the rows the transaction writes, before any lock is taken. */
     public function assemble(FullScanRequest $request): PreparedGraph
     {
         $projectId = StableId::project($request->projectIdentity);
-        $scannerSetHash = ScannerSetHash::of($request->scanners, $request->enrichers);
+        $scannerSetHash = ScannerSetHash::of($request->scanners, $request->enrichers, $request->testFidelityRules);
         $scanId = $request->scanId ?? StableId::scan($projectId, bin2hex(random_bytes(16)));
 
         $fileIds = [];
@@ -54,6 +57,8 @@ final readonly class GraphAssembler
             $edges[$id] = $edge;
         }
 
+        [$testFindings, $findingWarnings] = $this->resolveTestFindings($projectId, $request->testFindings, $nodeMap, $fileIds);
+
         return new PreparedGraph(
             $request,
             $projectId,
@@ -64,35 +69,52 @@ final readonly class GraphAssembler
             $edges,
             $this->resolveClassifications($projectId, $request->classifications, $nodeMap, $fileIds),
             $this->resolveBoundaries($projectId, $request->boundaries, $nodeMap),
-            [...$nodeWarnings, ...$edgeWarnings, ...$binding->warnings],
+            [...$nodeWarnings, ...$edgeWarnings, ...$binding->warnings, ...$findingWarnings],
             count($externalNodes),
-            $this->resolveTestFindings($projectId, $request->testFindings, $nodeMap, $fileIds),
+            $testFindings,
         );
     }
 
     /**
-     * Resolve test findings onto node ids, as classifications are resolved.
+     * Resolve test findings onto node ids, as classifications are resolved,
+     * except that nothing here fails the scan.
      *
-     * A finding's ids follow from what it says, so an identical workspace
-     * stores the same ids; two rules reporting the same thing keep one row.
+     * Findings are derived data: one whose double, test case or evidence file
+     * did not reach the graph is dropped, and one whose target did not is kept
+     * without it. Each is recorded as a reconciler diagnostic. A finding's id
+     * follows from what it says, so an identical workspace stores the same
+     * ids, and two rules reporting the same thing keep one row.
      *
      * @param list<\Knossos\TestFidelity\TestFinding> $findings
      * @param array<string, string> $nodeMap
      * @param array<string, string> $fileIds
-     * @return list<array<string, mixed>>
+     * @return array{0: list<array<string, mixed>>, 1: list<array<string, string|int>>} rows, and diagnostics for what was dropped or detached
      */
     private function resolveTestFindings(string $projectId, array $findings, array $nodeMap, array $fileIds): array
     {
-        $resolved = [];
+        $resolved = $warnings = [];
         foreach ($findings as $finding) {
             $nodeId = $nodeMap[$finding->doubleOrCaseReference] ?? null;
             $targetId = $finding->targetReference === null ? null : ($nodeMap[$finding->targetReference] ?? null);
-            if ($nodeId === null || ($finding->targetReference !== null && $targetId === null)) {
-                throw new ReconciliationException(sprintf('Test finding node was not emitted: %s', $nodeId === null ? $finding->doubleOrCaseReference : $finding->targetReference));
-            }
             $fileId = $fileIds[$finding->evidence->relativePath] ?? null;
-            if ($fileId === null) {
-                throw new ReconciliationException(sprintf('Test finding evidence file was not discovered: %s', $finding->evidence->relativePath));
+            $problem = match (true) {
+                $nodeId === null => sprintf('names %s, which is not in the graph; the finding was dropped', $finding->doubleOrCaseReference),
+                $fileId === null => sprintf('cites %s, which was not discovered; the finding was dropped', $finding->evidence->relativePath),
+                $finding->targetReference !== null && $targetId === null => sprintf('names the target %s, which is not in the graph; the finding was kept without it', $finding->targetReference),
+                default => null,
+            };
+            if ($problem !== null) {
+                $warnings[] = [
+                    'owner' => 'core.test_fidelity',
+                    'code' => self::UNRESOLVED_TEST_FINDING_CODE,
+                    'message' => sprintf('A %s finding of %s %s.', $finding->category->value, $finding->ruleId, $problem),
+                    'path' => $finding->evidence->relativePath,
+                    'start_line' => $finding->evidence->startLine,
+                    'end_line' => $finding->evidence->endLine,
+                ];
+            }
+            if ($nodeId === null || $fileId === null) {
+                continue;
             }
             $id = StableId::testFinding($projectId, $nodeId, $finding->ruleId, $finding->subRule, (string) $finding->evidence->startLine, $finding->message);
             $resolved[$id] ??= [
@@ -111,7 +133,7 @@ final readonly class GraphAssembler
                 'attributes' => $finding->attributes,
             ];
         }
-        return array_values($resolved);
+        return [array_values($resolved), $warnings];
     }
 
     /**

@@ -25,6 +25,20 @@ final readonly class TestFidelityAnalysis
     }
 
     /**
+     * The ids of the registered rules, sorted: what a stored graph's findings
+     * were judged by, so a scan can tell when the rule set changed.
+     *
+     * @return list<string>
+     */
+    public function ruleIds(): array
+    {
+        $ids = array_map(static fn(TestFidelityRule $rule): string => $rule->id(), $this->rules);
+        sort($ids, SORT_STRING);
+
+        return $ids;
+    }
+
+    /**
      * Every finding of every rule, sorted by file, line, then rule id, so an
      * identical workspace gives the same list in the same order.
      *
@@ -34,22 +48,65 @@ final readonly class TestFidelityAnalysis
      */
     public function analyze(array $contributions): array
     {
+        return $this->report($contributions)->findings;
+    }
+
+    /**
+     * The findings, less what names nodes no contribution emitted.
+     *
+     * A finding about a double or test case the scan does not hold is
+     * dropped; one whose target the scan does not hold is kept without it.
+     * Either is counted in a warning rather than thrown: findings are derived
+     * data, and one bad fact must not fail a scan.
+     *
+     * @param list<ScanContribution> $contributions
+     * @throws LogicException when a rule reports a finding under another rule's id
+     */
+    public function report(array $contributions): TestFidelityReport
+    {
         if ($this->rules === []) {
-            return [];
+            return new TestFidelityReport([]);
         }
         $graph = TestFidelityGraph::fromContributions($contributions);
-        $findings = [];
+        $findings = $dropped = $untargeted = [];
         foreach ($this->rules as $rule) {
             foreach ($rule->findings($graph) as $finding) {
                 if ($finding->ruleId !== $rule->id()) {
                     throw new LogicException(sprintf('Rule %s reported a finding as %s.', $rule->id(), $finding->ruleId));
+                }
+                if (!$graph->has($finding->doubleOrCaseReference)) {
+                    $dropped[$finding->ruleId] = ($dropped[$finding->ruleId] ?? 0) + 1;
+                    continue;
+                }
+                if ($finding->targetReference !== null && !$graph->has($finding->targetReference)) {
+                    $untargeted[$finding->ruleId] = ($untargeted[$finding->ruleId] ?? 0) + 1;
+                    $finding = new TestFinding($finding->doubleOrCaseReference, null, $finding->category, $finding->confidence, $finding->ruleId, $finding->subRule, $finding->message, $finding->evidence, $finding->attributes);
                 }
                 $findings[] = $finding;
             }
         }
         usort($findings, self::compare(...));
 
-        return $findings;
+        return new TestFidelityReport($findings, [
+            ...self::warning('TEST_FINDING_DROPPED', $dropped, 'named a test double or test case not in the scan and were dropped'),
+            ...self::warning('TEST_FINDING_TARGET_UNRESOLVED', $untargeted, 'named a target not in the scan and were kept without one'),
+        ]);
+    }
+
+    /**
+     * One warning line for a tally of findings by rule id, or none.
+     *
+     * @param array<string, int> $byRule
+     * @return list<string>
+     */
+    private static function warning(string $code, array $byRule, string $what): array
+    {
+        if ($byRule === []) {
+            return [];
+        }
+        ksort($byRule, SORT_STRING);
+
+        return [sprintf('%s: %d test-fidelity finding(s) %s (%s).', $code, array_sum($byRule), $what, implode(', ', array_keys($byRule)))];
     }
 
     /**

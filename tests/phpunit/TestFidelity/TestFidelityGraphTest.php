@@ -107,4 +107,60 @@ final class TestFidelityGraphTest extends KnossosTestCase
         assertFalse($graph->isExternal($relative), 'a relative specifier is inside the project');
         assertFalse($graph->isExternal($spy), 'a resolved production class');
     }
+
+    /**
+     * `Child extends Base implements Named`, `Base extends Root`, and
+     * `Root extends Child`: a cycle a malformed contribution can carry.
+     *
+     * @return array{0: TestFidelityGraph, 1: NodeFact}
+     */
+    private static function hierarchy(): array
+    {
+        $types = [];
+        foreach (['Child' => 'class', 'Base' => 'class', 'Root' => 'class', 'Named' => 'interface'] as $name => $kind) {
+            $types[$name] = self::node($kind, 'src/a.ts#' . $name, $name);
+        }
+        $members = [
+            self::node('method', 'src/a.ts#Child::own', 'own'),
+            self::node('method', 'src/a.ts#Base::greet', 'greet'),
+            self::node('method', 'src/a.ts#Root::greet', 'greet'),
+            self::node('method', 'src/a.ts#Root::deep', 'deep'),
+            self::node('method', 'src/a.ts#Named::name', 'name'),
+        ];
+        $owner = static fn(NodeFact $member): NodeFact => $types[explode('::', explode('#', $member->canonicalName)[1])[0]];
+        $edges = [
+            self::edge('extends', $types['Child'], $types['Base']->localId),
+            self::edge('implements', $types['Child'], $types['Named']->localId),
+            self::edge('extends', $types['Base'], $types['Root']->localId),
+            self::edge('extends', $types['Root'], $types['Child']->localId),
+        ];
+        foreach ($members as $member) {
+            $edges[] = self::edge('contains', $owner($member), $member->localId);
+        }
+
+        return [TestFidelityGraph::fromContributions([new ScanContribution('knossos.typescript:file:src/a.ts', [...array_values($types), ...$members], $edges)]), $types['Child']];
+    }
+
+    public function testAnInheritedMemberResolvesToTheNearestDeclaration(): void
+    {
+        [$graph, $child] = self::hierarchy();
+
+        assertSame('src/a.ts#Child::own', $graph->member($child, 'own')?->canonicalName);
+        assertSame('src/a.ts#Base::greet', $graph->member($child, 'greet')?->canonicalName);
+        assertSame('src/a.ts#Root::deep', $graph->member($child, 'deep')?->canonicalName);
+    }
+
+    public function testAMemberOfAnImplementedInterfaceResolves(): void
+    {
+        [$graph, $child] = self::hierarchy();
+
+        assertSame('src/a.ts#Named::name', $graph->member($child, 'name')?->canonicalName);
+    }
+
+    public function testACyclicHierarchyTerminates(): void
+    {
+        [$graph, $child] = self::hierarchy();
+
+        assertNull($graph->member($child, 'absent'));
+    }
 }

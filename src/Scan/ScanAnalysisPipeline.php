@@ -91,6 +91,10 @@ final readonly class ScanAnalysisPipeline
         if ($plan->preparation->symfony) {
             $rules[] = new SymfonyRoleRule();
         }
+        $testFidelity = $this->testFidelity->report(array_values(array_filter(
+            $contributions,
+            static fn(object $contribution): bool => $contribution instanceof ScanContribution,
+        )));
         return new ScanAnalysis(
             (new ClassificationEngine($rules))->classify($contributions),
             (new BoundaryInference())->infer(
@@ -98,12 +102,21 @@ final readonly class ScanAnalysisPipeline
                 $contributions,
                 $plan->preparation->explicitBoundaries,
             ),
-            $warnings,
-            $this->testFidelity->analyze(array_values(array_filter(
-                $contributions,
-                static fn(object $contribution): bool => $contribution instanceof ScanContribution,
-            ))),
+            [...$warnings, ...$testFidelity->warnings],
+            $testFidelity->findings,
+            $this->testFidelity->ruleIds(),
         );
+    }
+
+    /**
+     * The ids of the test-fidelity rules every scan runs, sorted; part of
+     * what a stored graph was built with, so a change rebuilds it.
+     *
+     * @return list<string>
+     */
+    public function testFidelityRuleIds(): array
+    {
+        return $this->testFidelity->ruleIds();
     }
 
     /**

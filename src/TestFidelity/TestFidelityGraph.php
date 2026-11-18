@@ -23,6 +23,9 @@ use Knossos\TestFidelity\Facts\TestDouble;
  */
 final readonly class TestFidelityGraph
 {
+    /** Edge kinds that put another type's members in scope on the source type, as reconciliation reads them. */
+    private const INHERITANCE_KINDS = ['uses_trait', 'extends', 'implements'];
+
     /**
      * @param array<string, NodeFact> $nodes every node by reference; the first contribution to emit one wins
      * @param array<string, NodeFact> $factNodes the test double and test case nodes, by canonical name
@@ -30,6 +33,7 @@ final readonly class TestFidelityGraph
      * @param list<TestCaseFact> $testCases
      * @param array<string, string> $targets double reference => target reference
      * @param array<string, list<string>> $children container reference => contained references
+     * @param array<string, list<string>> $parents type reference => the types it extends, implements or uses, in edge order
      */
     private function __construct(
         private array $nodes,
@@ -38,6 +42,7 @@ final readonly class TestFidelityGraph
         private array $testCases,
         private array $targets,
         private array $children,
+        private array $parents,
     ) {}
 
     /**
@@ -50,7 +55,7 @@ final readonly class TestFidelityGraph
      */
     public static function fromContributions(array $contributions): self
     {
-        $nodes = $factNodes = $doubles = $testCases = $targets = $children = [];
+        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = [];
         foreach ($contributions as $contribution) {
             foreach ($contribution->nodes as $node) {
                 if (isset($nodes[$node->localId])) {
@@ -73,13 +78,15 @@ final readonly class TestFidelityGraph
                     $targets[$edge->sourceReference] ??= $edge->targetReference;
                 } elseif ($edge->kind === 'contains') {
                     $children[$edge->sourceReference][] = $edge->targetReference;
+                } elseif (in_array($edge->kind, self::INHERITANCE_KINDS, true)) {
+                    $parents[$edge->sourceReference][] = $edge->targetReference;
                 }
             }
         }
         ksort($doubles, SORT_STRING);
         ksort($testCases, SORT_STRING);
 
-        return new self($nodes, $factNodes, array_values($doubles), array_values($testCases), $targets, $children);
+        return new self($nodes, $factNodes, array_values($doubles), array_values($testCases), $targets, $children, $parents);
     }
 
     /**
@@ -117,20 +124,40 @@ final readonly class TestFidelityGraph
     }
 
     /**
-     * The node `$owner` contains under `$name`: a class's method or property,
-     * a module's declaration. Declared members only; inherited ones are not
-     * followed.
+     * The node `$owner` declares or inherits under `$name`: a class's method
+     * or property, an interface's, a module's declaration.
+     *
+     * Walks `uses_trait`, `extends` and `implements` edges breadth first, so
+     * the nearest declaration wins, and visits each type once, so a cyclic
+     * hierarchy (which a malformed contribution can carry) terminates.
      */
     public function member(NodeFact $owner, string $name): ?NodeFact
     {
-        foreach ($this->children[$owner->localId] ?? [] as $reference) {
-            $child = $this->nodes[$reference] ?? null;
-            if ($child !== null && $child->displayName === $name) {
-                return $child;
+        $queue = [$owner->localId];
+        $visited = [$owner->localId => true];
+        while ($queue !== []) {
+            $type = array_shift($queue);
+            foreach ($this->children[$type] ?? [] as $reference) {
+                $child = $this->nodes[$reference] ?? null;
+                if ($child !== null && $child->displayName === $name) {
+                    return $child;
+                }
+            }
+            foreach ($this->parents[$type] ?? [] as $parent) {
+                if (!isset($visited[$parent])) {
+                    $visited[$parent] = true;
+                    $queue[] = $parent;
+                }
             }
         }
 
         return null;
+    }
+
+    /** Whether a node reference names a node some contribution of the scan emitted. */
+    public function has(string $reference): bool
+    {
+        return isset($this->nodes[$reference]);
     }
 
     /**

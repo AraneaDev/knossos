@@ -392,6 +392,7 @@ final class ProjectScanService implements ProjectScanner
             $enrichers,
             $scanId,
             $analysis->testFindings,
+            $analysis->testFidelityRules,
         );
     }
 
@@ -531,7 +532,7 @@ final class ProjectScanService implements ProjectScanner
         if ($stored !== $projectConfig) {
             return null;
         }
-        if ($row['scanner_set_hash'] !== ScannerSetHash::of($language->manifests, $this->enrichment->active())) {
+        if ($row['scanner_set_hash'] !== ScannerSetHash::of($language->manifests, $this->enrichment->active(), $this->analysisPipeline->testFidelityRuleIds())) {
             return null;
         }
         self::undiscoveredVerifier($preparation, $language, $plan)();
