@@ -270,6 +270,6 @@ final readonly class TestFidelityGraph
         }
         $specifier = $double->target['specifier'] ?? '';
 
-        return $specifier !== '' && preg_match('#^(?:\.|/|@/|~|\#)#', $specifier) !== 1;
+        return $specifier !== '' && preg_match('#^(?:\.|/|@/|~/|\#)#', $specifier) !== 1;
     }
 }

@@ -91,6 +91,9 @@ final class GhostMemberRuleTest extends KnossosTestCase
     {
         assertSame([], self::judge(DriftFixtures::moduleGraph('axios')));
         assertSame([], self::judge(DriftFixtures::moduleGraph('@scope/pkg')));
+        // A package whose name starts with `~` is a package; only `~/` is the project's alias.
+        assertSame([], self::judge(DriftFixtures::moduleGraph('~pkg')));
+        assertCount(1, self::judge(DriftFixtures::moduleGraph('~/gone')));
     }
 
     public function testUnresolvedRelativeSpecifierIsAGhost(): void
