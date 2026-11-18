@@ -49,7 +49,7 @@ final class TestCaseFactTest extends KnossosTestCase
                 'api' => 'toBe',
                 'line' => 9,
                 'operands' => [
-                    ['source' => 'mock-config', 'text' => 'cart.total()', 'value' => '42'],
+                    ['source' => 'mock-config', 'text' => 'total', 'value' => '42'],
                     ['source' => 'literal', 'text' => '42'],
                 ],
             ]],
@@ -64,7 +64,7 @@ final class TestCaseFactTest extends KnossosTestCase
         assertSame('literal', $case->assertions[0]->operands[1]->source);
         assertSame('42', $case->assertions[0]->operands[1]->text);
         assertSame(false, $case->assertions[0]->operands[1]->unconfiguredSpy);
-        assertSame('cart.total()', $case->assertions[0]->operands[0]->text);
+        assertSame('total', $case->assertions[0]->operands[0]->text);
         assertSame('42', $case->assertions[0]->operands[0]->value);
         assertNull($case->assertions[0]->operands[1]->value);
         assertSame(['src/cart.ts'], $case->subjects);
@@ -83,6 +83,25 @@ final class TestCaseFactTest extends KnossosTestCase
     {
         $attributes = self::attributes();
         $attributes['assertions'][0]['operands'][0]['value'] = 42;
+
+        assertNull(TestCaseFact::fromNode(self::node('test_case', $attributes)));
+    }
+
+    public function testReadsWhetherAnAssertionIsNegated(): void
+    {
+        $plain = TestCaseFact::fromNode(self::node('test_case', self::attributes()));
+        $attributes = self::attributes();
+        $attributes['assertions'][0]['negated'] = true;
+        $negated = TestCaseFact::fromNode(self::node('test_case', $attributes));
+
+        assertSame(false, $plain?->assertions[0]->negated);
+        assertSame(true, $negated?->assertions[0]->negated);
+    }
+
+    public function testReturnsNullForANegationThatIsNoBoolean(): void
+    {
+        $attributes = self::attributes();
+        $attributes['assertions'][0]['negated'] = 'yes';
 
         assertNull(TestCaseFact::fromNode(self::node('test_case', $attributes)));
     }

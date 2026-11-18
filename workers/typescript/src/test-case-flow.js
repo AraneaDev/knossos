@@ -43,6 +43,8 @@ export class TestScope {
         for (const body of scopeBodies) this.collectBindings(body);
         for (const body of scopeBodies) this.collectConfigs(body);
         this.helpersFollowed = new Set();
+        // The variables whose bindings are being followed, against a cycle.
+        this.followed = new Set();
     }
 
     double(identifier) {
@@ -205,10 +207,26 @@ export class TestScope {
         const double = this.double(identifier);
         if (double !== undefined) return { source: "mock-call", double };
         if (this.isParameter(identifier)) return { source: "parameter" };
-        const bound = this.binding(identifier);
-        // A variable that can be reassigned holds no value we can prove.
-        if (bound === undefined || bound.mutable) return { source: "unknown" };
-        return this.provenance(bound.expression);
+        return this.throughBinding(identifier);
+    }
+
+    /**
+     * Where a variable's value comes from, through what it was bound to.
+     * A variable that can be reassigned holds no value we can prove, and one
+     * bound, round a cycle, to itself holds none either.
+     */
+    throughBinding(identifier) {
+        const symbol = this.checker.getSymbolAtLocation(identifier);
+        const bound =
+            symbol === undefined ? undefined : this.bindings.get(symbol);
+        if (bound === undefined || bound.mutable || this.followed.has(symbol))
+            return { source: "unknown" };
+        this.followed.add(symbol);
+        try {
+            return this.provenance(bound.expression);
+        } finally {
+            this.followed.delete(symbol);
+        }
     }
 
     call(call) {
@@ -261,10 +279,9 @@ export class TestScope {
         const base = unwrap(access.expression);
         if (!ts.isIdentifier(base)) return { source: "unknown" };
         if (this.isParameter(base)) return { source: "parameter" };
-        const bound = this.binding(base);
-        return bound === undefined
-            ? { source: "unknown" }
-            : this.provenance(bound.expression);
+        // A stub's pinned value is the base's, not this member's.
+        const { source, double: held } = this.throughBinding(base);
+        return held === undefined ? { source } : { source, double: held };
     }
 }
 
@@ -315,14 +332,17 @@ function skipAwait(expression) {
         : expression;
 }
 
-/** Whether evaluating an expression again may give another value. */
+/**
+ * Whether evaluating an expression again may give another value: any part of
+ * it calls something, `make().id`, `` `${gen()}` ``, `arr[next()]`.
+ */
 function reevaluates(expression) {
-    const value = unwrap(expression);
-    return (
-        ts.isCallExpression(value) ||
-        ts.isNewExpression(value) ||
-        ts.isTaggedTemplateExpression(value)
-    );
+    const calls = (node) =>
+        ts.isCallExpression(node) ||
+        ts.isNewExpression(node) ||
+        ts.isTaggedTemplateExpression(node) ||
+        ts.forEachChild(node, calls) === true;
+    return calls(expression);
 }
 
 /** A literal whose value its text states: a string, number, boolean or null. */

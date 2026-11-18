@@ -1,103 +1,18 @@
-import { afterEach, describe, expect, it } from "vitest";
-import fs from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
 
-import { TypeScriptScanner } from "../scanner.js";
-import { SCAN_LIMITS } from "./support/scan-limits.mjs";
+import {
+    assertionAt,
+    doubleAt,
+    fixture,
+    scan,
+    testAt,
+    testCases,
+} from "./support/test-case-facts.mjs";
 
 // A test file's tests are facts of their own: each test's assertions, with
 // where each side's value comes from, so the core can find the assertions
 // that cannot fail. The fixtures are the ones Momus was built against, with
 // its expected lines.
-
-const FIXTURES = join(
-    dirname(fileURLToPath(import.meta.url)),
-    "../../../../tests/Fixtures/test-fidelity/typescript",
-);
-
-const created = [];
-
-afterEach(() => {
-    while (created.length > 0) {
-        fs.rmSync(created.pop(), { recursive: true, force: true });
-    }
-});
-
-function scan(files) {
-    const root = fs.realpathSync(
-        fs.mkdtempSync(join(tmpdir(), "knossos-ts-cases-")),
-    );
-    created.push(root);
-    for (const [path, contents] of Object.entries(files)) {
-        fs.mkdirSync(dirname(join(root, path)), { recursive: true });
-        fs.writeFileSync(join(root, path), contents);
-    }
-    const contributions = [];
-    new TypeScriptScanner().scan(
-        {
-            limits: SCAN_LIMITS,
-            root,
-            files: Object.keys(files).filter((path) => path.endsWith(".ts")),
-        },
-        (c) => contributions.push(c),
-    );
-    return {
-        root,
-        nodes: contributions.flatMap((c) => c.nodes),
-        edges: contributions.flatMap((c) => c.edges),
-    };
-}
-
-/** Every file of a fixture project, by its path inside the project. */
-function fixture(name) {
-    const base = join(FIXTURES, name);
-    const files = {};
-    for (const entry of fs.readdirSync(base, { recursive: true })) {
-        const path = join(base, entry);
-        if (fs.statSync(path).isFile())
-            files[relative(base, path)] = fs.readFileSync(path, "utf8");
-    }
-    return files;
-}
-
-function testCases(nodes, path) {
-    return nodes.filter(
-        (node) => node.kind === "test_case" && node.evidence.path === path,
-    );
-}
-
-function testAt(nodes, path, line) {
-    const found = testCases(nodes, path).filter(
-        (node) => node.evidence.start_line === line,
-    );
-    expect(found).toHaveLength(1);
-    return found[0];
-}
-
-/** The one assertion of a file on a line, with the test it belongs to. */
-function assertionAt(nodes, path, line) {
-    const found = testCases(nodes, path).flatMap((node) =>
-        node.attributes.assertions
-            .filter((assertion) => assertion.line === line)
-            .map((assertion) => ({ test: node, ...assertion })),
-    );
-    expect(found).toHaveLength(1);
-    return found[0];
-}
-
-function doubleAt(nodes, path, line, pattern) {
-    const found = nodes.filter(
-        (node) =>
-            node.kind === "test_double" &&
-            node.evidence.path === path &&
-            node.evidence.start_line === line &&
-            (pattern === undefined || node.attributes.pattern === pattern),
-    );
-    expect(found).toHaveLength(1);
-    return found[0];
-}
 
 describe("an echoed stub value", () => {
     it("traces an echoed stub value to its mock-config source", () => {

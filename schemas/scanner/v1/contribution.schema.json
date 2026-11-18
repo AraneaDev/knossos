@@ -224,6 +224,7 @@
       "properties": {
         "api": { "type": "string", "minLength": 1 },
         "line": { "type": "integer", "minimum": 1 },
+        "negated": { "type": "boolean" },
         "operands": {
           "type": "array",
           "items": { "$ref": "#/$defs/testOperand" }

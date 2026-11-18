@@ -194,6 +194,7 @@ class TestCaseFile {
                     found.push({
                         api: matcher.expression.name.text,
                         line: this.line(matcher),
+                        ...(negated(node, matcher) ? { negated: true } : {}),
                         operands,
                     });
                 }
@@ -269,6 +270,17 @@ function testName(call, sourceFile) {
  * The matcher call an `expect(...)` starts: `toBe(1)` in
  * `expect(x).not.toBe(1)`; undefined when no matcher is called on it.
  */
+/** Whether the chain from `expect(...)` to its matcher passes through `.not`. */
+function negated(expectCall, matcher) {
+    for (
+        let link = matcher.expression.expression;
+        link !== expectCall;
+        link = link.expression
+    )
+        if (link.name.text === "not") return true;
+    return false;
+}
+
 function matcherCall(expectCall) {
     let chain = expectCall;
     while (

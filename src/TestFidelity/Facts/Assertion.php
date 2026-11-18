@@ -9,11 +9,15 @@ namespace Knossos\TestFidelity\Facts;
  */
 final readonly class Assertion
 {
-    /** @param list<Operand> $operands */
+    /**
+     * @param list<Operand> $operands
+     * @param bool $negated whether the matcher is called through `.not`, so the assertion expects the opposite
+     */
     public function __construct(
         public string $api,
         public int $line,
         public array $operands,
+        public bool $negated = false,
     ) {}
 
     /**
@@ -27,7 +31,11 @@ final readonly class Assertion
         $api = $raw['api'] ?? null;
         $line = $raw['line'] ?? null;
         $rawOperands = $raw['operands'] ?? null;
+        $negated = $raw['negated'] ?? false;
         if (!is_string($api) || $api === '' || !is_int($line) || !is_array($rawOperands) || !array_is_list($rawOperands)) {
+            return null;
+        }
+        if (!is_bool($negated)) {
             return null;
         }
         $operands = [];
@@ -39,6 +47,6 @@ final readonly class Assertion
             $operands[] = $operand;
         }
 
-        return new self($api, $line, $operands);
+        return new self($api, $line, $operands, $negated);
     }
 }
