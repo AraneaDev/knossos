@@ -121,8 +121,11 @@ function staleMocksNote(parsed: TurnBrief, debug: (line: string) => void): strin
     return null
   }
   const fresh = found.introduced.filter(f => !mod.agent.testFindingsSeen.has(f.key))
-  const total = Math.max(fresh.length, found.total - (found.introduced.length - fresh.length))
   for (const f of found.introduced) mod.agent.testFindingsSeen.add(f.key)
+  // Nothing unseen is listed: the rest of an over-cap total is unnamed, so there is nothing to say again.
+  if (fresh.length === 0) return null
+  // The head counts the total less the listed findings already said; the unlisted rest stays in it.
+  const total = Math.max(fresh.length, found.total - (found.introduced.length - fresh.length))
   return testFindingsTurnNote(fresh, total)
 }
 
