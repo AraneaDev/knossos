@@ -22,6 +22,7 @@ final class StaleCategories
 
     private function __construct() {}
 
+    /** Whether a finding of `$category` is a stale mock. */
     public static function isStale(string $category): bool
     {
         return in_array($category, self::ALL, true);
