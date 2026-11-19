@@ -7,9 +7,10 @@ namespace Knossos\Tests\Phpunit\Configuration;
 use Knossos\Configuration\ProjectConfigurationLoader;
 use Knossos\Discovery\DiscoveryException;
 use Knossos\Tests\Phpunit\KnossosTestCase;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The loader's `test_finding_suppressions`. Beside ProjectConfigurationLoaderTest
