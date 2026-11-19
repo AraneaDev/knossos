@@ -100,13 +100,25 @@ knossos: this turn introduced 1 boundary-policy violation. Fix it before finishi
 - domain-isolation: App\Domain\Order → App\Infra\Db
 ```
 
-**Stale mocks the turn introduced**, when `testChecks` is on: test doubles that no
-longer match the code they replace, as the brief's definite findings. Each is said
-once a session, even when a later edit moves it to another line:
+**Test findings the turn introduced**, when `testChecks` is on: the brief's definite
+findings. A stale mock is a test double that no longer matches the code it
+replaces; any other definite finding (an assertion that cannot fail, a double
+that is not visible to its test, a test that replaces its own subject) is a test
+finding. Each is said once a session, even when a later edit moves it to another
+line. The head counts what is said this turn:
 
 ```text
 knossos: this turn introduced 1 stale mock. Fix it before finishing:
-- tests/PaymentTest.php:42 charge() is called with 2 arguments; the mock takes 1
+- tests/PaymentTest.php:42 charge takes 2 argument(s); the double passes 1
+```
+
+```text
+knossos: this turn introduced 1 test finding. Fix it before finishing:
+- tests/PaymentTest.php:57 true is compared with true, both constants; the assertion cannot fail
+```
+
+```text
+knossos: this turn introduced 1 stale mock and 2 other test findings. Fix them before finishing:
 ```
 
 The message lists at most ten, then `- …and 2 more (run audit_tests)`.

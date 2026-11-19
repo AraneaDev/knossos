@@ -15,8 +15,10 @@ use PDO;
  * counts are counted, `list` holds the first {@see self::LIST_LIMIT} and
  * `list_truncated` says when it was cut, and the production grouping reads at
  * most {@see self::GROUPED_LIMIT} definite findings (`by_production_file_truncated`).
- * Only definite findings are grouped: a warning is listed with its confidence
- * and never counted as a double that no longer matches its target.
+ * Only definite stale-mock findings ({@see StaleCategories}) are grouped: a
+ * warning, or a finding that is not about a stale double, is listed with its
+ * confidence and never counted as a double that no longer matches its target.
+ * `definite` is every definite finding; `stale` the ones in a stale category.
  */
 final readonly class DashboardTestFindings
 {
@@ -26,14 +28,11 @@ final readonly class DashboardTestFindings
     /** Reasons listed per production file. */
     private const REASONS = 3;
 
-    /** What each category is called in a reason. */
+    /** What each stale category is called in a reason. */
     private const SHORT = [
         'GHOST_MEMBER' => 'ghost',
         'ARITY_MISMATCH' => 'arity',
         'RETURN_DRIFT' => 'return',
-        'VISIBILITY_BREACH' => 'visibility',
-        'TAUTOLOGY' => 'tautology',
-        'MOCKS_SUBJECT' => 'mocks subject',
     ];
 
     private function __construct() {}
@@ -41,13 +40,14 @@ final readonly class DashboardTestFindings
     /**
      * The section for the project at `$root`: its counts, production grouping and findings list.
      *
-     * @return array{definite: int, warning: int, by_production_file: array<string, array{doubles: int, target: string, reasons: list<string>, keys: list<string>}>, by_production_file_truncated: bool, list: list<array<string, mixed>>, list_truncated: bool, suppressions_invalid: ?string}
+     * @return array{definite: int, stale: int, warning: int, by_production_file: array<string, array{doubles: int, target: string, reasons: list<string>, keys: list<string>}>, by_production_file_truncated: bool, list: list<array<string, mixed>>, list_truncated: bool, suppressions_invalid: ?string}
      */
     public static function of(PDO $pdo, string $projectId, string $root): array
     {
         $suppressions = ActiveTestFindings::suppressionsOf($root);
         $findings = new ActiveTestFindings($pdo, $projectId, $suppressions);
         $definite = $findings->count(['confidence' => FindingConfidence::Definite->value]);
+        $stale = array_sum(array_map(static fn(string $category): int => $findings->count(['confidence' => FindingConfidence::Definite->value, 'category' => $category]), StaleCategories::ALL));
         $warning = $findings->count(['confidence' => FindingConfidence::Warning->value]);
         $definiteRows = $findings->find(['confidence' => FindingConfidence::Definite->value], self::GROUPED_LIMIT);
         $listed = array_slice($definiteRows, 0, self::LIST_LIMIT);
@@ -57,6 +57,7 @@ final readonly class DashboardTestFindings
 
         return [
             'definite' => $definite,
+            'stale' => $stale,
             'warning' => $warning,
             'by_production_file' => self::byProductionFile($definiteRows),
             'by_production_file_truncated' => $definite > self::GROUPED_LIMIT,
@@ -78,15 +79,15 @@ final readonly class DashboardTestFindings
     /**
      * The section of a project with no findings, or no scan.
      *
-     * @return array{definite: int, warning: int, by_production_file: array<string, never>, by_production_file_truncated: bool, list: list<never>, list_truncated: bool, suppressions_invalid: null}
+     * @return array{definite: int, stale: int, warning: int, by_production_file: array<string, never>, by_production_file_truncated: bool, list: list<never>, list_truncated: bool, suppressions_invalid: null}
      */
     public static function none(): array
     {
-        return ['definite' => 0, 'warning' => 0, 'by_production_file' => [], 'by_production_file_truncated' => false, 'list' => [], 'list_truncated' => false, 'suppressions_invalid' => null];
+        return ['definite' => 0, 'stale' => 0, 'warning' => 0, 'by_production_file' => [], 'by_production_file_truncated' => false, 'list' => [], 'list_truncated' => false, 'suppressions_invalid' => null];
     }
 
     /**
-     * The definite findings grouped by the file of the production code their double replaces.
+     * The definite stale-mock findings grouped by the file of the production code their double replaces.
      *
      * @param list<array<string, mixed>> $findings
      * @return array<string, array{doubles: int, target: string, reasons: list<string>, keys: list<string>}>
@@ -95,7 +96,7 @@ final readonly class DashboardTestFindings
     {
         $files = [];
         foreach ($findings as $finding) {
-            if ($finding['confidence'] !== FindingConfidence::Definite->value || $finding['target_file'] === null) {
+            if ($finding['confidence'] !== FindingConfidence::Definite->value || !StaleCategories::isStale($finding['category']) || $finding['target_file'] === null) {
                 continue;
             }
             $file = $finding['target_file'];

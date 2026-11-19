@@ -50,12 +50,26 @@ final class DashboardTestFindingsTest extends KnossosTestCase
         $section = $this->section();
 
         assertSame([2, 2], [$section['definite'], $section['warning']]);
+        // The ghost is a stale mock; the self comparison is another test finding.
+        assertSame(1, $section['stale']);
         assertSame(['src/UserService.ts'], array_keys($section['by_production_file']));
         $group = $section['by_production_file']['src/UserService.ts'];
         assertSame([1, 'UserService'], [$group['doubles'], $group['target']]);
         assertCount(1, $group['keys']);
         assertSame(['getProfil(): ghost'], $group['reasons']);
         assertSame(false, $section['by_production_file_truncated']);
+    }
+
+    public function testOnlyStaleDoublesAreGroupedByProductionFile(): void
+    {
+        $grouped = DashboardTestFindings::byProductionFile([
+            self::finding('k1', 'src/a.ts#A::go', 'A', [], 'm', 'ARITY_MISMATCH'),
+            self::finding('k2', 'src/a.ts#A::go', 'A', [], 'm', 'TAUTOLOGY'),
+            self::finding('k3', 'src/b.ts#B::go', 'B', [], 'm', 'VISIBILITY_BREACH', 'src/b.ts'),
+        ]);
+
+        assertSame(['src/a.ts'], array_keys($grouped));
+        assertSame(['k1'], $grouped['src/a.ts']['keys']);
     }
 
     public function testWarningsStayOutOfTheProductionGroups(): void
@@ -100,11 +114,11 @@ final class DashboardTestFindingsTest extends KnossosTestCase
             // Neither: the member the message names.
             self::finding('c', 'src/a.ts#Gateway', 'Gateway', [], 'x stubs settle, which Gateway no longer has', 'RETURN_DRIFT'),
             // None at all: the category alone.
-            self::finding('d', 'src/a.ts#Gateway', 'Gateway', [], 'm', 'MOCKS_SUBJECT', 'src/b.ts'),
+            self::finding('d', 'src/a.ts#Gateway', 'Gateway', [], 'm', 'GHOST_MEMBER', 'src/b.ts'),
         ]);
 
         assertSame(['capture(): arity', 'charge(): ghost', 'settle(): return'], $group['src/a.ts']['reasons']);
-        assertSame(['mocks subject'], $group['src/b.ts']['reasons']);
+        assertSame(['ghost'], $group['src/b.ts']['reasons']);
     }
 
     public function testTheMostCommonOwnerNamesTheFileAndATieGoesToTheFirstAlphabetically(): void

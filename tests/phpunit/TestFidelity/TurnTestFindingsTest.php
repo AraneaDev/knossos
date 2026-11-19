@@ -26,7 +26,7 @@ final class TurnTestFindingsTest extends KnossosTestCase
     {
         $after = [];
         foreach ([['b.ts', 3], ['a.ts', 9], ['a.ts', 2], ['c.ts', 1], ['b.ts', 1], ['a.ts', 10], ['d.ts', 4], ['d.ts', 3], ['e.ts', 1], ['e.ts', 2], ['f.ts', 1], ['a.ts', 1]] as $n => [$file, $line]) {
-            $after[] = ['key' => 'k' . $n, 'message' => 'm' . $n, 'file' => $file, 'line' => $line];
+            $after[] = ['key' => 'k' . $n, 'category' => 'GHOST_MEMBER', 'message' => 'm' . $n, 'file' => $file, 'line' => $line];
         }
 
         $section = TurnTestFindings::section(['k3'], $after, null);
@@ -39,9 +39,27 @@ final class TurnTestFindingsTest extends KnossosTestCase
         );
     }
 
+    public function testEachItemSaysWhetherItIsAStaleMockAndTheTotalCountsThemUncapped(): void
+    {
+        $after = [];
+        foreach (['GHOST_MEMBER', 'ARITY_MISMATCH', 'RETURN_DRIFT', 'TAUTOLOGY', 'VISIBILITY_BREACH', 'MOCKS_SUBJECT'] as $n => $category) {
+            $after[] = ['key' => 'k' . $n, 'category' => $category, 'message' => 'm', 'file' => 'a.ts', 'line' => $n + 1];
+        }
+        for ($n = 6; $n < 20; ++$n) {
+            $after[] = ['key' => 'k' . $n, 'category' => 'ARITY_MISMATCH', 'message' => 'm', 'file' => 'b.ts', 'line' => $n];
+        }
+
+        $section = TurnTestFindings::section([], $after, null);
+
+        assertSame([true, true, true, false, false, false], array_column(array_slice($section['introduced'], 0, 6), 'stale'));
+        assertSame([20, 17], [$section['total'], $section['total_stale']]);
+        assertSame(['key', 'file', 'line', 'message', 'stale'], array_keys($section['introduced'][0]));
+        assertSame(0, TurnTestFindings::notEvaluated()['total_stale']);
+    }
+
     public function testTenIntroducedAreAllListedAndNotTruncated(): void
     {
-        $after = array_map(static fn(int $n): array => ['key' => 'k' . $n, 'message' => 'm', 'file' => 'a.ts', 'line' => $n], range(1, 10));
+        $after = array_map(static fn(int $n): array => ['key' => 'k' . $n, 'category' => 'GHOST_MEMBER', 'message' => 'm', 'file' => 'a.ts', 'line' => $n], range(1, 10));
 
         $section = TurnTestFindings::section([], $after, null);
 

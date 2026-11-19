@@ -152,10 +152,11 @@ final class TurnTestFindings
 
     /**
      * The brief's `test_findings`: what `$after` holds that `$before` did not, by key.
+     * `total_stale` counts the introduced findings of a stale category ({@see StaleCategories}), uncapped like `total`.
      *
      * @param list<string>|null $before the keys before the turn; null when the turn's baseline is unknown
-     * @param list<array{key: string, message: string, file: ?string, line: ?int}> $after
-     * @return array{status: string, introduced: list<array{key: string, file: string, line: int, message: string}>, total: int, truncated: bool, suppressions_invalid: ?string}
+     * @param list<array{key: string, category: string, message: string, file: ?string, line: ?int}> $after
+     * @return array{status: string, introduced: list<array{key: string, file: string, line: int, message: string, stale: bool}>, total: int, total_stale: int, truncated: bool, suppressions_invalid: ?string}
      */
     public static function section(?array $before, array $after, ?string $suppressionsInvalid): array
     {
@@ -174,8 +175,9 @@ final class TurnTestFindings
 
         return [
             'status' => self::OK,
-            'introduced' => array_map(static fn(array $f): array => ['key' => $f['key'], 'file' => $f['file'] ?? '', 'line' => $f['line'] ?? 0, 'message' => $f['message']], array_slice($ordered, 0, self::MAX_TEST_FINDINGS)),
+            'introduced' => array_map(static fn(array $f): array => ['key' => $f['key'], 'file' => $f['file'] ?? '', 'line' => $f['line'] ?? 0, 'message' => $f['message'], 'stale' => StaleCategories::isStale($f['category'])], array_slice($ordered, 0, self::MAX_TEST_FINDINGS)),
             'total' => count($ordered),
+            'total_stale' => count(array_filter($ordered, static fn(array $f): bool => StaleCategories::isStale($f['category']))),
             'truncated' => count($ordered) > self::MAX_TEST_FINDINGS,
             'suppressions_invalid' => $suppressionsInvalid,
         ];
@@ -184,10 +186,10 @@ final class TurnTestFindings
     /**
      * The section of a turn whose baseline is unknown: nothing is claimed introduced.
      *
-     * @return array{status: string, introduced: list<array{key: string, file: string, line: int, message: string}>, total: int, truncated: bool, suppressions_invalid: ?string}
+     * @return array{status: string, introduced: list<array{key: string, file: string, line: int, message: string, stale: bool}>, total: int, total_stale: int, truncated: bool, suppressions_invalid: ?string}
      */
     public static function notEvaluated(?string $suppressionsInvalid = null): array
     {
-        return ['status' => self::NOT_EVALUATED, 'introduced' => [], 'total' => 0, 'truncated' => false, 'suppressions_invalid' => $suppressionsInvalid];
+        return ['status' => self::NOT_EVALUATED, 'introduced' => [], 'total' => 0, 'total_stale' => 0, 'truncated' => false, 'suppressions_invalid' => $suppressionsInvalid];
     }
 }

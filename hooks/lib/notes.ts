@@ -143,14 +143,24 @@ export function testFindingsReadLine(_relative: string, group: { doubles: number
   return `knossos: ${doubles} test double${doubles === 1 ? '' : 's'} of ${target} no longer match${doubles === 1 ? 'es' : ''} it (${reasons.join(', ')}).`
 }
 
-/** How many stale mocks the turn-end note lists before `and N more`. */
+/** How many findings the turn-end note lists before `and N more`. */
 const INTRODUCED_LISTED = 10
 
-/** The turn-end note for the stale mocks a turn introduced (`total` counts all, `introduced` lists some), or null when there are none. */
-export function testFindingsTurnNote(introduced: { file: string; line: number; message: string }[], total: number): string | null {
+const noun = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
+
+/**
+ * The turn-end note for the test findings a turn introduced, or null when there are none. `total` counts all
+ * of them and `introduced` lists some; `stale` is how many of the `total` are doubles that no longer match
+ * their target (the rest are other test findings).
+ */
+export function testFindingsTurnNote(introduced: { file: string; line: number; message: string }[], total: number, stale: number): string | null {
   if (total <= 0 && introduced.length === 0) return null
   const count = Math.max(total, introduced.length)
-  const head = `knossos: this turn introduced ${count} stale mock${count === 1 ? '' : 's'}. Fix ${count === 1 ? 'it' : 'them'} before finishing:`
+  const s = Math.min(Math.max(stale, 0), count)
+  const o = count - s
+  const fix = `Fix ${count === 1 ? 'it' : 'them'} before finishing:`
+  const said = s > 0 && o > 0 ? `${noun(s, 'stale mock', 'stale mocks')} and ${noun(o, 'other test finding', 'other test findings')}` : s > 0 ? noun(s, 'stale mock', 'stale mocks') : noun(o, 'test finding', 'test findings')
+  const head = `knossos: this turn introduced ${said}. ${fix}`
   const shown = introduced.slice(0, INTRODUCED_LISTED)
   const lines = shown.map(f => `- ${f.file}:${f.line} ${f.message}`)
   const more = count > shown.length ? [`- …and ${count - shown.length} more (run audit_tests)`] : []
