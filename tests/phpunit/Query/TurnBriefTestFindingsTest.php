@@ -33,6 +33,11 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
     private const FIXTURE = 'test-fidelity/ts-audit';
     private const SERVICE = 'src/UserService.ts';
     private const RENAMED = "export class UserService {\n  getProfileV2(id: string): string {\n    return id;\n  }\n}\n";
+    private const SPEC = 'tests/ghost.test.ts';
+    private const MOCK = 'tests/UserService.spec.ts';
+
+    /** A spec that mocks the whole service module by a raw specifier. */
+    private const MOCKS_THE_MODULE = "import { it, vi } from 'vitest';\n\nvi.mock('../src/UserService');\n\nit('runs against the mocked module', () => {});\n";
 
     private string|false $allowedRoots = false;
 
@@ -245,6 +250,142 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
         }
     }
 
+    public function testDeletingAMockedModuleIntroducesTheMockItStrands(): void
+    {
+        [$pdo, , $root] = $this->project(healthy: true, extra: [self::MOCK => self::MOCKS_THE_MODULE]);
+        try {
+            unlink($root . '/' . self::SERVICE);
+
+            $brief = $this->brief($pdo, $root, [self::SERVICE]);
+
+            assertSame([self::SERVICE], $brief['deleted_files']);
+            assertSame(['ok', 1], [$brief['test_findings']['status'], $brief['test_findings']['total']]);
+            // The double's target is gone, so only its specifier leads back to the deleted file.
+            assertSame(self::MOCK, $brief['test_findings']['introduced'][0]['file']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    public function testRenamingAMockedModuleIntroducesTheMockItStrands(): void
+    {
+        [$pdo, , $root] = $this->project(healthy: true, extra: [self::MOCK => self::MOCKS_THE_MODULE]);
+        try {
+            rename($root . '/' . self::SERVICE, $root . '/src/Users.ts');
+
+            $brief = $this->brief($pdo, $root, [self::SERVICE, 'src/Users.ts']);
+
+            assertSame([[self::SERVICE], ['src/Users.ts']], [$brief['deleted_files'], $brief['added_files']]);
+            assertSame(['ok', 1], [$brief['test_findings']['status'], $brief['test_findings']['total']]);
+            assertSame(self::MOCK, $brief['test_findings']['introduced'][0]['file']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    public function testDeletingAFileNoDoubleNamesIntroducesNothing(): void
+    {
+        // The spec already mocks a module that is not there: a finding with no target, which no deletion strands.
+        [$pdo, , $root] = $this->project(healthy: true, extra: ['src/Unused.ts' => "export const unused = 1;\n", self::MOCK => "import { it, vi } from 'vitest';\n\nvi.mock('../src/Gone');\n\nit('runs', () => {});\n"]);
+        try {
+            unlink($root . '/src/Unused.ts');
+
+            $brief = $this->brief($pdo, $root, ['src/Unused.ts']);
+
+            assertSame(['src/Unused.ts'], $brief['deleted_files']);
+            assertSame(['ok', 0, []], [$brief['test_findings']['status'], $brief['test_findings']['total'], $brief['test_findings']['introduced']]);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** R13: the watcher took the production edit in one scan and the spec's save in a later one, whose baseline already held the ghost. */
+    public function testTwoWatcherScansThatTookTheProductionEditThenTheSpecInStillReportTheGhost(): void
+    {
+        [$pdo, $projectId, $root] = $this->project(healthy: true);
+        try {
+            $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
+            file_put_contents($root . '/' . self::SERVICE, self::RENAMED);
+            $this->watcherScan($pdo, $root);
+            $this->touch($root, self::SPEC);
+            $this->watcherScan($pdo, $root);
+
+            $brief = $this->brief($pdo, $root, [self::SERVICE, self::SPEC], $since);
+
+            assertSame(['ok', 1], [$brief['test_findings']['status'], $brief['test_findings']['total']]);
+            assertSame(self::SPEC, $brief['test_findings']['introduced'][0]['file']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    public function testTwoWatcherScansDoNotReportAGhostFromBeforeTheTurn(): void
+    {
+        [$pdo, $projectId, $root] = $this->project(healthy: false);
+        try {
+            $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
+            $this->touch($root, self::SERVICE);
+            $this->watcherScan($pdo, $root);
+            $this->touch($root, self::SPEC);
+            $this->watcherScan($pdo, $root);
+
+            $brief = $this->brief($pdo, $root, [self::SERVICE, self::SPEC], $since);
+
+            assertGreaterThan(0, count(TurnTestFindings::affected($pdo, $projectId, [self::SERVICE, self::SPEC], new TestFindingSuppressions([]))));
+            assertSame(['ok', 0, []], [$brief['test_findings']['status'], $brief['test_findings']['total'], $brief['test_findings']['introduced']]);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    public function testTwoWatcherScansThatTookADeletionThenTheSpecInStillReportTheStrandedMock(): void
+    {
+        [$pdo, $projectId, $root] = $this->project(healthy: true, extra: [self::MOCK => self::MOCKS_THE_MODULE]);
+        try {
+            $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
+            unlink($root . '/' . self::SERVICE);
+            $this->watcherScan($pdo, $root);
+            $this->touch($root, self::MOCK);
+            $this->watcherScan($pdo, $root);
+
+            $brief = $this->brief($pdo, $root, [self::SERVICE, self::MOCK], $since);
+
+            assertSame([self::SERVICE], $brief['deleted_files']);
+            assertSame(['ok', 1], [$brief['test_findings']['status'], $brief['test_findings']['total']]);
+            assertSame(self::MOCK, $brief['test_findings']['introduced'][0]['file']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A database upgraded from before the test rules: its active scan has no findings because they never ran. */
+    public function testABaselineFromAScanTheRulesNeverJudgedLeavesTestFindingsNotEvaluated(): void
+    {
+        foreach (['watcher' => true, 'fresh' => false] as $case => $watcher) {
+            [$pdo, $projectId, $root] = $this->project(healthy: true);
+            try {
+                $pdo->exec('UPDATE scans SET test_findings_judged = 0');
+                $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
+                file_put_contents($root . '/' . self::SERVICE, self::RENAMED);
+                if ($watcher) {
+                    $this->watcherScan($pdo, $root);
+                }
+
+                $brief = $this->brief($pdo, $root, [self::SERVICE], $watcher ? $since : null);
+
+                assertSame(['not_evaluated', []], [$brief['test_findings']['status'], $brief['test_findings']['introduced']], $case);
+            } finally {
+                $this->removeTempTree($root);
+            }
+        }
+    }
+
+    /** An edit that changes the file's bytes and nothing it declares. */
+    private function touch(string $root, string $file): void
+    {
+        file_put_contents($root . '/' . $file, (string) file_get_contents($root . '/' . $file) . "\n// touched\n");
+    }
+
     /** A scan as the live watcher makes one: ledgered, with no policies to read. */
     private function watcherScan(PDO $pdo, string $root): void
     {
@@ -260,8 +401,11 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
         return (new TurnBriefService($pdo, ':memory:', self::repositoryRoot()))->brief($root, $reported, [], true, $since);
     }
 
-    /** @return array{0: PDO, 1: string, 2: string} a scanned copy of the fixture, with its stale mock fixed when `$healthy` */
-    private function project(bool $healthy): array
+    /**
+     * @param array<string, string> $extra files added to the copy before it is scanned
+     * @return array{0: PDO, 1: string, 2: string} a scanned copy of the fixture, with its stale mock fixed when `$healthy`
+     */
+    private function project(bool $healthy, array $extra = []): array
     {
         $root = self::scratchPath('knossos-stale');
         $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/' . self::FIXTURE, $root);
@@ -269,6 +413,9 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
         if ($healthy) {
             $ghost = $root . '/tests/ghost.test.ts';
             file_put_contents($ghost, str_replace("'getProfil'", "'getProfile'", (string) file_get_contents($ghost)));
+        }
+        foreach ($extra as $file => $source) {
+            file_put_contents($root . '/' . $file, $source);
         }
         $pdo = $this->freshTestDatabase();
         $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);

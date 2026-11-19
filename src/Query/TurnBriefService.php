@@ -120,9 +120,10 @@ final readonly class TurnBriefService
             [$baseline, $perFile] = $this->baseline($violations, $projectId, $policies, $reported, $absorbed);
             // The test findings the reported files touch, before the scan rewrites them; for a file a scan since the
             // turn began already took in, as the ledger kept them from before that scan. Unknown when it cannot say.
+            // A scan the test rules never judged has no keys to tell before from after.
             $suppressions = ActiveTestFindings::suppressionsOf($root);
-            $held = TurnTestFindings::held($this->pdo, $projectId, $suppressions);
-            $testsBefore = TurnTestFindings::before($reported, $held, $absorbed);
+            $held = TurnTestFindings::judged($this->pdo, $projectId) ? TurnTestFindings::held($this->pdo, $projectId, $suppressions) : null;
+            $testsBefore = $held === null ? null : TurnTestFindings::before($reported, $held, $absorbed);
             $before = self::rewound($current, $absorbed['before'] ?? []);
             $started = $this->now();
             try {
@@ -137,7 +138,7 @@ final readonly class TurnBriefService
             // Same id as the baseline, so a recomputed id cannot make every file look added.
             $after = $ledger->hashes($projectId);
             if ($scan !== null) {
-                $ledger->record($projectId, $from, $scan->snapshotId, $current, $after, $perFile, TurnTestFindings::baselines($held));
+                $ledger->record($projectId, $from, $scan->snapshotId, $current, $after, $perFile, $held === null ? null : TurnTestFindings::baselines($held));
             }
         } finally {
             $lease?->release();
@@ -148,7 +149,9 @@ final readonly class TurnBriefService
         // can change many files at once, and their old violations are not the model's to fix.
         $edited = array_values(array_intersect($live, $reported));
         $tests = $live === [] ? ['tests' => [], 'truncated' => false] : FileTestReach::testsOf($queries->changeQueries, $projectId, $live, self::MAX_TESTS);
-        $testFindings = TurnTestFindings::section($testsBefore, $testsBefore === null ? [] : TurnTestFindings::affected($this->pdo, $projectId, $edited, $suppressions), $suppressions->invalid());
+        // A module the turn deleted (a renamed one's old path) strands the doubles that mocked it.
+        $stranded = array_values(array_intersect($deleted, $reported));
+        $testFindings = TurnTestFindings::section($testsBefore, $testsBefore === null ? [] : TurnTestFindings::affected($this->pdo, $projectId, $edited, $suppressions, $stranded), $suppressions->invalid());
         return [
             'status' => 'ok',
             'project_root' => $root,

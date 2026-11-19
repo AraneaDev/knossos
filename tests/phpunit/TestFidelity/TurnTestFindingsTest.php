@@ -94,6 +94,17 @@ final class TurnTestFindingsTest extends KnossosTestCase
         assertSame(['old', 'own'], TurnTestFindings::before(['src.ts', 'spec.ts'], $held, $absorbed));
     }
 
+    /** R13: the watcher took src.ts in, made the ghost, then took spec.ts in, whose baseline already holds it. */
+    public function testAKeyIsBeforeOnlyWhenEveryTakenInFileItTouchesHeldIt(): void
+    {
+        $held = ['src.ts' => ['ghost'], 'spec.ts' => ['ghost', 'own']];
+        $later = ['before' => ['src.ts' => 'H0', 'spec.ts' => 'H1'], 'test_baselines' => ['src.ts' => self::NONE, 'spec.ts' => ['keys' => ['ghost', 'own'], 'truncated' => false]]];
+        $old = ['before' => ['src.ts' => 'H0', 'spec.ts' => 'H1'], 'test_baselines' => ['src.ts' => ['keys' => ['ghost'], 'truncated' => false], 'spec.ts' => ['keys' => ['ghost', 'own'], 'truncated' => false]]];
+
+        assertSame(['own'], TurnTestFindings::before(['src.ts', 'spec.ts'], $held, $later));
+        assertSame(['ghost', 'own'], TurnTestFindings::before(['src.ts', 'spec.ts'], $held, $old));
+    }
+
     public function testAnUnknownOrCutBaselineLeavesTheTurnUnjudged(): void
     {
         $held = ['src.ts' => ['k']];

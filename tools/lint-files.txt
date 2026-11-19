@@ -545,6 +545,7 @@ php	src/TestFidelity/Facts/TestCaseFact.php
 php	src/TestFidelity/Facts/TestDouble.php
 php	src/TestFidelity/FindingCategory.php
 php	src/TestFidelity/FindingConfidence.php
+php	src/TestFidelity/MockedModulePaths.php
 php	src/TestFidelity/Rules/ArityMismatchRule.php
 php	src/TestFidelity/Rules/DoubleTests.php
 php	src/TestFidelity/Rules/DriftPair.php
@@ -558,6 +559,7 @@ php	src/TestFidelity/Rules/SignatureShape.php
 php	src/TestFidelity/Rules/TautologyRule.php
 php	src/TestFidelity/Rules/VisibilityBreachRule.php
 php	src/TestFidelity/SnapshotTestFindings.php
+php	src/TestFidelity/StaleCategories.php
 php	src/TestFidelity/TestFidelityAnalysis.php
 php	src/TestFidelity/TestFidelityGraph.php
 php	src/TestFidelity/TestFidelityReport.php
@@ -1287,6 +1289,7 @@ php	tests/phpunit/TestFidelity/DashboardTestFindingsTest.php
 php	tests/phpunit/TestFidelity/DriftEndToEndTest.php
 php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
 php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
+php	tests/phpunit/TestFidelity/MockedModulePathsTest.php
 php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/CaseFixtures.php
@@ -1298,6 +1301,7 @@ php	tests/phpunit/TestFidelity/Rules/TautologyRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/VisibilityBreachRuleTest.php
 php	tests/phpunit/TestFidelity/ScansTypeScript.php
 php	tests/phpunit/TestFidelity/SnapshotTestFindingsTest.php
+php	tests/phpunit/TestFidelity/StaleCategoriesTest.php
 php	tests/phpunit/TestFidelity/SurfacesEndToEndTest.php
 php	tests/phpunit/TestFidelity/TautologyEndToEndTest.php
 php	tests/phpunit/TestFidelity/TestFactsSearchTest.php
