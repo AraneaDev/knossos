@@ -186,8 +186,8 @@ explains how they are checked.
 ### Quality budgets
 
 The supported keys are `new_cycles`, `boundary_violations`, `error_diagnostics`,
-`warning_diagnostics`, `hub_degree_growth`, `unreferenced_candidates` and
-`public_surface_changes`. Each is a count the quality gate tolerates against a
+`warning_diagnostics`, `hub_degree_growth`, `unreferenced_candidates`,
+`public_surface_changes` and `new_definite_test_findings`. Each is a count the quality gate tolerates against a
 baseline snapshot. See [change review](../guides/change-review.md).
 
 ### Dead-code suppressions

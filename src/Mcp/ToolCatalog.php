@@ -896,6 +896,7 @@ final readonly class ToolCatalog
                 'hub_degree_growth' => $limit,
                 'unreferenced_candidates' => $limit,
                 'public_surface_changes' => $limit,
+                'new_definite_test_findings' => [...$limit, 'description' => 'Definite test-double findings whose key the baseline lacks; indeterminate (and failing) when the baseline snapshot predates stored test findings.'],
             ],
             'additionalProperties' => false,
         ];
