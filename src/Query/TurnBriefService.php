@@ -11,6 +11,7 @@ use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Result\PaneStatus;
 use Knossos\Scan\{ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
 use Knossos\Scan\ScanOptions;
+use Knossos\TestFidelity\{ActiveTestFindings, TurnTestFindings};
 use PDO;
 use Throwable;
 
@@ -116,6 +117,12 @@ final readonly class TurnBriefService
             $absorbed = $since === null ? ['before' => [], 'baselines' => [], 'scans' => []] : $ledger->since($projectId, $since);
             // Taken before the scan rewrites the graph: what the reported files already broke is not this turn's doing.
             [$baseline, $perFile] = $this->baseline($violations, $projectId, $policies, $reported, $absorbed);
+            // The test findings the reported files touch, before the scan rewrites them. Unknown when the ledger
+            // cannot account for the scans since the turn began, or when one of them already took a reported edit in.
+            $suppressions = ActiveTestFindings::suppressionsOf($root);
+            $testsBefore = $absorbed === null || array_intersect_key($absorbed['before'], array_flip($reported)) !== []
+                ? null
+                : TurnTestFindings::affected($this->pdo, $projectId, $reported, $suppressions);
             $before = self::rewound($current, $absorbed['before'] ?? []);
             $started = $this->now();
             try {
@@ -141,6 +148,7 @@ final readonly class TurnBriefService
         // can change many files at once, and their old violations are not the model's to fix.
         $edited = array_values(array_intersect($live, $reported));
         $tests = $live === [] ? ['tests' => [], 'truncated' => false] : FileTestReach::testsOf($queries->changeQueries, $projectId, $live, self::MAX_TESTS);
+        $testFindings = TurnTestFindings::section($testsBefore, $testsBefore === null ? [] : TurnTestFindings::affected($this->pdo, $projectId, $edited, $suppressions), $suppressions->invalid());
         return [
             'status' => 'ok',
             'project_root' => $root,
@@ -158,6 +166,7 @@ final readonly class TurnBriefService
             'policy' => $unreadable !== null
                 ? ['status' => PaneStatus::POLICY_CONFIG_INVALID, 'message' => $unreadable, 'total' => 0, 'violations' => [], 'truncated' => false]
                 : self::policy($enforcePolicies, $edited, $baseline, $baseline === null ? null : $violations->inFiles($projectId, $policies, $edited)),
+            'test_findings' => $testFindings,
         ] + $envelope;
     }
 
@@ -378,6 +387,7 @@ final readonly class TurnBriefService
             'changed_files' => [], 'added_files' => [], 'deleted_files' => [],
             'impact' => [], 'tests' => [], 'tests_truncated' => false,
             'policy' => self::NO_POLICY,
+            'test_findings' => TurnTestFindings::notEvaluated(),
         ];
     }
 }
