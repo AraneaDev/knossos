@@ -110,6 +110,7 @@ Supported budgets are:
 | `hub_degree_growth`                        | How far the highest component degree grew past the baseline's.                                                                                                                                                                                                                                                                                    |
 | `unreferenced_candidates`                  | Dead-code candidates in the active graph.                                                                                                                                                                                                                                                                                                         |
 | `public_surface_changes`                   | Routes, commands, endpoints, exports and public or entry-point roles added or removed.                                                                                                                                                                                                                                                            |
+| `new_definite_test_findings`               | Distinct definite test-double findings in the active scan whose key the baseline lacks; warnings never count, a finding that only moved lines is not new, and `test_finding_suppressions` apply to both sides. Indeterminate when the baseline predates stored test findings.                                                                     |
 
 Example budget file:
 
@@ -132,10 +133,17 @@ knossos quality-gate project_... scan_... \
 
 The command exits nonzero when any budget fails. A `boundary_violations` check
 whose policy scan hit its edge or time bound is marked `indeterminate` and
-fails, because a count taken from a partial scan is only a lower bound.
+fails, because a count taken from a partial scan is only a lower bound. A
+`new_definite_test_findings` check against a baseline archived before test
+findings were stored is `indeterminate` with reason
+`baseline_has_no_test_findings` and fails, because there is nothing to compare
+with; gate against a snapshot scanned since.
+
 `--sarif` embeds SARIF 2.1.0
-for findings with sound file mappings, currently boundary-policy evidence and
-scanner diagnostics. Other metrics remain structured JSON because assigning a
+for findings with sound file mappings: boundary-policy evidence, test findings
+and scanner diagnostics, in that order and within 200 results. A test finding's
+`ruleId` is its rule id followed by `/` and the sub-rule when there is one, and
+its level is `error` when definite and `warning` otherwise. Other metrics remain structured JSON because assigning a
 single source location would be misleading.
 
 `--propose-baseline` returns the current metrics as `proposed_baseline`, a

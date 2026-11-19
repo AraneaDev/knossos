@@ -32,7 +32,7 @@ final class ProjectConfigurationLoader
     public const FRAMEWORKS = ['laravel', 'livewire', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
 
     public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'diagnostic_suppressions', 'test_finding_suppressions', 'web_roots', 'enrichers', 'gates'];
-    public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];
+    public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes', 'new_definite_test_findings'];
 
     /**
      * Keys each nested object accepts, named so the published schema can be

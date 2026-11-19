@@ -7,9 +7,11 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
+use Knossos\Roots\RootNotFoundException;
 use Knossos\Store\CountedSnapshotFigures;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SnapshotPayload;
+use Knossos\TestFidelity\{SnapshotTestFindings, TestFindingKey, TestFindingSuppressions};
 use PDO;
 
 /**
@@ -55,7 +57,7 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
      */
     public static function validateBudgets(array $budgets, array $policies): void
     {
-        $allowed = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];
+        $allowed = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes', 'new_definite_test_findings'];
         if ($budgets === [] || array_diff(array_keys($budgets), $allowed) !== []) {
             throw new InvalidArgumentException('budgets must contain one or more supported quality limits.');
         }
@@ -101,6 +103,25 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             'public_surface_changes' => count(array_diff_key($before['surface'], $after['surface'])) + count(array_diff_key($after['surface'], $before['surface'])),
         ];
         unset($before, $after);
+        // Read after both graphs are let go, so the findings are never held beside one.
+        try {
+            $suppressions = TestFindingSuppressions::fromProjectRoot((string) $project['root_realpath']);
+        } catch (RootNotFoundException) {
+            // A project whose folder is gone has no knossos.json to suppress with; its stored findings still count.
+            $suppressions = new TestFindingSuppressions([]);
+        }
+        $baselineFindings = (new SnapshotTestFindings($this->pdo))->forSnapshot($projectId, (string) $baseline['scan_id']);
+        $activeDefinite = $this->activeTestFindings($projectId, $suppressions, definiteOnly: true);
+        $baselineKeys = [];
+        foreach ($baselineFindings ?? [] as $finding) {
+            if ($finding['confidence'] === 'definite' && !$suppressions->suppresses($finding['rule_id'], $finding['category'], $finding['sub_rule'], (string) $finding['file'])) {
+                $baselineKeys[$finding['key']] = true;
+            }
+        }
+        // A set difference of distinct keys: a line that moved keeps its key, and two doubles that
+        // say the same thing in one file count once, as the archive keeps them.
+        $actual['new_definite_test_findings'] = count(array_diff_key(array_column($activeDefinite, 'key', 'key'), $baselineKeys));
+        unset($activeDefinite, $baselineKeys);
         $policyResult = null;
         $boundaryIndeterminate = false;
         if ($policies !== []) {
@@ -124,12 +145,13 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
         $passed = true;
         foreach ($budgets as $name => $limit) {
             $value = $actual[$name];
-            $indeterminate = $name === 'boundary_violations' && $boundaryIndeterminate;
+            $baselineMissing = $name === 'new_definite_test_findings' && $baselineFindings === null;
+            $indeterminate = ($name === 'boundary_violations' && $boundaryIndeterminate) || $baselineMissing;
             $checkPassed = !$indeterminate && $value <= $limit;
             $check = ['metric' => $name, 'actual' => $value, 'limit' => $limit, 'passed' => $checkPassed];
             if ($indeterminate) {
                 $check['indeterminate'] = true;
-                $check['indeterminate_reason'] = 'boundary_violation_scan_truncated';
+                $check['indeterminate_reason'] = $baselineMissing ? 'baseline_has_no_test_findings' : 'boundary_violation_scan_truncated';
             }
             $checks[] = $check;
             $passed = $passed && $checkPassed;
@@ -145,6 +167,14 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             foreach ($policyEvidence as $evidence) {
                 $results[] = ['ruleId' => 'knossos.boundary', 'level' => 'error', 'message' => ['text' => 'Architecture boundary policy violation.'],
                     'locations' => [['physicalLocation' => ['artifactLocation' => ['uri' => $evidence['path']], 'region' => ['startLine' => $evidence['start_line'] ?? 1]]]]];
+            }
+            foreach ($this->activeTestFindings($projectId, $suppressions, limit: max(0, 200 - count($results))) as $finding) {
+                $result = ['ruleId' => $finding['rule_id'] . ($finding['sub_rule'] === '' ? '' : '/' . $finding['sub_rule']),
+                    'level' => $finding['confidence'] === 'definite' ? 'error' : 'warning', 'message' => ['text' => $finding['message']]];
+                if ($finding['file'] !== null) {
+                    $result['locations'] = [['physicalLocation' => ['artifactLocation' => ['uri' => $finding['file']], 'region' => ['startLine' => $finding['line'] ?? 1]]]];
+                }
+                $results[] = $result;
             }
             // Read for SARIF alone, and only as many as the 200 results allow.
             // Not an enricher's diagnostics: like the budgets, the gate's findings describe the code.
@@ -166,6 +196,41 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             $data,
             warnings: ['Baseline proposals are never applied automatically and require review.'],
         );
+    }
+
+    /**
+     * The active scan's unsuppressed test findings in file and line order, with
+     * their key, and the first `$limit` of them when one is given.
+     *
+     * @return list<array{key: string, rule_id: string, sub_rule: string, confidence: string, message: string, file: ?string, line: ?int}>
+     */
+    private function activeTestFindings(string $projectId, TestFindingSuppressions $suppressions, bool $definiteOnly = false, ?int $limit = null): array
+    {
+        [$suppressed, $values] = $suppressions->sqlCondition('tf');
+        $statement = $this->pdo->prepare(
+            'SELECT tf.rule_id, tf.sub_rule, tf.confidence, tf.message, f.relative_path, tf.start_line, t.canonical_name AS target_canonical '
+            . 'FROM test_findings tf LEFT JOIN nodes t ON t.id = tf.target_node_id LEFT JOIN files f ON f.id = tf.file_id '
+            . "WHERE tf.project_id = ? AND {$suppressed}" . ($definiteOnly ? " AND tf.confidence = 'definite'" : '')
+            . ' ORDER BY f.relative_path IS NULL, f.relative_path, tf.start_line, tf.category, tf.rule_id, tf.id' . ($limit === null ? '' : ' LIMIT ?'),
+        );
+        $parameters = [$projectId, ...$values];
+        foreach ($parameters as $position => $value) {
+            $statement->bindValue($position + 1, $value);
+        }
+        if ($limit !== null) {
+            $statement->bindValue(count($parameters) + 1, $limit, PDO::PARAM_INT);
+        }
+        $statement->execute();
+
+        return array_map(static fn(array $row): array => [
+            'key' => TestFindingKey::of((string) $row['rule_id'], (string) $row['sub_rule'], (string) $row['relative_path'], $row['target_canonical'] === null ? null : (string) $row['target_canonical'], (string) $row['message']),
+            'rule_id' => (string) $row['rule_id'],
+            'sub_rule' => (string) $row['sub_rule'],
+            'confidence' => (string) $row['confidence'],
+            'message' => (string) $row['message'],
+            'file' => $row['relative_path'] === null ? null : (string) $row['relative_path'],
+            'line' => $row['start_line'] === null ? null : (int) $row['start_line'],
+        ], $statement->fetchAll(PDO::FETCH_ASSOC));
     }
 
     /**
