@@ -17,6 +17,14 @@ skill that decides which questions reach these tools at all
 | `architecture_context` | `architecture-context` | A bounded evidence bundle for one coding task.    |
 | `annotate_component`   | `annotate-component`   | Record a durable judgment on a component.         |
 | `list_annotations`     | `list-annotations`     | Read those judgments back.                        |
+| `audit_tests`          | `audit-tests`          | Stale mocks and assertions that cannot fail.      |
+
+`audit_tests` is the one tool of the table that checks the agent's own work
+rather than orienting it: it lists test doubles that no longer match the code
+they replace and assertions that cannot fail, each with a stable `key`. An agent
+that has renamed a member calls it before trusting a green suite. A finding that
+is intended can be silenced with `test_finding_suppressions` in `knossos.json`
+([project configuration](../get-started/project-configuration.md)), with no rescan.
 
 The server also exposes two MCP surfaces with no CLI equivalent: per-project
 resources at `knossos://<project_id>/summary`, `/boundaries` and `/brief` (the
