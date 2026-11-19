@@ -7,8 +7,8 @@ namespace Knossos\Query;
 use Knossos\Classification\TestModuleRule;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\EdgeQueries;
-use Knossos\Store\EnrichedFacts;
 use Knossos\Store\ProjectRepository;
+use Knossos\Store\SnapshotFacts;
 use PDO;
 
 /**
@@ -323,9 +323,9 @@ final class CandidateGraphFacts
             $this->interfaces = [];
             $statement = $this->pdo->prepare(
                 'SELECT i.id, i.language, i.display_name, m.id AS member_id, m.display_name AS member_name FROM nodes i '
-                . "JOIN edges e ON e.project_id = i.project_id AND e.source_id = i.id AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' '
+                . "JOIN edges e ON e.project_id = i.project_id AND e.source_id = i.id AND e.kind = 'contains' AND " . SnapshotFacts::nativeSql('edges', 'e') . ' '
                 . 'JOIN nodes m ON m.id = e.target_id '
-                . "WHERE i.project_id = ? AND i.kind = 'interface' AND " . EnrichedFacts::excludeSql('i') . ' ORDER BY i.display_name, i.id',
+                . "WHERE i.project_id = ? AND i.kind = 'interface' AND " . SnapshotFacts::nativeSql('nodes', 'i') . ' ORDER BY i.display_name, i.id',
             );
             $statement->execute([$this->projectId]);
             $byId = [];
@@ -364,7 +364,7 @@ final class CandidateGraphFacts
             foreach (array_chunk($types, self::CHUNK) as $chunk) {
                 $statement = $this->pdo->prepare(
                     'SELECT n.display_name, n.attributes_json FROM edges e JOIN nodes n ON n.id = e.target_id '
-                    . "WHERE e.project_id = ? AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' AND e.source_id IN (' . self::placeholders($chunk) . ')',
+                    . "WHERE e.project_id = ? AND e.kind = 'contains' AND " . SnapshotFacts::nativeSql('edges', 'e') . ' AND e.source_id IN (' . self::placeholders($chunk) . ')',
                 );
                 $statement->execute([$this->projectId, ...$chunk]);
                 foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
@@ -460,7 +460,7 @@ final class CandidateGraphFacts
     /** The kind and confidence conditions every degree counts under, as SQL, over native edges only. */
     private function edgeFilter(): string
     {
-        return 'AND ' . EnrichedFacts::excludeSql('edges') . ' AND ' . EdgeQueries::kindFilteredIn('kind', $this->edgeKinds) . ' '
+        return 'AND ' . SnapshotFacts::nativeSql('edges', 'edges') . ' AND ' . EdgeQueries::kindFilteredIn('kind', $this->edgeKinds) . ' '
             . 'AND ' . ConfidenceRank::atLeast('confidence');
     }
 
