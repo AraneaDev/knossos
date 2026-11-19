@@ -1290,6 +1290,8 @@ php	tests/phpunit/TestFidelity/TestFactsSnapshotTest.php
 php	tests/phpunit/TestFidelity/TestFidelityAnalysisTest.php
 php	tests/phpunit/TestFidelity/TestFidelityGraphTest.php
 php	tests/phpunit/TestFidelity/TypeScriptAcceptanceTest.php
+php	tests/phpunit/TestFidelity/TypeScriptTestCaseFlowTest.php
+php	tests/phpunit/TestFidelity/TypeScriptTestFactsTest.php
 php	tests/phpunit/Watch/ExternalScanProbeTest.php
 php	tests/phpunit/Watch/ProcessScannerTest.php
 php	tests/phpunit/Watch/SessionLinkTest.php
