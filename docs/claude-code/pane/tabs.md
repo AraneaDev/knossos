@@ -232,6 +232,16 @@ Issues gathers what needs fixing, one card each, in the order a pane this wide s
   `· source unknown`). A message longer than one line ends in `…`. The marker
   walks them: `o` opens a diagnostic's file and `e` opens it at its line. A
   diagnostic about no file only takes the marker: `o` and `e` do nothing on it.
+- **Test findings**: the stale mocks and other test-double findings the scan
+  stored, definite ones first (`✗`), then warnings (`▲`), each in the order the
+  scan reported them, the first two hundred, then `+N more`. A row is its
+  message and the test file and line it stands on, cut from the start where the
+  row is short. The marker walks them after the diagnostics: `o` opens the test
+  file and `e` opens it at the line. Its note counts definite findings and
+  warnings, and reads `✓ 0` when there are none. A row below the list says when
+  the list was cut short, and `suppressions unreadable: <reason>` when the
+  project's `knossos.json` could not be read. The card is not hidden by the
+  `testChecks` setting, which governs only what the model is told.
 - **Over budget**: files with a PHP function longer than the
   `max_php_function_lines` budget in `maintainability-budgets.json`, with how
   many functions are over and the longest. Its note names the rule
@@ -243,7 +253,7 @@ Issues gathers what needs fixing, one card each, in the order a pane this wide s
   files, with a bar of that product beside the two figures.
 
 A card with nothing to list is one line (`── ! Policy violations ──── ✓ 0 ──`).
-The tab's badge counts violations, errors and warnings. `o` on a hotspot or a
+The tab's badge counts violations, errors, warnings and definite test findings. `o` on a hotspot or a
 file over budget opens the file's detail, and `e` opens the file at its
 longest function.
 

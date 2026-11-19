@@ -44,15 +44,15 @@ describe('an issue row gives up its cells in the order its kind asks', () => {
 })
 
 describe('the Issues cards stacked', () => {
-  it('stand in the order the marker walks them: violations, diagnostics, dead code, hotspots, then the files over budget', () => {
+  it('stand in the order the marker walks them: violations, diagnostics, test findings, dead code, hotspots, then the files over budget', () => {
     const full = {
       ...dash,
       complexity_hotspots: [{ path: 'src/Big.php', language: 'php', lines: 900, dependent_files: 3, score: 2700 }],
       over_budget: { source: 'maintainability-budgets.json', max_function_lines: 205, total: 1, files: [{ path: 'src/Long.php', functions: 1, longest: 260, line: 4 }] },
     } as unknown as Dashboard
     const titles = (columns: number) => arrange(issuesArrangement(issuesInput(full), 0, tierOf(columns), NO_HUES), columns, 1000).filter(r => r.key.endsWith('-head')).map(r => r.key.slice(0, -5))
-    expect(titles(60)).toEqual(['policy', 'diag', 'dead', 'hotspots', 'budget'])
-    expect(titles(100)).toEqual(['policy', 'diag', 'dead', 'hotspots', 'budget'])
-    expect(issuesWalk(issuesInput(full))).toMatchObject({ violations: { offset: 0 }, diagnostics: { offset: 1 }, dead: { offset: 2 }, hotspots: { offset: 3 }, budget: { offset: 4 } })
+    expect(titles(60)).toEqual(['policy', 'diag', 'tests', 'dead', 'hotspots', 'budget'])
+    expect(titles(100)).toEqual(['policy', 'diag', 'tests', 'dead', 'hotspots', 'budget'])
+    expect(issuesWalk(issuesInput(full))).toMatchObject({ violations: { offset: 0 }, diagnostics: { offset: 1 }, tests: { offset: 2 }, dead: { offset: 2 }, hotspots: { offset: 3 }, budget: { offset: 4 } })
   })
 })

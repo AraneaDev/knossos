@@ -513,3 +513,17 @@ describe('drawPane: the tree budget', () => {
         }
     })
 })
+
+describe('drawPane: the Issues tab test findings', () => {
+    const list = Array.from({ length: 200 }, (_, i) => ({ key: `k${i}`, category: 'stale_mock', sub_rule: 'arity', confidence: i < 150 ? 'definite' : 'warning', message: `stale mock number ${i}`, file: `tests/T${i}.php`, line: i + 1, target_file: null }))
+    const issues = dashboard({ test_findings: { definite: 150, warning: 80, by_production_file: {}, by_production_file_truncated: false, list, list_truncated: true, suppressions_invalid: null } } as Partial<Dashboard>)
+
+    for (const [surface, bodyColumns] of [['terminal', 30], ['terminal', 60], ['desktop', 120]] as const) {
+        it(`draws them within the text budget at ${bodyColumns} columns on ${surface}`, async () => {
+            const { io } = fakePort({ dashboard: issues, view: view({ tab: 'issues' }) })
+            const tree = await drawPane(io, elements as never, surface, { bodyColumns, scroll: { offset: 0, bodyRows: 60 } }, act)
+            expect(drawnText(tree)).toBeLessThanOrEqual(TEXT_BUDGET)
+            expect(JSON.stringify(tree)).toContain('Test findings')
+        })
+    }
+})

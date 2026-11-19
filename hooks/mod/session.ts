@@ -4,7 +4,7 @@
  */
 import type { ConfigRow, UiPane } from 'claude-code'
 
-import { bandModel } from '../lib/band'
+import { bandModel, staleMocksOf } from '../lib/band'
 import { NO_CHANGES } from '../lib/session-changes'
 import { noGraphOf } from '../lib/empty-state'
 import { paneStatus } from '../lib/pane-status'
@@ -111,7 +111,7 @@ async function tickAge(io: Port): Promise<void> {
   if (mod.pane.bandText === null && mod.pane.text === null) return
   const now = await io.clock.now()
   const d = await io.state.dashboard.read()
-  const model = bandModel(await io.state.brief.read(), await io.state.job.read(), now, d?.status === 'ok' ? declaredOf(d) : undefined, d?.status === 'ok' ? huesOf(d) : undefined, await failedWhy(io))
+  const model = bandModel(await io.state.brief.read(), await io.state.job.read(), now, d?.status === 'ok' ? declaredOf(d) : undefined, d?.status === 'ok' ? huesOf(d) : undefined, await failedWhy(io), staleMocksOf(d))
   const pane = d?.status === 'ok' ? paneStatus(d, await io.state.refresh.read(), await io.state.rescan.read(), now, await io.state.live.read()).text : null
   const bandStale = mod.pane.bandText !== null && (model?.text ?? null) !== mod.pane.bandText
   const paneStale = mod.pane.text !== null && pane !== mod.pane.text

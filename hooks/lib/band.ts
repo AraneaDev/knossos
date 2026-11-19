@@ -1,9 +1,12 @@
-import type { JobState, TurnBrief } from '../../types'
+import type { Dashboard, JobState, TurnBrief } from '../../types'
 import { boundaryLabel, NO_HUES } from './palette'
 import type { Hues } from './palette'
 
 export type { JobState }
 export type BandModel = { tone: 'normal' | 'warn' | 'alert'; text: string; showDetails: boolean } | null
+
+/** The definite test findings a dashboard counts, for the band's chip; 0 from a knossos that sends none or without a dashboard. */
+export const staleMocksOf = (d: Dashboard | null): number => (d?.status === 'ok' ? (d.test_findings?.definite ?? 0) : 0)
 
 /** 12s, 14m, 3h. */
 export function formatAge(ms: number): string {
@@ -20,16 +23,17 @@ const REACH_NAMED = 2
 
 /**
  * The turn's figures, most telling first: files and dependents, deletions,
- * violations, tests. The boundaries the dependents sit in come apart, as
+ * violations, stale mocks, tests. The boundaries the dependents sit in come apart, as
  * `reach`: they go last, after the age, since a narrow band cuts from the end.
  */
-function figures(b: TurnBrief, declared: ReadonlySet<string>, hues: Hues): { body: string | null; reach: string } {
+function figures(b: TurnBrief, declared: ReadonlySet<string>, hues: Hues, staleMocks: number): { body: string | null; reach: string } {
   const files = b.changed_files.length + b.added_files.length
   const dependents = Object.values(b.impact).reduce((sum, f) => sum + f.dependent_files, 0)
   const parts: string[] = []
   if (files > 0) parts.push(`${plural(files, 'file', 'files')} → ${plural(dependents, 'dependent', 'dependents')}`)
   if (b.deleted_files.length > 0) parts.push(`${b.deleted_files.length} deleted`)
   if (b.policy.total > 0) parts.push(plural(b.policy.total, 'policy violation', 'policy violations'))
+  if (staleMocks > 0) parts.push(plural(staleMocks, 'stale mock', 'stale mocks'))
   if (b.tests.length > 0) parts.push(plural(b.tests.length, 'test', 'tests'))
   // Short labels, each once, the boundary holding the most dependents first.
   const weight = new Map<string, number>()
@@ -51,10 +55,13 @@ function figures(b: TurnBrief, declared: ReadonlySet<string>, hues: Hues): { bod
  * holds the project's declared boundaries (from the dashboard): when there
  * are any, the band names only those its dependents reach.
  *
+ * `staleMocks` is the dashboard's count of definite test findings, a chip
+ * hidden at 0 (see {@link staleMocksOf}).
+ *
  * Units: `scanned_at` is Unix seconds (it comes from PHP's time()); `now` and
  * `lastAttemptAt` are the mod clock in milliseconds.
  */
-export function bandModel(brief: TurnBrief | null, job: JobState, now: number, declared: ReadonlySet<string> = new Set(), hues: Hues = NO_HUES, why: string | null = null): BandModel {
+export function bandModel(brief: TurnBrief | null, job: JobState, now: number, declared: ReadonlySet<string> = new Set(), hues: Hues = NO_HUES, why: string | null = null, staleMocks = 0): BandModel {
   if (brief === null) {
     if (job.phase === 'scanning') return { tone: 'normal', text: 'knossos · scanning…', showDetails: false }
     if (job.phase === 'failed') return { tone: 'warn', text: `knossos · scan failed${why ? `: ${why}` : ''}`, showDetails: false }
@@ -66,7 +73,7 @@ export function bandModel(brief: TurnBrief | null, job: JobState, now: number, d
     return { tone: 'warn', text: `knossos · scan failed${why}`, showDetails: false }
   }
   if (brief.status !== 'ok') return null
-  const { body, reach } = figures(brief, declared, hues)
+  const { body, reach } = figures(brief, declared, hues, staleMocks)
   const tone = brief.policy.total > 0 ? 'alert' : 'normal'
   const age = brief.scanned_at === null ? null : formatAge(now - brief.scanned_at * 1000)
   if (job.phase === 'scanning') {
