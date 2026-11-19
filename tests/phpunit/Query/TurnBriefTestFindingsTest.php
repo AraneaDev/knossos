@@ -67,7 +67,8 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
             assertCount(1, $brief['test_findings']['introduced']);
             // The ghost lives in a test file the turn never touched.
             $entry = $brief['test_findings']['introduced'][0];
-            assertSame(['key', 'file', 'line', 'message'], array_keys($entry));
+            assertSame(['key', 'file', 'line', 'message', 'stale'], array_keys($entry));
+            assertSame([true, 1], [$entry['stale'], $brief['test_findings']['total_stale']]);
             assertSame('tests/ghost.test.ts', $entry['file']);
             assertSame(true, is_int($entry['line']) && $entry['line'] > 0);
             assertSame(true, $entry['key'] !== '' && $entry['message'] !== '');

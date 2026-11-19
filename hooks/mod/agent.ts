@@ -94,8 +94,8 @@ export function turnEndNote(parsed: TurnBrief, cd: string | null, debug: (line: 
     if (quietCut) mod.agent.truncationSaid = true
     for (const v of parsed.policy.violations) mod.agent.violationsSeen.add(violationKey(v))
   }
-  const stale = staleMocksNote(parsed, debug)
-  if (stale !== null) parts.push(stale)
+  const findings = testFindingsNote(parsed, debug)
+  if (findings !== null) parts.push(findings)
   const tests = testsNote(parsed.tests, mod.turn.ran, mod.agent.testsNamed, cd)
   if (tests !== null) {
     parts.push(tests.text)
@@ -105,18 +105,18 @@ export function turnEndNote(parsed: TurnBrief, cd: string | null, debug: (line: 
 }
 
 /**
- * The part of the turn-end note on stale mocks the turn introduced that no
+ * The part of the turn-end note on stale mocks and other test findings the turn introduced that no
  * earlier note named (a finding's key is said once a session, wherever its
  * line moves). Null with `testChecks` off, for a brief that did not evaluate
  * them (said once in the debug log), or when none is new.
  */
-function staleMocksNote(parsed: TurnBrief, debug: (line: string) => void): string | null {
+function testFindingsNote(parsed: TurnBrief, debug: (line: string) => void): string | null {
   const found = parsed.test_findings
   if (!mod.agent.testChecksOn || found === undefined) return null
   if (found.status !== 'ok') {
     if (!mod.agent.testNotEvaluatedLogged) {
       mod.agent.testNotEvaluatedLogged = true
-      debug('knossos: the turn brief did not evaluate test findings; no note about stale mocks this turn')
+      debug('knossos: the turn brief did not evaluate test findings; no note about test findings this turn')
     }
     return null
   }
@@ -126,7 +126,11 @@ function staleMocksNote(parsed: TurnBrief, debug: (line: string) => void): strin
   if (fresh.length === 0) return null
   // The head counts the total less the listed findings already said; the unlisted rest stays in it.
   const total = Math.max(fresh.length, found.total - (found.introduced.length - fresh.length))
-  return testFindingsTurnNote(fresh, total)
+  // The same for the stale ones; a brief that sends no `total_stale` counts the stale among the listed.
+  const freshStale = fresh.filter(f => f.stale).length
+  const seenStale = found.introduced.filter(f => f.stale).length - freshStale
+  const stale = Math.max(freshStale, (found.total_stale ?? found.introduced.filter(f => f.stale).length) - seenStale)
+  return testFindingsTurnNote(fresh, total, stale)
 }
 
 /**

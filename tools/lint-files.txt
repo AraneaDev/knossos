@@ -1306,6 +1306,7 @@ php	tests/phpunit/TestFidelity/TestFidelityAnalysisTest.php
 php	tests/phpunit/TestFidelity/TestFidelityGraphTest.php
 php	tests/phpunit/TestFidelity/TestFindingKeyTest.php
 php	tests/phpunit/TestFidelity/TestFindingSuppressionsTest.php
+php	tests/phpunit/TestFidelity/TurnTestFindingsTest.php
 php	tests/phpunit/TestFidelity/TypeScriptAcceptanceTest.php
 php	tests/phpunit/TestFidelity/TypeScriptTestCaseFlowTest.php
 php	tests/phpunit/TestFidelity/TypeScriptTestFactsTest.php

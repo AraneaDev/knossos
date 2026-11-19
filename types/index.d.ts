@@ -44,10 +44,10 @@ export type TurnBrief = {
    */
   policy: { status: PolicyStatus; total: number; violations: Violation[]; truncated: boolean; message?: string }
   /**
-   * The stale test doubles this turn introduced (definite findings only): `introduced` is at most 10, by file then
+   * The test findings this turn introduced (definite findings only; `stale` marks a double that no longer matches its target, `total_stale` counts those among `total`): `introduced` is at most 10, by file then
    * line, `total` is uncapped. `not_evaluated` when there was no baseline to compare with. Absent from an older knossos.
    */
-  test_findings?: { status: 'ok' | 'not_evaluated'; introduced: { key: string; file: string; line: number; message: string }[]; total: number; truncated: boolean; suppressions_invalid: string | null }
+  test_findings?: { status: 'ok' | 'not_evaluated'; introduced: { key: string; file: string; line: number; message: string; stale: boolean }[]; total: number; total_stale: number; truncated: boolean; suppressions_invalid: string | null }
 }
 /**
  * Where a policy verdict stands: checked, not checked (no policies, or no baseline to compare with), turned off
@@ -197,7 +197,9 @@ export type Dashboard = {
   /**
    * What the scan found wrong in the project's tests: test doubles that no
    * longer match the code they replace, and assertions that cannot fail.
-   * `by_production_file` groups the `definite` findings by the file of the
+   * `definite` counts every definite finding; `stale` the ones that are a
+   * double that no longer matches its target, the rest being other test
+   * findings. `by_production_file` groups the `stale` findings by the file of the
    * code their double replaces (`doubles` distinct doubles, the owner's short
    * `target` name, up to 3 `reasons` as `member(): category`, and the finding
    * `keys`); a `warning` is only ever in `list`, which holds the definite
@@ -207,6 +209,7 @@ export type Dashboard = {
    */
   test_findings?: {
     definite: number
+    stale: number
     warning: number
     by_production_file: Record<string, { doubles: number; target: string; reasons: string[]; keys: string[] }>
     by_production_file_truncated: boolean
