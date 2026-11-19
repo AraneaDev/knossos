@@ -40,6 +40,7 @@ Unknown keys are an error. These are the keys:
 | `quality_budgets`         | object of integers, 0 to 100000 | Allowed regressions for the quality gate.                     |
 | `dead_code_suppressions`  | up to 200 strings               | Components to leave out of the dead-code candidates.          |
 | `diagnostic_suppressions` | up to 200 objects               | Diagnostics not to report, by `code` and optionally `path`.   |
+| `test_finding_suppressions` | up to 200 objects             | Test-fidelity findings not to report, by `rule` and optionally `path`. |
 | `web_roots`               | object, up to 50 entries        | URL prefixes a web server maps to project folders.            |
 | `enrichers`               | up to 32 names                  | Installed enrichers whose facts this project wants.           |
 | `gates`                   | up to 20 objects                | Commands the project runs before a commit.                    |
@@ -98,7 +99,7 @@ reuse every cached file.
 Some settings are frozen at scan time: `ignores`, `snapshot_retention`,
 `dead_code_suppressions` and `diagnostic_suppressions` take effect when the next scan runs, and until then
 the graph answers as the last scan left it. Others are read on every call:
-`policies`, `quality_budgets`, `limits.refresh_budget_ms` and
+`policies`, `quality_budgets`, `test_finding_suppressions`, `limits.refresh_budget_ms` and
 `limits.watch_scan_timeout_ms` apply to the next query without a scan.
 Editing `knossos.json` in any way makes the graph stale, so a query that
 refreshes picks up the frozen settings too.
@@ -317,3 +318,26 @@ with a trailing `*`, and a `reason`:
 
 `list_diagnostics` leaves the matching diagnostics out of its list and its
 `total`, and counts them in `suppressed`.
+
+## Test-finding suppressions
+
+A test-fidelity finding that is wrong for your project, such as a double that
+stubs a member on purpose, can be put aside. Each entry names its `rule`, and
+optionally the `path` of the test double's file, and a `reason`. A `rule` is a
+category (`GHOST_MEMBER`), a category and sub-rule (`GHOST_MEMBER/missing_member`)
+or a full rule id (`test.fidelity.ghost_member.v1`), matched case-sensitively. A
+`path` is a plain prefix of the project-relative file, with no globbing:
+
+```json
+{
+    "version": 1,
+    "test_finding_suppressions": [
+        { "rule": "GHOST_MEMBER/missing_member", "path": "tests/legacy/", "reason": "generated stubs" },
+        { "rule": "TAUTOLOGY" }
+    ]
+}
+```
+
+`audit_tests` leaves the matching findings out of its items, its `total` and its
+`by_language` counts. The file is read on every call, so an edit applies without
+a scan.

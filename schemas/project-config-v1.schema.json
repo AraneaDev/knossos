@@ -192,6 +192,35 @@
       },
       "description": "Diagnostics never to report: list_diagnostics leaves them out and counts them in suppressed."
     },
+    "test_finding_suppressions": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule"],
+        "properties": {
+          "rule": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "A category (GHOST_MEMBER), a category and sub-rule (GHOST_MEMBER/missing_member) or a full rule id (test.fidelity.ghost_member.v1); case-sensitive."
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "A prefix of the project-relative file of the test double, compared as plain text with no globbing; every file when absent."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Why it is not worth reporting."
+          }
+        }
+      },
+      "description": "Test-fidelity findings never to report: audit_tests leaves them out and its counts exclude them. Read on every call, so an edit applies without a scan."
+    },
     "enrichers": {
       "type": "array",
       "maxItems": 32,
