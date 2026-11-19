@@ -108,7 +108,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Store/EdgeQueries.php:87',
                 'src/Store/SqliteGraphPruner.php:113',
                 'src/Store/SqliteGraphPruner.php:132',
-                'src/Store/SqliteGraphWriter.php:238',
+                'src/Store/SqliteGraphWriter.php:240',
                 'src/Store/Upsert.php:28',
             ],
             '.*array_chunk\\(\\$\\w+, \\d+\\).*' => [
@@ -116,8 +116,8 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Scan/ScanLedger.php:320',
                 'src/Store/SqliteGraphPruner.php:90',
                 'src/Store/SqliteGraphPruner.php:131',
-                'src/Store/SqliteGraphWriter.php:224',
-                'src/Store/SqliteGraphWriter.php:237',
+                'src/Store/SqliteGraphWriter.php:226',
+                'src/Store/SqliteGraphWriter.php:239',
             ],
         ],
         'DecrementInteger' => [
@@ -162,7 +162,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Store/EdgeQueries.php:87',
                 'src/Store/SqliteGraphPruner.php:113',
                 'src/Store/SqliteGraphPruner.php:132',
-                'src/Store/SqliteGraphWriter.php:238',
+                'src/Store/SqliteGraphWriter.php:240',
                 'src/Store/Upsert.php:28',
             ],
             '.*array_chunk\\(\\$\\w+, \\d+\\).*' => [
@@ -170,8 +170,8 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Scan/ScanLedger.php:320',
                 'src/Store/SqliteGraphPruner.php:90',
                 'src/Store/SqliteGraphPruner.php:131',
-                'src/Store/SqliteGraphWriter.php:224',
-                'src/Store/SqliteGraphWriter.php:237',
+                'src/Store/SqliteGraphWriter.php:226',
+                'src/Store/SqliteGraphWriter.php:239',
             ],
         ],
         'FunctionCallRemoval' => [

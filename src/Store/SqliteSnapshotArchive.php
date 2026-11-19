@@ -68,14 +68,17 @@ final class SqliteSnapshotArchive
         if ($existing->fetchColumn() !== false) {
             return;
         }
-        $scan = $this->pdo->prepare('SELECT scanner_set_hash FROM scans WHERE id = :scan AND project_id = :project AND status = :status');
+        $scan = $this->pdo->prepare('SELECT scanner_set_hash, test_findings_judged FROM scans WHERE id = :scan AND project_id = :project AND status = :status');
         $scan->execute(['scan' => $scanId, 'project' => $projectId, 'status' => 'complete']);
-        $scannerHash = $scan->fetchColumn();
+        $row = $scan->fetch(PDO::FETCH_ASSOC);
         // Also covers a project with no active scan at all, or an unknown one:
         // there is then no complete scan to find, and nothing to capture.
-        if (!is_string($scannerHash)) {
+        if (!is_array($row)) {
             return;
         }
+        $scannerHash = (string) $row['scanner_set_hash'];
+        // A scan the test rules never judged (one from before them) has no findings to keep, which is not the same as none.
+        $judged = (int) $row['test_findings_judged'] === 1 ? 1 : 0;
 
         // Which ceiling stopped the capture, if one did: too many facts to be
         // worth keeping, or a payload that outgrew the byte cap while being
@@ -94,11 +97,11 @@ final class SqliteSnapshotArchive
         // the row happens to occupy after compression is a storage detail.
         $insert = $this->pdo->prepare(
             'INSERT OR IGNORE INTO scan_snapshots(scan_id, project_id, scanner_set_hash, config_hash, complete, fact_count, byte_size, payload_json, captured_at, test_findings_recorded) ' .
-            'VALUES (:scan, :project, :scanner, :config, :complete, :facts, :bytes, :payload, :captured, 1)',
+            'VALUES (:scan, :project, :scanner, :config, :complete, :facts, :bytes, :payload, :captured, :judged)',
         );
         foreach ([
             'scan' => $scanId, 'project' => $projectId, 'scanner' => $scannerHash, 'config' => $configHash,
-            'complete' => $reason === null ? 1 : 0, 'facts' => $factCount, 'bytes' => $byteSize, 'captured' => SqliteValues::now(),
+            'complete' => $reason === null ? 1 : 0, 'facts' => $factCount, 'bytes' => $byteSize, 'captured' => SqliteValues::now(), 'judged' => $judged,
         ] as $name => $value) {
             $insert->bindValue($name, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
         }
@@ -106,7 +109,7 @@ final class SqliteSnapshotArchive
         // UTF-8; as a BLOB they come back exactly as they went in.
         $insert->bindValue('payload', $payload, SnapshotPayload::isBinary($payload) ? PDO::PARAM_LOB : PDO::PARAM_STR);
         $insert->execute();
-        if ($insert->rowCount() === 1) {
+        if ($insert->rowCount() === 1 && $judged === 1) {
             $this->archiveTestFindings($projectId, (string) $scanId);
         }
     }

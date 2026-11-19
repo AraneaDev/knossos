@@ -196,12 +196,14 @@ final class SqliteGraphWriter
      *
      * Wholesale rather than diffed like classifications: findings are few, and
      * rewriting them keeps every row on the scan that last judged it, so no
-     * finding holds an older scan's row alive.
+     * finding holds an older scan's row alive. The scan is marked judged, so a
+     * snapshot of it says it has a record even when it found nothing.
      *
      * @param list<array<string, mixed>> $findings each shaped as a GraphAssembler test-finding record
      */
     public function saveTestFindings(array $findings, string $projectId, string $scanId): void
     {
+        $this->statements->prepare('UPDATE scans SET test_findings_judged = 1 WHERE id = :scan')->execute(['scan' => $scanId]);
         $this->statements->prepare('DELETE FROM test_findings WHERE project_id = :project')->execute(['project' => $projectId]);
         $this->upsert('test_findings', self::TEST_FINDING_COLUMNS, ['id'], array_map(static fn(array $finding): array => [
             $finding['id'], $projectId, $finding['node_id'], $finding['target_node_id'], $finding['category'], $finding['origin'],
