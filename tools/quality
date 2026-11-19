@@ -109,7 +109,8 @@ run_mod_checks() (
     stage=$(mktemp -d)
     trap 'rm -rf "$stage"' EXIT INT TERM
     php "$root/bin/knossos" install-agent-plugin --out="$stage/plugin" --data=/nonexistent >/dev/null
-    cp "$root/hooks/register.test.ts" "$stage/plugin/hooks/"
+    cp "$root"/hooks/register.test.ts "$root"/hooks/register.test-findings.test.ts "$stage/plugin/hooks/"
+    cp -r "$root"/hooks/__tests__ "$stage/plugin/hooks/"
     claude plugin validate "$stage/plugin"
     claude plugin test "$stage/plugin"
 

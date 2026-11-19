@@ -29,21 +29,21 @@ with ignores, boundaries and deny policies.
 
 Unknown keys are an error. These are the keys:
 
-| Key                       | Shape                           | What it does                                                  |
-| ------------------------- | ------------------------------- | ------------------------------------------------------------- |
-| `ignores`                 | up to 100 strings               | Relative patterns to skip, on top of the built-in exclusions. |
-| `limits`                  | object                          | Discovery and worker bounds, below.                           |
-| `boundaries`              | up to 50 objects                | Named groups of components, by path or by PHP namespace.      |
-| `frameworks`              | up to 20 strings                | Hints for static analysis of a supported framework.           |
-| `snapshot_retention`      | integer, 0 to 20                | How many historical snapshots to keep.                        |
-| `policies`                | up to 50 objects                | Architecture rules between boundaries.                        |
-| `quality_budgets`         | object of integers, 0 to 100000 | Allowed regressions for the quality gate.                     |
-| `dead_code_suppressions`  | up to 200 strings               | Components to leave out of the dead-code candidates.          |
-| `diagnostic_suppressions` | up to 200 objects               | Diagnostics not to report, by `code` and optionally `path`.   |
-| `test_finding_suppressions` | up to 200 objects             | Test-fidelity findings not to report, by `rule` and optionally `path`. |
-| `web_roots`               | object, up to 50 entries        | URL prefixes a web server maps to project folders.            |
-| `enrichers`               | up to 32 names                  | Installed enrichers whose facts this project wants.           |
-| `gates`                   | up to 20 objects                | Commands the project runs before a commit.                    |
+| Key                         | Shape                           | What it does                                                           |
+| --------------------------- | ------------------------------- | ---------------------------------------------------------------------- |
+| `ignores`                   | up to 100 strings               | Relative patterns to skip, on top of the built-in exclusions.          |
+| `limits`                    | object                          | Discovery and worker bounds, below.                                    |
+| `boundaries`                | up to 50 objects                | Named groups of components, by path or by PHP namespace.               |
+| `frameworks`                | up to 20 strings                | Hints for static analysis of a supported framework.                    |
+| `snapshot_retention`        | integer, 0 to 20                | How many historical snapshots to keep.                                 |
+| `policies`                  | up to 50 objects                | Architecture rules between boundaries.                                 |
+| `quality_budgets`           | object of integers, 0 to 100000 | Allowed regressions for the quality gate.                              |
+| `dead_code_suppressions`    | up to 200 strings               | Components to leave out of the dead-code candidates.                   |
+| `diagnostic_suppressions`   | up to 200 objects               | Diagnostics not to report, by `code` and optionally `path`.            |
+| `test_finding_suppressions` | up to 200 objects               | Test-fidelity findings not to report, by `rule` and optionally `path`. |
+| `web_roots`                 | object, up to 50 entries        | URL prefixes a web server maps to project folders.                     |
+| `enrichers`                 | up to 32 names                  | Installed enrichers whose facts this project wants.                    |
+| `gates`                     | up to 20 objects                | Commands the project runs before a commit.                             |
 
 ### Ignores
 
@@ -332,7 +332,11 @@ or a full rule id (`test.fidelity.ghost_member.v1`), matched case-sensitively. A
 {
     "version": 1,
     "test_finding_suppressions": [
-        { "rule": "GHOST_MEMBER/missing_member", "path": "tests/legacy/", "reason": "generated stubs" },
+        {
+            "rule": "GHOST_MEMBER/missing_member",
+            "path": "tests/legacy/",
+            "reason": "generated stubs"
+        },
         { "rule": "TAUTOLOGY" }
     ]
 }
