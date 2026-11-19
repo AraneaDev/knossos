@@ -190,6 +190,26 @@ export type Dashboard = {
    */
   over_budget?: { source: string; max_function_lines: number; total: number; files: { path: string; functions: number; longest: number; line: number | null }[] } | null
   /**
+   * What the scan found wrong in the project's tests: test doubles that no
+   * longer match the code they replace, and assertions that cannot fail.
+   * `by_production_file` groups the `definite` findings by the file of the
+   * code their double replaces (`doubles` distinct doubles, the owner's short
+   * `target` name, up to 3 `reasons` as `member(): category`, and the finding
+   * `keys`); a `warning` is only ever in `list`, which holds the definite
+   * findings first and at most 200 (`list_truncated`). `suppressions_invalid`
+   * says why a knossos.json that could not be read suppressed nothing. Absent
+   * from an older knossos.
+   */
+  test_findings?: {
+    definite: number
+    warning: number
+    by_production_file: Record<string, { doubles: number; target: string; reasons: string[]; keys: string[] }>
+    by_production_file_truncated: boolean
+    list: { key: string; category: string; sub_rule: string; confidence: 'definite' | 'warning'; message: string; file: string | null; line: number | null; target_file: string | null }[]
+    list_truncated: boolean
+    suppressions_invalid: string | null
+  }
+  /**
    * `truncated` when the check stopped at its edge or time limit, so `total`
    * is a floor. `rules`, `boundaries` and `files` (absent from an older
    * knossos): the declared policies with boundary names, each policed

@@ -94,4 +94,20 @@ final class TautologyEndToEndTest extends KnossosTestCase
             'tests/planted.test.ts:22 zero_reach warning',
         ], $this->findings());
     }
+
+    public function testSpiesOnLibGlobalsAreNotZeroReach(): void
+    {
+        $contributions = $this->scanTypeScript([
+            'tsconfig.json' => self::FILES['tsconfig.json'],
+            'tests/globals.test.ts' => <<<'TS'
+                import { it, vi } from 'vitest';
+                it('pins what nothing project-side calls', () => {
+                    vi.spyOn(console, 'log').mockReturnValue(undefined);
+                    vi.spyOn(Date, 'now').mockReturnValue(1);
+                });
+                TS,
+        ]);
+
+        assertSame([], (new TestFidelityAnalysis(new TautologyRule()))->analyze($contributions));
+    }
 }

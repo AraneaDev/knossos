@@ -84,6 +84,24 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
         }
     }
 
+    public function testAnInvalidConfigIsSaidNotSwallowed(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
+        try {
+            $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
+            $before = $service->auditTests($projectId);
+            assertSame(null, $before->data['suppressions_invalid']);
+
+            file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'test_finding_suppressions' => [['rule' => '']]]));
+            $after = $service->auditTests($projectId);
+
+            assertSame('PROJECT_CONFIG_INVALID: test_finding_suppressions entries need a rule.', $after->data['suppressions_invalid']);
+            assertSame($before->data['total'], $after->data['total']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     public function testItemsCarryTheirKey(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');

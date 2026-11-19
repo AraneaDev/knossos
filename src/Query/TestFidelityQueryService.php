@@ -6,7 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
-use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFindingKey, TestFindingSuppressions};
+use Knossos\TestFidelity\{ActiveTestFindings, FindingCategory, FindingConfidence, TestFindingSuppressions};
 use PDO;
 
 /**
@@ -52,50 +52,22 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
             throw new InvalidArgumentException('category must be one of: ' . implode(', ', $categories) . '.');
         }
         $suppressions = TestFindingSuppressions::fromProjectRoot((string) $project['root_realpath']);
-        [$suppressed, $suppressedValues] = $suppressions->sqlCondition('tf');
-        $parameters = [];
-        $where = 'tf.project_id = :project AND ' . self::named($suppressed, $suppressedValues, $parameters);
-        $parameters['project'] = $projectId;
-        if ($pathPrefix !== null && $pathPrefix !== '') {
-            // Compared as bytes: LIKE would fold ASCII case and read `_` and `%` as wildcards.
-            $where .= ' AND substr(f.relative_path, 1, length(:prefix)) = :prefix';
-            $parameters['prefix'] = $pathPrefix;
-        }
-        if ($confidence !== null) {
-            $where .= ' AND tf.confidence = :confidence';
-            $parameters['confidence'] = $confidence;
-        }
-        if ($category !== null) {
-            $where .= ' AND tf.category = :category';
-            $parameters['category'] = $category;
-        }
-        $from = 'FROM test_findings tf JOIN nodes n ON n.id = tf.node_id LEFT JOIN nodes t ON t.id = tf.target_node_id LEFT JOIN files f ON f.id = tf.file_id';
-        $count = $this->pdo->prepare("SELECT COUNT(*) {$from} WHERE {$where}");
-        $count->execute($parameters);
-        $total = (int) $count->fetchColumn();
-        $statement = $this->pdo->prepare(
-            "SELECT tf.id, tf.category, tf.confidence, tf.rule_id, tf.sub_rule, tf.message, f.relative_path, tf.start_line, n.display_name AS double_name, t.display_name AS target_name, t.canonical_name AS target_canonical {$from} WHERE {$where} "
-            . 'ORDER BY f.relative_path IS NULL, f.relative_path, tf.start_line, tf.category, tf.rule_id, tf.id LIMIT :limit OFFSET :offset',
-        );
-        foreach ($parameters as $key => $value) {
-            $statement->bindValue(':' . $key, $value);
-        }
-        $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
-        $statement->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $statement->execute();
-        $items = array_map(static fn(array $row): array => [
-            'id' => (string) $row['id'],
-            'key' => TestFindingKey::of((string) $row['rule_id'], (string) $row['sub_rule'], (string) $row['relative_path'], $row['target_canonical'] === null ? null : (string) $row['target_canonical'], (string) $row['message']),
-            'category' => (string) $row['category'],
-            'confidence' => (string) $row['confidence'],
-            'rule_id' => (string) $row['rule_id'],
-            'sub_rule' => (string) $row['sub_rule'],
-            'message' => (string) $row['message'],
-            'file' => $row['relative_path'] === null ? null : (string) $row['relative_path'],
-            'line' => $row['start_line'] === null ? null : (int) $row['start_line'],
-            'double' => (string) $row['double_name'],
-            'target' => $row['target_name'] === null ? null : (string) $row['target_name'],
-        ], $statement->fetchAll(PDO::FETCH_ASSOC));
+        $findings = new ActiveTestFindings($this->pdo, $projectId, $suppressions);
+        $filters = ['path_prefix' => $pathPrefix, 'confidence' => $confidence, 'category' => $category];
+        $total = $findings->count($filters);
+        $items = array_map(static fn(array $finding): array => [
+            'id' => $finding['id'],
+            'key' => $finding['key'],
+            'category' => $finding['category'],
+            'confidence' => $finding['confidence'],
+            'rule_id' => $finding['rule_id'],
+            'sub_rule' => $finding['sub_rule'],
+            'message' => $finding['message'],
+            'file' => $finding['file'],
+            'line' => $finding['line'],
+            'double' => $finding['double_name'],
+            'target' => $finding['target_name'],
+        ], $findings->find($filters, $limit, $offset));
         $next = $offset + count($items) < $total ? $offset + count($items) : null;
 
         return new ResultEnvelope(
@@ -106,6 +78,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
                 'items' => $items,
                 'total' => $total,
                 'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions)],
+                'suppressions_invalid' => $suppressions->invalid(),
                 'pagination' => ['offset' => $offset, 'next_offset' => $next],
             ],
             [],
@@ -126,7 +99,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
     {
         $parameters = [];
         [$suppressed, $values] = $suppressions->sqlCondition('tf');
-        $condition = self::named($suppressed, $values, $parameters);
+        $condition = ActiveTestFindings::named($suppressed, $values, $parameters);
         $statement = $this->pdo->prepare("SELECT n.language, tf.confidence, COUNT(*) AS findings FROM test_findings tf JOIN nodes n ON n.id = tf.node_id WHERE tf.project_id = :project AND {$condition} GROUP BY n.language, tf.confidence");
         $statement->execute($parameters + ['project' => $projectId]);
         $zeros = array_fill_keys(array_map(static fn(FindingConfidence $case): string => $case->value, FindingConfidence::cases()), 0);
@@ -145,25 +118,5 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         ksort($byLanguage);
 
         return $byLanguage;
-    }
-
-    /**
-     * A suppression fragment's positional placeholders as named ones, so it can
-     * sit beside the named parameters of the rest of the query; the names and
-     * their values are added to `$parameters`.
-     *
-     * @param list<string> $values
-     * @param array<string, string> $parameters
-     */
-    private static function named(string $fragment, array $values, array &$parameters): string
-    {
-        $index = 0;
-
-        return (string) preg_replace_callback('/\?/', static function () use (&$index, $values, &$parameters): string {
-            $name = 'suppressed_' . $index;
-            $parameters[$name] = $values[$index++];
-
-            return ':' . $name;
-        }, $fragment);
     }
 }

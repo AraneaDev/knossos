@@ -6,7 +6,7 @@ namespace Knossos\Query;
 
 use Closure;
 use Knossos\Result\ResultEnvelope;
-use Knossos\Store\EnrichedFacts;
+use Knossos\Store\SnapshotFacts;
 use PDO;
 
 /**
@@ -116,8 +116,8 @@ final readonly class AgentBriefService extends AbstractArchitectureQueryService
         return [
             'files' => $count('SELECT COUNT(*) FROM files WHERE project_id = :project'),
             // Native facts only, like every count that describes the project.
-            'nodes' => $count('SELECT COUNT(*) FROM nodes WHERE project_id = :project' . EnrichedFacts::nativeCondition('nodes')),
-            'edges' => $count('SELECT COUNT(*) FROM edges WHERE project_id = :project' . EnrichedFacts::nativeCondition('edges')),
+            'nodes' => $count('SELECT COUNT(*) FROM nodes WHERE project_id = :project' . SnapshotFacts::condition('nodes')),
+            'edges' => $count('SELECT COUNT(*) FROM edges WHERE project_id = :project' . SnapshotFacts::condition('edges')),
             'languages' => implode(', ', $parts),
         ];
     }
@@ -136,7 +136,7 @@ final readonly class AgentBriefService extends AbstractArchitectureQueryService
     {
         $statement = $this->pdo->prepare(
             'SELECT b.name, b.source, COUNT(bm.node_id) AS members FROM boundaries b ' .
-            'LEFT JOIN boundary_memberships bm ON bm.boundary_id = b.id ' .
+            'LEFT JOIN boundary_memberships bm ON bm.boundary_id = b.id' . SnapshotFacts::condition('boundary_memberships', 'bm') . ' ' .
             'WHERE b.project_id = :project GROUP BY b.id ORDER BY members DESC, b.name LIMIT 10',
         );
         $statement->execute(['project' => $projectId]);
