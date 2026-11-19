@@ -75,18 +75,53 @@ final class TestFindingsCountedTest extends KnossosTestCase
         assertSame(['added' => 0, 'removed' => 0], $section['counts']);
     }
 
-    public function testMaxChangesBoundsTheSection(): void
+    /** The archived side: a ghost the baseline recorded and the active scan no longer has is removed, until it is suppressed. */
+    public function testASuppressedFindingOfTheArchivedSideIsNotRemoved(): void
+    {
+        [$pdo, $service, $root] = $this->unhealthy();
+        $baseline = $service->scan($root);
+        $this->heal($root);
+        $service->scan($root);
+        $removed = static fn(array $section): array => array_column($section['removed'], 'category');
+
+        $before = $this->diff($pdo, $baseline->projectId, (string) $baseline->snapshotId)->data['test_findings'];
+        assertSame(true, in_array('GHOST_MEMBER', $removed($before), true));
+
+        file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'test_finding_suppressions' => [['rule' => 'GHOST_MEMBER']]]));
+        $after = $this->diff($pdo, $baseline->projectId, (string) $baseline->snapshotId)->data['test_findings'];
+
+        assertSame(false, in_array('GHOST_MEMBER', $removed($after), true));
+        assertSame($before['counts']['removed'] - count(array_keys($removed($before), 'GHOST_MEMBER', true)), $after['counts']['removed']);
+    }
+
+    /** What the graph's changes leave of `max_changes` is all the section may report, and only the section's overflow truncates. */
+    public function testMaxChangesBoundsTheSectionWhatTheGraphLeaves(): void
     {
         [$pdo, $service, $root] = $this->healthy();
         $baseline = $service->scan($root);
-        file_put_contents($root . '/src/UserService.ts', self::RENAMED);
+        $this->unheal($root);
         $service->scan($root);
+        $diffs = ArchitectureQueryService::forDatabase($pdo)->services()->diffQueries;
+        $project = $baseline->projectId;
+        $from = (string) $baseline->snapshotId;
+        $full = $diffs->snapshotDiff($project, $from, 'active', 1000);
+        $found = $full->data['test_findings']['counts']['added'];
+        assertSame(true, $found >= 2, 'the fixture adds at least two findings');
+        assertSame(false, $full->truncated);
+        $graph = $full->data['bounds']['total_changes'] + $full->data['changes']['components']['counts']['rename_candidates'];
 
-        $result = ArchitectureQueryService::forDatabase($pdo)->services()->diffQueries->snapshotDiff($baseline->projectId, (string) $baseline->snapshotId, 'active', 1);
+        $tight = $diffs->snapshotDiff($project, $from, 'active', $graph + 1);
 
-        $section = $result->data['test_findings'];
-        assertSame(1, $section['counts']['added'] + $section['counts']['removed']);
-        assertSame(true, $result->truncated);
+        $section = $tight->data['test_findings'];
+        assertSame($found, $section['counts']['added']);
+        assertCount(1, $section['added']);
+        assertCount(0, $section['removed']);
+        assertSame(true, $section['truncated']);
+        assertSame(true, $tight->truncated);
+        $roomy = $diffs->snapshotDiff($project, $from, 'active', $graph + $found);
+        assertCount($found, $roomy->data['test_findings']['added']);
+        assertSame(false, $roomy->data['test_findings']['truncated']);
+        assertSame(false, $roomy->truncated);
     }
 
     public function testTrendsCountEachSnapshotAndAreNullWithoutARecord(): void
@@ -125,6 +160,30 @@ final class TestFindingsCountedTest extends KnossosTestCase
         $this->copyTree(self::repositoryRoot() . self::FIXTURE, $root);
         unlink($root . '/tests/planted.test.ts');
         file_put_contents($root . '/tests/ghost.test.ts', str_replace("'getProfil'", "'getProfile'", (string) file_get_contents($root . '/tests/ghost.test.ts')));
+        $pdo = $this->freshTestDatabase();
+
+        return [$pdo, new ProjectScanService($pdo, self::repositoryRoot(), [$root]), $root];
+    }
+
+    /** The fixture's stale and vacuous doubles, as shipped. */
+    private function unheal(string $root): void
+    {
+        copy(self::repositoryRoot() . self::FIXTURE . '/tests/ghost.test.ts', $root . '/tests/ghost.test.ts');
+        copy(self::repositoryRoot() . self::FIXTURE . '/tests/planted.test.ts', $root . '/tests/planted.test.ts');
+    }
+
+    /** The double matches its code again, and the planted one is gone. */
+    private function heal(string $root): void
+    {
+        @unlink($root . '/tests/planted.test.ts');
+        file_put_contents($root . '/tests/ghost.test.ts', str_replace("'getProfil'", "'getProfile'", (string) file_get_contents($root . '/tests/ghost.test.ts')));
+    }
+
+    /** @return array{0: PDO, 1: ProjectScanService, 2: string} the fixture as it is */
+    private function unhealthy(): array
+    {
+        $root = self::scratchPath('ts-counted-test-findings-unhealthy');
+        $this->copyTree(self::repositoryRoot() . self::FIXTURE, $root);
         $pdo = $this->freshTestDatabase();
 
         return [$pdo, new ProjectScanService($pdo, self::repositoryRoot(), [$root]), $root];
