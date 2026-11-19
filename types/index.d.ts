@@ -43,6 +43,11 @@ export type TurnBrief = {
    * `message` with status `config_invalid`: why the project's knossos.json could not be read (absent otherwise).
    */
   policy: { status: PolicyStatus; total: number; violations: Violation[]; truncated: boolean; message?: string }
+  /**
+   * The stale test doubles this turn introduced (definite findings only): `introduced` is at most 10, by file then
+   * line, `total` is uncapped. `not_evaluated` when there was no baseline to compare with. Absent from an older knossos.
+   */
+  test_findings?: { status: 'ok' | 'not_evaluated'; introduced: { key: string; file: string; line: number; message: string }[]; total: number; truncated: boolean; suppressions_invalid: string | null }
 }
 /**
  * Where a policy verdict stands: checked, not checked (no policies, or no baseline to compare with), turned off

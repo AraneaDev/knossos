@@ -34,6 +34,12 @@
       "description": "Tell the model about boundary-policy violations after a turn.",
       "default": true
     },
+    "testChecks": {
+      "type": "boolean",
+      "title": "Test checks",
+      "description": "Tell the model when a mock no longer matches the code it stands in for, after a Read and after a turn.",
+      "default": true
+    },
     "watch": {
       "type": "boolean",
       "title": "Live watcher",
