@@ -15,6 +15,11 @@ namespace Knossos\Store;
  * snapshot, and so do the edges, roles and boundary memberships that touch
  * them; everything compared against a snapshot (a diff, a gate, a trend)
  * reads the active graph through the same condition.
+ *
+ * The one exception is a read of edges restricted to impact edge kinds (the
+ * health and hub-ranking degree walks): a derived test fact has no edge of
+ * those kinds (its edges are `contains` and `doubles`), and the per-edge
+ * test the condition adds would take those reads off their covering indexes.
  */
 final class SnapshotFacts
 {

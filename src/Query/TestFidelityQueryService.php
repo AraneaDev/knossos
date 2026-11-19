@@ -51,7 +51,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         if ($category !== null && !in_array($category, $categories, true)) {
             throw new InvalidArgumentException('category must be one of: ' . implode(', ', $categories) . '.');
         }
-        $suppressions = TestFindingSuppressions::fromProjectRoot((string) $project['root_realpath']);
+        $suppressions = ActiveTestFindings::suppressionsOf((string) $project['root_realpath']);
         $findings = new ActiveTestFindings($this->pdo, $projectId, $suppressions);
         $filters = ['path_prefix' => $pathPrefix, 'confidence' => $confidence, 'category' => $category];
         $total = $findings->count($filters);

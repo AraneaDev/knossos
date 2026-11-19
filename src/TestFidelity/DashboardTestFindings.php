@@ -91,7 +91,7 @@ final readonly class DashboardTestFindings
      * @param list<array<string, mixed>> $findings
      * @return array<string, array{doubles: int, target: string, reasons: list<string>, keys: list<string>}>
      */
-    private static function byProductionFile(array $findings): array
+    public static function byProductionFile(array $findings): array
     {
         $files = [];
         foreach ($findings as $finding) {
@@ -144,9 +144,9 @@ final readonly class DashboardTestFindings
     }
 
     /**
-     * `<member>(): <category>`: the member a double stubs, which is the last segment of a target's
-     * canonical name when the finding is about a member of it, else the member the worker recorded
-     * on the finding, else the one the message names; the category alone when none is known.
+     * `<member>(): <category>`: the member a double stubs, which is the
+     * member the worker recorded on the finding, else the last segment of the target's canonical
+     * name when it is a member, else the one the message names; the category alone when none is known.
      *
      * @param array<string, mixed> $finding
      */
@@ -154,8 +154,11 @@ final readonly class DashboardTestFindings
     {
         $short = self::SHORT[(string) $finding['category']] ?? strtolower((string) $finding['category']);
         $canonical = (string) $finding['target_canonical'];
-        $member = str_contains($canonical, '::') ? substr($canonical, (int) strrpos($canonical, '::') + 2) : ($finding['attributes']['member'] ?? null);
+        $member = $finding['attributes']['member'] ?? null;
         if (!is_string($member) || $member === '') {
+            $member = str_contains($canonical, '::') ? substr($canonical, (int) strrpos($canonical, '::') + 2) : null;
+        }
+        if ($member === null || $member === '') {
             $member = preg_match('/ stubs (\S+?),? which /', (string) $finding['message'], $matches) === 1 ? $matches[1] : null;
         }
 
