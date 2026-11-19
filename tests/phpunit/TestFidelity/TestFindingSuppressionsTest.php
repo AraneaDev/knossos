@@ -7,12 +7,13 @@ namespace Knossos\Tests\Phpunit\TestFidelity;
 use Knossos\TestFidelity\TestFindingSuppressions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
-use PHPUnit\Framework\Attributes\Group;
 
 use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertTrue;
+
+use PHPUnit\Framework\Attributes\Group;
 
 /** What a project's `test_finding_suppressions` cover, in PHP and in SQL. */
 #[Group('test-fidelity')]

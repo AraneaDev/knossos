@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\TestFidelity;
 
 use Knossos\TestFidelity\TestFindingKey;
-use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
+
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\TestCase;
 
 /** The key a test finding is recognised by, across scans and line moves. */
 #[Group('test-fidelity')]
