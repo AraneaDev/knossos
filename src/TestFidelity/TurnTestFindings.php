@@ -34,6 +34,9 @@ final class TurnTestFindings
     /** Keys the ledger keeps per file; past it the file's baseline is cut and a turn that edits it is not judged. */
     public const MAX_BASELINE_KEYS = 100;
 
+    /** Deletions past which the turn's diff is checkout-sized, and none of them is taken as the turn's own. */
+    public const MAX_STRANDING_DELETIONS = 10;
+
     /** The section's status when the turn's findings were compared. */
     public const OK = 'ok';
 
@@ -67,6 +70,20 @@ final class TurnTestFindings
         }
 
         return $affected;
+    }
+
+    /**
+     * The files the turn's diff deleted (by Bash, mostly: an edit tool cannot
+     * delete), taken as the turn's own when there are at most
+     * {@see self::MAX_STRANDING_DELETIONS}; none past it, where a checkout or
+     * a branch switch did the deleting.
+     *
+     * @param list<string> $deleted
+     * @return list<string>
+     */
+    public static function stranded(array $deleted): array
+    {
+        return count($deleted) > self::MAX_STRANDING_DELETIONS ? [] : array_values($deleted);
     }
 
     /**

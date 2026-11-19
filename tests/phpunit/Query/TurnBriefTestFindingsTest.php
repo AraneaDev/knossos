@@ -283,6 +283,92 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
         }
     }
 
+    /** R14: a model deletes through Bash, which reports nothing; the diff's deletion is the turn's. */
+    public function testAnUnreportedDeletionIntroducesTheMockItStrands(): void
+    {
+        foreach (['fresh' => false, 'watcher' => true] as $case => $watcher) {
+            [$pdo, $projectId, $root] = $this->project(healthy: true, extra: [self::MOCK => self::MOCKS_THE_MODULE]);
+            try {
+                $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
+                unlink($root . '/' . self::SERVICE);
+                if ($watcher) {
+                    $this->watcherScan($pdo, $root);
+                }
+
+                $brief = $this->brief($pdo, $root, [], $watcher ? $since : null);
+
+                assertSame([self::SERVICE], $brief['deleted_files'], $case);
+                assertSame(['ok', 1], [$brief['test_findings']['status'], $brief['test_findings']['total']], $case);
+                assertSame(self::MOCK, $brief['test_findings']['introduced'][0]['file'], $case);
+            } finally {
+                $this->removeTempTree($root);
+            }
+        }
+    }
+
+    /** `git mv src/UserService.ts src/Users.ts`, with no edit tool run. */
+    public function testAnUnreportedRenameIntroducesTheMockItStrands(): void
+    {
+        [$pdo, , $root] = $this->project(healthy: true, extra: [self::MOCK => self::MOCKS_THE_MODULE]);
+        try {
+            rename($root . '/' . self::SERVICE, $root . '/src/Users.ts');
+
+            $brief = $this->brief($pdo, $root, []);
+
+            assertSame([[self::SERVICE], ['src/Users.ts']], [$brief['deleted_files'], $brief['added_files']]);
+            assertSame(['ok', 1], [$brief['test_findings']['status'], $brief['test_findings']['total']]);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** Past ten deletions the diff is checkout-sized: none of them is the turn's, and the turn is still judged. */
+    public function testElevenUnreportedDeletionsIntroduceNothingFromThem(): void
+    {
+        $others = [];
+        for ($n = 1; $n <= TurnTestFindings::MAX_STRANDING_DELETIONS; ++$n) {
+            $others['src/Other' . $n . '.ts'] = "export const other{$n} = {$n};\n";
+        }
+        [$pdo, , $root] = $this->project(healthy: true, extra: [self::MOCK => self::MOCKS_THE_MODULE] + $others);
+        try {
+            foreach ([self::SERVICE, ...array_keys($others)] as $file) {
+                unlink($root . '/' . $file);
+            }
+
+            $brief = $this->brief($pdo, $root, []);
+
+            assertCount(TurnTestFindings::MAX_STRANDING_DELETIONS + 1, $brief['deleted_files']);
+            assertSame(['ok', 0, []], [$brief['test_findings']['status'], $brief['test_findings']['total'], $brief['test_findings']['introduced']]);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A mock that already named a module the scan could not resolve is not the deletion's doing. */
+    public function testAMissingModuleFromBeforeTheTurnIsNotIntroducedByDeletingItsFile(): void
+    {
+        foreach (['fresh' => false, 'watcher' => true] as $case => $watcher) {
+            // The worker reads a `.js` mock specifier as resolving to nothing while src/UserService.ts exists.
+            [$pdo, $projectId, $root] = $this->project(healthy: true, extra: [self::MOCK => "import { it, vi } from 'vitest';\n\nvi.mock('../src/UserService.js', () => ({}));\n\nit('runs', () => {});\n"]);
+            try {
+                $missing = $pdo->query("SELECT COUNT(*) FROM test_findings WHERE sub_rule = 'missing_module'")->fetchColumn();
+                assertSame(1, (int) $missing, 'the missing module was there before the turn');
+                $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
+                unlink($root . '/' . self::SERVICE);
+                if ($watcher) {
+                    $this->watcherScan($pdo, $root);
+                }
+
+                $brief = $this->brief($pdo, $root, [], $watcher ? $since : null);
+
+                assertSame([self::SERVICE], $brief['deleted_files'], $case);
+                assertSame(['ok', 0, []], [$brief['test_findings']['status'], $brief['test_findings']['total'], $brief['test_findings']['introduced']], $case);
+            } finally {
+                $this->removeTempTree($root);
+            }
+        }
+    }
+
     public function testDeletingAFileNoDoubleNamesIntroducesNothing(): void
     {
         // The spec already mocks a module that is not there: a finding with no target, which no deletion strands.
