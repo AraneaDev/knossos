@@ -10,7 +10,6 @@ use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
-use Knossos\Store\SnapshotFacts;
 use PDO;
 use PDOStatement;
 
@@ -22,7 +21,7 @@ use PDOStatement;
  * the two cannot come to disagree about which components are hubs. Dead-code
  * answers report absence of evidence rather than proven absence: nothing static
  * analysis sees can rule out reflection. Every degree and hub here counts
- * native nodes and edges only ({@see EnrichedFacts}).
+ * native nodes and edges only ({@see \Knossos\Store\SnapshotFacts}); impact edge kinds have no test-fact edges.
  */
 final readonly class ArchitectureHealthQuery extends AbstractArchitectureQueryService
 {
@@ -150,10 +149,10 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
         $degrees = $this->pdo->prepare(
             'SELECT n.id, n.display_name, n.kind, n.origin, d.degree FROM (' .
             'SELECT node_id, COUNT(*) AS degree FROM (' .
-            sprintf('SELECT source_id AS node_id FROM edges WHERE project_id = ? AND kind IN (%s) AND %s ', $placeholders, SnapshotFacts::nativeSql('edges', 'edges')) .
+            sprintf('SELECT source_id AS node_id FROM edges WHERE project_id = ? AND kind IN (%s) AND %s ', $placeholders, EnrichedFacts::excludeSql('edges')) .
             'UNION ALL ' .
-            sprintf('SELECT target_id AS node_id FROM edges WHERE project_id = ? AND kind IN (%s) AND %s', $placeholders, SnapshotFacts::nativeSql('edges', 'edges')) .
-            ') GROUP BY node_id) d JOIN nodes n ON n.id = d.node_id AND n.project_id = ? AND ' . SnapshotFacts::nativeSql('nodes', 'n') . ' ' .
+            sprintf('SELECT target_id AS node_id FROM edges WHERE project_id = ? AND kind IN (%s) AND %s', $placeholders, EnrichedFacts::excludeSql('edges')) .
+            ') GROUP BY node_id) d JOIN nodes n ON n.id = d.node_id AND n.project_id = ? AND ' . \Knossos\Store\SnapshotFacts::nativeSql('nodes', 'n') . ' ' .
             'ORDER BY d.degree DESC, n.canonical_name',
         );
         $degrees->execute([$projectId, ...self::IMPACT_EDGE_KINDS, $projectId, ...self::IMPACT_EDGE_KINDS, $projectId]);
@@ -231,7 +230,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
     {
         $placeholders = implode(',', array_fill(0, count($edgeKinds), '?'));
         $edgeStatement = $this->pdo->prepare(
-            'SELECT e.source_id, e.target_id FROM edges e WHERE e.project_id = ? AND ' . SnapshotFacts::nativeSql('edges', 'e') . ' ' .
+            'SELECT e.source_id, e.target_id FROM edges e WHERE e.project_id = ? AND ' . EnrichedFacts::excludeSql('e') . ' ' .
             sprintf('AND e.kind IN (%s) ', $placeholders) .
             'AND ' . ConfidenceRank::atLeast('e.confidence') . ' ' .
             'ORDER BY e.source_id, e.target_id, e.kind, e.id LIMIT ?',
@@ -557,7 +556,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
     private function healthSlice(string $projectId, array $edgeKinds, int $minimumRank, array $bounds, int $deadline): array
     {
         $slice = ['ids' => [], 'index' => [], 'in' => [], 'out' => [], 'external' => [], 'test' => [], 'boundary_set' => [], 'boundary_sets' => [], 'truncation_reasons' => []];
-        $filter = sprintf('project_id = ? AND %s AND %s', SnapshotFacts::nativeSql('edges', 'edges'), EdgeQueries::kindIn('kind', $edgeKinds));
+        $filter = sprintf('project_id = ? AND %s AND %s', EnrichedFacts::excludeSql('edges'), EdgeQueries::kindIn('kind', $edgeKinds));
         $filterValues = [$projectId, ...$edgeKinds];
         if ($minimumRank > 1) {
             $filter .= ' AND ' . ConfidenceRank::atLeast('confidence');
@@ -567,7 +566,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
             'SELECT n.id, n.kind, n.origin, COALESCE(i.degree, 0) AS in_degree, COALESCE(o.degree, 0) AS out_degree FROM nodes n ' .
             sprintf('LEFT JOIN (SELECT target_id AS node_id, COUNT(*) AS degree FROM edges WHERE %s GROUP BY target_id) i ON i.node_id = n.id ', $filter) .
             sprintf('LEFT JOIN (SELECT source_id AS node_id, COUNT(*) AS degree FROM edges WHERE %s GROUP BY source_id) o ON o.node_id = n.id ', $filter) .
-            'WHERE n.project_id = ? AND ' . SnapshotFacts::nativeSql('nodes', 'n') . ' ORDER BY CASE WHEN (? = 1 AND (substr(n.kind, 1, 9) = \'external_\' OR n.origin IN (\'external\', \'unresolved\'))) ' .
+            'WHERE n.project_id = ? AND ' . \Knossos\Store\SnapshotFacts::nativeSql('nodes', 'n') . ' ORDER BY CASE WHEN (? = 1 AND (substr(n.kind, 1, 9) = \'external_\' OR n.origin IN (\'external\', \'unresolved\'))) ' .
             'OR (? = 1 AND n.id IN (SELECT node_id FROM classifications WHERE project_id = ? AND role = ?)) THEN 1 ELSE 0 END, ' .
             'COALESCE(i.degree, 0) + COALESCE(o.degree, 0) DESC, n.canonical_name, n.id LIMIT ?',
         );

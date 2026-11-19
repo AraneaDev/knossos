@@ -123,7 +123,11 @@ final readonly class ActiveTestFindings
         ], $statement->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * The attributes a finding was stored with; none when they cannot be read.
+     *
+     * @return array<string, mixed>
+     */
     private static function attributes(mixed $json): array
     {
         $decoded = is_string($json) ? json_decode($json, true) : null;
@@ -132,6 +136,8 @@ final readonly class ActiveTestFindings
     }
 
     /**
+     * The WHERE clause that holds the project, its suppressions and the filters, with its named parameters.
+     *
      * @param Filters $filters
      * @return array{string, array<string, string>}
      */
