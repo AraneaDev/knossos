@@ -243,6 +243,7 @@ php	src/Mcp/Protocol/Profile20260728.php
 php	src/Mcp/Protocol/ProtocolNegotiator.php
 php	src/Mcp/Protocol/ProtocolProfile.php
 php	src/Mcp/Protocol/UnsupportedProtocolVersionException.php
+php	src/Mcp/QualityBudgetsSchema.php
 php	src/Mcp/ResourceService.php
 php	src/Mcp/ResponseOptions.php
 php	src/Mcp/ResultEnricher.php
@@ -534,6 +535,8 @@ php	src/Store/SqliteTransactions.php
 php	src/Store/SqliteValues.php
 php	src/Store/StableId.php
 php	src/Store/Upsert.php
+php	src/TestFidelity/ActiveTestFindings.php
+php	src/TestFidelity/DashboardTestFindings.php
 php	src/TestFidelity/Facts/Assertion.php
 php	src/TestFidelity/Facts/Operand.php
 php	src/TestFidelity/Facts/PinnedValue.php
@@ -554,11 +557,14 @@ php	src/TestFidelity/Rules/ReturnDriftRule.php
 php	src/TestFidelity/Rules/SignatureShape.php
 php	src/TestFidelity/Rules/TautologyRule.php
 php	src/TestFidelity/Rules/VisibilityBreachRule.php
+php	src/TestFidelity/SnapshotTestFindings.php
 php	src/TestFidelity/TestFidelityAnalysis.php
 php	src/TestFidelity/TestFidelityGraph.php
 php	src/TestFidelity/TestFidelityReport.php
 php	src/TestFidelity/TestFidelityRule.php
 php	src/TestFidelity/TestFinding.php
+php	src/TestFidelity/TestFindingKey.php
+php	src/TestFidelity/TestFindingSuppressions.php
 php	src/Watch/ExternalScanProbe.php
 php	src/Watch/ProcessScanner.php
 php	src/Watch/ScanTimeoutException.php
@@ -674,6 +680,7 @@ php	tests/phpunit/Configuration/ProjectConfigurationSchemaAgreementTest.php
 php	tests/phpunit/Configuration/ProjectConfigurationTest.php
 php	tests/phpunit/Configuration/ProjectGatesTest.php
 php	tests/phpunit/Configuration/RepositoryConfigurationTest.php
+php	tests/phpunit/Configuration/TestFindingSuppressionsConfigurationTest.php
 php	tests/phpunit/CoverageBudgetsTest.php
 php	tests/phpunit/Discovery/BoundedContentReadTest.php
 php	tests/phpunit/Discovery/DiscoveredFileTest.php
@@ -763,6 +770,7 @@ php	tests/phpunit/LintFilesTest.php
 php	tests/phpunit/MaintainabilityBudgetTest.php
 php	tests/phpunit/Maintenance/DatabaseMaintenanceServiceTest.php
 php	tests/phpunit/Maintenance/ProjectMoveServiceTest.php
+php	tests/phpunit/Maintenance/SnapshotFindingsCleanupTest.php
 php	tests/phpunit/Mcp/AuditTestsToolTest.php
 php	tests/phpunit/Mcp/BoundaryLegendTest.php
 php	tests/phpunit/Mcp/CancellationBookkeepingTest.php
@@ -939,6 +947,7 @@ php	tests/phpunit/Query/QualityGateCyclesTest.php
 php	tests/phpunit/Query/QualityGateMemoryTest.php
 php	tests/phpunit/Query/QualityGateMetricsTest.php
 php	tests/phpunit/Query/QualityGateMovedCycleTest.php
+php	tests/phpunit/Query/QualityGateTestFindingsTest.php
 php	tests/phpunit/Query/QueryBoundsTest.php
 php	tests/phpunit/Query/QueryDefaultsAgreementTest.php
 php	tests/phpunit/Query/QueryFacadeDocblockTest.php
@@ -980,6 +989,7 @@ php	tests/phpunit/Query/SuggestionArgumentsTest.php
 php	tests/phpunit/Query/SuggestionTest.php
 php	tests/phpunit/Query/SuggestionTruncationTest.php
 php	tests/phpunit/Query/SupertypeMethodsTest.php
+php	tests/phpunit/Query/TestFactsExcludedFromCountsTest.php
 php	tests/phpunit/Query/TestFidelityQueryServiceTest.php
 php	tests/phpunit/Query/TestImpactReportTest.php
 php	tests/phpunit/Query/TestImpactTest.php
@@ -1271,6 +1281,7 @@ php	tests/phpunit/Support/SyntheticGraph.php
 php	tests/phpunit/Support/TempRootGuard.php
 php	tests/phpunit/Support/TempTrees.php
 php	tests/phpunit/Support/WorkerClients.php
+php	tests/phpunit/TestFidelity/DashboardTestFindingsTest.php
 php	tests/phpunit/TestFidelity/DriftEndToEndTest.php
 php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
 php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
@@ -1284,11 +1295,14 @@ php	tests/phpunit/TestFidelity/Rules/ReturnDriftRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/TautologyRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/VisibilityBreachRuleTest.php
 php	tests/phpunit/TestFidelity/ScansTypeScript.php
+php	tests/phpunit/TestFidelity/SnapshotTestFindingsTest.php
 php	tests/phpunit/TestFidelity/TautologyEndToEndTest.php
 php	tests/phpunit/TestFidelity/TestFactsSearchTest.php
 php	tests/phpunit/TestFidelity/TestFactsSnapshotTest.php
 php	tests/phpunit/TestFidelity/TestFidelityAnalysisTest.php
 php	tests/phpunit/TestFidelity/TestFidelityGraphTest.php
+php	tests/phpunit/TestFidelity/TestFindingKeyTest.php
+php	tests/phpunit/TestFidelity/TestFindingSuppressionsTest.php
 php	tests/phpunit/TestFidelity/TypeScriptAcceptanceTest.php
 php	tests/phpunit/TestFidelity/TypeScriptTestCaseFlowTest.php
 php	tests/phpunit/TestFidelity/TypeScriptTestFactsTest.php
