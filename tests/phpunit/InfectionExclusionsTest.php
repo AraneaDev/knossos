@@ -61,7 +61,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
             ],
             '.*bindValue\\(\':limit\', \\$\\w+ \\+ 1, PDO::PARAM_INT\\).*' => [
                 'src/Query/ComponentQueryService.php:198',
-                'src/Query/GraphSummaryQuery.php:81',
+                'src/Query/GraphSummaryQuery.php:83',
                 'src/Query/LocationSuggestionService.php:142',
                 'src/Query/ProjectCatalogQueryService.php:141',
                 'src/Store/ProjectRepository.php:234',
