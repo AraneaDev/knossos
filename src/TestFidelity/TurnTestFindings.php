@@ -97,6 +97,16 @@ final class TurnTestFindings
     }
 
     /**
+     * {@see self::baselines()} of every file of the project at `$root`, read with its own suppressions: what a ledgered scan keeps.
+     *
+     * @return array<string, array{keys: list<string>, truncated: bool}>
+     */
+    public static function baselinesOf(PDO $pdo, string $projectId, string $root): array
+    {
+        return self::baselines(self::held($pdo, $projectId, ActiveTestFindings::suppressionsOf($root)));
+    }
+
+    /**
      * The keys the reported files touched when the turn began; null when that cannot be told.
      *
      * A file no scan since the turn began took in is judged by what it holds
