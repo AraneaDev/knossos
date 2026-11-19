@@ -73,6 +73,21 @@ describe('the turn-end note for stale mocks', () => {
     expect(turnEndNote(brief({ introduced: [finding('k1', 11), finding('k2', 20)], total: 2 }), null)).toContain('introduced 1 stale mock.')
   })
 
+  it('says nothing when every listed finding was said and only the uncapped total is over ten', () => {
+    const listed = Array.from({ length: 10 }, (_, i) => finding(`k${i}`, i + 1))
+    expect(turnEndNote(brief({ introduced: listed, total: 14 }), null)).toContain('introduced 14 stale mocks.')
+    expect(turnEndNote(brief({ introduced: listed, total: 14 }), null)).toBeNull()
+  })
+
+  it('counts only what is said when some listed findings were already said', () => {
+    const listed = Array.from({ length: 10 }, (_, i) => finding(`k${i}`, i + 1))
+    turnEndNote(brief({ introduced: listed.slice(0, 4), total: 4 }), null)
+    const note = turnEndNote(brief({ introduced: listed, total: 14 }), null)!
+    expect(note).toContain('introduced 10 stale mocks.')
+    expect(note.split('\n')).toHaveLength(1 + 6 + 1)
+    expect(note).toContain('- …and 4 more (run audit_tests)')
+  })
+
   it('keeps the policy and tests parts and drops this one with testChecks off', () => {
     reset({ ...options, testChecks: false })
     const note = turnEndNote(brief({ policy: true, tests: true }), null)!
