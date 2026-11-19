@@ -97,6 +97,25 @@ final class SurfacesEndToEndTest extends KnossosTestCase
         assertSame([self::SPEC, 29], [$entry['file'], $entry['line']]);
     }
 
+    /**
+     * A module renamed under a spec that mocks it by path: the watcher takes
+     * the rename in, and the stranded `vi.mock` leads back to the old path,
+     * which the turn reported and the scan deleted.
+     */
+    public function testRenamingAMockedModuleIntroducesTheMockItStrandsWhenTheWatcherTookItIn(): void
+    {
+        $mock = 'tests/UserService.mock.spec.ts';
+        [$pdo, $root, $baseline] = $this->scannedBaseline([$mock => "import { it, vi } from 'vitest';\n\nvi.mock('../src/UserService');\n\nit('runs against the mocked module', () => {});\n"]);
+        rename($root . '/' . self::SERVICE, $root . '/src/Users.ts');
+        LedgeredScanner::local($pdo, self::repositoryRoot(), AllowedRoots::of([(string) realpath($root)]))->scan($root, new ScanOptions(mode: 'incremental'));
+
+        $brief = (new TurnBriefService($pdo, ':memory:', self::repositoryRoot()))->brief($root, [self::SERVICE, 'src/Users.ts'], [], true, $baseline, true);
+
+        assertSame([false, [self::SERVICE]], [$brief['scanned'], $brief['deleted_files']]);
+        assertSame(['ok', 1], [$brief['test_findings']['status'], $brief['test_findings']['total']]);
+        assertSame([$mock, 3], [$brief['test_findings']['introduced'][0]['file'], $brief['test_findings']['introduced'][0]['line']]);
+    }
+
     public function testABaselineFromBeforeThisPhaseIsIndeterminateNotPassOrFail(): void
     {
         [$pdo, $root, $baseline] = $this->scannedBaseline();
@@ -151,12 +170,18 @@ final class SurfacesEndToEndTest extends KnossosTestCase
         assertSame(1, $this->gate($pdo, $baseline, self::BUDGET)['checks'][0]['actual']);
     }
 
-    /** @return array{0: PDO, 1: string, 2: string} the database, a scanned copy of the fixture, and the baseline snapshot's id */
-    private function scannedBaseline(): array
+    /**
+     * @param array<string, string> $extra files added to the copy before it is scanned
+     * @return array{0: PDO, 1: string, 2: string} the database, a scanned copy of the fixture, and the baseline snapshot's id
+     */
+    private function scannedBaseline(array $extra = []): array
     {
         $root = self::scratchPath('surfaces-end-to-end');
         $this->copyTree(self::repositoryRoot() . self::FIXTURE . '/src', $root . '/src');
         $this->copyTree(self::repositoryRoot() . self::FIXTURE . '/tests', $root . '/tests');
+        foreach ($extra as $file => $source) {
+            file_put_contents($root . '/' . $file, $source);
+        }
         $pdo = $this->freshTestDatabase();
         $scan = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
 

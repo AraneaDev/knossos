@@ -13,13 +13,18 @@ use PDO;
  * A finding is touched when its double sits in an edited file or its target
  * does: a stale mock usually lives in a test file the turn never edited, and
  * the stored target is the `doubles` edge followed back to production code.
+ * A double whose module resolves to nothing has no target; it touches the
+ * files its raw specifier can name ({@see MockedModulePaths}), and a deleted
+ * one of those (a renamed module's old path) is the module the turn took away.
  * "Introduced" is the keys after the turn's rescan minus the keys before it;
  * a key carries no line, so a finding that only moved is not introduced.
  *
  * When another writer's scan (the live watcher's, mostly) took an edit in
  * before the brief, the keys before the turn come from the {@see \Knossos\Scan\ScanLedger}:
  * every ledgered scan keeps, for each file it changed, the keys that file
- * held before it ({@see self::held()}, {@see self::baselines()}).
+ * held before it ({@see self::held()}, {@see self::baselines()}). Keys read
+ * from a scan the test rules never judged say nothing, so none are kept
+ * ({@see self::judged()}).
  */
 final class TurnTestFindings
 {
@@ -36,20 +41,24 @@ final class TurnTestFindings
     public const NOT_EVALUATED = 'not_evaluated';
 
     /**
-     * The definite, unsuppressed findings whose double's file or target's file is one of `$editedFiles`.
+     * The definite, unsuppressed findings whose double's file or target's file is one of `$editedFiles`,
+     * or whose double's unresolved module can name one of `$deletedFiles`.
      *
      * @param list<string> $editedFiles
+     * @param list<string> $deletedFiles
      * @return list<array{key: string, category: string, sub_rule: string, message: string, file: ?string, line: ?int, target_file: ?string}>
      */
-    public static function affected(PDO $pdo, string $projectId, array $editedFiles, TestFindingSuppressions $suppressions): array
+    public static function affected(PDO $pdo, string $projectId, array $editedFiles, TestFindingSuppressions $suppressions, array $deletedFiles = []): array
     {
-        if ($editedFiles === []) {
+        if ($editedFiles === [] && $deletedFiles === []) {
             return [];
         }
         $edited = array_flip($editedFiles);
+        $deleted = array_flip($deletedFiles);
         $affected = [];
         foreach ((new ActiveTestFindings($pdo, $projectId, $suppressions))->find(['confidence' => FindingConfidence::Definite->value]) as $finding) {
-            if (($finding['file'] !== null && isset($edited[$finding['file']])) || ($finding['target_file'] !== null && isset($edited[$finding['target_file']]))) {
+            $stranded = array_filter(self::modulePaths($finding), static fn(string $path): bool => isset($deleted[$path])) !== [];
+            if ($stranded || ($finding['file'] !== null && isset($edited[$finding['file']])) || ($finding['target_file'] !== null && isset($edited[$finding['target_file']]))) {
                 $affected[] = [
                     'key' => $finding['key'], 'category' => $finding['category'], 'sub_rule' => $finding['sub_rule'], 'message' => $finding['message'],
                     'file' => $finding['file'], 'line' => $finding['line'], 'target_file' => $finding['target_file'],
@@ -62,8 +71,9 @@ final class TurnTestFindings
 
     /**
      * Every file's keys as {@see self::affected()} would find them for that
-     * one file: the definite, unsuppressed findings whose double's file or
-     * target's file it is. Files that touch none are left out.
+     * one file, edited or deleted: the definite, unsuppressed findings whose
+     * double's file or target's file it is, or that its unresolved module can
+     * name. Files that touch none are left out.
      *
      * @return array<string, list<string>> path => keys, sorted
      */
@@ -71,7 +81,7 @@ final class TurnTestFindings
     {
         $held = [];
         foreach ((new ActiveTestFindings($pdo, $projectId, $suppressions))->find(['confidence' => FindingConfidence::Definite->value]) as $finding) {
-            foreach (array_unique(array_filter([$finding['file'], $finding['target_file']], static fn(?string $file): bool => $file !== null)) as $file) {
+            foreach (array_unique([...array_filter([$finding['file'], $finding['target_file']], static fn(?string $file): bool => $file !== null), ...self::modulePaths($finding)]) as $file) {
                 $held[$file][$finding['key']] = true;
             }
         }
@@ -98,12 +108,26 @@ final class TurnTestFindings
 
     /**
      * {@see self::baselines()} of every file of the project at `$root`, read with its own suppressions: what a ledgered scan keeps.
+     * Null when the test rules never judged the active scan, whose findings then say nothing.
      *
-     * @return array<string, array{keys: list<string>, truncated: bool}>
+     * @return array<string, array{keys: list<string>, truncated: bool}>|null
      */
-    public static function baselinesOf(PDO $pdo, string $projectId, string $root): array
+    public static function baselinesOf(PDO $pdo, string $projectId, string $root): ?array
     {
-        return self::baselines(self::held($pdo, $projectId, ActiveTestFindings::suppressionsOf($root)));
+        return self::judged($pdo, $projectId) ? self::baselines(self::held($pdo, $projectId, ActiveTestFindings::suppressionsOf($root))) : null;
+    }
+
+    /**
+     * Whether the test rules judged the project's active scan. A scan from
+     * before them (the one active when a database is upgraded) has no
+     * findings because they never ran, not because there were none.
+     */
+    public static function judged(PDO $pdo, string $projectId): bool
+    {
+        $statement = $pdo->prepare('SELECT s.test_findings_judged FROM projects p JOIN scans s ON s.id = p.active_scan_id WHERE p.id = :project');
+        $statement->execute(['project' => $projectId]);
+
+        return (int) $statement->fetchColumn() === 1;
     }
 
     /**
@@ -112,9 +136,13 @@ final class TurnTestFindings
      * A file no scan since the turn began took in is judged by what it holds
      * now. A file one did take in is judged by the keys the ledger kept for it
      * from before the first such scan; the turn is not judged when there are
-     * none (a scan that did not read them, a merged entry) or they were cut.
-     * A key a taken-in file holds now is that file's to judge, wherever else
-     * it sits: the scan that took it in may have made it.
+     * none (a scan that did not read them or was never judged, a merged
+     * entry) or they were cut.
+     *
+     * A key counts as before only when every taken-in file that holds it now
+     * held it then: each such file's first scan may come after another's that
+     * made the key (the watcher takes the production edit in, then the spec's
+     * save), and that later baseline already holds it.
      *
      * @param list<string> $reported
      * @param array<string, list<string>> $held {@see self::held()}, read before the brief's own scan
@@ -128,9 +156,10 @@ final class TurnTestFindings
             return null;
         }
         $keys = [];
-        $theirs = [];
+        $missing = [];
         foreach ($reported as $file) {
             if (!array_key_exists($file, $absorbed['before'])) {
+                array_push($keys, ...$held[$file] ?? []);
                 continue;
             }
             $baseline = $absorbed['test_baselines'][$file] ?? null;
@@ -138,16 +167,24 @@ final class TurnTestFindings
                 return null;
             }
             array_push($keys, ...$baseline['keys']);
-            array_push($theirs, ...$held[$file] ?? []);
+            array_push($missing, ...array_diff($held[$file] ?? [], $baseline['keys']));
         }
-        $theirs = array_flip($theirs);
-        foreach ($reported as $file) {
-            if (!array_key_exists($file, $absorbed['before'])) {
-                array_push($keys, ...array_values(array_filter($held[$file] ?? [], static fn(string $key): bool => !isset($theirs[$key]))));
-            }
-        }
+        $missing = array_flip($missing);
 
-        return array_values(array_unique($keys));
+        return array_values(array_filter(array_unique($keys), static fn(string $key): bool => !isset($missing[$key])));
+    }
+
+    /**
+     * The files a finding's double can name by its raw module specifier, when the module resolved to no target.
+     *
+     * @param array{file: ?string, target_canonical: ?string, attributes: array<string, mixed>} $finding
+     * @return list<string>
+     */
+    private static function modulePaths(array $finding): array
+    {
+        $specifier = $finding['attributes']['specifier'] ?? null;
+
+        return $finding['file'] === null || $finding['target_canonical'] !== null || !is_string($specifier) ? [] : MockedModulePaths::of($finding['file'], $specifier);
     }
 
     /**
