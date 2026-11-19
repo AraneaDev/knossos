@@ -5,7 +5,7 @@
     "hooks/lib/layout.spec.ts": 1912,
     "hooks/lib/views.ts": 751,
     "hooks/mod/watcher.spec.ts": 699,
-    "hooks/register.test.ts": 5324,
+    "hooks/register.test.ts": 5346,
     "src/Cli/Command/PluginCommand.php": 696,
     "src/Git/GitProcessRunner.php": 635,
     "src/Mcp/ToolCatalog.php": 963,
