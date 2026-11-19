@@ -68,7 +68,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `snapshot_diff`
 
-See what changed architecturally between two scans. Use after a rescan to review added/removed components and relationships instead of eyeballing a code diff.
+See what changed architecturally between two scans. Use after a rescan to review added/removed components and relationships instead of eyeballing a code diff. `test_findings` counts the test findings each side has that the other lacks (`not_recorded` when a side kept none).
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
@@ -102,7 +102,7 @@ Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`
 
 ## `architecture_trends`
 
-See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot's figures in the graph database; a very large snapshot is a `partial` point with a `reason`.
+See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot's figures in the graph database; a very large snapshot is a `partial` point with a `reason`. Every point carries `definite_test_findings` and `stale_test_findings`, null when that snapshot kept no record.
 
 | Input | Type | Required | Constraints/default | Description |
 | --- | --- | --- | --- | --- |
