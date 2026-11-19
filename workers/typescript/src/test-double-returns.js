@@ -74,14 +74,14 @@ export function fits(checker, expression, expected) {
             fits(checker, value.whenFalse, expected),
         ]);
     if (ts.isObjectLiteralExpression(value))
-        return objectFits(checker, value, expected);
+        return objectFits(checker, value, expected, fits);
     // `await x` and `Promise.resolve(x)` hand on `x`: hold `x` itself to
     // what the promise must resolve to.
     if (ts.isAwaitExpression(value))
-        return resolvedFits(checker, value.expression, expected);
+        return resolvedFits(checker, value.expression, expected, fits);
     const awaited = checker.getAwaitedType(expected) ?? expected;
     if (awaited !== expected && promiseResolve(value) !== undefined)
-        return resolvedFits(checker, value, awaited);
+        return resolvedFits(checker, value, awaited, fits);
     if (ts.isArrayLiteralExpression(value)) {
         const element = checker.getIndexTypeOfType(
             expected,
@@ -104,10 +104,15 @@ export function fits(checker, expression, expected) {
     );
 }
 
-/** Whether what `value` resolves to fits `expected`. */
-function resolvedFits(checker, value, expected) {
+/**
+ * Whether what `value` resolves to fits `expected`. `holds` is `fits`, handed
+ * down so the helpers do not call back up into it: a loop of functions
+ * calling one another is a dependency cycle, and this one is only recursion
+ * over the expression's shape.
+ */
+function resolvedFits(checker, value, expected, holds) {
     const resolved = promiseResolve(value);
-    if (resolved !== undefined) return fits(checker, resolved, expected);
+    if (resolved !== undefined) return holds(checker, resolved, expected);
     const type = checker.getTypeAtLocation(value);
     return checkerAnswer(
         checker,
@@ -142,19 +147,22 @@ function checkerAnswer(checker, value, type, expected) {
 
 /**
  * Whether an object literal fits a type: some member of a union, every
- * part of an intersection, or every property.
+ * part of an intersection, or every property. `holds` is `fits`, which
+ * judges each property's value (see `resolvedFits`).
  */
-function objectFits(checker, literal, expected) {
+function objectFits(checker, literal, expected, holds) {
     if (expected.isUnion()) {
         const answers = expected.types.map((part) =>
-            objectFits(checker, literal, part),
+            objectFits(checker, literal, part, holds),
         );
         if (answers.includes(true)) return true;
         return answers.includes("unknown") ? "unknown" : false;
     }
     if (expected.isIntersection())
         return all(
-            expected.types.map((part) => objectFits(checker, literal, part)),
+            expected.types.map((part) =>
+                objectFits(checker, literal, part, holds),
+            ),
         );
     if (!(expected.flags & ts.TypeFlags.Object))
         return checker.isTypeAssignableTo(
@@ -176,7 +184,7 @@ function objectFits(checker, literal, expected) {
         if (target === undefined) continue;
         const type = checker.getTypeOfSymbol(target);
         if (ts.isPropertyAssignment(property)) {
-            answers.push(fits(checker, property.initializer, type));
+            answers.push(holds(checker, property.initializer, type));
         } else {
             const symbol = checker.getShorthandAssignmentValueSymbol(property);
             answers.push(
