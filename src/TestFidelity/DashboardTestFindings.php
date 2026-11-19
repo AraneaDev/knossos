@@ -39,6 +39,8 @@ final readonly class DashboardTestFindings
     private function __construct() {}
 
     /**
+     * The section for the project at `$root`: its counts, production grouping and findings list.
+     *
      * @return array{definite: int, warning: int, by_production_file: array<string, array{doubles: int, target: string, reasons: list<string>, keys: list<string>}>, by_production_file_truncated: bool, list: list<array<string, mixed>>, list_truncated: bool, suppressions_invalid: ?string}
      */
     public static function of(PDO $pdo, string $projectId, string $root): array

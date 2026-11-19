@@ -59,7 +59,7 @@ final class TestFactsExcludedFromCountsTest extends KnossosTestCase
     }
 
     /**
-     * @return array{kinds: list<array{kind: string, count: int}>, candidates: int, probable: int, hubs: list<string>, hotspots: list<string>, brief: string}
+     * @return array{kinds: list<array{kind: string, count: int}>, boundaries: mixed, candidates: int, probable: int, hubs: list<string>, hotspots: list<string>, brief: string}
      */
     private static function figures(PDO $pdo, string $root): array
     {
@@ -71,6 +71,7 @@ final class TestFactsExcludedFromCountsTest extends KnossosTestCase
 
         return [
             'kinds' => $dashboard['summary']['kinds'],
+            'boundaries' => $dashboard['boundaries'],
             'candidates' => $health['bounds']['candidates_total'],
             'probable' => $health['bounds']['candidates_probable'],
             'hubs' => array_column(array_column($health['hubs'], 'component'), 'canonical_name'),
