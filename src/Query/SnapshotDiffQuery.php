@@ -7,8 +7,8 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
-use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SnapshotBounds;
+use Knossos\Store\SnapshotFacts;
 use PDO;
 
 /**
@@ -178,8 +178,8 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
     {
         // Each column with `+`: ordered by an index, SQLite would walk every project's rows rather than find this one's and sort them.
         $order = $table === 'boundary_memberships' ? '+boundary_id, +node_id' : '+id';
-        // Native rows only, as the archive stores them: an enricher's output is never drift.
-        $native = EnrichedFacts::nativeCondition($table);
+        // The rows the archive stores ({@see SnapshotFacts}): an enricher's output, or a test fact's line, is never drift.
+        $native = SnapshotFacts::condition($table);
         $statement = $this->pdo->prepare(sprintf('SELECT * FROM %s WHERE project_id = :project%s ORDER BY %s LIMIT %d', $table, $native, $order, SnapshotBounds::MAX_ROWS_PER_TABLE + 1));
         $statement->execute(['project' => $projectId]);
         $rows = 0;

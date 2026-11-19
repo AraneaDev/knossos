@@ -7,6 +7,9 @@ import { callSitesInto, destructuresUntyped } from "./call-argument-sites.js";
 import { inRootFile } from "./input-reads.js";
 import { TypeScriptLanguageFactCollector } from "./language-fact-collector.js";
 import { relativeInside } from "./project-paths.js";
+import { collectTestCases } from "./test-cases.js";
+import { isTestModule } from "./test-module-paths.js";
+import { collectTestDoubles } from "./test-doubles.js";
 
 // Every contribution's owner key is this prefix and the file's project path.
 export const OWNER_KEY_PREFIX = "knossos.typescript:file:";
@@ -72,7 +75,11 @@ export function collectFile(
             owner_key: `${OWNER_KEY_PREFIX}${relative}`,
             nodes: collector.nodes,
             edges: collector.edges,
-            diagnostics: [...diagnostics.own, ...diagnostics.programWide],
+            diagnostics: [
+                ...diagnostics.own,
+                ...collector.diagnostics,
+                ...diagnostics.programWide,
+            ],
         };
     } catch (error) {
         return {
@@ -101,6 +108,8 @@ class FactCollector {
             checker,
             project,
         );
+        // What the collector itself has to say about the file.
+        this.diagnostics = [];
     }
 
     get nodes() {
@@ -112,9 +121,25 @@ class FactCollector {
     }
 
     collect() {
-        this.language.initialize();
-        this.visit(this.language.sourceFile);
-        this.language.finish();
+        const language = this.language;
+        language.initialize();
+        this.visit(language.sourceFile);
+        language.finish();
+        // A test module's mocks, spies and stubs, for the core to hold
+        // against the code they stand in for, and its tests' assertions.
+        if (!isTestModule(language.relative)) return;
+        const failure = collectTestFacts(language);
+        if (failure !== undefined)
+            this.diagnostics.push({
+                severity: "warning",
+                code: "TS_TEST_FACTS_FAILED",
+                message: `The file's test doubles and test cases could not be read, so none are reported: ${failure instanceof Error ? failure.message : String(failure)}`,
+                evidence: {
+                    path: language.relative,
+                    start_line: 1,
+                    end_line: 1,
+                },
+            });
     }
 
     visit(node) {
@@ -122,5 +147,36 @@ class FactCollector {
         this.language.handle(node);
         ts.forEachChild(node, (child) => this.visit(child));
         this.language.leave(pushed);
+    }
+}
+
+/**
+ * Add a test module's doubles and tests to its facts, or none of them.
+ *
+ * The test facts are read after every other fact of the file, so a failure
+ * reading them must cost them alone: the file's module, imports and calls
+ * are what test impact, untested code and dead code read. A failure takes
+ * back every node and edge the two passes added, and with them the test
+ * names `claimDoubles` wrote onto the doubles' facts.
+ *
+ * @returns {unknown} what was thrown, or undefined when both passes completed
+ */
+function collectTestFacts(language) {
+    const accumulator = language.accumulator;
+    const nodeIds = new Set(accumulator.nodesById.keys());
+    const edgeCount = accumulator.edgeList.length;
+    const appended = new Set(accumulator.appended);
+    try {
+        const { sourceFile, checker } = language;
+        const doubles = collectTestDoubles(sourceFile, checker, language);
+        collectTestCases(sourceFile, checker, doubles, language);
+        return undefined;
+    } catch (error) {
+        for (const id of [...accumulator.nodesById.keys()]) {
+            if (!nodeIds.has(id)) accumulator.nodesById.delete(id);
+        }
+        accumulator.edgeList.length = edgeCount;
+        accumulator.appended = appended;
+        return error;
     }
 }

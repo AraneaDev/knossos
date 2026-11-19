@@ -27,18 +27,34 @@ use Knossos\Classification\{
     TypeScriptFrameworkRoleRule
 };
 use Knossos\Scanner\Protocol\Confidence;
+use Knossos\Scanner\Protocol\ScanContribution;
+use Knossos\TestFidelity\Rules\{ArityMismatchRule, GhostMemberRule, MocksSubjectRule, ReturnDriftRule, TautologyRule, VisibilityBreachRule};
+use Knossos\TestFidelity\TestFidelityAnalysis;
 
 /**
- * Derives roles and boundaries from facts the workers reported.
+ * Derives roles, boundaries and test-fidelity findings from facts the workers reported.
  *
- * Runs after reconciliation because it reasons over the whole graph — a role rule
+ * Reasons over the whole set of contributions, reused ones included — a role rule
  * may depend on a class's inheritance, which is only known once every file's facts
- * are present.
+ * are present, and a test double is judged against the code it replaces as that
+ * code is now.
  */
 final readonly class ScanAnalysisPipeline
 {
+    /** @param TestFidelityAnalysis $testFidelity the test-fidelity rules every scan runs */
+    public function __construct(
+        private TestFidelityAnalysis $testFidelity = new TestFidelityAnalysis(
+            new GhostMemberRule(),
+            new ArityMismatchRule(),
+            new ReturnDriftRule(),
+            new VisibilityBreachRule(),
+            new TautologyRule(),
+            new MocksSubjectRule(),
+        ),
+    ) {}
+
     /**
-     * Derive roles and boundaries once the whole graph is present.
+     * Derive roles, boundaries and test-fidelity findings once the whole graph is present.
      *
      * @param list<object> $contributions
      */
@@ -85,6 +101,10 @@ final readonly class ScanAnalysisPipeline
         if ($plan->preparation->symfony) {
             $rules[] = new SymfonyRoleRule();
         }
+        $testFidelity = $this->testFidelity->report(array_values(array_filter(
+            $contributions,
+            static fn(object $contribution): bool => $contribution instanceof ScanContribution,
+        )));
         return new ScanAnalysis(
             (new ClassificationEngine($rules))->classify($contributions),
             (new BoundaryInference())->infer(
@@ -92,8 +112,21 @@ final readonly class ScanAnalysisPipeline
                 $contributions,
                 $plan->preparation->explicitBoundaries,
             ),
-            $warnings,
+            [...$warnings, ...$testFidelity->warnings],
+            $testFidelity->findings,
+            $this->testFidelity->ruleIds(),
         );
+    }
+
+    /**
+     * The ids of the test-fidelity rules every scan runs, sorted; part of
+     * what a stored graph was built with, so a change rebuilds it.
+     *
+     * @return list<string>
+     */
+    public function testFidelityRuleIds(): array
+    {
+        return $this->testFidelity->ruleIds();
     }
 
     /**

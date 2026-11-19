@@ -104,7 +104,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
     {
         $declared = $this->pdo->prepare(
             'SELECT n.*, f.relative_path FROM nodes n JOIN files f ON f.id = n.file_id ' .
-            "WHERE f.project_id = :project AND f.relative_path = :path ORDER BY CASE WHEN n.kind = 'module' THEN 0 ELSE 1 END, n.start_line, n.canonical_name LIMIT :fetch_limit",
+            'WHERE f.project_id = :project AND f.relative_path = :path AND ' . SearchExclusions::notDerivedTestFact('n') . " ORDER BY CASE WHEN n.kind = 'module' THEN 0 ELSE 1 END, n.start_line, n.canonical_name LIMIT :fetch_limit",
         );
         $declared->bindValue(':project', $projectId);
         $declared->bindValue(':path', $path);
@@ -512,10 +512,10 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
         foreach ($terms as $index => $term) {
             $key = 'contains' . $index;
             $params[$key] = '%' . self::like($term) . '%';
-            // An attribute's words and numbers, never its name, a true or false, or the scanner's bookkeeping: the raw
-            // JSON's LIKE narrows first.
+            // An attribute's words and numbers, never its name, a true or false, the scanner's bookkeeping or a
+            // list of the names something else declares: the raw JSON's LIKE narrows first.
             $attribute = "(n.attributes_json LIKE :$key ESCAPE '!' AND EXISTS (SELECT 1 FROM json_tree(n.attributes_json) jt WHERE jt.type IN ('text', 'integer', 'real') " .
-                "AND jt.key NOT IN ('scanner', 'scanner_local_id') AND jt.atom LIKE :$key ESCAPE '!'))";
+                "AND jt.key NOT IN ('scanner', 'scanner_local_id')" . SearchExclusions::outsideNameLists('jt') . " AND jt.atom LIKE :$key ESCAPE '!'))";
             $matches = "(n.canonical_name LIKE :$key ESCAPE '!' OR n.display_name LIKE :$key ESCAPE '!' OR $attribute " .
                 "OR EXISTS (SELECT 1 FROM classifications cq WHERE cq.node_id = n.id AND cq.role LIKE :$key ESCAPE '!'))";
             $own[] = $matches;
@@ -528,7 +528,7 @@ final readonly class ComponentQueryService extends AbstractArchitectureQueryServ
             'WHEN ' . implode(' AND ', $own) . ' THEN 4 ELSE 5 END AS rank' . ($anyTerm ? ", $matched AS matched" : '') . ' ' .
             'FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.project_id = :project AND ' .
             ($anyTerm ? '(' . implode(' OR ', $either) . ')' : implode(' AND ', $either));
-        $sql .= $this->filterClause('n.kind', 'kind', $kinds, $params);
+        $sql .= $kinds === [] ? ' AND ' . SearchExclusions::notDerivedTestFact('n') : $this->filterClause('n.kind', 'kind', $kinds, $params);
         $sql .= $this->filterClause('n.confidence', 'confidence', $confidences, $params);
         if ($roles !== []) {
             $clause = $this->filterClause('cr.role', 'role', $roles, $params);

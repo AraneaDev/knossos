@@ -308,6 +308,13 @@ final class ToolBindings
                     'path' => self::at('Usage: knossos creation-brief <path|project-id> <file> [--json]'),
                 ],
             ],
+            'audit_tests' => [
+                'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->services()->testFidelityQueries->auditTests(...$v),
+                'arguments' => [
+                    'project_id' => self::at('Usage: knossos audit-tests <path|project-id> [options]'),
+                    'path_prefix' => self::as('path'), 'confidence' => [], 'category' => [], 'limit' => [], 'offset' => [],
+                ],
+            ],
             // MCP only: the CLI's file-context is the pane's, a different answer.
             'file_context' => [
                 'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->fileContext(...$v),

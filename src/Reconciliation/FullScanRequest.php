@@ -13,6 +13,7 @@ use Knossos\Git\DirtyPathSet;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Store\ContributionCacheEntry;
+use Knossos\TestFidelity\TestFinding;
 
 /** Everything reconciliation needs to replace a project's graph in one transaction. */
 final readonly class FullScanRequest
@@ -47,6 +48,10 @@ final readonly class FullScanRequest
      * @param ?string $scanId the id the scan is written under, when the caller
      *        needs it beforehand (enriched facts record the scan that produced
      *        them); null has reconciliation make one.
+     * @param list<TestFinding> $testFindings what the test-fidelity rules found,
+     *        stored with the scan in place of the project's previous findings.
+     * @param list<string> $testFidelityRules the ids of the rules that judged
+     *        them, hashed into the scanner set so a rule change rebuilds the graph.
      */
     public function __construct(
         public string $projectIdentity,
@@ -66,6 +71,8 @@ final readonly class FullScanRequest
         public array $readGroups = [],
         public array $enrichers = [],
         public ?string $scanId = null,
+        public array $testFindings = [],
+        public array $testFidelityRules = [],
     ) {
         if ($projectIdentity === '' || $projectName === '') {
             throw new InvalidArgumentException('Project identity and name must not be empty.');
@@ -83,6 +90,7 @@ final readonly class FullScanRequest
         }
         self::assertListOf($contributionCache, ContributionCacheEntry::class, 'contributionCache');
         self::assertListOf($enrichers, EnricherDefinition::class, 'enrichers');
+        self::assertListOf($testFindings, TestFinding::class, 'testFindings');
         self::assertWorkerDiagnostics($workerDiagnostics);
     }
 

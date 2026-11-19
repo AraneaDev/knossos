@@ -19,6 +19,7 @@ final readonly class PreparedGraph
      * @param list<array<string, mixed>> $classifications
      * @param list<array<string, mixed>> $boundaries
      * @param list<array<string, string|int>> $warnings the reconciler's own diagnostics
+     * @param list<array<string, mixed>> $testFindings test-fidelity findings, resolved onto node ids
      */
     public function __construct(
         public FullScanRequest $request,
@@ -32,5 +33,6 @@ final readonly class PreparedGraph
         public array $boundaries,
         public array $warnings,
         public int $unresolvedNodes,
+        public array $testFindings = [],
     ) {}
 }

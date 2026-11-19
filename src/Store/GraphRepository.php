@@ -191,6 +191,13 @@ interface GraphRepository
     public function saveClassifications(array $classifications, string $projectId, string $scanId): void;
 
     /**
+     * Replace the project's test-fidelity findings with this scan's.
+     *
+     * @param list<array<string, mixed>> $findings rows shaped as GraphAssembler test-finding records
+     */
+    public function saveTestFindings(array $findings, string $projectId, string $scanId): void;
+
+    /**
      * Persist a batch of boundary memberships as one multi-row insert.
      *
      * @param list<array<string, mixed>> $memberships rows shaped as {boundary_id, node_id}

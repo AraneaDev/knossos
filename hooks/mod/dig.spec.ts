@@ -94,6 +94,7 @@ const NOT_QUESTIONS: Record<string, string> = {
   import_notes: 'reads a notes file into the project, a write rather than a question',
   annotate_component: 'records what a dig found: it ends a dig rather than starting one',
   creation_brief: 'briefs a file about to be written, before there is anything to check an answer against',
+  audit_tests: "the scan's own findings about the tests, a report rather than a lookup",
 }
 
 describe('the server catalog', () => {

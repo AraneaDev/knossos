@@ -27,9 +27,9 @@ final class CountedSnapshotFigures
             $statement->execute(['project' => $projectId]);
             return (int) $statement->fetchColumn();
         };
-        // A snapshot holds native facts only, so its counts leave enriched rows and enricher diagnostics out too.
+        // A snapshot holds native architecture facts only ({@see SnapshotFacts}), so its counts leave the rest out too.
         $rows = static fn(string $table): string => sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project', $table)
-            . EnrichedFacts::nativeCondition($table);
+            . SnapshotFacts::condition($table);
 
         return [
             'counts' => [

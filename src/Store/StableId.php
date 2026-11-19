@@ -80,6 +80,15 @@ final class StableId
         return self::make('classification', [$projectId, $nodeId, $role, $ruleId]);
     }
 
+    /**
+     * Includes the sub-rule, line and message, so one double with two missing
+     * members keeps two findings while a rescan of the same code keeps the ids.
+     */
+    public static function testFinding(string $projectId, string $nodeId, string $ruleId, string $subRule, string $line, string $message): string
+    {
+        return self::make('test_finding', [$projectId, $nodeId, $ruleId, $subRule, $line, $message]);
+    }
+
     /** Includes the source, so an inferred boundary never collides with an explicitly declared one. */
     public static function boundary(string $projectId, string $name, string $source): string
     {

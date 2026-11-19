@@ -1078,7 +1078,7 @@ case ${1-} in
         dependency-cycles | architecture-health | check-architecture | suggest-location | change-impact | \
         changed-files-impact | test-impact | review-diff | architecture-context | export-diagram | \
         export-agent-brief | list-boundaries | search-architecture | annotate-component | list-annotations | \
-        creation-brief) takes_path=yes ;;
+        creation-brief | audit-tests) takes_path=yes ;;
 esac
 if [ "$takes_path" = yes ] && [ $# -ge 2 ]; then
     case $2 in

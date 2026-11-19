@@ -33,11 +33,7 @@ import {
 } from "./declaration-kinds.js";
 import { DynamicImportCollector } from "./dynamic-import-collector.js";
 import { FactAccumulator } from "./fact-accumulator.js";
-import {
-    hasMainGuard,
-    importMetaUrlModule,
-    startsWithShebang,
-} from "./module-entry.js";
+import { importMetaUrlModule, moduleAttributes } from "./module-entry.js";
 import { NestJsFactEnricher } from "./nestjs-fact-enricher.js";
 import { LaunchFacts } from "./launch-facts.js";
 import { nodeBuiltinPackage } from "./node-builtins.js";
@@ -47,12 +43,7 @@ import {
     normalize,
     relativeInside,
 } from "./project-paths.js";
-import {
-    isClassicScript,
-    REQUIRE_SUFFIXES,
-    runsOnLoad,
-    storeMemberNames,
-} from "./syntax-predicates.js";
+import { REQUIRE_SUFFIXES, storeMemberNames } from "./syntax-predicates.js";
 import { TableDispatch } from "./table-dispatch.js";
 import {
     importsModule,
@@ -112,14 +103,7 @@ export class TypeScriptLanguageFactCollector {
             this.relative,
             path.basename(this.relative),
             this.sourceFile,
-            {
-                declaration_file: this.sourceFile.isDeclarationFile,
-                executable:
-                    startsWithShebang(this.sourceFile.text) ||
-                    hasMainGuard(this.sourceFile, this.checker) ||
-                    isClassicScript(this.sourceFile) ||
-                    runsOnLoad(this.sourceFile),
-            },
+            moduleAttributes(this.sourceFile, this.checker),
         );
     }
 
@@ -317,7 +301,7 @@ export class TypeScriptLanguageFactCollector {
     }
 
     declaration(node) {
-        const descriptor = declarationDescriptor(node, this.sourceFile);
+        const descriptor = declarationDescriptor(node, this);
         if (descriptor === null) return false;
         const parent = this.container.at(-1) ?? {
             id: this.moduleId,
