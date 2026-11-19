@@ -15,6 +15,7 @@ final readonly class ProjectConfiguration
      * @param array<string, int> $qualityBudgets
      * @param list<string> $deadCodeSuppressions
      * @param list<array{code: string, path: ?string, reason: ?string}> $diagnosticSuppressions diagnostics not to report, by code and optionally path
+     * @param list<array{rule: string, path: ?string, reason: ?string}> $testFindingSuppressions test-fidelity findings not to report, by rule and optionally the test's path prefix
      * @param int|null $watchScanTimeoutMs how long one scan of the shared watcher may run; null for its default
      * @param int|null $refreshBudgetMs how long refresh_if_stale may rescan inside a query, 0 for never; null for its default
      * @param array<string, string> $webRoots URL path prefix (`/static/`) => the project folder a web server serves it from (`web/public/`)
@@ -40,5 +41,6 @@ final readonly class ProjectConfiguration
         public array $enrichers = [],
         public array $diagnosticSuppressions = [],
         public array $gates = [],
+        public array $testFindingSuppressions = [],
     ) {}
 }

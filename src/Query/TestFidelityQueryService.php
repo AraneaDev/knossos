@@ -6,7 +6,7 @@ namespace Knossos\Query;
 
 use InvalidArgumentException;
 use Knossos\Result\ResultEnvelope;
-use Knossos\TestFidelity\{FindingCategory, FindingConfidence};
+use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFindingKey, TestFindingSuppressions};
 use PDO;
 
 /**
@@ -51,8 +51,11 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         if ($category !== null && !in_array($category, $categories, true)) {
             throw new InvalidArgumentException('category must be one of: ' . implode(', ', $categories) . '.');
         }
-        $where = 'tf.project_id = :project';
-        $parameters = ['project' => $projectId];
+        $suppressions = TestFindingSuppressions::fromProjectRoot((string) $project['root_realpath']);
+        [$suppressed, $suppressedValues] = $suppressions->sqlCondition('tf');
+        $parameters = [];
+        $where = 'tf.project_id = :project AND ' . self::named($suppressed, $suppressedValues, $parameters);
+        $parameters['project'] = $projectId;
         if ($pathPrefix !== null && $pathPrefix !== '') {
             // Compared as bytes: LIKE would fold ASCII case and read `_` and `%` as wildcards.
             $where .= ' AND substr(f.relative_path, 1, length(:prefix)) = :prefix';
@@ -82,6 +85,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $statement->execute();
         $items = array_map(static fn(array $row): array => [
             'id' => (string) $row['id'],
+            'key' => TestFindingKey::of((string) $row['rule_id'], (string) $row['sub_rule'], (string) $row['relative_path'], $row['target_name'] === null ? null : (string) $row['target_name'], (string) $row['message']),
             'category' => (string) $row['category'],
             'confidence' => (string) $row['confidence'],
             'rule_id' => (string) $row['rule_id'],
@@ -101,7 +105,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
             [
                 'items' => $items,
                 'total' => $total,
-                'summary' => ['by_language' => $this->byLanguage($projectId)],
+                'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions)],
                 'pagination' => ['offset' => $offset, 'next_offset' => $next],
             ],
             [],
@@ -113,14 +117,18 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
     /**
      * The project's finding counts per confidence for each language whose worker
      * emits test facts, and a note for each packaged language whose worker does
-     * not. Unfiltered: a filter narrows the items, not what the project holds.
+     * not. A filter narrows the items, not what the project holds; what the
+     * project suppresses is not held.
      *
      * @return array<string, array<string, int>|string>
      */
-    private function byLanguage(string $projectId): array
+    private function byLanguage(string $projectId, TestFindingSuppressions $suppressions): array
     {
-        $statement = $this->pdo->prepare('SELECT n.language, tf.confidence, COUNT(*) AS findings FROM test_findings tf JOIN nodes n ON n.id = tf.node_id WHERE tf.project_id = :project GROUP BY n.language, tf.confidence');
-        $statement->execute(['project' => $projectId]);
+        $parameters = [];
+        [$suppressed, $values] = $suppressions->sqlCondition('tf');
+        $condition = self::named($suppressed, $values, $parameters);
+        $statement = $this->pdo->prepare("SELECT n.language, tf.confidence, COUNT(*) AS findings FROM test_findings tf JOIN nodes n ON n.id = tf.node_id WHERE tf.project_id = :project AND {$condition} GROUP BY n.language, tf.confidence");
+        $statement->execute($parameters + ['project' => $projectId]);
         $zeros = array_fill_keys(array_map(static fn(FindingConfidence $case): string => $case->value, FindingConfidence::cases()), 0);
         $byLanguage = [];
         foreach (self::PACKAGED_LANGUAGES as $language => $emitsTestFacts) {
@@ -137,5 +145,25 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         ksort($byLanguage);
 
         return $byLanguage;
+    }
+
+    /**
+     * A suppression fragment's positional placeholders as named ones, so it can
+     * sit beside the named parameters of the rest of the query; the names and
+     * their values are added to `$parameters`.
+     *
+     * @param list<string> $values
+     * @param array<string, string> $parameters
+     */
+    private static function named(string $fragment, array $values, array &$parameters): string
+    {
+        $index = 0;
+
+        return (string) preg_replace_callback('/\?/', static function () use (&$index, $values, &$parameters): string {
+            $name = 'suppressed_' . $index;
+            $parameters[$name] = $values[$index++];
+
+            return ':' . $name;
+        }, $fragment);
     }
 }

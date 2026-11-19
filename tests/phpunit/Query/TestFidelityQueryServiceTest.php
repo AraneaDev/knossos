@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use InvalidArgumentException;
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\TestFidelity\TestFindingKey;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertCount;
@@ -52,6 +53,51 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
             $page = $service->auditTests($projectId, limit: 1, offset: 1);
             assertSame([$items[1]], $page->data['items']);
             assertSame($items[1]['id'] ?? null, $page->data['items'][0]['id'] ?? null);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    public function testASuppressionHidesAFindingWithoutARescan(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
+        try {
+            $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
+            $before = $service->auditTests($projectId);
+            $ghosts = count(array_filter($before->data['items'], static fn(array $i): bool => $i['category'] === 'GHOST_MEMBER'));
+            self::assertGreaterThan(0, $ghosts);
+            $countBefore = array_sum($before->data['summary']['by_language']['typescript']);
+
+            file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'test_finding_suppressions' => [['rule' => 'GHOST_MEMBER']]]));
+            $after = $service->auditTests($projectId);
+
+            assertSame([], array_filter($after->data['items'], static fn(array $i): bool => $i['category'] === 'GHOST_MEMBER'));
+            assertSame($before->data['total'] - $ghosts, $after->data['total']);
+            assertSame($countBefore - $ghosts, array_sum($after->data['summary']['by_language']['typescript']));
+            // The filter runs before the page is cut, so the first page is the first unsuppressed finding.
+            assertSame($after->data['items'][0], $service->auditTests($projectId, limit: 1)->data['items'][0]);
+
+            file_put_contents($root . '/knossos.json', json_encode(['version' => 1, 'test_finding_suppressions' => [['rule' => 'GHOST_MEMBER', 'path' => 'tests/planted']]]));
+            assertSame($before->data['total'], $service->auditTests($projectId)->data['total']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    public function testItemsCarryTheirKey(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
+        try {
+            $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
+            $items = $service->auditTests($projectId)->data['items'];
+
+            foreach ($items as $item) {
+                assertSame(
+                    TestFindingKey::of($item['rule_id'], $item['sub_rule'], (string) $item['file'], $item['target'], $item['message']),
+                    $item['key'],
+                );
+            }
+            assertSame(count($items), count(array_unique(array_column($items, 'key'))));
         } finally {
             $this->removeTempTree($root);
         }
