@@ -54,9 +54,10 @@ final class SqliteGraphRepository implements GraphRepository
     /**
      * What a scan writes beyond the snapshot's tables, checked with them
      * before a bulk rewrite commits. Test findings are judged again by every
-     * scan that rebuilds the graph and are not part of the snapshot record yet.
+     * scan that rebuilds the graph; a snapshot keeps its own copy, which the
+     * archive writes in the same transaction and which is checked as well.
      */
-    private const CHECKED_TABLES = [...self::SCAN_OWNED_TABLES, 'test_findings'];
+    private const CHECKED_TABLES = [...self::SCAN_OWNED_TABLES, 'test_findings', 'snapshot_test_findings'];
 
     public function __construct(PDO $pdo)
     {
