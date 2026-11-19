@@ -118,12 +118,10 @@ final readonly class TurnBriefService
             $absorbed = $since === null ? ['before' => [], 'baselines' => [], 'test_baselines' => [], 'scans' => []] : $ledger->since($projectId, $since);
             // Taken before the scan rewrites the graph: what the reported files already broke is not this turn's doing.
             [$baseline, $perFile] = $this->baseline($violations, $projectId, $policies, $reported, $absorbed);
-            // The test findings the reported files touch, before the scan rewrites them; for a file a scan since the
-            // turn began already took in, as the ledger kept them from before that scan. Unknown when it cannot say.
-            // A scan the test rules never judged has no keys to tell before from after.
+            // The test findings each file touches, before the scan rewrites them; judged once the diff names the
+            // turn's files. A scan the test rules never judged has no keys to tell before from after.
             $suppressions = ActiveTestFindings::suppressionsOf($root);
             $held = TurnTestFindings::judged($this->pdo, $projectId) ? TurnTestFindings::held($this->pdo, $projectId, $suppressions) : null;
-            $testsBefore = $held === null ? null : TurnTestFindings::before($reported, $held, $absorbed);
             $before = self::rewound($current, $absorbed['before'] ?? []);
             $started = $this->now();
             try {
@@ -149,8 +147,11 @@ final readonly class TurnBriefService
         // can change many files at once, and their old violations are not the model's to fix.
         $edited = array_values(array_intersect($live, $reported));
         $tests = $live === [] ? ['tests' => [], 'truncated' => false] : FileTestReach::testsOf($queries->changeQueries, $projectId, $live, self::MAX_TESTS);
-        // A module the turn deleted (a renamed one's old path) strands the doubles that mocked it.
-        $stranded = array_values(array_intersect($deleted, $reported));
+        // A module the turn deleted (a renamed one's old path) strands the doubles that mocked it. A model deletes
+        // and renames through Bash, which reports nothing, so the diff's deletions are the turn's when few.
+        $stranded = TurnTestFindings::stranded($deleted);
+        // For a file a scan since the turn began already took in, as the ledger kept them from before that scan.
+        $testsBefore = $held === null ? null : TurnTestFindings::before(array_values(array_unique([...$reported, ...$stranded])), $held, $absorbed);
         $testFindings = TurnTestFindings::section($testsBefore, $testsBefore === null ? [] : TurnTestFindings::affected($this->pdo, $projectId, $edited, $suppressions, $stranded), $suppressions->invalid());
         return [
             'status' => 'ok',
