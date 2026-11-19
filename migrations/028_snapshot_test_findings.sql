@@ -17,10 +17,18 @@
 -- them apart: 1 when the archive wrote this snapshot's findings (possibly
 -- none), 0 for every row that already exists, whose findings are gone.
 --
+-- Nor does a scan's having no findings mean the test rules judged it: the
+-- scan active when a database is upgraded from before them has none because
+-- they never ran. `scans.test_findings_judged` is 1 once a scan's findings
+-- were written (possibly none), 0 for every scan that already exists; the
+-- archive copies it into `test_findings_recorded`.
+--
 -- Rows follow the snapshot: deleting it (retention pruning, a removed scan or
 -- project) deletes them, and the code that deletes a snapshot also deletes
 -- them explicitly, since a scan writes with foreign keys off.
 ALTER TABLE scan_snapshots ADD COLUMN test_findings_recorded INTEGER NOT NULL DEFAULT 0 CHECK (test_findings_recorded IN (0, 1));
+
+ALTER TABLE scans ADD COLUMN test_findings_judged INTEGER NOT NULL DEFAULT 0 CHECK (test_findings_judged IN (0, 1));
 
 CREATE TABLE snapshot_test_findings (
     project_id TEXT NOT NULL,

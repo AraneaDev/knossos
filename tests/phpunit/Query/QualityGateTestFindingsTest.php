@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scan\ProjectScanService;
+use Knossos\TestFidelity\SnapshotTestFindings;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -73,6 +74,46 @@ final class QualityGateTestFindingsTest extends KnossosTestCase
         assertSame('baseline_has_no_test_findings', $check['indeterminate_reason']);
         assertSame(false, $check['passed']);
         assertSame(true, $gate->data['checks'][1]['passed']);
+    }
+
+    /**
+     * The scan active at an upgrade from before the test rules ran was never
+     * judged: archived with no rows, it must read as no record, not as no
+     * findings, or every finding the next scan judges would count as new.
+     */
+    public function testAScanTheTestRulesNeverJudgedArchivesAsNoRecordAndIsIndeterminate(): void
+    {
+        [$pdo, $service, $root] = $this->unhealthy();
+        $baseline = $service->scan($root);
+        // As that scan stood before the upgrade: no findings, and nothing says the rules ran.
+        $pdo->exec('UPDATE scans SET test_findings_judged = 0');
+        $pdo->exec('DELETE FROM test_findings');
+        file_put_contents($root . '/src/Extra.ts', "export const extra = 1;\n");
+        $service->scan($root);
+
+        $gate = $this->gate($pdo, $baseline->projectId, (string) $baseline->snapshotId, self::BUDGET);
+
+        assertSame(null, (new SnapshotTestFindings($pdo))->forSnapshot($baseline->projectId, (string) $baseline->snapshotId));
+        $check = $gate->data['checks'][0];
+        assertSame([true, 'baseline_has_no_test_findings', false], [$check['indeterminate'], $check['indeterminate_reason'], $check['passed']]);
+    }
+
+    public function testAJudgedScanWithNoFindingsArchivesARecordAndPasses(): void
+    {
+        [$pdo, $service, $root] = $this->healthy();
+        $baseline = $service->scan($root);
+        $pdo->exec('DELETE FROM test_findings');
+        file_put_contents($root . '/src/Extra.ts', "export const extra = 1;\n");
+        $service->scan($root);
+
+        $gate = $this->gate($pdo, $baseline->projectId, (string) $baseline->snapshotId, self::BUDGET);
+
+        $judged = $pdo->prepare('SELECT test_findings_judged FROM scans WHERE id = ?');
+        $judged->execute([$baseline->snapshotId]);
+        assertSame(1, (int) $judged->fetchColumn());
+        assertSame([], (new SnapshotTestFindings($pdo))->forSnapshot($baseline->projectId, (string) $baseline->snapshotId));
+        assertSame(false, $gate->data['checks'][0]['indeterminate'] ?? false);
+        assertSame(true, $gate->data['checks'][0]['passed']);
     }
 
     public function testASuppressedFindingIsNotCounted(): void
