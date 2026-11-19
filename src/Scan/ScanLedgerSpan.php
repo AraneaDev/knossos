@@ -16,7 +16,7 @@ namespace Knossos\Scan;
  * produced is kept as a short key ({@see self::key()}, at most
  * {@see self::MAX_POINTS} of them, the newest), so a session that began
  * between two of the span's scans is still found in it, and each file can
- * still name the scans that changed it. A span keeps no policy baselines.
+ * still name the scans that changed it. A span keeps no policy or test baselines.
  *
  * A span for more than {@see ScanLedger::MAX_FILES} files is cut, as an entry
  * is: it keeps no files, and no chain passes through it.
@@ -135,14 +135,14 @@ final readonly class ScanLedgerSpan
     {
         $head = ['began' => $span['began'], 'steps' => $span['steps']];
         if (count($span['before']) > ScanLedger::MAX_FILES) {
-            return ['before' => (object) [], 'baselines' => null, 'truncated' => true, 'span' => $head];
+            return ['before' => (object) [], 'baselines' => null, 'test_baselines' => null, 'truncated' => true, 'span' => $head];
         }
         $files = [];
         foreach ($span['before'] as $path => $hash) {
             $files[$path] = [$span['first'][$path], ...$span['scans'][$path] ?? []];
         }
 
-        return ['before' => (object) $span['before'], 'baselines' => null, 'span' => $head + ['cut' => $span['cut'], 'points' => $span['points'], 'files' => (object) $files]];
+        return ['before' => (object) $span['before'], 'baselines' => null, 'test_baselines' => null, 'span' => $head + ['cut' => $span['cut'], 'points' => $span['points'], 'files' => (object) $files]];
     }
 
     /**

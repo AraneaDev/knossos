@@ -73,8 +73,9 @@ final readonly class TurnBriefService
      * before this brief's scan already holds some of the turn's edits; the
      * {@see ScanLedger} then says what each file held before the first scan
      * that changed it, so the diff and the policy baseline are still the
-     * turn's. When the ledger cannot account for every scan since, the files
-     * are still reported but the policy is not evaluated: its baseline is gone.
+     * turn's, and so are the test findings' keys. When the ledger cannot account
+     * for every scan since, the files are still reported but neither the policy
+     * nor the test findings are evaluated: their baseline is gone.
      *
      * With `$reuseScan`, a brief whose reported files the graph already holds
      * as they are on disk does not scan again: another writer just did.
@@ -114,15 +115,14 @@ final readonly class TurnBriefService
         try {
             $from = $ledger->activeSnapshot($projectId);
             $current = $ledger->hashes($projectId);
-            $absorbed = $since === null ? ['before' => [], 'baselines' => [], 'scans' => []] : $ledger->since($projectId, $since);
+            $absorbed = $since === null ? ['before' => [], 'baselines' => [], 'test_baselines' => [], 'scans' => []] : $ledger->since($projectId, $since);
             // Taken before the scan rewrites the graph: what the reported files already broke is not this turn's doing.
             [$baseline, $perFile] = $this->baseline($violations, $projectId, $policies, $reported, $absorbed);
-            // The test findings the reported files touch, before the scan rewrites them. Unknown when the ledger
-            // cannot account for the scans since the turn began, or when one of them already took a reported edit in.
+            // The test findings the reported files touch, before the scan rewrites them; for a file a scan since the
+            // turn began already took in, as the ledger kept them from before that scan. Unknown when it cannot say.
             $suppressions = ActiveTestFindings::suppressionsOf($root);
-            $testsBefore = $absorbed === null || array_intersect_key($absorbed['before'], array_flip($reported)) !== []
-                ? null
-                : TurnTestFindings::affected($this->pdo, $projectId, $reported, $suppressions);
+            $held = TurnTestFindings::held($this->pdo, $projectId, $suppressions);
+            $testsBefore = TurnTestFindings::before($reported, $held, $absorbed);
             $before = self::rewound($current, $absorbed['before'] ?? []);
             $started = $this->now();
             try {
@@ -137,7 +137,7 @@ final readonly class TurnBriefService
             // Same id as the baseline, so a recomputed id cannot make every file look added.
             $after = $ledger->hashes($projectId);
             if ($scan !== null) {
-                $ledger->record($projectId, $from, $scan->snapshotId, $current, $after, $perFile);
+                $ledger->record($projectId, $from, $scan->snapshotId, $current, $after, $perFile, TurnTestFindings::baselines($held));
             }
         } finally {
             $lease?->release();

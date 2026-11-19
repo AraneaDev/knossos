@@ -60,7 +60,58 @@ final class ScanLedgerTest extends KnossosTestCase
             // From the middle, only the second scan counts.
             assertSame(['a.php' => 'A1', 'b.php' => 'B0'], $ledger->since($projectId, 's1')['before'] ?? null);
             // Nothing since the active snapshot.
-            assertSame(['before' => [], 'baselines' => [], 'scans' => [], 'chain' => [], 'approximate' => false], $ledger->since($projectId, 's2'));
+            assertSame(['before' => [], 'baselines' => [], 'test_baselines' => [], 'scans' => [], 'chain' => [], 'approximate' => false], $ledger->since($projectId, 's2'));
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A scan that read the test findings held before it gives each file it
+     * changed that file's keys (none, when the file held none); the first scan
+     * to change a file wins, and a file only a scan that read none changed has
+     * no test baseline.
+     */
+    #[Group('query')]
+    public function testEachChangedFileKeepsTheTestFindingKeysItHeldBeforeTheFirstScanThatChangedIt(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('turn-brief');
+        try {
+            $ledger = new ScanLedger($pdo);
+            $start = (string) $ledger->activeSnapshot($projectId);
+            $first = ['keys' => ['k1'], 'truncated' => false];
+            $ledger->record($projectId, $start, 's1', ['a.ts' => 'A0', 'x.ts' => 'X0'], ['a.ts' => 'A1', 'x.ts' => 'X1'], null, ['x.ts' => $first, 'untouched.ts' => $first]);
+            $ledger->record($projectId, 's1', 's2', ['a.ts' => 'A1', 'x.ts' => 'X1'], ['a.ts' => 'A1', 'x.ts' => 'X2'], null, ['x.ts' => ['keys' => ['k2'], 'truncated' => false]]);
+            $ledger->record($projectId, 's2', 's3', ['a.ts' => 'A1', 'x.ts' => 'X2'], ['a.ts' => 'A1', 'x.ts' => 'X2', 'y.ts' => 'Y1']);
+            self::activate($pdo, $projectId, 's3');
+
+            $since = $ledger->since($projectId, $start);
+
+            assertSame(['a.ts' => ['keys' => [], 'truncated' => false], 'x.ts' => $first, 'y.ts' => null], $since['test_baselines'] ?? 'absent');
+            // An entry keeps only the files it changed, and only those that held a key.
+            $stored = json_decode((string) $pdo->query('SELECT changes_json FROM scan_ledger ORDER BY id LIMIT 1')->fetchColumn(), true);
+            assertSame(['x.ts' => $first], $stored['test_baselines'] ?? 'absent');
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** Merged entries keep no test baselines, as they keep no policy baselines. */
+    #[Group('query')]
+    public function testMergedEntriesKeepNoTestBaselines(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('turn-brief');
+        try {
+            $ledger = new ScanLedger($pdo);
+            $start = (string) $ledger->activeSnapshot($projectId);
+            for ($i = 1; $i <= ScanLedger::KEPT + 1; ++$i) {
+                $from = $ledger->activeSnapshot($projectId);
+                self::activate($pdo, $projectId, 's' . $i);
+                $ledger->record($projectId, $from, 's' . $i, ['f.ts' => 'H' . ($i - 1)], ['f.ts' => 'H' . $i], null, []);
+            }
+
+            assertSame(['f.ts' => null], $ledger->since($projectId, $start)['test_baselines'] ?? 'absent');
+            assertSame(['f.ts' => ['keys' => [], 'truncated' => false]], $ledger->since($projectId, 's' . ScanLedger::KEPT)['test_baselines'] ?? 'absent');
         } finally {
             $this->removeTempTree($root);
         }

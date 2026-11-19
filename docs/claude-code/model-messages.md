@@ -110,6 +110,9 @@ knossos: this turn introduced 1 stale mock. Fix it before finishing:
 ```
 
 The message lists at most ten, then `- …and 2 more (run audit_tests)`.
+When the live watcher scanned the edit before the turn ended, the brief compares
+with the findings the edited file touched before the watcher's scan, which the
+scan ledger keeps. When the ledger has no such record, the part is left out.
 
 **Tests that reach the turn's changes**, and the command that runs them:
 
