@@ -10,6 +10,7 @@ use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\EdgeQueries;
 use Knossos\Store\EnrichedFacts;
+use Knossos\Store\SnapshotFacts;
 use PDO;
 use PDOStatement;
 
@@ -20,8 +21,8 @@ use PDOStatement;
  * `architecture_health` answer and the cheap ranking a session brief shows, so
  * the two cannot come to disagree about which components are hubs. Dead-code
  * answers report absence of evidence rather than proven absence: nothing static
- * analysis sees can rule out reflection. Every degree and hub here counts
- * native nodes and edges only ({@see \Knossos\Store\SnapshotFacts}); impact edge kinds have no test-fact edges.
+ * analysis sees can rule out reflection. Every degree and hub counts native
+ * nodes and edges only ({@see SnapshotFacts}).
  */
 final readonly class ArchitectureHealthQuery extends AbstractArchitectureQueryService
 {
@@ -137,9 +138,8 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
      * place instead of being restated as a WHERE clause that could drift from
      * them. That is affordable because the ranking is consumed lazily: rows
      * arrive in degree order and the loop stops as soon as $limit survivors are
-     * found, which on this repository means reading 21 rows to keep 5.
-     * $maxRowsExamined bounds the pathological case — a graph whose entire head
-     * is vendor code — so a brief can never turn into a full table scan.
+     * found, which on this repository means reading 21 rows to keep 5. $maxRowsExamined
+     * bounds a graph whose entire head is vendor code, so a brief never scans a whole table.
      *
      * @return list<array{display_name: string, kind: string, degree: int}>
      */
@@ -152,7 +152,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
             sprintf('SELECT source_id AS node_id FROM edges WHERE project_id = ? AND kind IN (%s) AND %s ', $placeholders, EnrichedFacts::excludeSql('edges')) .
             'UNION ALL ' .
             sprintf('SELECT target_id AS node_id FROM edges WHERE project_id = ? AND kind IN (%s) AND %s', $placeholders, EnrichedFacts::excludeSql('edges')) .
-            ') GROUP BY node_id) d JOIN nodes n ON n.id = d.node_id AND n.project_id = ? AND ' . \Knossos\Store\SnapshotFacts::nativeSql('nodes', 'n') . ' ' .
+            ') GROUP BY node_id) d JOIN nodes n ON n.id = d.node_id AND n.project_id = ? AND ' . SnapshotFacts::nativeSql('nodes', 'n') . ' ' .
             'ORDER BY d.degree DESC, n.canonical_name',
         );
         $degrees->execute([$projectId, ...self::IMPACT_EDGE_KINDS, $projectId, ...self::IMPACT_EDGE_KINDS, $projectId]);
@@ -566,7 +566,7 @@ final readonly class ArchitectureHealthQuery extends AbstractArchitectureQuerySe
             'SELECT n.id, n.kind, n.origin, COALESCE(i.degree, 0) AS in_degree, COALESCE(o.degree, 0) AS out_degree FROM nodes n ' .
             sprintf('LEFT JOIN (SELECT target_id AS node_id, COUNT(*) AS degree FROM edges WHERE %s GROUP BY target_id) i ON i.node_id = n.id ', $filter) .
             sprintf('LEFT JOIN (SELECT source_id AS node_id, COUNT(*) AS degree FROM edges WHERE %s GROUP BY source_id) o ON o.node_id = n.id ', $filter) .
-            'WHERE n.project_id = ? AND ' . \Knossos\Store\SnapshotFacts::nativeSql('nodes', 'n') . ' ORDER BY CASE WHEN (? = 1 AND (substr(n.kind, 1, 9) = \'external_\' OR n.origin IN (\'external\', \'unresolved\'))) ' .
+            'WHERE n.project_id = ? AND ' . SnapshotFacts::nativeSql('nodes', 'n') . ' ORDER BY CASE WHEN (? = 1 AND (substr(n.kind, 1, 9) = \'external_\' OR n.origin IN (\'external\', \'unresolved\'))) ' .
             'OR (? = 1 AND n.id IN (SELECT node_id FROM classifications WHERE project_id = ? AND role = ?)) THEN 1 ELSE 0 END, ' .
             'COALESCE(i.degree, 0) + COALESCE(o.degree, 0) DESC, n.canonical_name, n.id LIMIT ?',
         );

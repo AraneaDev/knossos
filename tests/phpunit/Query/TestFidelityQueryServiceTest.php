@@ -84,6 +84,20 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
         }
     }
 
+    public function testAProjectWhoseFolderIsGoneStillListsItsStoredFindings(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
+        $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
+        $before = $service->auditTests($projectId);
+        $this->removeTempTree($root);
+
+        $after = $service->auditTests($projectId);
+
+        self::assertGreaterThan(0, $before->data['total']);
+        assertSame($before->data['total'], $after->data['total']);
+        assertSame(null, $after->data['suppressions_invalid']);
+    }
+
     public function testAnInvalidConfigIsSaidNotSwallowed(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');

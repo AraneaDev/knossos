@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\TestFidelity;
 
 use Knossos\Query\DashboardService;
 use Knossos\Scan\ProjectScanService;
+use Knossos\TestFidelity\DashboardTestFindings;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertCount;
@@ -76,6 +77,49 @@ final class DashboardTestFindingsTest extends KnossosTestCase
         assertSame(['src/UserService.ts', null, 'src/UserService.ts', 'src/UserService.ts'], array_column($section['list'], 'target_file'));
         assertSame(false, $section['list_truncated']);
         assertSame(['key', 'category', 'sub_rule', 'confidence', 'message', 'file', 'line', 'target_file'], array_keys($section['list'][0]));
+    }
+
+    /**
+     * One definite finding of a double of `$target`, in the shape the shared reader returns.
+     *
+     * @param array<string, mixed> $attributes
+     * @return array<string, mixed>
+     */
+    private static function finding(string $key, string $canonical, string $name, array $attributes, string $message = 'm', string $category = 'GHOST_MEMBER', string $file = 'src/a.ts'): array
+    {
+        return ['key' => $key, 'double_id' => 'double-' . $key, 'confidence' => 'definite', 'category' => $category, 'message' => $message, 'attributes' => $attributes, 'target_canonical' => $canonical, 'target_name' => $name, 'target_file' => $file];
+    }
+
+    public function testTheReasonsMemberIsTheStoredOneThenTheCanonicalLastSegmentThenTheMessage(): void
+    {
+        $group = DashboardTestFindings::byProductionFile([
+            // The stored member wins over a canonical name that has a member segment and over the message.
+            self::finding('a', 'src/a.ts#Gateway::refund', 'Gateway', ['member' => 'charge'], 'x stubs void, which Gateway no longer has'),
+            // No stored member: the canonical name's last segment.
+            self::finding('b', 'src/a.ts#Gateway::capture', 'Gateway', [], 'x stubs void, which Gateway no longer has', 'ARITY_MISMATCH'),
+            // Neither: the member the message names.
+            self::finding('c', 'src/a.ts#Gateway', 'Gateway', [], 'x stubs settle, which Gateway no longer has', 'RETURN_DRIFT'),
+            // None at all: the category alone.
+            self::finding('d', 'src/a.ts#Gateway', 'Gateway', [], 'm', 'MOCKS_SUBJECT', 'src/b.ts'),
+        ]);
+
+        assertSame(['capture(): arity', 'charge(): ghost', 'settle(): return'], $group['src/a.ts']['reasons']);
+        assertSame(['mocks subject'], $group['src/b.ts']['reasons']);
+    }
+
+    public function testTheMostCommonOwnerNamesTheFileAndATieGoesToTheFirstAlphabetically(): void
+    {
+        $owners = static fn(array ...$findings): string => DashboardTestFindings::byProductionFile($findings)['src/a.ts']['target'];
+
+        assertSame('Beta', $owners(
+            self::finding('1', 'src/a.ts#Alpha::x', 'Alpha', []),
+            self::finding('2', 'src/a.ts#Beta::x', 'Beta', []),
+            self::finding('3', 'src/a.ts#Beta::y', 'Beta', []),
+        ));
+        assertSame('Alpha', $owners(
+            self::finding('1', 'src/a.ts#Beta::x', 'Beta', []),
+            self::finding('2', 'src/a.ts#Alpha::x', 'Alpha', []),
+        ));
     }
 
     public function testSuppressionsAreApplied(): void

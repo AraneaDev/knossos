@@ -42,6 +42,7 @@ final class TestFactsExcludedFromCountsTest extends KnossosTestCase
         $with = self::figures($pdo, $root);
         $kinds = "'" . implode("', '", SnapshotFacts::DERIVED_NODE_KINDS) . "'";
         assertGreaterThan(0, (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE kind = 'test_double'")->fetchColumn());
+        assertGreaterThan(0, (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE kind = 'test_case'")->fetchColumn());
         assertGreaterThan(0, (int) $pdo->query("SELECT COUNT(*) FROM edges WHERE kind = 'doubles'")->fetchColumn());
 
         $pdo->exec('DELETE FROM test_findings');
@@ -59,7 +60,7 @@ final class TestFactsExcludedFromCountsTest extends KnossosTestCase
     }
 
     /**
-     * @return array{kinds: list<array{kind: string, count: int}>, boundaries: mixed, candidates: int, probable: int, hubs: list<string>, hotspots: list<string>, brief: string}
+     * @return array{kinds: list<array{kind: string, count: int}>, boundaries: mixed, boundary_list: mixed, candidates: int, probable: int, hubs: list<string>, hotspots: list<string>, brief: string}
      */
     private static function figures(PDO $pdo, string $root): array
     {
@@ -72,6 +73,7 @@ final class TestFactsExcludedFromCountsTest extends KnossosTestCase
         return [
             'kinds' => $dashboard['summary']['kinds'],
             'boundaries' => $dashboard['boundaries'],
+            'boundary_list' => $services->summaryQueries->listBoundaries($projectId)->data,
             'candidates' => $health['bounds']['candidates_total'],
             'probable' => $health['bounds']['candidates_probable'],
             'hubs' => array_column(array_column($health['hubs'], 'component'), 'canonical_name'),
