@@ -91,9 +91,12 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
             $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
             $items = $service->auditTests($projectId)->data['items'];
 
+            $canonical = $pdo->prepare('SELECT t.canonical_name FROM test_findings tf LEFT JOIN nodes t ON t.id = tf.target_node_id WHERE tf.id = ?');
             foreach ($items as $item) {
+                $canonical->execute([$item['id']]);
+                $target = $canonical->fetchColumn();
                 assertSame(
-                    TestFindingKey::of($item['rule_id'], $item['sub_rule'], (string) $item['file'], $item['target'], $item['message']),
+                    TestFindingKey::of($item['rule_id'], $item['sub_rule'], (string) $item['file'], $target === false || $target === null ? null : (string) $target, $item['message']),
                     $item['key'],
                 );
             }

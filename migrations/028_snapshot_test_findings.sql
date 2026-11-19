@@ -7,8 +7,8 @@
 -- target and message, so it survives a rescan and a line moved by an edit
 -- above it, and the line is not kept. Every finding is stored, suppressed or
 -- not: suppression is read from knossos.json when a reader asks, so an edit
--- to it applies to a baseline too. `target` is the display name of the
--- production component the double was checked against, as the live key reads
+-- to it applies to a baseline too. `target` is the canonical name of the
+-- production component the double was checked against, as the key reads
 -- it; `file` and `target` are NULL for a finding that has neither.
 --
 -- Whether a snapshot has a record is not whether it has rows: a snapshot with

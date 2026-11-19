@@ -38,12 +38,57 @@ final class SnapshotTestFindingsTest extends KnossosTestCase
 
         $kept = (new SnapshotTestFindings($pdo))->forSnapshot($first->projectId, (string) $first->snapshotId);
 
-        $expected = array_map(static fn(array $item): array => [
-            'key' => $item['key'], 'rule_id' => $item['rule_id'], 'category' => $item['category'], 'sub_rule' => $item['sub_rule'],
-            'confidence' => $item['confidence'], 'file' => $item['file'], 'target' => $item['target'], 'message' => $item['message'],
-        ], $active);
+        $canonical = $pdo->prepare('SELECT t.canonical_name FROM test_findings tf LEFT JOIN nodes t ON t.id = tf.target_node_id WHERE tf.id = ?');
+        $expected = array_map(static function (array $item) use ($canonical): array {
+            $canonical->execute([$item['id']]);
+            $target = $canonical->fetchColumn();
+
+            return [
+                'key' => $item['key'], 'rule_id' => $item['rule_id'], 'category' => $item['category'], 'sub_rule' => $item['sub_rule'],
+                'confidence' => $item['confidence'], 'file' => $item['file'], 'target' => $target === false ? null : $target, 'message' => $item['message'],
+            ];
+        }, $active);
         usort($expected, static fn(array $a, array $b): int => strcmp($a['key'], $b['key']));
         assertSame($expected, $kept);
+    }
+
+    public function testTwoTargetsWithOneDisplayNameKeepTwoKeysAndTheLiveKeyIsTheArchivedKey(): void
+    {
+        $root = self::scratchPath('ts-snapshot-same-display-name');
+        $this->copyTree(self::repositoryRoot() . self::FIXTURE, $root);
+        self::removeFolder($root . '/tests');
+        mkdir($root . '/src/a', 0o777, true);
+        mkdir($root . '/src/b', 0o777, true);
+        foreach (['a', 'b'] as $folder) {
+            file_put_contents($root . '/src/' . $folder . '/Gateway.ts', "export class Gateway {\n    charge(): number { return 1; }\n}\n");
+        }
+        mkdir($root . '/tests', 0o777, true);
+        file_put_contents($root . '/tests/gateways.test.ts', <<<'TS'
+            import { it, vi } from 'vitest';
+            import { Gateway as First } from '../src/a/Gateway';
+            import { Gateway as Second } from '../src/b/Gateway';
+            it('stubs what both gateways no longer have', () => {
+                vi.spyOn(new First(), 'chargeOld');
+                vi.spyOn(new Second(), 'chargeOld');
+            });
+            TS);
+        $pdo = $this->freshTestDatabase();
+        $service = new ProjectScanService($pdo, self::repositoryRoot(), [$root]);
+        $first = $service->scan($root);
+        $live = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries->auditTests($first->projectId, limit: 200)->data['items'];
+        $this->touchTheSource($root);
+        $service->scan($root);
+
+        $kept = (new SnapshotTestFindings($pdo))->forSnapshot($first->projectId, (string) $first->snapshotId);
+
+        $keys = array_column($live, 'key');
+        assertSame(2, count($keys));
+        assertSame(2, count(array_unique($keys)));
+        assertSame(['Gateway', 'Gateway'], array_column($live, 'target'));
+        $archivedKeys = array_column((array) $kept, 'key');
+        sort($keys);
+        assertSame($keys, $archivedKeys);
+        assertSame(2, count(array_unique(array_column((array) $kept, 'target'))));
     }
 
     public function testASnapshotFromBeforeTheMigrationHasNoRecord(): void

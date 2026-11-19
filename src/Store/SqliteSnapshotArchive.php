@@ -121,7 +121,7 @@ final class SqliteSnapshotArchive
     private function archiveTestFindings(string $projectId, string $scanId): void
     {
         $findings = $this->pdo->prepare(
-            'SELECT tf.rule_id, tf.category, tf.sub_rule, tf.confidence, tf.message, f.relative_path, t.display_name AS target_name ' .
+            'SELECT tf.rule_id, tf.category, tf.sub_rule, tf.confidence, tf.message, f.relative_path, t.canonical_name AS target_canonical ' .
             'FROM test_findings tf LEFT JOIN nodes t ON t.id = tf.target_node_id LEFT JOIN files f ON f.id = tf.file_id ' .
             'WHERE tf.project_id = :project ORDER BY tf.id',
         );
@@ -132,7 +132,7 @@ final class SqliteSnapshotArchive
         );
         while (($row = $findings->fetch(PDO::FETCH_ASSOC)) !== false) {
             $file = $row['relative_path'] === null ? null : (string) $row['relative_path'];
-            $target = $row['target_name'] === null ? null : (string) $row['target_name'];
+            $target = $row['target_canonical'] === null ? null : (string) $row['target_canonical'];
             $insert->execute([
                 'project' => $projectId, 'scan' => $scanId,
                 'key' => TestFindingKey::of((string) $row['rule_id'], (string) $row['sub_rule'], (string) $file, $target, (string) $row['message']),

@@ -74,7 +74,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $count->execute($parameters);
         $total = (int) $count->fetchColumn();
         $statement = $this->pdo->prepare(
-            "SELECT tf.id, tf.category, tf.confidence, tf.rule_id, tf.sub_rule, tf.message, f.relative_path, tf.start_line, n.display_name AS double_name, t.display_name AS target_name {$from} WHERE {$where} "
+            "SELECT tf.id, tf.category, tf.confidence, tf.rule_id, tf.sub_rule, tf.message, f.relative_path, tf.start_line, n.display_name AS double_name, t.display_name AS target_name, t.canonical_name AS target_canonical {$from} WHERE {$where} "
             . 'ORDER BY f.relative_path IS NULL, f.relative_path, tf.start_line, tf.category, tf.rule_id, tf.id LIMIT :limit OFFSET :offset',
         );
         foreach ($parameters as $key => $value) {
@@ -85,7 +85,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $statement->execute();
         $items = array_map(static fn(array $row): array => [
             'id' => (string) $row['id'],
-            'key' => TestFindingKey::of((string) $row['rule_id'], (string) $row['sub_rule'], (string) $row['relative_path'], $row['target_name'] === null ? null : (string) $row['target_name'], (string) $row['message']),
+            'key' => TestFindingKey::of((string) $row['rule_id'], (string) $row['sub_rule'], (string) $row['relative_path'], $row['target_canonical'] === null ? null : (string) $row['target_canonical'], (string) $row['message']),
             'category' => (string) $row['category'],
             'confidence' => (string) $row['confidence'],
             'rule_id' => (string) $row['rule_id'],
