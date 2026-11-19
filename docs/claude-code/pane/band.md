@@ -10,14 +10,15 @@ knossos · 2 files → 37 dependents · 4 tests · as of 12s ago · reaching cor
 
 Read it left to right:
 
-| part                      | what it counts                                                         |
-| ------------------------- | ---------------------------------------------------------------------- |
-| `2 files → 37 dependents` | the files the turn changed, and the files that depend on them          |
-| `1 deleted`               | files the turn deleted, when there are any                             |
-| `1 policy violation`      | boundary-policy violations the turn introduced; the band turns red     |
-| `4 tests`                 | the test files that reach the change                                   |
-| `as of 12s ago`           | how old the figures are; it keeps counting while the band is on screen |
-| `reaching core, http +1`  | the two boundaries holding the most dependents, then how many more     |
+| part                      | what it counts                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `2 files → 37 dependents` | the files the turn changed, and the files that depend on them                                                    |
+| `1 deleted`               | files the turn deleted, when there are any                                                                       |
+| `1 policy violation`      | boundary-policy violations the turn introduced; the band turns red                                               |
+| `2 stale mocks`           | definite test-double findings in the project, after the violations; hidden at none, and warnings are not counted |
+| `4 tests`                 | the test files that reach the change                                                                             |
+| `as of 12s ago`           | how old the figures are; it keeps counting while the band is on screen                                           |
+| `reaching core, http +1`  | the two boundaries holding the most dependents, then how many more                                               |
 
 When the project declares boundaries, only declared ones are named. The
 boundaries come last, so a narrow terminal cuts them first.

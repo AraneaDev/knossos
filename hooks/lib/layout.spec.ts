@@ -798,16 +798,11 @@ describe('the issues tab', () => {
     // The dashboard's own evaluated check stands.
     expect(paneInput({ dashboard: full(), brief: unread, refresh: FETCHED, rescan: IDLE, view: view(), now: 0, terminal: true }).issues.policy).not.toHaveProperty('unreadable')
   })
-  it('places each Issues list in the walk: violations, diagnostics, dead code, hotspots, files over budget', () => {
+  it('places each Issues list in the walk: violations, diagnostics, test findings, dead code, hotspots, files over budget', () => {
     const issues = issuesInput(full())
     const walk = issuesWalk(issues)
-    expect(ISSUES_WALK.map(part => walk[part])).toEqual([
-      { offset: 0, length: issues.policy?.items.length ?? 0 },
-      { offset: issues.policy?.items.length ?? 0, length: issues.diagnostics?.items.length ?? 0 },
-      { offset: (issues.policy?.items.length ?? 0) + (issues.diagnostics?.items.length ?? 0), length: issues.deadCode.items.length },
-      { offset: walk.dead.offset + issues.deadCode.items.length, length: issues.hotspots.length },
-      { offset: walk.hotspots.offset + issues.hotspots.length, length: issues.budget?.files.length ?? 0 },
-    ])
+    const lengths = [issues.policy?.items.length ?? 0, issues.diagnostics?.items.length ?? 0, issues.testFindings?.items.length ?? 0, issues.deadCode.items.length, issues.hotspots.length, issues.budget?.files.length ?? 0]
+    expect(ISSUES_WALK.map(part => walk[part])).toEqual(lengths.map((length, i) => ({ offset: lengths.slice(0, i).reduce((a, b) => a + b, 0), length })))
     // The walk is the list the marker steps through, so the last list ends where it does.
     expect(walk.budget.offset + walk.budget.length).toBe(issuesList(issues).length)
   })

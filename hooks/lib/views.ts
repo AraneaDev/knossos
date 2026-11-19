@@ -31,6 +31,7 @@ import type { Tier } from './table'
 import { CERTAINTY, REACH, SEVERITY, kindLegend, kindMark, legend, mark } from './marks'
 import { busy } from './motion'
 import { notesBlock } from './notes-card'
+import { testFindingEntries, testFindingRows, testFindingsBlock, testFindingsInput } from './test-findings'
 import { bodyRow, gutter, moreText } from './spacing'
 
 /**
@@ -69,15 +70,14 @@ export type Jump = { tab: PaneTab; degree?: { from: number; to: number | null };
 export type ViolationLine = { source: Openable & { boundary: string | null }; target: string; targetBoundary: string | null; place: string }
 /** `certainty` is the candidate's confidence, `probable` or `possible`: how sure the scan is that nothing reaches it. */
 export type DeadLine = Openable & { boundary: string | null; place: string; testOnly: boolean; certainty: string; kind: string }
-/** A diagnostic as Issues lists it; `path` null for one about no file (the project's own setup). */
-/** `place` names it in the walk (file and line); `where` is what its row says: the project path, then its source. */
+/** A diagnostic as Issues lists it; `path` null for one about no file (the project's own setup). `place` names it in the walk (file and line); `where` is what its row says: the project path, then its source. */
 export type DiagnosticLine = { severity: string; text: string; path: string | null; place: string; where: string; loc: Loc | null }
 
 export type IssuesInput = {
-  /** Null when the knossos that answered sends no policy section. */
-  /** `unreadable` is why the project's policies could not be read, absent when they could. */
+  /** Null when the knossos that answered sends no policy section; `unreadable` is why the project's policies could not be read, absent when they could. */
   policy: { evaluated: boolean; total: string; count: number; items: ViolationLine[]; unreadable?: string } | null
   diagnostics: { errors: number; warnings: number; infos: number; items: DiagnosticLine[] } | null
+  testFindings: ReturnType<typeof testFindingsInput>
   /** `probable` is how many of `total` are probably dead and `testOnly` how many only tests reach, each null from a knossos that does not say. */
   deadCode: { total: string; probable: number | null; testOnly: number | null; items: DeadLine[] }
   /** The files a change is riskiest in: lines times dependents, the highest first. */
@@ -169,9 +169,7 @@ export function unreadableOf(policy: { status: string } | null | undefined): { u
 
 /** The Issues tab's view of a dashboard. */
 export function issuesInput(d: Dashboard): IssuesInput {
-  const policy = d.policy
-  const diagnostics = d.diagnostics
-  const root = d.project_root
+  const { policy, diagnostics, project_root: root } = d
   return {
     policy:
       policy === undefined
@@ -197,6 +195,7 @@ export function issuesInput(d: Dashboard): IssuesInput {
             infos: diagnostics.infos,
             items: diagnostics.items.map(x => ({ severity: x.severity, text: `${x.code} ${x.message}`, path: x.path, place: placeText(x.path, x.line), where: diagnosticWhere(x), loc: locIn(root, x.path, x.line) })),
           },
+    testFindings: testFindingsInput(d, locIn),
     deadCode: {
       total: countLabel(d.dead_code_candidates, d.dead_code_truncated),
       probable: d.dead_code_probable ?? null,
@@ -225,11 +224,11 @@ export function issuesInput(d: Dashboard): IssuesInput {
   }
 }
 
-/** How many issues the tab label counts: policy violations, errors and warnings; `plus` when that is a floor. */
+/** How many issues the tab label counts: policy violations, errors, warnings and definite test findings; `plus` when that is a floor. */
 export function issueCount(issues: IssuesInput): { n: number; plus: boolean } {
   const policy = issues.policy?.evaluated ? issues.policy.count : 0
   const diagnostics = issues.diagnostics === null ? 0 : issues.diagnostics.errors + issues.diagnostics.warnings
-  return { n: policy + diagnostics, plus: issues.policy?.total.endsWith('+') ?? false }
+  return { n: policy + diagnostics + (issues.testFindings?.definite ?? 0), plus: issues.policy?.total.endsWith('+') ?? false }
 }
 
 /**
@@ -246,13 +245,14 @@ function diagnosticWhere(x: Diagnostic): string {
   return [place, source].filter((part): part is string => part !== null && part !== '').join(' · ')
 }
 
-/** The rows the Issues tab walks: each violation's source, each dead-code candidate, then the hotspot files and the files over budget. */
+/** The rows the Issues tab walks: each violation's source, each diagnostic, each test finding, each dead-code candidate, then the hotspot files and the files over budget. */
 export function issuesList(issues: IssuesInput): Openable[] {
   const file = (path: string, loc: Loc | null): Openable => ({ name: path, canonical: path, loc, file: true })
   return [
     ...(issues.policy?.items ?? []).map(v => v.source),
     // A diagnostic opens its file, and `e` goes to its line; one about no file is only marked.
     ...(issues.diagnostics?.items ?? []).map((x): Openable => (x.path === null ? { name: x.text, canonical: x.text, inert: true } : { name: x.place, canonical: x.path, loc: x.loc, file: true })),
+    ...testFindingRows(issues.testFindings),
     ...issues.deadCode.items,
     ...issues.hotspots.map(f => file(f.path, f.loc)),
     ...(issues.budget?.files ?? []).map(f => file(f.path, f.loc)),
@@ -401,14 +401,14 @@ const none = (key: string): Row => bodyRow(key, [{ text: 'none', dim: true }])
 const ISSUES_MIN = 3
 
 /** The Issues tab's lists in the order the marker walks them. */
-export const ISSUES_WALK = ['violations', 'diagnostics', 'dead', 'hotspots', 'budget'] as const
+export const ISSUES_WALK = ['violations', 'diagnostics', 'tests', 'dead', 'hotspots', 'budget'] as const
 
 /** Where each of the Issues tab's lists stands in the marker's walk: its first row's place (`offset`) and how many it lists. */
 export type IssuesWalk = Record<(typeof ISSUES_WALK)[number], { offset: number; length: number }>
 
-/** The Issues tab's walk: the violations, the diagnostics, the dead code, the hotspots, the files over budget, one after another. */
+/** The Issues tab's walk: the violations, the diagnostics, the test findings, the dead code, the hotspots, the files over budget, one after another. */
 export function issuesWalk(issues: IssuesInput): IssuesWalk {
-  const lengths = { violations: issues.policy?.items.length ?? 0, diagnostics: issues.diagnostics?.items.length ?? 0, dead: issues.deadCode.items.length, hotspots: issues.hotspots.length, budget: issues.budget?.files.length ?? 0 }
+  const lengths = { violations: issues.policy?.items.length ?? 0, diagnostics: issues.diagnostics?.items.length ?? 0, tests: issues.testFindings?.items.length ?? 0, dead: issues.deadCode.items.length, hotspots: issues.hotspots.length, budget: issues.budget?.files.length ?? 0 }
   let offset = 0
   const walk = {} as IssuesWalk
   for (const part of ISSUES_WALK) {
@@ -604,20 +604,20 @@ function budgetBlock(budget: IssuesInput['budget'], selected: number, part: Issu
 }
 
 /**
- * The Issues tab's cards: policy violations, diagnostics, dead code, the
+ * The Issues tab's cards: policy violations, diagnostics, test findings, dead code, the
  * complexity hotspots (lines times dependents) and the files over the
  * project's function-length budget, each list as long as the pane allows.
- * Wide, they stand on a grid of equal rows (see {@link issueGrid}).
+ * Wide, they stand on a grid of equal rows (see {@link issueGrid}); stacked, in the order the marker walks them.
  */
 export function issuesArrangement(issues: IssuesInput, selected: number, tier: Tier, hues: Hues = NO_HUES): Arrangement {
   const walk = issuesWalk(issues)
   const policy = policyBlock(issues.policy, violationEntries(issues.policy?.items ?? [], selected, hues), selected, walk.violations, hues)
   const diag = diagBlock(issues.diagnostics, diagnosticEntries(issues.diagnostics?.items ?? [], walk.diagnostics.offset, selected), selected, walk.diagnostics, hues)
+  const tests = testFindingsBlock(issues.testFindings, testFindingEntries(issues.testFindings?.items ?? [], walk.tests.offset, selected), (e, at) => listedEntries('tests', e, hues, { ...at, local: localTo(walk.tests, selected), walk: walk.tests.offset }), ISSUES_MIN)
   const dead = deadBlock(issues.deadCode, deadEntries(issues.deadCode.items, walk.dead.offset, selected), selected, walk.dead, hues)
   const hot = hotBlock(issues.hotspots, selected, walk.hotspots, tier, hues)
   const budget = budgetBlock(issues.budget, selected, walk.budget, tier, hues)
-  // Stacked, the cards stand in the order the marker walks them, as the wide grid reads them.
-  return { left: [policy, diag, budget], right: [dead, hot], order: [policy, diag, dead, hot, budget], rows: issueGrid([policy, diag, dead, hot, budget]) }
+  return { left: [policy, diag, budget], right: [tests, dead, hot], order: [policy, diag, tests, dead, hot, budget], rows: issueGrid([policy, diag, tests, dead, hot, budget]) }
 }
 
 /**
