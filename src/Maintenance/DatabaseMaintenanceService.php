@@ -203,8 +203,10 @@ final readonly class DatabaseMaintenanceService
                 // Explicitly, so a connection that does not enforce foreign
                 // keys cannot leave metrics behind for a snapshot that is gone.
                 $deleteMetrics = $this->pdo->prepare('DELETE FROM snapshot_metrics WHERE scan_id = :scan');
+                $deleteFindings = $this->pdo->prepare('DELETE FROM snapshot_test_findings WHERE scan_id = :scan');
                 foreach ($removable as $scanId) {
                     $deleteMetrics->execute(['scan' => $scanId]);
+                    $deleteFindings->execute(['scan' => $scanId]);
                     $delete->execute(['scan' => $scanId, 'project' => $projectId]);
                 }
                 $this->pdo->commit();
@@ -331,7 +333,7 @@ final readonly class DatabaseMaintenanceService
     private function projectCounts(string $projectId): array
     {
         $counts = [];
-        foreach (['scans', 'files', 'nodes', 'edges', 'diagnostics', 'annotations'] as $table) {
+        foreach (['scans', 'files', 'nodes', 'edges', 'diagnostics', 'annotations', 'test_findings', 'snapshot_test_findings'] as $table) {
             $statement = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE project_id = :project', $table));
             $statement->execute(['project' => $projectId]);
             $counts[$table] = (int) $statement->fetchColumn();
@@ -343,7 +345,7 @@ final readonly class DatabaseMaintenanceService
     private function scanReferenceCount(string $scanId): int
     {
         $count = 0;
-        foreach (['files', 'nodes', 'edges', 'classifications', 'boundaries', 'boundary_memberships'] as $table) {
+        foreach (['files', 'nodes', 'edges', 'classifications', 'boundaries', 'boundary_memberships', 'test_findings'] as $table) {
             $statement = $this->pdo->prepare(sprintf('SELECT COUNT(*) FROM %s WHERE last_scan_id = :scan', $table));
             $statement->execute(['scan' => $scanId]);
             $count += (int) $statement->fetchColumn();

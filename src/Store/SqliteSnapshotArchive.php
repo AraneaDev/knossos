@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Store;
 
 use InvalidArgumentException;
+use Knossos\TestFidelity\TestFindingKey;
 use PDO;
 
 /**
@@ -92,8 +93,8 @@ final class SqliteSnapshotArchive
         // is this snapshot", which readers compare across scans; how many bytes
         // the row happens to occupy after compression is a storage detail.
         $insert = $this->pdo->prepare(
-            'INSERT OR IGNORE INTO scan_snapshots(scan_id, project_id, scanner_set_hash, config_hash, complete, fact_count, byte_size, payload_json, captured_at) ' .
-            'VALUES (:scan, :project, :scanner, :config, :complete, :facts, :bytes, :payload, :captured)',
+            'INSERT OR IGNORE INTO scan_snapshots(scan_id, project_id, scanner_set_hash, config_hash, complete, fact_count, byte_size, payload_json, captured_at, test_findings_recorded) ' .
+            'VALUES (:scan, :project, :scanner, :config, :complete, :facts, :bytes, :payload, :captured, 1)',
         );
         foreach ([
             'scan' => $scanId, 'project' => $projectId, 'scanner' => $scannerHash, 'config' => $configHash,
@@ -105,6 +106,40 @@ final class SqliteSnapshotArchive
         // UTF-8; as a BLOB they come back exactly as they went in.
         $insert->bindValue('payload', $payload, SnapshotPayload::isBinary($payload) ? PDO::PARAM_LOB : PDO::PARAM_STR);
         $insert->execute();
+        if ($insert->rowCount() === 1) {
+            $this->archiveTestFindings($projectId, (string) $scanId);
+        }
+    }
+
+    /**
+     * Copy the project's test findings, keyed, into the snapshot just written.
+     *
+     * Every finding, suppressed or not: a suppression is applied by the reader.
+     * Two findings with one key (the same message on two lines of a file) are
+     * one finding here, the first by id.
+     */
+    private function archiveTestFindings(string $projectId, string $scanId): void
+    {
+        $findings = $this->pdo->prepare(
+            'SELECT tf.rule_id, tf.category, tf.sub_rule, tf.confidence, tf.message, f.relative_path, t.display_name AS target_name ' .
+            'FROM test_findings tf LEFT JOIN nodes t ON t.id = tf.target_node_id LEFT JOIN files f ON f.id = tf.file_id ' .
+            'WHERE tf.project_id = :project ORDER BY tf.id',
+        );
+        $findings->execute(['project' => $projectId]);
+        $insert = $this->pdo->prepare(
+            'INSERT OR IGNORE INTO snapshot_test_findings(project_id, scan_id, key, rule_id, category, sub_rule, confidence, file, target, message) ' .
+            'VALUES (:project, :scan, :key, :rule, :category, :sub_rule, :confidence, :file, :target, :message)',
+        );
+        while (($row = $findings->fetch(PDO::FETCH_ASSOC)) !== false) {
+            $file = $row['relative_path'] === null ? null : (string) $row['relative_path'];
+            $target = $row['target_name'] === null ? null : (string) $row['target_name'];
+            $insert->execute([
+                'project' => $projectId, 'scan' => $scanId,
+                'key' => TestFindingKey::of((string) $row['rule_id'], (string) $row['sub_rule'], (string) $file, $target, (string) $row['message']),
+                'rule' => $row['rule_id'], 'category' => $row['category'], 'sub_rule' => $row['sub_rule'], 'confidence' => $row['confidence'],
+                'file' => $file, 'target' => $target, 'message' => $row['message'],
+            ]);
+        }
     }
 
     /**
