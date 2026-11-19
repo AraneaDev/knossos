@@ -16,7 +16,6 @@ use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanOptions;
 use Knossos\Scan\TreeFingerprint;
 use Knossos\Store\ProjectRepository;
-use Knossos\TestFidelity\ActiveTestFindings;
 use Knossos\TestFidelity\TurnTestFindings;
 use PDO;
 use Throwable;
@@ -108,7 +107,7 @@ final readonly class LedgeredScanner implements ProjectScanner
             $from = $ledger->activeSnapshot($projectId);
             $before = $ledger->hashes($projectId);
             $baselines = $this->baselines($projectId, $real, $before);
-            $tests = TurnTestFindings::baselines(TurnTestFindings::held($this->pdo, $projectId, ActiveTestFindings::suppressionsOf($real)));
+            $tests = TurnTestFindings::baselinesOf($this->pdo, $projectId, $real);
             $result = $this->service->scan($root, $options->withLease($lease));
             try {
                 $ledger->record($projectId, $from, $result->snapshotId, $before, $ledger->hashes($projectId), $baselines, $tests);
