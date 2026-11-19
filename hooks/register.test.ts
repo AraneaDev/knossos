@@ -1204,6 +1204,28 @@ describe('knossos mod', () => {
     expect(w.briefRuns()[0]).toContain('--no-policies')
   })
 
+  const STALE = { status: 'ok', introduced: [{ key: 'k1', file: 'tests/PayTest.php', line: 7, message: 'charge() arity' }], total: 1, truncated: false, suppressions_invalid: null }
+
+  test('the testChecks setting lets a stale mock reach the model after a turn', async ($, on) => {
+    const w = world(on, { brief: [{ stdout: brief({ test_findings: STALE }) }] })
+    await $.session.start(START)
+    await w.clock.settle()
+    await edit($, `${ROOT}/src/A.php`)
+    await $.turn.complete(TURN)
+    await w.clock.settle()
+    expect(w.logs.filter(l => l.text.includes('this turn introduced 1 stale mock. Fix it before finishing:'))).toHaveLength(1)
+  })
+
+  test('testChecks off keeps stale mocks off the model', { options: { testChecks: false } }, async ($, on) => {
+    const w = world(on, { brief: [{ stdout: brief({ test_findings: STALE }) }] })
+    await $.session.start(START)
+    await w.clock.settle()
+    await edit($, `${ROOT}/src/A.php`)
+    await $.turn.complete(TURN)
+    await w.clock.settle()
+    expect(w.logs.filter(l => l.text.includes('stale mock'))).toHaveLength(0)
+  })
+
   test('an ok brief is shown and refreshes the dashboard', async ($, on) => {
     const w = world(on)
     await $.session.start(START)

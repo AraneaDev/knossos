@@ -41,6 +41,7 @@ const UNSET: Record<string, unknown> = {
   watch: initialWatch({}).on,
   watchPollMs: initialWatch({}).pollMs,
   agentNotes: initialAgent({}).notesOn,
+  testChecks: initialAgent({}).testChecksOn,
   notifications: initialAlerts({}).on,
   editor: DEFAULT_EDITOR,
 }
