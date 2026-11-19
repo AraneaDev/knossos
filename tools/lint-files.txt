@@ -1298,6 +1298,7 @@ php	tests/phpunit/TestFidelity/Rules/TautologyRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/VisibilityBreachRuleTest.php
 php	tests/phpunit/TestFidelity/ScansTypeScript.php
 php	tests/phpunit/TestFidelity/SnapshotTestFindingsTest.php
+php	tests/phpunit/TestFidelity/SurfacesEndToEndTest.php
 php	tests/phpunit/TestFidelity/TautologyEndToEndTest.php
 php	tests/phpunit/TestFidelity/TestFactsSearchTest.php
 php	tests/phpunit/TestFidelity/TestFactsSnapshotTest.php

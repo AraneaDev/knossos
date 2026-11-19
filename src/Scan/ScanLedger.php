@@ -19,7 +19,7 @@ use Throwable;
  * would report nothing. Each writer that records here keeps, per scan, the
  * snapshot it started from, the one it produced, each changed file's content
  * hash before it, and (when the writer computed them) the policy violations
- * those files held before it. {@see self::since()} reads them back in order
+ * and the test-finding keys those files held before it. {@see self::since()} reads them back in order
  * from the snapshot a turn or a session started at.
  *
  * A session with a live watcher records a scan for every save, so a day's
@@ -84,8 +84,11 @@ final readonly class ScanLedger
      * @param array<string, string> $after every tracked file's hash after it
      * @param array<string, array{violations: array<string, array<string, mixed>>, truncated: bool}>|null $baselines
      *        the violations each file held before the scan, by path, for the files the writer checked; null when it checked none
+     * @param array<string, array{keys: list<string>, truncated: bool}>|null $testBaselines
+     *        the test-finding keys each file held before the scan, by path, for every file that held one (a file
+     *        missing held none); null when the writer did not read them
      */
-    public function record(string $projectId, ?string $from, string $to, array $before, array $after, ?array $baselines = null): void
+    public function record(string $projectId, ?string $from, string $to, array $before, array $after, ?array $baselines = null, ?array $testBaselines = null): void
     {
         $changed = [];
         foreach ($after as $path => $hash) {
@@ -101,7 +104,10 @@ final readonly class ScanLedger
         }
         $cut = count($changed) > self::MAX_FILES;
         $kept = $baselines === null || $cut ? null : array_intersect_key($baselines, $changed);
-        $changes = $cut ? ['before' => (object) [], 'baselines' => null, 'truncated' => true] : ['before' => (object) $changed, 'baselines' => $kept === null ? null : (object) $kept];
+        $tests = $testBaselines === null || $cut ? null : (object) array_intersect_key($testBaselines, $changed);
+        $changes = $cut
+            ? ['before' => (object) [], 'baselines' => null, 'test_baselines' => null, 'truncated' => true]
+            : ['before' => (object) $changed, 'baselines' => $kept === null ? null : (object) $kept, 'test_baselines' => $tests];
         // One transaction for the entry and the merge it may set off: a reader never sees half a merge.
         $own = !$this->pdo->inTransaction();
         if ($own) {
@@ -129,7 +135,9 @@ final readonly class ScanLedger
      * `before` maps every file a scan since then changed to its hash before
      * that scan (null: the scan added it). `baselines` maps those files to the
      * violations they held then (null: that scan did not check them, or it
-     * was merged into a span). `scans` maps them to the snapshot each recorded
+     * was merged into a span). `test_baselines` maps them the same way to the
+     * test-finding keys they held then, `keys` empty when they held none.
+     * `scans` maps them to the snapshot each recorded
      * scan that changed them produced, in recording order, so a reader can
      * tell whose scan took a change in (a span's earlier scans by their key,
      * {@see ScanLedgerSpan::key()}). `chain` lists those scans themselves, in
@@ -141,14 +149,14 @@ final readonly class ScanLedger
      * span's files that a later scan of it changed are reported, with the
      * hash before the span's first change to them, and `approximate` is true:
      * a file changed just before `$since` and again after it reads as it was
-     * before the earlier change, and none of them carries a policy baseline.
+     * before the earlier change, and none of them carries a policy or test baseline.
      *
      * Null altogether when the ledger cannot account for every scan since:
      * none recorded starts at (or passes) `$since`, one in between was not
      * recorded or was recorded cut ({@see self::MAX_FILES}), or the last
      * recorded one is not the project's active snapshot.
      *
-     * @return array{before: array<string, string|null>, baselines: array<string, array{violations: array<string, array<string, mixed>>, truncated: bool}|null>, scans: array<string, list<string>>, chain: list<array{snapshot_id: string, at: int, files: int, merged?: int}>, approximate: bool}|null
+     * @return array{before: array<string, string|null>, baselines: array<string, array{violations: array<string, array<string, mixed>>, truncated: bool}|null>, test_baselines: array<string, array{keys: list<string>, truncated: bool}|null>, scans: array<string, list<string>>, chain: list<array{snapshot_id: string, at: int, files: int, merged?: int}>, approximate: bool}|null
      */
     public function since(string $projectId, string $since): ?array
     {
@@ -158,13 +166,13 @@ final readonly class ScanLedger
     /**
      * {@see self::since()}, read inside whatever transaction the caller holds.
      *
-     * @return array{before: array<string, string|null>, baselines: array<string, array{violations: array<string, array<string, mixed>>, truncated: bool}|null>, scans: array<string, list<string>>, chain: list<array{snapshot_id: string, at: int, files: int, merged?: int}>, approximate: bool}|null
+     * @return array{before: array<string, string|null>, baselines: array<string, array{violations: array<string, array<string, mixed>>, truncated: bool}|null>, test_baselines: array<string, array{keys: list<string>, truncated: bool}|null>, scans: array<string, list<string>>, chain: list<array{snapshot_id: string, at: int, files: int, merged?: int}>, approximate: bool}|null
      */
     private function sinceNow(string $projectId, string $since): ?array
     {
         $active = $this->activeSnapshot($projectId);
         if ($active === $since) {
-            return ['before' => [], 'baselines' => [], 'scans' => [], 'chain' => [], 'approximate' => false];
+            return ['before' => [], 'baselines' => [], 'test_baselines' => [], 'scans' => [], 'chain' => [], 'approximate' => false];
         }
         $rows = array_values(array_filter($this->rows($projectId), static fn(array $row): bool => !$row['cut']));
         $found = $active === null ? null : self::reaching($rows, $since, $active);
@@ -174,6 +182,7 @@ final readonly class ScanLedger
         [$chain, $start] = $found;
         $before = [];
         $baselines = [];
+        $tests = [];
         $scans = [];
         $order = [];
         foreach ($chain as $n => $index) {
@@ -184,11 +193,13 @@ final readonly class ScanLedger
                 $changed = $part['before'];
                 $named = $part['scans'];
                 $held = [];
+                $keys = null;
             } else {
                 $order[] = ['snapshot_id' => $row['to'], 'at' => $row['at'], 'files' => count($row['changes']['before'])];
                 $changed = $row['changes']['before'];
                 $named = array_map(static fn(): array => [$row['to']], $changed);
                 $held = $row['changes']['baselines'] ?? [];
+                $keys = $row['changes']['test_baselines'] ?? null;
             }
             foreach ($changed as $path => $hash) {
                 $path = (string) $path;
@@ -198,10 +209,11 @@ final readonly class ScanLedger
                 }
                 $before[$path] = $hash === null ? null : (string) $hash;
                 $baselines[$path] = $held[$path] ?? null;
+                $tests[$path] = $keys === null ? null : $keys[$path] ?? ['keys' => [], 'truncated' => false];
             }
         }
 
-        return ['before' => $before, 'baselines' => $baselines, 'scans' => $scans, 'chain' => $order, 'approximate' => $start >= 0];
+        return ['before' => $before, 'baselines' => $baselines, 'test_baselines' => $tests, 'scans' => $scans, 'chain' => $order, 'approximate' => $start >= 0];
     }
 
     /**

@@ -16,13 +16,16 @@ use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanOptions;
 use Knossos\Scan\TreeFingerprint;
 use Knossos\Store\ProjectRepository;
+use Knossos\TestFidelity\ActiveTestFindings;
+use Knossos\TestFidelity\TurnTestFindings;
 use PDO;
 use Throwable;
 
 /**
  * A scanner that records each scan of an existing project in the
- * {@see ScanLedger}: what every file it changed held before it, and the
- * policy violations those files held before it. Every writer the Claude
+ * {@see ScanLedger}: what every file it changed held before it, the
+ * policy violations those files held before it, and the keys of the
+ * definite test findings they touched before it ({@see TurnTestFindings::held()}). Every writer the Claude
  * Code mod can meet scans through it: the pane's rescan, `knossos scan`
  * (and so the live watcher's scan processes), plain `knossos watch`,
  * `knossos move-project` and the MCP `scan_project`.
@@ -35,7 +38,8 @@ use Throwable;
  * graph holds, which names the files the scan is about to change while the
  * graph still describes them; their violations are read then, one file at
  * a time so a later reader can take each file's from the first scan that
- * changed it. A first scan (no project yet), or a scan of a path that is
+ * changed it. The test-finding keys need no fingerprint: one read gives
+ * every file's, and the ledger keeps those of the files the scan changed. A first scan (no project yet), or a scan of a path that is
  * not exactly a project's root, is passed through unrecorded: there is no
  * earlier graph of it to describe.
  */
@@ -104,9 +108,10 @@ final readonly class LedgeredScanner implements ProjectScanner
             $from = $ledger->activeSnapshot($projectId);
             $before = $ledger->hashes($projectId);
             $baselines = $this->baselines($projectId, $real, $before);
+            $tests = TurnTestFindings::baselines(TurnTestFindings::held($this->pdo, $projectId, ActiveTestFindings::suppressionsOf($real)));
             $result = $this->service->scan($root, $options->withLease($lease));
             try {
-                $ledger->record($projectId, $from, $result->snapshotId, $before, $ledger->hashes($projectId), $baselines);
+                $ledger->record($projectId, $from, $result->snapshotId, $before, $ledger->hashes($projectId), $baselines, $tests);
             } catch (Throwable $failure) {
                 // The scan itself kept its own account; this failure came after it.
                 $this->failures?->recordThrowable($real, $options->startedBy, $failure, $startedAt);

@@ -10,6 +10,7 @@ use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanService;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanOptions;
+use Knossos\TestFidelity\TestFindingSuppressions;
 use Knossos\TestFidelity\TurnTestFindings;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
@@ -86,7 +87,7 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
             $brief = $this->brief($pdo, $root, [self::SERVICE]);
 
             // The ghost is still reached from the edited file, so the test is not vacuous.
-            assertGreaterThan(0, count(TurnTestFindings::affected($pdo, $projectId, [self::SERVICE])));
+            assertGreaterThan(0, count(TurnTestFindings::affected($pdo, $projectId, [self::SERVICE], new TestFindingSuppressions([]))));
             assertSame('ok', $brief['test_findings']['status']);
             assertSame([], $brief['test_findings']['introduced']);
             assertSame(0, $brief['test_findings']['total']);
@@ -104,7 +105,7 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
 
             $brief = $this->brief($pdo, $root, ['tests/ghost.test.ts']);
 
-            assertGreaterThan(0, count(TurnTestFindings::affected($pdo, $projectId, ['tests/ghost.test.ts'])));
+            assertGreaterThan(0, count(TurnTestFindings::affected($pdo, $projectId, ['tests/ghost.test.ts'], new TestFindingSuppressions([]))));
             assertSame([], $brief['test_findings']['introduced']);
             assertSame(0, $brief['test_findings']['total']);
         } finally {
@@ -162,22 +163,65 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
         }
     }
 
-    public function testARecordedScanThatTookTheEditInLeavesTestFindingsNotEvaluated(): void
+    public function testAWatcherScanThatTookTheEditInStillReportsTheMockItBroke(): void
     {
         [$pdo, $projectId, $root] = $this->project(healthy: true);
         try {
-            $since = (new ScanLedger($pdo))->activeSnapshot($projectId);
+            $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
             file_put_contents($root . '/' . self::SERVICE, self::RENAMED);
-            // The watcher records its scan, so the ledger is whole, but the graph before the brief already holds the edit.
-            LedgeredScanner::local($pdo, self::repositoryRoot(), AllowedRoots::of([(string) realpath($root)]), [])->scan($root, new ScanOptions(mode: 'incremental'));
+            // The watcher records its scan: the graph before the brief already holds the edit, and the ledger what came before it.
+            $this->watcherScan($pdo, $root);
 
             $brief = $this->brief($pdo, $root, [self::SERVICE], $since);
 
             assertSame([self::SERVICE], $brief['changed_files']);
-            assertSame('not_evaluated', $brief['test_findings']['status']);
-            assertSame([], $brief['test_findings']['introduced']);
+            assertSame('ok', $brief['test_findings']['status']);
+            assertSame(1, $brief['test_findings']['total']);
+            assertSame('tests/ghost.test.ts', $brief['test_findings']['introduced'][0]['file']);
         } finally {
             $this->removeTempTree($root);
+        }
+    }
+
+    public function testAWatcherScanThatTookTheEditInDoesNotReportAnAlreadyStaleMock(): void
+    {
+        [$pdo, $projectId, $root] = $this->project(healthy: false);
+        try {
+            $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
+            file_put_contents($root . '/' . self::SERVICE, (string) file_get_contents($root . '/' . self::SERVICE) . "\n// touched\n");
+            $this->watcherScan($pdo, $root);
+
+            $brief = $this->brief($pdo, $root, [self::SERVICE], $since);
+
+            assertGreaterThan(0, count(TurnTestFindings::affected($pdo, $projectId, [self::SERVICE], new TestFindingSuppressions([]))));
+            assertSame('ok', $brief['test_findings']['status']);
+            assertSame([], $brief['test_findings']['introduced']);
+            assertSame(0, $brief['test_findings']['total']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /** A ledger entry whose test baseline for the edited file was cut, or that read none (a writer from before them). */
+    public function testACutOrMissingTestBaselineLeavesTestFindingsNotEvaluated(): void
+    {
+        foreach (['cut' => ['keys' => [], 'truncated' => true], 'missing' => null] as $case => $baseline) {
+            [$pdo, $projectId, $root] = $this->project(healthy: true);
+            try {
+                $since = (string) (new ScanLedger($pdo))->activeSnapshot($projectId);
+                file_put_contents($root . '/' . self::SERVICE, self::RENAMED);
+                $this->watcherScan($pdo, $root);
+                $changes = json_decode((string) $pdo->query('SELECT changes_json FROM scan_ledger')->fetchColumn(), true);
+                $changes['test_baselines'] = $baseline === null ? null : [self::SERVICE => $baseline];
+                $pdo->prepare('UPDATE scan_ledger SET changes_json = ?')->execute([json_encode($changes)]);
+
+                $brief = $this->brief($pdo, $root, [self::SERVICE], $since);
+
+                assertSame('not_evaluated', $brief['test_findings']['status'], $case);
+                assertSame([], $brief['test_findings']['introduced'], $case);
+            } finally {
+                $this->removeTempTree($root);
+            }
         }
     }
 
@@ -198,6 +242,12 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
         } finally {
             $this->removeTempTree($root);
         }
+    }
+
+    /** A scan as the live watcher makes one: ledgered, with no policies to read. */
+    private function watcherScan(PDO $pdo, string $root): void
+    {
+        LedgeredScanner::local($pdo, self::repositoryRoot(), AllowedRoots::of([(string) realpath($root)]), [])->scan($root, new ScanOptions(mode: 'incremental'));
     }
 
     /**

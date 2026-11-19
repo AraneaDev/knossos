@@ -6,8 +6,11 @@ namespace Knossos\Tests\Phpunit\TestFidelity;
 
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\DashboardService;
+use Knossos\Query\LedgeredScanner;
 use Knossos\Query\TurnBriefService;
+use Knossos\Roots\AllowedRoots;
 use Knossos\Scan\ProjectScanService;
+use Knossos\Scan\ScanOptions;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
@@ -73,6 +76,25 @@ final class SurfacesEndToEndTest extends KnossosTestCase
         $gate = $this->gate($pdo, $baseline, self::BUDGET);
         assertSame(false, $gate['passed']);
         assertGreaterThanOrEqual(1, $gate['checks'][0]['actual']);
+    }
+
+    /**
+     * The default `watch: true`: the watcher scans the rename before the turn
+     * ends, and the brief is asked from the turn's start and reuses that scan.
+     */
+    public function testTheGhostIsStillIntroducedWhenTheWatcherTookTheRenameInFirst(): void
+    {
+        [$pdo, $root, $baseline] = $this->scannedBaseline();
+        $this->renameTheMember($root);
+        LedgeredScanner::local($pdo, self::repositoryRoot(), AllowedRoots::of([(string) realpath($root)]))->scan($root, new ScanOptions(mode: 'incremental'));
+
+        $brief = (new TurnBriefService($pdo, ':memory:', self::repositoryRoot()))->brief($root, [self::SERVICE], [], true, $baseline, true);
+
+        assertSame(false, $brief['scanned'], 'the brief reused the watcher\'s scan');
+        assertSame([self::SERVICE], $brief['changed_files']);
+        assertSame(['ok', 1], [$brief['test_findings']['status'], $brief['test_findings']['total']]);
+        $entry = $brief['test_findings']['introduced'][0];
+        assertSame([self::SPEC, 29], [$entry['file'], $entry['line']]);
     }
 
     public function testABaselineFromBeforeThisPhaseIsIndeterminateNotPassOrFail(): void

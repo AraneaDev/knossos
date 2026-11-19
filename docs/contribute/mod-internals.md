@@ -157,6 +157,13 @@ file held before it. Those baselines are kept only when the project declares
 policies, the tree can be read and at most 20 files changed
 (`LedgeredScanner::MAX_CHECKED`); otherwise `LedgeredScanner::baselines` returns
 null and the entry has none.
+An entry also keeps `test_baselines`: for each changed file, the keys of the
+definite, unsuppressed test findings whose double or target was in that file
+before the scan (`TurnTestFindings::held`). It lists only files that held a key,
+at most 100 keys a file (`TurnTestFindings::MAX_BASELINE_KEYS`), with a
+`truncated` flag past that. The turn brief judges a file the watcher already
+took in by those keys. A missing or cut record leaves its `test_findings` as
+`not_evaluated`.
 Read in order from a turn's starting snapshot, the first entry that changed a
 file says what that file was before the turn. That keeps the brief's changed,
 added and deleted files and its before-and-after policy check the turn's own,
@@ -173,7 +180,7 @@ into one span, leaving 150 (`COMPACTED`). A span (`ScanLedgerSpan`) keeps:
 - a short key for each of up to 5,000 of its scans (`MAX_POINTS`), the newest,
   so a session that began among them is still found.
 
-A span keeps no policy baselines. The merge runs in the same transaction as the
+A span keeps no policy or test baselines. The merge runs in the same transaction as the
 recording that sets it off, under that writer's lease.
 
 **The 2,000-file cut.** An entry or a span that changed more than 2,000 files
