@@ -172,7 +172,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'snapshot_diff',
                 'title' => 'Snapshot diff',
-                'description' => 'See what changed architecturally between two scans. Use after a rescan to review added/removed components and relationships instead of eyeballing a code diff.',
+                'description' => 'See what changed architecturally between two scans. Use after a rescan to review added/removed components and relationships instead of eyeballing a code diff. `test_findings` counts the test findings each side has that the other lacks (`not_recorded` when a side kept none).',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -210,7 +210,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'architecture_trends',
                 'title' => 'Architecture trends',
-                'description' => 'See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot\'s figures in the graph database; a very large snapshot is a `partial` point with a `reason`.',
+                'description' => 'See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot\'s figures in the graph database; a very large snapshot is a `partial` point with a `reason`. Every point carries `definite_test_findings` and `stale_test_findings`, null when that snapshot kept no record.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [

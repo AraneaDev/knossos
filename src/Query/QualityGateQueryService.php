@@ -10,7 +10,7 @@ use Knossos\Result\ResultEnvelope;
 use Knossos\Store\CountedSnapshotFigures;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SnapshotPayload;
-use Knossos\TestFidelity\{ActiveTestFindings, SnapshotTestFindings};
+use Knossos\TestFidelity\{ActiveTestFindings, SnapshotFindingsView, SnapshotTestFindings};
 use PDO;
 
 /**
@@ -386,6 +386,11 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             $series[] = ['scan_id' => $snapshot['scan_id'], 'active' => $snapshot['active'], 'complete' => true,
                 'finished_at' => $snapshot['finished_at'], 'scanner_set_hash' => $snapshot['scanner_set_hash'],
                 'config_hash' => $snapshot['config_hash'], 'counts' => $figures['counts'], 'metrics' => $figures['metrics']];
+        }
+        // Counted from the findings each snapshot was archived with, outside the figures cache: a suppression edit reaches every point.
+        $findings = new SnapshotFindingsView($this->pdo, $projectId, (string) $project['active_scan_id'], ActiveTestFindings::suppressionsOf((string) $project['root_realpath']));
+        foreach ($series as $at => $point) {
+            $series[$at] = $point + $findings->counts((string) $point['scan_id']);
         }
         $releaseNotes = null;
         if ($releaseFrom !== null) {
