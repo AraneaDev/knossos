@@ -83,6 +83,8 @@ final readonly class SnapshotFindingsView
     }
 
     /**
+     * A finding as a comparison reports it: its key and what a reader needs to find it.
+     *
      * @param array<string, mixed> $finding
      * @return Item
      */
