@@ -1,9 +1,10 @@
 # Structure analysis
 
-Six tools walk the graph instead of listing it: what depends on a symbol, how
+Seven tools walk the graph instead of listing it: what depends on a symbol, how
 one component reaches another, which modules are tangled, where the structural
-hotspots are, which code no test reaches, and where new code belongs. What the graph holds, and how far to
-trust each fact, is on [the graph and its evidence](../concepts/graph-and-evidence.md).
+hotspots are, which code no test reaches, which tests no longer match the code,
+and where new code belongs. What the graph holds, and how far to trust each
+fact, is on [the graph and its evidence](../concepts/graph-and-evidence.md).
 Full input schemas are in the [MCP tool reference](../reference/mcp-tools.md).
 
 | Tool                  | CLI                   | Answers                                                                      |
