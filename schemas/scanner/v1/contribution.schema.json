@@ -208,6 +208,11 @@
             "mockFactoryKey",
             "objectLiteralKey",
             "instance-member",
+            "method",
+            "shouldReceive",
+            "configured",
+            "partial",
+            "prophecy",
             "unknown"
           ]
         },

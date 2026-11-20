@@ -1158,6 +1158,7 @@ php	tests/phpunit/Scanner/PhpMemberNamesTest.php
 php	tests/phpunit/Scanner/PhpScannerReceiverFactsTest.php
 php	tests/phpunit/Scanner/PhpScannerTest.php
 php	tests/phpunit/Scanner/PhpSignaturesTest.php
+php	tests/phpunit/Scanner/PhpTestDoublesTest.php
 php	tests/phpunit/Scanner/PhpWorkerScopeAndRouteFactsTest.php
 php	tests/phpunit/Scanner/PropertyReceiverTest.php
 php	tests/phpunit/Scanner/Protocol/ConfidenceRankTest.php
@@ -1392,6 +1393,14 @@ php	workers/php/src/ResolvesClassName.php
 php	workers/php/src/ResolvesDeclarationName.php
 php	workers/php/src/Signature.php
 php	workers/php/src/SymfonyFactCollector.php
+php	workers/php/src/TestFacts/Bindings.php
+php	workers/php/src/TestFacts/ConfigurationChain.php
+php	workers/php/src/TestFacts/DoubleFactories.php
+php	workers/php/src/TestFacts/DoubleRecord.php
+php	workers/php/src/TestFacts/PinnedType.php
+php	workers/php/src/TestFacts/Site.php
+php	workers/php/src/TestFacts/TestDoubleCollector.php
+php	workers/php/src/TestFacts/TestModulePath.php
 php	workers/php/src/UnreadableFileException.php
 php	workers/php/src/VariableTypeScope.php
 php	workers/php/src/WorkerInputException.php

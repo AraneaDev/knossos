@@ -100,3 +100,26 @@ inherits, so the visitor's hooks have the code that wires them as a caller.
 The visitor's class must be known: `new Visitor()`, a typed variable, a
 property whose declared type is a class (`$traverser->addVisitor($this->collector)`),
 or the class itself handing over `$this`.
+
+## Test doubles
+
+In a test file (one under `tests/`, or named like `FooTest.php`), the worker
+reports each mock, stub and spy as a `test_double` fact, which the
+test-fidelity rules hold against the class it stands in for. It reads
+PHPUnit's `createMock()`, `createStub()`, `createConfiguredMock()`,
+`createPartialMock()`, `getMockForAbstractClass()` and `getMockBuilder()`,
+Mockery's `Mockery::mock()` and `Mockery::spy()` under any alias, Pest's
+`mock()` and Prophecy's `$this->prophesize()`. A Laravel facade's
+`Cache::shouldReceive()` is one Mockery double per facade, with no class to
+hold it against.
+
+The class is the one a `Foo::class` constant names, through the file's
+namespace and imports, or a string such as `'App\Foo'`. A class name held in a
+variable or built at runtime names nothing. A double assigned to a variable
+serves the rest of its method; assigned to a `$this` property in `setUp()`, it
+serves every test of the class. Its members are the names `method()`,
+`shouldReceive()` and Prophecy's calls configure, with the values
+`willReturn()` and `andReturn()` pin them to and the argument counts `with()`
+expects. A member whose name is computed, such as `method($name)`, is left
+out. A test file whose doubles cannot be read reports the warning
+`PHP_TEST_FACTS_FAILED` and keeps every other fact.

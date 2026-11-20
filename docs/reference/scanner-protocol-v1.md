@@ -244,7 +244,10 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `invocations` (call sites of the double in its file), `test_case` (canonical
   name of the enclosing test, optional) and `members`: the members the test
   configures, each
-  `{name, line, api, params?, returns}` where `params` is the signature shape
+  `{name, line, api, params?, returns}` where `api` is how the test names the
+  member (`spyOn`, `mockFactoryKey`, `objectLiteralKey`, `instance-member`,
+  PHPUnit's `method`, `configured` and `partial`, Mockery's `shouldReceive`,
+  `prophecy`, or `unknown`), `params` is the signature shape
   above and each `returns` entry is `{api, line, once, assignable, typed}`
   (`assignable` is `true`, `false` or `"unknown"`). A member may also carry
   `called_with`, the argument-list assertions on it, each
