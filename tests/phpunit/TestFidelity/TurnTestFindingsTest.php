@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\TestFidelity;
 
+use Knossos\TestFidelity\TestFindingSuppressions;
 use Knossos\TestFidelity\TurnTestFindings;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use PDO;
 
+use function PHPUnit\Framework\assertCount;
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 
@@ -103,6 +106,62 @@ final class TurnTestFindingsTest extends KnossosTestCase
 
         assertSame(['own'], TurnTestFindings::before(['src.ts', 'spec.ts'], $held, $later));
         assertSame(['ghost', 'own'], TurnTestFindings::before(['src.ts', 'spec.ts'], $held, $old));
+    }
+
+    /**
+     * A definite missing_module stored with the raw specifier `../src/UserService.js`, from `tests/UserService.spec.ts`:
+     * it resolved to no target, and can name the file `src/UserService.ts` a turn deletes.
+     */
+    private function storedMissingModule(): PDO
+    {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->exec('CREATE TABLE files (id INTEGER PRIMARY KEY, relative_path TEXT)');
+        $pdo->exec('CREATE TABLE nodes (id INTEGER PRIMARY KEY, display_name TEXT, canonical_name TEXT, file_id INTEGER)');
+        $pdo->exec('CREATE TABLE test_findings (id INTEGER PRIMARY KEY, project_id TEXT, node_id INTEGER, target_node_id INTEGER, file_id INTEGER, attributes_json TEXT, category TEXT, confidence TEXT, rule_id TEXT, sub_rule TEXT, message TEXT, start_line INTEGER)');
+        $pdo->exec("INSERT INTO files (id, relative_path) VALUES (1, 'tests/UserService.spec.ts')");
+        $pdo->exec("INSERT INTO nodes (id, display_name, canonical_name, file_id) VALUES (1, 'vi.mock', 'tests/UserService.spec.ts#double:3:1', 1)");
+        $pdo->prepare('INSERT INTO test_findings (id, project_id, node_id, target_node_id, file_id, attributes_json, category, confidence, rule_id, sub_rule, message, start_line) VALUES (1, ?, 1, NULL, 1, ?, ?, ?, ?, ?, ?, 3)')->execute([
+            'p', json_encode(['specifier' => '../src/UserService.js']), 'GHOST_MEMBER', 'definite', 'test.fidelity.ghost_member.v1', 'missing_module', 'vi.mock names a module that is not there',
+        ]);
+
+        return $pdo;
+    }
+
+    /**
+     * What the turn brief reports as introduced when `src/UserService.ts` is deleted.
+     *
+     * @param array{before: array<string, string|null>, test_baselines: array<string, array{keys: list<string>, truncated: bool}|null>} $absorbed
+     */
+    private function introducedByDeleting(PDO $pdo, array $absorbed): int
+    {
+        $suppressions = new TestFindingSuppressions([]);
+        $held = TurnTestFindings::held($pdo, 'p', $suppressions);
+        $before = TurnTestFindings::before(['src/UserService.ts'], $held, $absorbed);
+        $section = TurnTestFindings::section($before, TurnTestFindings::affected($pdo, 'p', [], $suppressions, ['src/UserService.ts']), null);
+        assertSame('ok', $section['status']);
+
+        return $section['total'];
+    }
+
+    /** A mock whose `.js` specifier names the deleted `.ts`, and that was already missing before the turn, is not the deletion's doing. */
+    public function testAMissingModuleThatAlreadyNamedTheDeletedFileIsNotIntroducedByDeletingIt(): void
+    {
+        $pdo = $this->storedMissingModule();
+        $keys = TurnTestFindings::held($pdo, 'p', new TestFindingSuppressions([]))['src/UserService.ts'] ?? [];
+        assertCount(1, $keys);
+
+        // No scan took the file in: what it holds now was held before the turn.
+        assertSame(0, $this->introducedByDeleting($pdo, ['before' => [], 'test_baselines' => []]));
+        // A scan did, and its baseline already held the finding.
+        assertSame(0, $this->introducedByDeleting($pdo, ['before' => ['src/UserService.ts' => 'H0'], 'test_baselines' => ['src/UserService.ts' => ['keys' => $keys, 'truncated' => false]]]));
+    }
+
+    /** The twin: the finding is not in the deleted file's baseline, so the turn made it. */
+    public function testAMissingModuleAbsentFromTheBaselineIsIntroducedByDeletingTheFileItNames(): void
+    {
+        $pdo = $this->storedMissingModule();
+
+        assertSame(1, $this->introducedByDeleting($pdo, ['before' => ['src/UserService.ts' => 'H0'], 'test_baselines' => ['src/UserService.ts' => self::NONE]]));
     }
 
     public function testAnUnknownOrCutBaselineLeavesTheTurnUnjudged(): void
