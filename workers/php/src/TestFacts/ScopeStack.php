@@ -36,7 +36,8 @@ final class ScopeStack
     public function enter(Node $node): void
     {
         $role = self::pestRole($node);
-        if ($role !== null && $node instanceof Expr\FuncCall) {
+        // A first-class callable (`test(...)`) holds a `VariadicPlaceholder`, not arguments, and is handed no closure.
+        if ($role !== null && $node instanceof Expr\FuncCall && !$node->isFirstClassCallable()) {
             foreach ($node->getArgs() as $argument) {
                 if ($argument->value instanceof Expr\Closure || $argument->value instanceof Expr\ArrowFunction) {
                     $this->pest[spl_object_id($argument->value)] = $role;

@@ -144,22 +144,17 @@ method of a class whose name ends in `Test`, when it is named `test*`, marked
   dataset's row), or unknown.
 - its production calls and the project files they land in.
 
-A variable or `$this` property is followed to its value, in the test or in
-`setUp()` / `beforeEach()`, only when it is assigned once and nothing else
-changes it: no `++` or `.=`, no write to an element or property of it
-(`$x[] = 1`, `unset($x['k'])`), no reference, no call it is handed to, and no
-callback that assigns the property. The rule is coarse on purpose. A function
-that may write its locals indirectly (`global`, `extract()`,
-`get_defined_vars()`, a one-argument `parse_str()`, a variable variable) proves
-no local's value. A class whose `$this` escapes proves no property's value:
-`$this` escapes when it is assigned, passed, returned, captured, used in a
-closure or arrow function, given a computed property name, or used to call a
-method the class does not declare (a trait's or a parent's, through `$this->`,
-`parent::`, `self::` or `static::`) other than PHPUnit's own helpers. A class
-whose parent is anything but `PHPUnit\Framework\TestCase`, such as a project or
-framework base test case, escapes outright, as its inherited code is not in the
-file. A Pest file counts as one class, and Pest's `test()`, which hands a helper
-function the running test case, is an escape of it. A call on a stub gives its pinned value
+A local variable is followed to its value only when it is assigned once and
+nothing else changes it: no `++` or `.=`, no write to an element or property of
+it (`$x[] = 1`, `unset($x['k'])`), no reference, and no call it is handed to.
+The rule is coarse on purpose. A function that may write its locals indirectly
+(`global`, `extract()`, `get_defined_vars()`, a one-argument `parse_str()`, a
+variable variable) proves no local's value. A `$this` property, in a PHPUnit
+class or a Pest file, and a static property are never a literal: code the file
+does not show (a parent class, a trait's hook, `__set()`, a helper handed
+Pest's `test()`) may write them at any time. A property holding a double is
+that double; one assigned code under test in the test or in `setUp()` /
+`beforeEach()` is production; any other is unknown. A call on a stub gives its pinned value
 only when exactly one way the member answers is set in the test or its setup,
 and that is one value for any call: not a value for some arguments only
 (`with()`), one of several in turn, or a callback's. A one-value assertion such
