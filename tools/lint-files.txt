@@ -377,6 +377,7 @@ php	src/Query/StalenessSnapshot.php
 php	src/Query/StandInExpansion.php
 php	src/Query/SupertypeMethods.php
 php	src/Query/TestFidelityQueryService.php
+php	src/Query/TestFindingsDiff.php
 php	src/Query/TestReachSearch.php
 php	src/Query/Truncation.php
 php	src/Query/TurnBriefService.php
@@ -558,6 +559,7 @@ php	src/TestFidelity/Rules/ReturnDriftRule.php
 php	src/TestFidelity/Rules/SignatureShape.php
 php	src/TestFidelity/Rules/TautologyRule.php
 php	src/TestFidelity/Rules/VisibilityBreachRule.php
+php	src/TestFidelity/SnapshotFindingsView.php
 php	src/TestFidelity/SnapshotTestFindings.php
 php	src/TestFidelity/StaleCategories.php
 php	src/TestFidelity/TestFidelityAnalysis.php
@@ -994,6 +996,7 @@ php	tests/phpunit/Query/SuggestionTruncationTest.php
 php	tests/phpunit/Query/SupertypeMethodsTest.php
 php	tests/phpunit/Query/TestFactsExcludedFromCountsTest.php
 php	tests/phpunit/Query/TestFidelityQueryServiceTest.php
+php	tests/phpunit/Query/TestFindingsCountedTest.php
 php	tests/phpunit/Query/TestImpactReportTest.php
 php	tests/phpunit/Query/TestImpactTest.php
 php	tests/phpunit/Query/TestReachSearchTest.php
