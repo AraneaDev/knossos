@@ -16,7 +16,12 @@ use PhpParser\Node\Stmt;
  */
 final class MemberNames
 {
-    /** @return array{member_names: list<string>, member_names_open?: true} */
+    /**
+     * The sorted names a class-like declares or documents, and the open flag
+     * when it answers any name.
+     *
+     * @return array{member_names: list<string>, member_names_open?: true}
+     */
     public static function of(Stmt\ClassLike $node): array
     {
         $names = [];
