@@ -1,0 +1,267 @@
+<?php
+
+declare(strict_types=1);
+
+namespace KnossosPhpScanner\TestFacts;
+
+use PhpParser\Node\Arg;
+use PhpParser\Node\ArrayItem;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\Scalar;
+
+/**
+ * Reads a chain of calls on a double: the members it configures, the values
+ * it pins them to, the arguments it expects them called with, and whether
+ * the chain's value is still the double.
+ *
+ * A chain starts on the double itself. A call that hands the double back
+ * (`makePartial()`, `getMock()`, `reveal()`) keeps it there; one that starts
+ * an expectation (`method('m')`, `shouldReceive('m')`, Prophecy's `$p->m()`)
+ * moves on to the expectation, whose calls configure the members it named.
+ * Any other call on the double calls it, and is a site that reaches it.
+ *
+ * A member whose name is computed (`method($name)`, `$p->{$name}()`) is no
+ * member: there is nothing to hold it against, and its configuration is
+ * dropped with it.
+ */
+final class ConfigurationChain
+{
+    /** Calls on a double that hand the same double back, by framework; their side effects are applied as they pass. */
+    private const KEEPS = [
+        'phpunit' => [
+            'getmock', 'getmockforabstractclass', 'getmockfortrait', 'onlymethods', 'setmethods', 'addmethods',
+            'disableoriginalconstructor', 'enableoriginalconstructor', 'setconstructorargs', 'setmockclassname',
+            'disableoriginalclone', 'enableoriginalclone', 'disableautoload', 'enableautoload',
+            'disableargumentcloning', 'enableargumentcloning', 'enableproxyingtooriginalmethods',
+            'disableproxyingtooriginalmethods', 'setproxytarget', 'allowmockingunknowntypes', 'disallowmockingunknowntypes',
+            'enableautoreturnvaluegeneration', 'disableautoreturnvaluegeneration',
+        ],
+        'mockery' => ['makepartial', 'shouldignoremissing', 'shouldallowmockingprotectedmethods', 'shouldallowmockingmethod', 'shoulddefermissing', 'asundefined'],
+        'prophecy' => ['reveal', 'willextend', 'willimplement', 'willbeconstructedwith'],
+    ];
+
+    /** Calls on a double that start an expectation, by framework; Prophecy's are every other call. */
+    private const EXPECTS = [
+        'phpunit' => ['method', 'expects'],
+        'mockery' => ['shouldreceive', 'shouldnotreceive', 'allows', 'expects', 'shouldhavereceived', 'shouldnothavereceived', 'shouldhavebeencalled', 'shouldnothavebeencalled'],
+    ];
+
+    /** Calls on an expectation that pin a member's return, by the api each records: every argument is one value. */
+    private const PINS = [
+        'willreturn' => 'willReturn',
+        'willreturnonconsecutivecalls' => 'willReturnOnConsecutiveCalls',
+        'andreturn' => 'andReturn',
+    ];
+
+    /** Calls on an expectation that make a member return what a callback returns, which the syntax does not show. */
+    private const CALLBACKS = ['willreturncallback' => 'willReturnCallback', 'andreturnusing' => 'andReturnUsing'];
+
+    /** Mockery's argument expectations, by the api each records. */
+    private const MATCHERS = ['with' => 'with', 'withargs' => 'withArgs', 'withnoargs' => 'withNoArgs'];
+
+    private function __construct() {}
+
+    /**
+     * Walk a chain of calls made on a double, innermost first, and say whether
+     * the chain's value is still the double. With `$configure`, record what
+     * the chain configures and the site that calls the double; without, only
+     * answer.
+     *
+     * @param list<Expr\MethodCall|Expr\StaticCall> $calls
+     */
+    public static function walk(DoubleRecord $double, array $calls, bool $configure): bool
+    {
+        $framework = $double->framework === 'pest' ? 'mockery' : $double->framework;
+        $revealed = false;
+        $expecting = null;
+        foreach ($calls as $call) {
+            $name = $call->name instanceof Identifier ? strtolower($call->name->toString()) : null;
+            if ($expecting !== null) {
+                if ($framework === 'mockery' && $name === 'getmock') {
+                    $expecting = null;
+                } elseif ($configure) {
+                    $expecting = self::configure($double, $framework, $expecting, $call, $name);
+                }
+                continue;
+            }
+            if ($name !== null && in_array($name, self::KEEPS[$framework] ?? [], true)) {
+                $revealed = $revealed || $name === 'reveal';
+                if ($configure) {
+                    self::kept($double, $name, $call);
+                }
+                continue;
+            }
+            if (($framework === 'prophecy' && !$revealed) || in_array($name, self::EXPECTS[$framework] ?? [], true)) {
+                $expecting = $configure ? self::expectation($double, $framework, $call, $name) : [];
+                continue;
+            }
+            if ($configure) {
+                $double->reach($call->getStartLine());
+            }
+
+            return false;
+        }
+
+        return $expecting === null;
+    }
+
+    /** Apply what a call that keeps the double does to it: the members `onlyMethods()` lists, Mockery's protected opt-in. */
+    private static function kept(DoubleRecord $double, string $name, Expr\MethodCall|Expr\StaticCall $call): void
+    {
+        $listed = self::argument($call, 0);
+        if (($name === 'onlymethods' || $name === 'setmethods') && $listed instanceof Expr\Array_) {
+            DoubleFactories::listed($double, $listed, 'partial');
+        } elseif ($name === 'shouldallowmockingprotectedmethods') {
+            $double->allowsProtected = true;
+        }
+    }
+
+    /**
+     * Start an expectation, and return the members it is about.
+     *
+     * @return list<string>
+     */
+    private static function expectation(DoubleRecord $double, string $framework, Expr\MethodCall|Expr\StaticCall $call, ?string $name): array
+    {
+        if ($framework === 'prophecy') {
+            if (!$call->name instanceof Identifier) {
+                return [];
+            }
+            $member = $call->name->toString();
+            $double->member($member, $call->name->getStartLine(), 'prophecy');
+            [$count, $spread] = self::argumentCount($call, true);
+            $double->matcher($member, 'prophecy', $call->getStartLine(), $count, $spread);
+
+            return [$member];
+        }
+        if ($name === 'method' || $name === 'shouldreceive') {
+            return self::named($double, $call, $name === 'method' ? 'method' : 'shouldReceive');
+        }
+
+        return [];
+    }
+
+    /**
+     * Configure the members of an expectation with one call on it, and return
+     * the members later calls are about.
+     *
+     * @param list<string> $members
+     * @return list<string>
+     */
+    private static function configure(DoubleRecord $double, string $framework, array $members, Expr\MethodCall|Expr\StaticCall $call, ?string $name): array
+    {
+        if ($framework === 'phpunit' && $name === 'method') {
+            return self::named($double, $call, 'method');
+        }
+        $line = $call->getStartLine();
+        foreach ($members as $member) {
+            if (isset(self::PINS[$name ?? ''])) {
+                foreach (self::arguments($call) as $argument) {
+                    $double->pin($member, self::PINS[$name], $argument->value, $argument->value->getStartLine());
+                }
+            } elseif (isset(self::CALLBACKS[$name ?? ''])) {
+                $double->unknownPin($member, self::CALLBACKS[$name], $line);
+            } elseif ($framework !== 'prophecy' && isset(self::MATCHERS[$name ?? '']) && ($framework === 'mockery' || $name === 'with')) {
+                [$count, $spread] = self::argumentCount($call, $name !== 'withargs');
+                $double->matcher($member, self::MATCHERS[$name], $line, $count, $spread);
+            }
+        }
+
+        return $members;
+    }
+
+    /**
+     * The members `method('m')` or `shouldReceive('a', 'b')` names: each
+     * string argument, or for Mockery each key or string of an array, its
+     * value the return it pins. A computed name is no member.
+     *
+     * @return list<string>
+     */
+    private static function named(DoubleRecord $double, Expr\MethodCall|Expr\StaticCall $call, string $api): array
+    {
+        $members = [];
+        foreach (self::arguments($call) as $index => $argument) {
+            $value = $argument->value;
+            if ($value instanceof Scalar\String_ && ($index === 0 || $api === 'shouldReceive')) {
+                // A Mockery demeter chain, `'a->b'`, configures `a` on the double.
+                $members[] = self::member($double, explode('->', $value->value)[0], $value, $api);
+            } elseif ($value instanceof Expr\Array_ && $api === 'shouldReceive') {
+                foreach ($value->items as $item) {
+                    $key = $item->key instanceof Scalar\String_ ? $item->key : ($item->key === null ? $item->value : null);
+                    if ($key instanceof Scalar\String_ && !$item->unpack && ($member = self::member($double, $key->value, $key, $api)) !== null) {
+                        $members[] = $member;
+                        if ($item->key !== null) {
+                            $double->pin($member, 'shouldReceive', $item->value, $item->value->getStartLine());
+                        }
+                    }
+                }
+            }
+        }
+
+        return array_values(array_filter($members, static fn(?string $member): bool => $member !== null));
+    }
+
+    /** Record one named member; null for a name that is not a method name. */
+    private static function member(DoubleRecord $double, string $name, Scalar\String_ $written, string $api): ?string
+    {
+        if (preg_match('/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/', $name) !== 1) {
+            return null;
+        }
+        $double->member($name, $written->getStartLine(), $api);
+
+        return $name;
+    }
+
+    /**
+     * How many arguments a matcher lists, and whether the real count is open:
+     * a spread argument, Prophecy's `Argument::cetera()`, or a `withArgs()`
+     * given a closure or a variable rather than an array. With `$direct` the
+     * call's own arguments are the list; without, its one array argument is.
+     *
+     * @return array{int, bool}
+     */
+    private static function argumentCount(Expr\MethodCall|Expr\StaticCall $call, bool $direct): array
+    {
+        if ($call->isFirstClassCallable()) {
+            return [0, true];
+        }
+        $arguments = $call->getArgs();
+        if (!$direct) {
+            $list = $arguments[0]->value ?? null;
+            if (!$list instanceof Expr\Array_) {
+                return [0, true];
+            }
+            $spread = array_filter($list->items, static fn(ArrayItem $item): bool => $item->unpack) !== [];
+
+            return [count($list->items), $spread];
+        }
+        $spread = array_filter($arguments, static fn(Arg $argument): bool => $argument->unpack || self::isCetera($argument->value)) !== [];
+
+        return [count($arguments), $spread];
+    }
+
+    /** Whether an argument is Prophecy's `Argument::cetera()`, which matches any arguments that remain. */
+    private static function isCetera(Expr $value): bool
+    {
+        return $value instanceof Expr\StaticCall && $value->class instanceof Name && strtolower($value->class->getLast()) === 'argument'
+            && $value->name instanceof Identifier && strtolower($value->name->toString()) === 'cetera';
+    }
+
+    /**
+     * A call's arguments, none for a first-class callable.
+     *
+     * @return list<Arg>
+     */
+    private static function arguments(Expr\MethodCall|Expr\StaticCall $call): array
+    {
+        return $call->isFirstClassCallable() ? [] : array_values($call->getArgs());
+    }
+
+    /** The value of a call's argument at a position, or null. */
+    private static function argument(Expr\MethodCall|Expr\StaticCall $call, int $index): ?Expr
+    {
+        return self::arguments($call)[$index]->value ?? null;
+    }
+}
