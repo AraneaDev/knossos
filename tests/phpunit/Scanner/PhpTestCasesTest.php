@@ -234,13 +234,14 @@ final class PhpTestCasesTest extends KnossosTestCase
             // A trait method called through self:: or static::, in a class extending PHPUnit's TestCase directly.
             'tests/EscapeTest.php:74' => ['literal', 'unknown'],
             'tests/EscapeTest.php:88' => ['literal', 'unknown'],
-            // What nothing changes stays literal: a local, and a setUp() property of a class whose `$this` never escapes.
+            // A property is never a literal, even one nothing in the file changes: KeptTest, a setUp() value, a beforeEach() value.
+            'tests/PinTest.php:33' => ['literal', 'unknown'],
+            'tests/Feature/plain.php:10' => ['unknown', 'literal'],
+            'tests/EscapeTest.php:58' => ['literal', 'unknown'],
+            // What nothing changes stays literal: a local.
             'tests/AliasTest.php:70' => ['literal', 'literal'],
             'tests/ProbeTest.php:64' => ['literal', 'literal'],
-            'tests/PinTest.php:33' => ['literal', 'literal'],
             'tests/WriteTest.php:112' => ['literal', 'literal'],
-            'tests/Feature/plain.php:10' => ['literal', 'literal'],
-            'tests/EscapeTest.php:58' => ['literal', 'literal'],
         ];
         $found = array_intersect_key($sources, $probes);
         ksort($probes);
@@ -256,9 +257,6 @@ final class PhpTestCasesTest extends KnossosTestCase
         sort($findings);
         assertSame([
             ['constant', 'tests/AliasTest.php:70'],
-            ['constant', 'tests/EscapeTest.php:58'],
-            ['constant', 'tests/Feature/plain.php:10'],
-            ['constant', 'tests/PinTest.php:33'],
             ['constant', 'tests/ProbeTest.php:64'],
             ['constant', 'tests/WriteTest.php:112'],
             ['constant', 'tests/WriteTest.php:71'],
@@ -267,32 +265,64 @@ final class PhpTestCasesTest extends KnossosTestCase
             ['mock_echo', 'tests/PinTest.php:39'],
             ['mock_echo', 'tests/ProbeTest.php:110'],
             ['zero_reach', 'tests/PinTest.php:109'],
-        ], $findings, 'Only values nothing can change, and pins that alone reach their test, give a tautology; the stub replaced before it is called is a zero-reach warning.');
+        ], $findings, 'Only locals nothing can change, and pins that alone reach their test, give a tautology; the stub replaced before it is called is a zero-reach warning.');
     }
 
-    public function testInheritedCodeAndPestTestEscapeTheirProperties(): void
+    public function testAPropertyIsNeverALiteral(): void
     {
-        $files = ['tests/RefTest.php', 'tests/Feature/helpers.php', 'tests/ProjectCaseTest.php'];
+        $healthy = ['tests/RefTest.php', 'tests/HookTest.php', 'tests/ProjectCaseTest.php', 'tests/EscapeTest.php', 'tests/Feature/helpers.php', 'tests/Feature/ext.php', 'tests/Feature/usestrait.php', 'tests/Feature/fcc.php'];
+        $files = [...$healthy, 'tests/PinTest.php', 'tests/AliasTest.php', 'tests/SharedTest.php', 'tests/WriteTest.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php', 'tests/Feature/billing.php'];
         $scanned = array_combine($files, $this->scan('cases', $files));
-        $sources = [];
+        $properties = [];
         foreach ($scanned as $file => $contribution) {
             foreach (self::cases($contribution) as $case) {
                 foreach ($case->assertions as $assertion) {
-                    $sources[$file . ':' . $assertion->line] = array_map(static fn(Operand $operand): string => $operand->source, $assertion->operands);
+                    foreach ($assertion->operands as $operand) {
+                        if (preg_match('/^(\$this->|(self|static|parent)::\$)\w+$/', $operand->text ?? '') === 1) {
+                            $properties[$file . ':' . $assertion->line . ' ' . $operand->text] = $operand->source;
+                        }
+                    }
                 }
             }
         }
 
-        // An inherited method reached through parent::, static:: or self::, and a parent setUp() run after the child's assignment.
-        assertSame(['literal', 'unknown'], $sources['tests/RefTest.php:71']);
-        assertSame(['literal', 'unknown'], $sources['tests/RefTest.php:81']);
-        assertSame(['literal', 'unknown'], $sources['tests/RefTest.php:86']);
-        assertSame(['literal', 'unknown'], $sources['tests/RefTest.php:91']);
-        // Pest's test() hands a helper function the running test case.
-        assertSame(['unknown', 'literal'], $sources['tests/Feature/helpers.php:13']);
-        // A class extending a project TestCase inherits code the file does not show.
-        assertSame(['literal', 'unknown'], $sources['tests/ProjectCaseTest.php:13']);
-        assertSame([], array_merge(...array_map(static fn(ScanContribution $contribution): array => self::tautologies([$contribution]), array_values($scanned))), 'None of these healthy tests is a tautology.');
+        $probes = [
+            // Code the file does not show: an inherited method or parent setUp(), a trait hook, a magic __set(), a data provider, a project base class, Pest's test() in a helper here or elsewhere, uses().
+            'tests/RefTest.php:71 $this->x', 'tests/RefTest.php:81 $this->x', 'tests/RefTest.php:86 $this->x', 'tests/RefTest.php:91 $this->x',
+            'tests/HookTest.php:15 $this->x', 'tests/HookTest.php:23 $this->x', 'tests/HookTest.php:31 $this->x', 'tests/HookTest.php:39 $this->x',
+            'tests/HookTest.php:47 $this->x', 'tests/HookTest.php:48 $this->x', 'tests/HookTest.php:58 $this->x', 'tests/HookTest.php:67 $this->x',
+            'tests/HookTest.php:76 self::$n', 'tests/HookTest.php:84 self::$n', 'tests/HookTest.php:91 $this->x', 'tests/HookTest.php:92 $this->x',
+            'tests/ProjectCaseTest.php:13 $this->limit',
+            'tests/Feature/helpers.php:13 $this->count', 'tests/Feature/ext.php:8 $this->count', 'tests/Feature/usestrait.php:9 $this->x', 'tests/Feature/fcc.php:8 $this->count',
+            // Values nothing in the file changes are no literal either: KeptTest, a setUp() value, a beforeEach() value.
+            'tests/EscapeTest.php:58 $this->limit', 'tests/PinTest.php:33 $this->value', 'tests/Feature/plain.php:10 $this->limit',
+        ];
+        foreach ($probes as $probe) {
+            assertSame('unknown', $properties[$probe] ?? null, $probe);
+        }
+        self::assertNotContains('literal', $properties, 'A property is never a literal.');
+        assertSame('mock-call', $properties['tests/SharedTest.php:15 $this->stub'] ?? null, 'A property bound to a double is still read as the double.');
+        assertSame([], array_merge(...array_map(static fn(string $file): array => self::tautologies([$scanned[$file]]), $healthy)), 'None of these healthy tests is a tautology.');
+    }
+
+    public function testFirstClassCallablesScanWithoutAWarning(): void
+    {
+        require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
+        $root = self::repositoryRoot() . '/tests/Fixtures/test-fidelity/php/cases';
+        $warnings = [];
+        set_error_handler(static function (int $level, string $message) use (&$warnings): bool {
+            $warnings[] = $message;
+
+            return true;
+        });
+        try {
+            $contribution = json_decode((string) json_encode((new \KnossosPhpScanner\PhpScanner())->scan($root, $root . '/tests/Feature/fcc.php', 'tests/Feature/fcc.php')), true, 512, JSON_THROW_ON_ERROR);
+        } finally {
+            restore_error_handler();
+        }
+
+        assertSame([], $warnings, 'test(...), beforeEach(...) and $this->m(...) are first-class callables; a warning on the worker\'s stdout would corrupt its protocol stream.');
+        assertSame([], $contribution['diagnostics']);
     }
 
     public function testAWorkerReadsComposerAfreshForEachRequest(): void
@@ -336,7 +366,7 @@ final class PhpTestCasesTest extends KnossosTestCase
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
         $root = self::repositoryRoot() . '/tests/Fixtures/test-fidelity/php/cases';
         $checked = 0;
-        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/EscapeTest.php', 'tests/RefTest.php', 'tests/ProjectCaseTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php', 'tests/Feature/helpers.php'] as $file) {
+        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/EscapeTest.php', 'tests/RefTest.php', 'tests/ProjectCaseTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php', 'tests/Feature/helpers.php', 'tests/HookTest.php', 'tests/Feature/ext.php', 'tests/Feature/usestrait.php', 'tests/Feature/fcc.php'] as $file) {
             $contribution = json_decode((string) json_encode((new \KnossosPhpScanner\PhpScanner())->scan($root, $root . '/' . $file, $file)), true, 512, JSON_THROW_ON_ERROR);
             assertSame([], $contribution['diagnostics'], $file);
             foreach ([...$contribution['nodes'], ...$contribution['edges']] as $fact) {
@@ -345,7 +375,7 @@ final class PhpTestCasesTest extends KnossosTestCase
                 $checked += ($fact['kind'] ?? '') === 'test_case' ? 1 : 0;
             }
         }
-        assertSame(124, $checked);
+        assertSame(139, $checked);
     }
 
     /**

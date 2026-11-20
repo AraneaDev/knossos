@@ -81,7 +81,7 @@ final class TestCaseCollector extends NodeVisitorAbstract
         } elseif ($node instanceof Stmt\ClassMethod && $site->inSetUp() && $site->classScope() !== null) {
             $this->file->setUp($node, $site->classScope());
         }
-        if (ScopeStack::pestRole($node) === true && $node instanceof Expr\FuncCall) {
+        if (ScopeStack::pestRole($node) === true && $node instanceof Expr\FuncCall && !$node->isFirstClassCallable()) {
             foreach ($node->getArgs() as $argument) {
                 if ($argument->value instanceof Node\FunctionLike) {
                     $this->file->setUp($argument->value, Site::PEST_SCOPE);
@@ -215,9 +215,8 @@ final class TestCaseCollector extends NodeVisitorAbstract
     /**
      * Note the variables and properties an expression changes other than by
      * one plain assignment: `++`, `.=`, a reference, a destructuring, a write
-     * to an element or a property of it, an argument a callee may take by
-     * reference or change, or a `$this` property a callback assigns, which
-     * runs whenever the code it is handed calls it.
+     * to an element or a property of it, or an argument a callee may take by
+     * reference or change.
      */
     private function changes(Expr $node, Site $outer, Site $site): void
     {
@@ -227,29 +226,13 @@ final class TestCaseCollector extends NodeVisitorAbstract
             $this->writes([$node->var, $node->expr], $site);
         } elseif ($node instanceof Expr\Assign && ($node->var instanceof Expr\List_ || $node->var instanceof Expr\Array_)) {
             $this->writes(array_map(static fn($item) => $item?->value, $node->var->items), $site);
-        } elseif ($node instanceof Expr\Assign && (!$node->var instanceof Expr\Variable && !$node->var instanceof Expr\PropertyFetch || self::isDeferred($node, $site))) {
+        } elseif ($node instanceof Expr\Assign && !$node->var instanceof Expr\Variable && !TestFileIndex::isThisProperty($node->var)) {
             $this->writes([$node->var], $site);
         } elseif ($node instanceof Expr\Closure) {
             $this->writes(array_map(static fn(Expr\ClosureUse $use): ?Expr => $use->byRef ? $use->var : null, $node->uses), $outer);
         } elseif ($node instanceof Expr\CallLike && !$node->isFirstClassCallable() && !AssertionSyntax::reads($node)) {
             $this->writes(array_map(static fn($argument): Expr => $argument->value, $node->getArgs()), $site);
         }
-    }
-
-    /**
-     * Whether an assignment to a `$this` property, or through a property of
-     * anything, runs at a time the source does not fix: in a closure or arrow
-     * function that is not itself a Pest test or setup.
-     */
-    private static function isDeferred(Expr\Assign $node, Site $site): bool
-    {
-        if (!$node->var instanceof Expr\PropertyFetch) {
-            return false;
-        }
-        $innermost = $site->functions === [] ? null : $site->functions[array_key_last($site->functions)];
-
-        return !$node->var->var instanceof Expr\Variable || $node->var->var->name !== 'this'
-            || (($innermost instanceof Expr\Closure || $innermost instanceof Expr\ArrowFunction) && $innermost !== $site->pestClosure);
     }
 
     /**

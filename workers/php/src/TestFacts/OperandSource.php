@@ -20,9 +20,10 @@ use PhpParser\NodeFinder;
  * say (`unknown`). Ported from Momus's PHP operand reading, after the
  * TypeScript worker's `test-case-flow.js`.
  *
- * A variable or `$this` property is followed to the value it was assigned,
- * in the test or in `setUp()` / `beforeEach()`, only when the source states
- * one value for it. A helper the file declares hands back the kind of source
+ * A local variable is followed to the value it was assigned only when the
+ * source states one value for it. A `$this` property is never a literal: it
+ * is a double it holds, code under test it was assigned in the test or in
+ * `setUp()` / `beforeEach()`, or unknown. A helper the file declares hands back the kind of source
  * its one `return` has, never a literal: a literal one branch returns says
  * nothing of the value at the assertion.
  */
@@ -86,7 +87,7 @@ final class OperandSource
 
         return match (true) {
             $value instanceof Expr\Variable => self::isParameter($value, $site, $test) ? ['parameter', null, null] : $this->bound($value, $site, $test, $depth),
-            $value instanceof Expr\PropertyFetch && $value->var instanceof Expr\Variable && $value->var->name === 'this' => $this->bound($value, $site, $test, $depth),
+            $value instanceof Expr\PropertyFetch && $value->var instanceof Expr\Variable && $value->var->name === 'this' => $this->property($value, $site, $test, $depth),
             $value instanceof Expr\PropertyFetch, $value instanceof Expr\NullsafePropertyFetch => $this->member($value->var, $site, $test, $depth),
             $value instanceof Expr\MethodCall, $value instanceof Expr\NullsafeMethodCall => $this->methodCall($value, $site, $test, $depth),
             $value instanceof Expr\StaticCall => $this->staticCall($value, $site, $test, $depth),
@@ -106,6 +107,20 @@ final class OperandSource
         $bound = $this->file->stable($leaf, $site);
 
         return $bound === null ? ['unknown', null, null] : $this->provenance($bound[0], $bound[1], $test, $depth + 1);
+    }
+
+    /**
+     * A `$this` property that holds no double: never a literal or a stub's
+     * pinned value. Code the file does not show (a parent class, a trait's
+     * hook, `__set()`, a helper handed Pest's `test()`) may write it at any
+     * time, so it is followed only to code under test, a source that can
+     * only silence a finding, and is unknown otherwise.
+     *
+     * @return array{string, ?DoubleRecord, ?string}
+     */
+    private function property(Expr\PropertyFetch $property, Site $site, FunctionLike $test, int $depth): array
+    {
+        return $this->bound($property, $site, $test, $depth)[0] === 'production' ? ['production', null, null] : ['unknown', null, null];
     }
 
     /**

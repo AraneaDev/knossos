@@ -42,9 +42,6 @@ final class TestFileIndex
     /** @var array<string, true> function scopes (as `Site::variableScope()` keys them) where a local may be written indirectly */
     private array $tainted = [];
 
-    /** @var array<string, true> class scopes whose `$this` escapes, so any code may write its properties */
-    private array $escaped = [];
-
     /** @var array<string, list<array{int, int}>> by class scope, the source ranges of the setups every test of it runs first */
     private array $setUps = [];
 
@@ -94,14 +91,6 @@ final class TestFileIndex
         }
         foreach ($site->functions as $function) {
             $this->tainted['f' . spl_object_id($function)] = true;
-        }
-    }
-
-    /** Note that `$this` escapes a class scope (`Site::classScope()`, null for none), so code outside it may write any of its properties. */
-    public function escape(?string $scope): void
-    {
-        if ($scope !== null) {
-            $this->escaped[$scope] = true;
         }
     }
 
@@ -194,7 +183,7 @@ final class TestFileIndex
     public function stable(Expr $leaf, Site $site): ?array
     {
         $key = self::key($leaf, $site);
-        if ($key === null || isset($this->written[$key]) || isset($this->tainted[explode('$', $key)[0]]) || isset($this->escaped[explode('->', $key)[0]])) {
+        if ($key === null || isset($this->written[$key]) || isset($this->tainted[explode('$', $key)[0]])) {
             return null;
         }
         $bindings = $this->doubles->bindings();
@@ -221,10 +210,10 @@ final class TestFileIndex
         return substr($this->source, $node->getStartFilePos(), $node->getEndFilePos() - $node->getStartFilePos() + 1);
     }
 
-    /** Whether a property fetch is a named property of `$this`. */
-    private static function isThisProperty(Expr\PropertyFetch $fetch): bool
+    /** Whether an expression is a named property of `$this`. */
+    public static function isThisProperty(Expr $fetch): bool
     {
-        return $fetch->var instanceof Expr\Variable && $fetch->var->name === 'this' && $fetch->name instanceof Identifier;
+        return $fetch instanceof Expr\PropertyFetch && $fetch->var instanceof Expr\Variable && $fetch->var->name === 'this' && $fetch->name instanceof Identifier;
     }
 
     /** The key a variable or `$this` property is bound under at a site; null for anything else. */
