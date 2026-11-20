@@ -75,7 +75,7 @@ final class TestCaseCollector extends NodeVisitorAbstract
         if ($node instanceof Stmt\Return_ && $node->expr !== null) {
             $this->file->returned($node->expr, $site);
         } elseif ($node instanceof Stmt\Foreach_) {
-            $this->writes([$node->keyVar, $node->valueVar], $site);
+            $this->writes([$node->keyVar, ...self::destructured($node->valueVar)], $site);
         } elseif ($node instanceof Stmt\Unset_) {
             $this->writes($node->vars, $site);
         } elseif ($node instanceof Stmt\ClassMethod && $site->inSetUp() && $site->classScope() !== null) {
@@ -225,7 +225,7 @@ final class TestCaseCollector extends NodeVisitorAbstract
         } elseif ($node instanceof Expr\AssignRef) {
             $this->writes([$node->var, $node->expr], $site);
         } elseif ($node instanceof Expr\Assign && ($node->var instanceof Expr\List_ || $node->var instanceof Expr\Array_)) {
-            $this->writes(array_map(static fn($item) => $item?->value, $node->var->items), $site);
+            $this->writes(self::destructured($node->var), $site);
         } elseif ($node instanceof Expr\Assign && !$node->var instanceof Expr\Variable && !TestFileIndex::isThisProperty($node->var)) {
             $this->writes([$node->var], $site);
         } elseif ($node instanceof Expr\Closure) {
@@ -233,6 +233,28 @@ final class TestCaseCollector extends NodeVisitorAbstract
         } elseif ($node instanceof Expr\CallLike && !$node->isFirstClassCallable() && !AssertionSyntax::reads($node)) {
             $this->writes(array_map(static fn($argument): Expr => $argument->value, $node->getArgs()), $site);
         }
+    }
+
+    /**
+     * What a destructuring target writes, at any depth: each variable of
+     * `[[$a], 'k' => $b, &$c]` or `list(...)`, keyed or by reference. Any
+     * other target is itself.
+     *
+     * @return list<Expr>
+     */
+    private static function destructured(Expr $target): array
+    {
+        if (!$target instanceof Expr\List_ && !$target instanceof Expr\Array_) {
+            return [$target];
+        }
+        $written = [];
+        foreach ($target->items as $item) {
+            if ($item !== null) {
+                $written = [...$written, ...self::destructured($item->value)];
+            }
+        }
+
+        return $written;
     }
 
     /**

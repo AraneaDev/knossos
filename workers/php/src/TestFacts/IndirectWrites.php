@@ -18,7 +18,8 @@ use PhpParser\NodeVisitorAbstract;
  *
  * - A function whose locals may be written indirectly (`global`,
  *   `extract()`, `get_defined_vars()`, a one-argument `parse_str()`, a
- *   variable variable) proves no local's value.
+ *   variable variable, an `include`/`require` or `eval`, whose code shares
+ *   the function's locals) proves no local's value.
  * - A reference taken to a value (`[&$x]`, `foreach ($x as &$v)`) is a write
  *   of it; a by-reference `foreach` also writes its value variable, which the
  *   test-case pass reads as an assignment.
@@ -44,7 +45,7 @@ final class IndirectWrites extends NodeVisitorAbstract
     {
         $this->scopes->enter($node);
         $site = $this->scopes->site();
-        if (($node instanceof Expr\Variable && !is_string($node->name)) || $node instanceof Stmt\Global_ || self::writesLocals($node)) {
+        if (($node instanceof Expr\Variable && !is_string($node->name)) || $node instanceof Stmt\Global_ || $node instanceof Expr\Include_ || $node instanceof Expr\Eval_ || self::writesLocals($node)) {
             $this->file->taint($site);
         }
         if ($node instanceof Stmt\Foreach_ && $node->byRef) {

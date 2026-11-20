@@ -210,7 +210,7 @@ final class PhpTestCasesTest extends KnossosTestCase
             }
         }
         $probes = [
-            // `$this` escapes: an alias captured by a closure, an anonymous class given it, passed whole, a reference to a property, a by-reference foreach over one.
+            // A property, never a literal: aliased by a closure, given to an anonymous class, passed whole, referenced, looped over by reference.
             'tests/AliasTest.php:26' => ['literal', 'unknown'],
             'tests/AliasTest.php:36' => ['literal', 'unknown'],
             'tests/AliasTest.php:43' => ['literal', 'unknown'],
@@ -227,11 +227,11 @@ final class PhpTestCasesTest extends KnossosTestCase
             'tests/WriteTest.php:106' => ['literal', 'unknown'],
             'tests/WriteTest.php:119' => ['literal', 'unknown'],
             'tests/PinTest.php:127' => ['literal', 'unknown'],
-            // `$this` used in a callback, a method the class does not declare (a trait's), a computed property name.
+            // A property, never a literal: read after a callback, a trait method or a computed property name may change it.
             'tests/EscapeTest.php:17' => ['literal', 'unknown'],
             'tests/EscapeTest.php:31' => ['literal', 'unknown'],
             'tests/EscapeTest.php:45' => ['literal', 'unknown'],
-            // A trait method called through self:: or static::, in a class extending PHPUnit's TestCase directly.
+            // A property, never a literal: read after a trait method called through self:: or static::.
             'tests/EscapeTest.php:74' => ['literal', 'unknown'],
             'tests/EscapeTest.php:88' => ['literal', 'unknown'],
             // A property is never a literal, even one nothing in the file changes: KeptTest, a setUp() value, a beforeEach() value.
@@ -263,9 +263,8 @@ final class PhpTestCasesTest extends KnossosTestCase
             ['mock_echo', 'tests/Feature/probes.php:51'],
             ['mock_echo', 'tests/PinTest.php:120'],
             ['mock_echo', 'tests/PinTest.php:39'],
-            ['mock_echo', 'tests/ProbeTest.php:110'],
             ['zero_reach', 'tests/PinTest.php:109'],
-        ], $findings, 'Only locals nothing can change, and pins that alone reach their test, give a tautology; the stub replaced before it is called is a zero-reach warning.');
+        ], $findings, 'Only locals nothing can change, and pins that alone reach their test, give a tautology (ProbeTest :110 no longer: testStubOverride assigns the same property, so setUp() is not its only assigner); the stub replaced before it is called is a zero-reach warning.');
     }
 
     public function testAPropertyIsNeverALiteral(): void
@@ -303,6 +302,53 @@ final class PhpTestCasesTest extends KnossosTestCase
         self::assertNotContains('literal', $properties, 'A property is never a literal.');
         assertSame('mock-call', $properties['tests/SharedTest.php:15 $this->stub'] ?? null, 'A property bound to a double is still read as the double.');
         assertSame([], array_merge(...array_map(static fn(string $file): array => self::tautologies([$scanned[$file]]), $healthy)), 'None of these healthy tests is a tautology.');
+    }
+
+    public function testEveryVariableADestructuringOrAnIncludeMayBindIsUnknown(): void
+    {
+        [$locals, $pest] = $this->scan('cases', ['tests/LocalTest.php', 'tests/Feature/refs.php']);
+        $sources = [];
+        foreach ([...self::cases($locals), ...self::cases($pest)] as $case) {
+            foreach ($case->assertions as $assertion) {
+                $sources[$case->canonicalName . ':' . $assertion->line] = array_map(static fn(Operand $operand): string => $operand->source, $assertion->operands);
+            }
+        }
+
+        // Nested, keyed and foreach destructuring; include and eval share the function's locals.
+        assertSame(['literal', 'unknown'], $sources['tests/LocalTest.php#test:19:19']);
+        assertSame(['literal', 'unknown'], $sources['tests/LocalTest.php#test:20:20']);
+        assertSame(['literal', 'unknown'], $sources['tests/LocalTest.php#test:21:21']);
+        assertSame(['literal', 'unknown'], $sources['tests/LocalTest.php#test:22:22']);
+        assertSame(['literal', 'unknown'], $sources['tests/LocalTest.php#test:24:24']);
+        assertSame(['literal', 'unknown'], $sources['tests/LocalTest.php#test:25:25']);
+        assertSame(['unknown', 'literal'], $sources['tests/Feature/refs.php#test:13:16']);
+        // A local nothing changes is still a constant.
+        assertSame(['literal', 'literal'], $sources['tests/LocalTest.php#test:33:33']);
+        $findings = array_map(static fn(TestFinding $finding): array => [$finding->subRule, $finding->evidence->relativePath . ':' . $finding->evidence->startLine], self::tautologies([$locals, $pest]));
+        assertSame([['constant', 'tests/LocalTest.php:33']], $findings, 'Only the local nothing changes is a tautology.');
+    }
+
+    public function testAPropertyHoldsAPinnedDoubleOnlyWhenOneMethodAssignsIt(): void
+    {
+        $files = ['tests/HeldTest.php', 'tests/Feature/held.php', 'tests/Feature/heldhelper.php'];
+        $scanned = $this->scan('cases', $files);
+        $sources = [];
+        foreach ($scanned as $contribution) {
+            foreach (self::cases($contribution) as $case) {
+                foreach ($case->assertions as $assertion) {
+                    $sources[$case->canonicalName . ':' . $assertion->line] = array_map(static fn(Operand $operand): string => $operand->source, $assertion->operands);
+                }
+            }
+        }
+
+        // setUp() and a helper both assign $this->calc: the helper may swap the stub for the real class. testEcho, which does not call it, loses its echo too.
+        assertSame(['literal', 'unknown'], $sources['tests/HeldTest.php#test:18:18']);
+        assertSame(['literal', 'unknown'], $sources['tests/HeldTest.php#test:21:21']);
+        // A class using a trait, a Pest file calling uses() or handing a helper test(): code the file does not show may assign it.
+        assertSame(['literal', 'unknown'], $sources['tests/HeldTest.php#test:29:29']);
+        assertSame(['unknown', 'literal'], $sources['tests/Feature/held.php#test:11:12']);
+        assertSame(['unknown', 'literal'], $sources['tests/Feature/heldhelper.php#test:11:13']);
+        assertSame([], self::tautologies($scanned), 'None of these healthy tests is a stub echo.');
     }
 
     public function testFirstClassCallablesScanWithoutAWarning(): void
@@ -366,7 +412,7 @@ final class PhpTestCasesTest extends KnossosTestCase
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
         $root = self::repositoryRoot() . '/tests/Fixtures/test-fidelity/php/cases';
         $checked = 0;
-        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/EscapeTest.php', 'tests/RefTest.php', 'tests/ProjectCaseTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php', 'tests/Feature/helpers.php', 'tests/HookTest.php', 'tests/Feature/ext.php', 'tests/Feature/usestrait.php', 'tests/Feature/fcc.php'] as $file) {
+        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/EscapeTest.php', 'tests/RefTest.php', 'tests/ProjectCaseTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php', 'tests/Feature/helpers.php', 'tests/HookTest.php', 'tests/Feature/ext.php', 'tests/Feature/usestrait.php', 'tests/Feature/fcc.php', 'tests/LocalTest.php', 'tests/HeldTest.php', 'tests/Feature/refs.php', 'tests/Feature/held.php', 'tests/Feature/heldhelper.php'] as $file) {
             $contribution = json_decode((string) json_encode((new \KnossosPhpScanner\PhpScanner())->scan($root, $root . '/' . $file, $file)), true, 512, JSON_THROW_ON_ERROR);
             assertSame([], $contribution['diagnostics'], $file);
             foreach ([...$contribution['nodes'], ...$contribution['edges']] as $fact) {
@@ -375,7 +421,7 @@ final class PhpTestCasesTest extends KnossosTestCase
                 $checked += ($fact['kind'] ?? '') === 'test_case' ? 1 : 0;
             }
         }
-        assertSame(139, $checked);
+        assertSame(173, $checked);
     }
 
     /**
