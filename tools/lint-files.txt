@@ -1732,6 +1732,7 @@ js	workers/typescript/src/__tests__/launches.test.js
 js	workers/typescript/src/__tests__/location-keys.test.js
 js	workers/typescript/src/__tests__/member-visibility.test.js
 js	workers/typescript/src/__tests__/module-mock-options.test.js
+js	workers/typescript/src/__tests__/module-mock-specifiers.test.js
 js	workers/typescript/src/__tests__/nestjs-handlers.test.js
 js	workers/typescript/src/__tests__/nestjs-routes.test.js
 js	workers/typescript/src/__tests__/overloads.test.js
