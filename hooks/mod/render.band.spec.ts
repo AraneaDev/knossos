@@ -227,3 +227,35 @@ describe('drawBand: the dashboard', () => {
         expect(mod.pane.bandText).toBe('knossos · 1 file → 37 dependents · 1 test · as of 12s ago · reaching core, http')
     })
 })
+
+describe('drawBand: stale mocks', () => {
+    const withFindings = (definite: number, warning: number, stale = definite) =>
+        ({ ...(declaring() as object), test_findings: { definite, stale, warning, by_production_file: {}, by_production_file_truncated: false, list: [], list_truncated: false, suppressions_invalid: null } }) as unknown as Dashboard
+    const bandText = async (dashboard: Dashboard | null, over: Partial<TurnBrief> = {}) => {
+        const { io } = fakePort({ dashboard, brief: brief(over) })
+        await drawBand(io, () => elements as never, { hasSurvey: false, bodyColumns: 200 }, handlers())
+        return mod.pane.bandText
+    }
+
+    it('counts the definite findings in a chip after the violations and before the tests', async () => {
+        const policy = { status: 'evaluated', total: 1, violations: [], truncated: false } as TurnBrief['policy']
+        expect(await bandText(withFindings(2, 0), { policy })).toBe('knossos · 1 file → 37 dependents · 1 policy violation · 2 stale mocks · 1 test · as of 12s ago · reaching core')
+    })
+
+    it('says one stale mock in the singular', async () => {
+        expect(await bandText(withFindings(1, 0))).toContain(' · 1 stale mock · ')
+    })
+
+    it('shows each part only when it is non-zero: stale mocks and other test findings', async () => {
+        expect(await bandText(withFindings(3, 0, 2))).toContain(' · 2 stale mocks · 1 test finding · ')
+        expect(await bandText(withFindings(1, 0, 0))).toContain(' · 1 test finding · ')
+        expect(await bandText(withFindings(1, 0, 0))).not.toContain('stale')
+        expect(await bandText(withFindings(4, 0, 0))).toContain(' · 4 test findings · ')
+    })
+
+    it('draws no chip for none, for warnings alone, or without a dashboard', async () => {
+        expect(await bandText(withFindings(0, 0))).not.toContain('stale')
+        expect(await bandText(withFindings(0, 4))).not.toContain('stale')
+        expect(await bandText(null)).not.toContain('stale')
+    })
+})

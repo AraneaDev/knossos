@@ -256,6 +256,12 @@ export function initialAgent(options: PluginOptions) {
   return {
     /** Whether the model gets notes at all (userConfig `agentNotes`). */
     notesOn: options.agentNotes !== false,
+    /** Whether the model hears about stale test doubles (userConfig `testChecks`); `agentNotes` off silences them too. */
+    testChecksOn: options.testChecks !== false,
+    /** Finding keys a turn-end note said, so a mock moved down a line is not said again; files whose Read note said it, by loop; whether a not-evaluated brief was logged. */
+    testFindingsSeen: new Set<string>(),
+    testNoted: new Set<string>(),
+    testNotEvaluatedLogged: false,
     /**
      * What the model was told this session, so nothing is said twice. Keyed by
      * loop (`''` for the main one, else the agent id) and a NUL: a subagent's

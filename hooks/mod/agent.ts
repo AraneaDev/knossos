@@ -5,8 +5,8 @@
 import { commitNote, cyclesSinceStart, REFLOG_READ, stillReported } from '../lib/agent'
 import { unreadablePolicies } from '../lib/policies'
 import { betweenTypes } from '../lib/envelopes'
-import type { TurnBrief } from '../lib/envelopes'
-import { editNote, fanInIndex, freshViolations, readNote, testsNote, violationKey, violationNote } from '../lib/notes'
+import type { Dashboard, TurnBrief } from '../lib/envelopes'
+import { editNote, fanInIndex, freshViolations, readNote, testFindingsReadLine, testFindingsTurnNote, testsNote, violationKey, violationNote } from '../lib/notes'
 import { declaredOf } from '../lib/palette'
 import { relativise } from '../lib/paths'
 import { keepEdit, placed, shownChanges } from './port'
@@ -83,7 +83,7 @@ export async function commitNoteFor(io: Port, loop: string): Promise<string | nu
  * the tests that reach its changes that it did not run and no note named.
  * Null when there is nothing new, or notes are off.
  */
-export function turnEndNote(parsed: TurnBrief, cd: string | null): string | null {
+export function turnEndNote(parsed: TurnBrief, cd: string | null, debug: (line: string) => void = () => undefined): string | null {
   if (!mod.agent.notesOn) return null
   const parts: string[] = []
   if (mod.session.enforce) {
@@ -94,12 +94,43 @@ export function turnEndNote(parsed: TurnBrief, cd: string | null): string | null
     if (quietCut) mod.agent.truncationSaid = true
     for (const v of parsed.policy.violations) mod.agent.violationsSeen.add(violationKey(v))
   }
+  const findings = testFindingsNote(parsed, debug)
+  if (findings !== null) parts.push(findings)
   const tests = testsNote(parsed.tests, mod.turn.ran, mod.agent.testsNamed, cd)
   if (tests !== null) {
     parts.push(tests.text)
     for (const t of tests.tests) mod.agent.testsNamed.add(t)
   }
   return parts.length === 0 ? null : parts.join('\n\n')
+}
+
+/**
+ * The part of the turn-end note on stale mocks and other test findings the turn introduced that no
+ * earlier note named (a finding's key is said once a session, wherever its
+ * line moves). Null with `testChecks` off, for a brief that did not evaluate
+ * them (said once in the debug log), or when none is new.
+ */
+function testFindingsNote(parsed: TurnBrief, debug: (line: string) => void): string | null {
+  const found = parsed.test_findings
+  if (!mod.agent.testChecksOn || found === undefined) return null
+  if (found.status !== 'ok') {
+    if (!mod.agent.testNotEvaluatedLogged) {
+      mod.agent.testNotEvaluatedLogged = true
+      debug('knossos: the turn brief did not evaluate test findings; no note about test findings this turn')
+    }
+    return null
+  }
+  const fresh = found.introduced.filter(f => !mod.agent.testFindingsSeen.has(f.key))
+  for (const f of found.introduced) mod.agent.testFindingsSeen.add(f.key)
+  // Nothing unseen is listed: the rest of an over-cap total is unnamed, so there is nothing to say again.
+  if (fresh.length === 0) return null
+  // The head counts the total less the listed findings already said; the unlisted rest stays in it.
+  const total = Math.max(fresh.length, found.total - (found.introduced.length - fresh.length))
+  // The same for the stale ones; a brief that sends no `total_stale` counts the stale among the listed.
+  const freshStale = fresh.filter(f => f.stale).length
+  const seenStale = found.introduced.filter(f => f.stale).length - freshStale
+  const stale = Math.max(freshStale, (found.total_stale ?? found.introduced.filter(f => f.stale).length) - seenStale)
+  return testFindingsTurnNote(fresh, total, stale)
 }
 
 /**
@@ -175,13 +206,24 @@ export async function noteRead(io: Port, reported: string, loop: string): Promis
   const d = await io.state.dashboard.read()
   if (!mod.agent.notesOn || d?.status !== 'ok' || d.project_root === null) return null
   const relative = relativise(d.project_root, await placed(io, reported))
-  if (relative === null || mod.agent.noted.has(`${loop}\u0000${relative}`)) return null
+  if (relative === null) return null
   const prefix = `${loop}\u0000`
+  const note = mod.agent.noted.has(`${prefix}${relative}`) ? null : fileNote(d, relative, prefix)
+  const group = mod.agent.testChecksOn && !mod.agent.testNoted.has(`${prefix}${relative}`) ? d.test_findings?.by_production_file?.[relative] : undefined
+  const line = group === undefined ? null : testFindingsReadLine(relative, group)
+  if (note === null && line === null) return null
+  if (!takeNoteSlot(loop)) return null
+  if (note !== null) {
+    mod.agent.noted.add(`${prefix}${relative}`)
+    for (const b of note.ruled) mod.agent.ruled.add(`${prefix}${b}`)
+  }
+  if (line !== null) mod.agent.testNoted.add(`${prefix}${relative}`)
+  return [note?.text ?? null, line].filter(t => t !== null).join(' ')
+}
+
+/** The fan-in and policy note for `relative` in the loop `prefix` names, or null when there is nothing new to say. */
+function fileNote(d: Dashboard, relative: string, prefix: string): ReturnType<typeof readNote> {
   const ruled = new Set([...mod.agent.ruled].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length)))
   const declared = declaredOf(d)
-  const note = readNote(relative, fanInIndex(d).get(relative), mod.session.threshold, d.policy, ruled, declared)
-  if (note === null || !takeNoteSlot(loop)) return null
-  mod.agent.noted.add(`${prefix}${relative}`)
-  for (const b of note.ruled) mod.agent.ruled.add(`${prefix}${b}`)
-  return note.text
+  return readNote(relative, fanInIndex(d).get(relative), mod.session.threshold, d.policy, ruled, declared)
 }

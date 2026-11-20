@@ -10,6 +10,7 @@ use Knossos\Result\ResultEnvelope;
 use Knossos\Store\CountedSnapshotFigures;
 use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SnapshotPayload;
+use Knossos\TestFidelity\{ActiveTestFindings, SnapshotFindingsView, SnapshotTestFindings};
 use PDO;
 
 /**
@@ -55,7 +56,7 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
      */
     public static function validateBudgets(array $budgets, array $policies): void
     {
-        $allowed = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];
+        $allowed = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes', 'new_definite_test_findings'];
         if ($budgets === [] || array_diff(array_keys($budgets), $allowed) !== []) {
             throw new InvalidArgumentException('budgets must contain one or more supported quality limits.');
         }
@@ -101,6 +102,22 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             'public_surface_changes' => count(array_diff_key($before['surface'], $after['surface'])) + count(array_diff_key($after['surface'], $before['surface'])),
         ];
         unset($before, $after);
+        // Read after both graphs are let go, so the findings are never held beside one.
+        // A project whose folder is gone has no knossos.json to suppress with; its stored findings still count.
+        $suppressions = ActiveTestFindings::suppressionsOf((string) $project['root_realpath']);
+        $activeFindings = new ActiveTestFindings($this->pdo, $projectId, $suppressions);
+        $baselineFindings = (new SnapshotTestFindings($this->pdo))->forSnapshot($projectId, (string) $baseline['scan_id']);
+        $activeDefinite = $activeFindings->find(['confidence' => 'definite']);
+        $baselineKeys = [];
+        foreach ($baselineFindings ?? [] as $finding) {
+            if ($finding['confidence'] === 'definite' && !$suppressions->suppresses($finding['rule_id'], $finding['category'], $finding['sub_rule'], (string) $finding['file'])) {
+                $baselineKeys[$finding['key']] = true;
+            }
+        }
+        // A set difference of distinct keys: a line that moved keeps its key, and two doubles that
+        // say the same thing in one file count once, as the archive keeps them.
+        $actual['new_definite_test_findings'] = count(array_diff_key(array_column($activeDefinite, 'key', 'key'), $baselineKeys));
+        unset($activeDefinite, $baselineKeys);
         $policyResult = null;
         $boundaryIndeterminate = false;
         if ($policies !== []) {
@@ -124,12 +141,13 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
         $passed = true;
         foreach ($budgets as $name => $limit) {
             $value = $actual[$name];
-            $indeterminate = $name === 'boundary_violations' && $boundaryIndeterminate;
+            $baselineMissing = $name === 'new_definite_test_findings' && $baselineFindings === null;
+            $indeterminate = ($name === 'boundary_violations' && $boundaryIndeterminate) || $baselineMissing;
             $checkPassed = !$indeterminate && $value <= $limit;
             $check = ['metric' => $name, 'actual' => $value, 'limit' => $limit, 'passed' => $checkPassed];
             if ($indeterminate) {
                 $check['indeterminate'] = true;
-                $check['indeterminate_reason'] = 'boundary_violation_scan_truncated';
+                $check['indeterminate_reason'] = $baselineMissing ? 'baseline_has_no_test_findings' : 'boundary_violation_scan_truncated';
             }
             $checks[] = $check;
             $passed = $passed && $checkPassed;
@@ -145,6 +163,14 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             foreach ($policyEvidence as $evidence) {
                 $results[] = ['ruleId' => 'knossos.boundary', 'level' => 'error', 'message' => ['text' => 'Architecture boundary policy violation.'],
                     'locations' => [['physicalLocation' => ['artifactLocation' => ['uri' => $evidence['path']], 'region' => ['startLine' => $evidence['start_line'] ?? 1]]]]];
+            }
+            foreach ($activeFindings->find(limit: max(0, 200 - count($results))) as $finding) {
+                $result = ['ruleId' => $finding['rule_id'] . ($finding['sub_rule'] === '' ? '' : '/' . $finding['sub_rule']),
+                    'level' => $finding['confidence'] === 'definite' ? 'error' : 'warning', 'message' => ['text' => $finding['message']]];
+                if ($finding['file'] !== null) {
+                    $result['locations'] = [['physicalLocation' => ['artifactLocation' => ['uri' => $finding['file']], 'region' => ['startLine' => $finding['line'] ?? 1]]]];
+                }
+                $results[] = $result;
             }
             // Read for SARIF alone, and only as many as the 200 results allow.
             // Not an enricher's diagnostics: like the budgets, the gate's findings describe the code.
@@ -360,6 +386,11 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             $series[] = ['scan_id' => $snapshot['scan_id'], 'active' => $snapshot['active'], 'complete' => true,
                 'finished_at' => $snapshot['finished_at'], 'scanner_set_hash' => $snapshot['scanner_set_hash'],
                 'config_hash' => $snapshot['config_hash'], 'counts' => $figures['counts'], 'metrics' => $figures['metrics']];
+        }
+        // Counted from the findings each snapshot was archived with, outside the figures cache: a suppression edit reaches every point.
+        $findings = new SnapshotFindingsView($this->pdo, $projectId, (string) $project['active_scan_id'], ActiveTestFindings::suppressionsOf((string) $project['root_realpath']));
+        foreach ($series as $at => $point) {
+            $series[$at] = $point + $findings->counts((string) $point['scan_id']);
         }
         $releaseNotes = null;
         if ($releaseFrom !== null) {

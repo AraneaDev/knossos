@@ -8,8 +8,8 @@ use Knossos\Classification\ExampleModuleRule;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\EdgeQueries;
-use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
+use Knossos\Store\SnapshotFacts;
 use PDO;
 
 /**
@@ -310,7 +310,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
         $statement = $this->pdo->prepare(
             'SELECT ' . EdgeEvidencePath::sql() . ' AS relative_path, e.start_line FROM edges e '
             . 'LEFT JOIN files f ON f.id = e.file_id '
-            . "WHERE e.project_id = ? AND e.target_id = ? AND e.kind <> 'contains' AND " . EnrichedFacts::excludeSql('e') . ' '
+            . "WHERE e.project_id = ? AND e.target_id = ? AND e.kind <> 'contains' AND " . SnapshotFacts::nativeSql('edges', 'e') . ' '
             . 'AND EXISTS (SELECT 1 FROM classifications c WHERE c.project_id = e.project_id AND c.node_id = e.source_id AND c.role IN (?, ?)) '
             . 'ORDER BY relative_path, e.start_line',
         );
@@ -357,7 +357,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
         $kinds = implode(',', array_fill(0, count(DeadCodeAnalysis::CANDIDATE_KINDS), '?'));
         $statement = $this->pdo->prepare(
             'SELECT n.id FROM nodes n '
-            . sprintf('WHERE n.project_id = ? AND %s AND n.kind IN (%s) AND ', EnrichedFacts::excludeSql('n'), $kinds) . $condition
+            . sprintf('WHERE n.project_id = ? AND %s AND n.kind IN (%s) AND ', SnapshotFacts::nativeSql('nodes', 'n'), $kinds) . $condition
             . ' ORDER BY n.canonical_name, n.id',
         );
         $inbound = [];
@@ -380,7 +380,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
     {
         $rows = [];
         $sql = 'SELECT n.id, n.language, n.kind, n.canonical_name, n.display_name, n.origin, n.confidence, n.attributes_json, '
-            . 'n.start_line, n.end_line, f.relative_path FROM nodes n LEFT JOIN files f ON f.id = n.file_id AND ' . SharedNodeKinds::ownedByFileSql('n.kind') . ' WHERE n.id IN (%s) AND ' . EnrichedFacts::excludeSql('n');
+            . 'n.start_line, n.end_line, f.relative_path FROM nodes n LEFT JOIN files f ON f.id = n.file_id AND ' . SharedNodeKinds::ownedByFileSql('n.kind') . ' WHERE n.id IN (%s) AND ' . SnapshotFacts::nativeSql('nodes', 'n');
         foreach (ChunkedInQuery::rows($this->pdo, $sql, array_values(array_unique($ids)), size: self::CHUNK) as $row) {
             $rows[(string) $row['id']] = $row;
         }
@@ -396,7 +396,7 @@ final readonly class DeadCodeCandidates extends AbstractArchitectureQueryService
      */
     private function inbound(array $edgeKinds): string
     {
-        return 'SELECT 1 FROM edges e WHERE e.project_id = n.project_id AND e.target_id = n.id AND ' . EnrichedFacts::excludeSql('e') . ' '
+        return 'SELECT 1 FROM edges e WHERE e.project_id = n.project_id AND e.target_id = n.id AND ' . SnapshotFacts::nativeSql('edges', 'e') . ' '
             . 'AND ' . EdgeQueries::kindFilteredIn('e.kind', $edgeKinds) . ' '
             . 'AND ' . ConfidenceRank::atLeast('e.confidence');
     }

@@ -11,6 +11,7 @@ use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Result\PaneStatus;
 use Knossos\Scan\{ProjectWriterLease, ProjectWriterLock, ScanLedger, ScanTarget};
 use Knossos\Scan\ScanOptions;
+use Knossos\TestFidelity\{ActiveTestFindings, TurnTestFindings};
 use PDO;
 use Throwable;
 
@@ -72,8 +73,9 @@ final readonly class TurnBriefService
      * before this brief's scan already holds some of the turn's edits; the
      * {@see ScanLedger} then says what each file held before the first scan
      * that changed it, so the diff and the policy baseline are still the
-     * turn's. When the ledger cannot account for every scan since, the files
-     * are still reported but the policy is not evaluated: its baseline is gone.
+     * turn's, and so are the test findings' keys. When the ledger cannot account
+     * for every scan since, the files are still reported but neither the policy
+     * nor the test findings are evaluated: their baseline is gone.
      *
      * With `$reuseScan`, a brief whose reported files the graph already holds
      * as they are on disk does not scan again: another writer just did.
@@ -113,9 +115,13 @@ final readonly class TurnBriefService
         try {
             $from = $ledger->activeSnapshot($projectId);
             $current = $ledger->hashes($projectId);
-            $absorbed = $since === null ? ['before' => [], 'baselines' => [], 'scans' => []] : $ledger->since($projectId, $since);
+            $absorbed = $since === null ? ['before' => [], 'baselines' => [], 'test_baselines' => [], 'scans' => []] : $ledger->since($projectId, $since);
             // Taken before the scan rewrites the graph: what the reported files already broke is not this turn's doing.
             [$baseline, $perFile] = $this->baseline($violations, $projectId, $policies, $reported, $absorbed);
+            // The test findings each file touches, before the scan rewrites them; judged once the diff names the
+            // turn's files. A scan the test rules never judged has no keys to tell before from after.
+            $suppressions = ActiveTestFindings::suppressionsOf($root);
+            $held = TurnTestFindings::judged($this->pdo, $projectId) ? TurnTestFindings::held($this->pdo, $projectId, $suppressions) : null;
             $before = self::rewound($current, $absorbed['before'] ?? []);
             $started = $this->now();
             try {
@@ -130,7 +136,7 @@ final readonly class TurnBriefService
             // Same id as the baseline, so a recomputed id cannot make every file look added.
             $after = $ledger->hashes($projectId);
             if ($scan !== null) {
-                $ledger->record($projectId, $from, $scan->snapshotId, $current, $after, $perFile);
+                $ledger->record($projectId, $from, $scan->snapshotId, $current, $after, $perFile, $held === null ? null : TurnTestFindings::baselines($held));
             }
         } finally {
             $lease?->release();
@@ -141,6 +147,12 @@ final readonly class TurnBriefService
         // can change many files at once, and their old violations are not the model's to fix.
         $edited = array_values(array_intersect($live, $reported));
         $tests = $live === [] ? ['tests' => [], 'truncated' => false] : FileTestReach::testsOf($queries->changeQueries, $projectId, $live, self::MAX_TESTS);
+        // A module the turn deleted (a renamed one's old path) strands the doubles that mocked it. A model deletes
+        // and renames through Bash, which reports nothing, so the diff's deletions are the turn's when few.
+        $stranded = TurnTestFindings::stranded($deleted);
+        // For a file a scan since the turn began already took in, as the ledger kept them from before that scan.
+        $testsBefore = $held === null ? null : TurnTestFindings::before(array_values(array_unique([...$reported, ...$stranded])), $held, $absorbed);
+        $testFindings = TurnTestFindings::section($testsBefore, $testsBefore === null ? [] : TurnTestFindings::affected($this->pdo, $projectId, $edited, $suppressions, $stranded), $suppressions->invalid());
         return [
             'status' => 'ok',
             'project_root' => $root,
@@ -158,6 +170,7 @@ final readonly class TurnBriefService
             'policy' => $unreadable !== null
                 ? ['status' => PaneStatus::POLICY_CONFIG_INVALID, 'message' => $unreadable, 'total' => 0, 'violations' => [], 'truncated' => false]
                 : self::policy($enforcePolicies, $edited, $baseline, $baseline === null ? null : $violations->inFiles($projectId, $policies, $edited)),
+            'test_findings' => $testFindings,
         ] + $envelope;
     }
 
@@ -378,6 +391,7 @@ final readonly class TurnBriefService
             'changed_files' => [], 'added_files' => [], 'deleted_files' => [],
             'impact' => [], 'tests' => [], 'tests_truncated' => false,
             'policy' => self::NO_POLICY,
+            'test_findings' => TurnTestFindings::notEvaluated(),
         ];
     }
 }

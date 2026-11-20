@@ -43,6 +43,11 @@ export type TurnBrief = {
    * `message` with status `config_invalid`: why the project's knossos.json could not be read (absent otherwise).
    */
   policy: { status: PolicyStatus; total: number; violations: Violation[]; truncated: boolean; message?: string }
+  /**
+   * The test findings this turn introduced (definite findings only; `stale` marks a double that no longer matches its target, `total_stale` counts those among `total`): `introduced` is at most 10, by file then
+   * line, `total` is uncapped. `not_evaluated` when there was no baseline to compare with. Absent from an older knossos.
+   */
+  test_findings?: { status: 'ok' | 'not_evaluated'; introduced: { key: string; file: string; line: number; message: string; stale: boolean }[]; total: number; total_stale: number; truncated: boolean; suppressions_invalid: string | null }
 }
 /**
  * Where a policy verdict stands: checked, not checked (no policies, or no baseline to compare with), turned off
@@ -189,6 +194,29 @@ export type Dashboard = {
    * budget, absent from an older knossos.
    */
   over_budget?: { source: string; max_function_lines: number; total: number; files: { path: string; functions: number; longest: number; line: number | null }[] } | null
+  /**
+   * What the scan found wrong in the project's tests: test doubles that no
+   * longer match the code they replace, and assertions that cannot fail.
+   * `definite` counts every definite finding; `stale` the ones that are a
+   * double that no longer matches its target, the rest being other test
+   * findings. `by_production_file` groups the `stale` findings by the file of the
+   * code their double replaces (`doubles` distinct doubles, the owner's short
+   * `target` name, up to 3 `reasons` as `member(): category`, and the finding
+   * `keys`); a `warning` is only ever in `list`, which holds the definite
+   * findings first and at most 200 (`list_truncated`). `suppressions_invalid`
+   * says why a knossos.json that could not be read suppressed nothing. Absent
+   * from an older knossos.
+   */
+  test_findings?: {
+    definite: number
+    stale: number
+    warning: number
+    by_production_file: Record<string, { doubles: number; target: string; reasons: string[]; keys: string[] }>
+    by_production_file_truncated: boolean
+    list: { key: string; category: string; sub_rule: string; confidence: 'definite' | 'warning'; message: string; file: string | null; line: number | null; target_file: string | null }[]
+    list_truncated: boolean
+    suppressions_invalid: string | null
+  }
   /**
    * `truncated` when the check stopped at its edge or time limit, so `total`
    * is a floor. `rules`, `boundaries` and `files` (absent from an older

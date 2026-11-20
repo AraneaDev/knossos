@@ -31,8 +31,8 @@ final class ProjectConfigurationLoader
     /** The framework hints knossos.json accepts; the schema's `frameworks` enum must list the same. */
     public const FRAMEWORKS = ['laravel', 'livewire', 'symfony', 'django', 'fastapi', 'flask', 'nextjs', 'nestjs', 'react', 'vue', 'axum', 'actix', 'rocket'];
 
-    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'diagnostic_suppressions', 'web_roots', 'enrichers', 'gates'];
-    public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes'];
+    public const ROOT_KEYS = ['$schema', 'version', 'ignores', 'limits', 'boundaries', 'frameworks', 'snapshot_retention', 'policies', 'quality_budgets', 'dead_code_suppressions', 'diagnostic_suppressions', 'test_finding_suppressions', 'web_roots', 'enrichers', 'gates'];
+    public const BUDGET_KEYS = ['new_cycles', 'boundary_violations', 'error_diagnostics', 'warning_diagnostics', 'hub_degree_growth', 'unreferenced_candidates', 'public_surface_changes', 'new_definite_test_findings'];
 
     /**
      * Keys each nested object accepts, named so the published schema can be
@@ -82,6 +82,7 @@ final class ProjectConfigurationLoader
         $budgets = self::budgets($data['quality_budgets'] ?? []);
         $suppressions = self::stringList($data['dead_code_suppressions'] ?? [], 'dead_code_suppressions', 200);
         $diagnosticSuppressions = self::diagnosticSuppressions($data['diagnostic_suppressions'] ?? []);
+        $testFindingSuppressions = self::testFindingSuppressions($data['test_finding_suppressions'] ?? []);
         $webRoots = self::webRoots($data['web_roots'] ?? []);
         $enrichers = self::enrichers($data['enrichers'] ?? []);
         $gates = self::gates($data['gates'] ?? []);
@@ -100,6 +101,7 @@ final class ProjectConfigurationLoader
             qualityBudgets: $budgets,
             deadCodeSuppressions: $suppressions,
             diagnosticSuppressions: $diagnosticSuppressions,
+            testFindingSuppressions: $testFindingSuppressions,
             watchScanTimeoutMs: $limits['watch_scan_timeout_ms'],
             refreshBudgetMs: $limits['refresh_budget_ms'],
             webRoots: $webRoots,
@@ -385,6 +387,37 @@ final class ProjectConfigurationLoader
             throw new DiscoveryException('PROJECT_CONFIG_INVALID: ' . $field . ' must be an object.');
         }
         return $value;
+    }
+
+    /**
+     * The test-fidelity findings the project marks as not worth reporting: each
+     * a `rule` (a category, `CATEGORY/sub_rule` or a full rule id) and
+     * optionally a `path` (a prefix of the test's file) and a `reason`.
+     *
+     * @return list<array{rule: string, path: ?string, reason: ?string}>
+     */
+    private static function testFindingSuppressions(mixed $value): array
+    {
+        $suppressions = [];
+        foreach (self::objectList($value, 'test_finding_suppressions', 200) as $item) {
+            $unknown = array_diff(array_keys($item), ['rule', 'path', 'reason']);
+            if ($unknown !== []) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: test_finding_suppressions entries take rule, path and reason only.');
+            }
+            $rule = $item['rule'] ?? null;
+            $path = $item['path'] ?? null;
+            $reason = $item['reason'] ?? null;
+            if (!is_string($rule) || $rule === '' || strlen($rule) > 200) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: test_finding_suppressions entries need a rule.');
+            }
+            if (($path !== null && (!is_string($path) || $path === '' || strlen($path) > 1000))
+                || ($reason !== null && (!is_string($reason) || strlen($reason) > 2000))) {
+                throw new DiscoveryException('PROJECT_CONFIG_INVALID: a test_finding_suppressions path or reason must be a non-empty string.');
+            }
+            $suppressions[] = ['rule' => $rule, 'path' => $path, 'reason' => $reason];
+        }
+
+        return $suppressions;
     }
 
     /**

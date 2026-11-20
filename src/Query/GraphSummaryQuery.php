@@ -70,7 +70,7 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
         if ($source !== null && !in_array($source, ['explicit', 'inferred'], true)) {
             throw new InvalidArgumentException('source must be explicit or inferred.');
         }
-        $sql = 'SELECT b.*, COUNT(bm.node_id) AS member_count FROM boundaries b LEFT JOIN boundary_memberships bm ON bm.boundary_id = b.id WHERE b.project_id = :project';
+        $sql = 'SELECT b.*, COUNT(bm.node_id) AS member_count FROM boundaries b LEFT JOIN boundary_memberships bm ON bm.boundary_id = b.id' . SnapshotFacts::condition('boundary_memberships', 'bm') . ' WHERE b.project_id = :project';
         if ($source !== null) {
             $sql .= ' AND b.source = :source';
         }
@@ -158,7 +158,7 @@ final readonly class GraphSummaryQuery extends AbstractArchitectureQueryService
         $statement = $this->pdo->prepare(
             'SELECT n.id, n.kind, n.canonical_name, n.start_line, n.end_line, f.relative_path ' .
             'FROM boundary_memberships bm JOIN nodes n ON n.id = bm.node_id LEFT JOIN files f ON f.id = n.file_id ' .
-            'WHERE bm.boundary_id = :boundary AND ' . EnrichedFacts::excludeSql('n') . ' ORDER BY n.canonical_name LIMIT :limit',
+            'WHERE bm.boundary_id = :boundary AND ' . SnapshotFacts::nativeSql('nodes', 'n') . ' ORDER BY n.canonical_name LIMIT :limit',
         );
         $statement->bindValue(':boundary', $boundaryId);
         $statement->bindValue(':limit', $limit, PDO::PARAM_INT);

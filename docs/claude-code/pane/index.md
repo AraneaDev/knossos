@@ -250,6 +250,7 @@ name:
 | `fanInThreshold`  | `20`                    | dependent files at which a Read or an edit gets a message, 1 to 100,000          |
 | `agentNotes`      | `true`                  | gives the model its [messages](../model-messages.md); the toast on an edit stays |
 | `enforcePolicies` | `true`                  | tells the model about violations a turn introduced                               |
+| `testChecks`      | `true`                  | tells the model when a mock no longer matches the code it stands in for          |
 | `watch`           | `true`                  | runs the live watcher                                                            |
 | `watchPollMs`     | `1000`                  | how often the watcher looks for changes, 250 to 60,000 milliseconds              |
 | `notifications`   | `true`                  | toasts each new cycle or policy violation a scan brings, once                    |

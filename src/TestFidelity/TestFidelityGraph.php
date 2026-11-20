@@ -256,7 +256,9 @@ final readonly class TestFidelityGraph
      * Whether what a double replaces lies outside the project, where its
      * members cannot be checked.
      *
-     * True when the target node is marked external, or when the double has
+     * True when the target node is marked external or declared in a `.d.ts`
+     * file, when the double's edge names an external node no contribution
+     * emits (a lib global such as `console`), or when the double has
      * no target and names a bare package specifier (`axios`, `@scope/pkg`,
      * `node:fs`). A relative or absolute path, or a path alias (`@/…`, `~/…`,
      * `#…`), is inside the project even when it does not resolve, which is
@@ -266,7 +268,11 @@ final readonly class TestFidelityGraph
     {
         $target = $this->target($double);
         if ($target !== null) {
-            return ($target->attributes['external'] ?? false) === true || str_starts_with($target->kind, 'external_');
+            return ($target->attributes['external'] ?? false) === true || str_starts_with($target->kind, 'external_') || str_ends_with($target->evidence->relativePath, '.d.ts');
+        }
+        // An owner no contribution emits and a worker named as external: a lib global such as `console` or `Date`.
+        if (preg_match('/^[^:]+:external_/', $this->targets[$this->nodeOf($double)->localId] ?? '') === 1) {
+            return true;
         }
         $specifier = $double->target['specifier'] ?? '';
 

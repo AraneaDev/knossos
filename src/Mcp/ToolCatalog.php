@@ -172,7 +172,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'snapshot_diff',
                 'title' => 'Snapshot diff',
-                'description' => 'See what changed architecturally between two scans. Use after a rescan to review added/removed components and relationships instead of eyeballing a code diff.',
+                'description' => 'See what changed architecturally between two scans. Use after a rescan to review added/removed components and relationships instead of eyeballing a code diff. `test_findings` counts the test findings each side has that the other lacks (`not_recorded` when a side kept none).',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -197,7 +197,7 @@ final readonly class ToolCatalog
                         ...self::commonReadProperties(),
                         'project_id' => ['type' => 'string', 'minLength' => 1],
                         'baseline_snapshot' => ['type' => 'string', 'minLength' => 1],
-                        'budgets' => self::budgetsSchema(),
+                        'budgets' => QualityBudgetsSchema::schema(),
                         'policies' => ['type' => 'array', 'maxItems' => 50, 'items' => self::policySchema()],
                         'sarif' => ['type' => 'boolean', 'default' => false],
                         'propose_baseline' => ['type' => 'boolean', 'default' => false],
@@ -210,7 +210,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'architecture_trends',
                 'title' => 'Architecture trends',
-                'description' => 'See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot\'s figures in the graph database; a very large snapshot is a `partial` point with a `reason`.',
+                'description' => 'See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot\'s figures in the graph database; a very large snapshot is a `partial` point with a `reason`. Every point carries `definite_test_findings` and `stale_test_findings`, null when that snapshot kept no record.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -630,7 +630,7 @@ final readonly class ToolCatalog
                         'base_ref' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200],
                         'files' => ['type' => 'array', 'maxItems' => 50, 'items' => ['type' => 'string', 'minLength' => 1]],
                         'policies' => ['type' => 'array', 'maxItems' => 50, 'items' => self::policySchema()],
-                        'budgets' => self::budgetsSchema(),
+                        'budgets' => QualityBudgetsSchema::schema(),
                         'baseline_snapshot' => ['type' => 'string', 'minLength' => 1],
                         'max_depth' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 8, 'default' => 4],
                         'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 100],
@@ -867,36 +867,6 @@ final readonly class ToolCatalog
             ],
             'required' => ['id', 'from_boundary'],
             'anyOf' => [['required' => ['allow_targets']], ['required' => ['deny_targets']]],
-            'additionalProperties' => false,
-        ];
-    }
-
-    /**
-     * The quality budgets a gate can enforce, the same set wherever budgets are accepted.
-     *
-     * `quality_gate` named its seven limits; `review_diff` accepted any key with
-     * an integer value. The gate itself rejects an unknown key at runtime, so
-     * nothing was silently skipped, but the schema is the only description an
-     * agent gets before calling, and it described two different contracts.
-     * An empty object stays valid: `review_diff` treats `{}` as "no budgets".
-     *
-     * @return array<string, mixed>
-     */
-    private static function budgetsSchema(): array
-    {
-        $limit = ['type' => 'integer', 'minimum' => 0, 'maximum' => 100000];
-
-        return [
-            'type' => 'object',
-            'properties' => [
-                'new_cycles' => $limit,
-                'boundary_violations' => [...$limit, 'description' => 'Requires policies: there is nothing to count violations against without them.'],
-                'error_diagnostics' => $limit,
-                'warning_diagnostics' => $limit,
-                'hub_degree_growth' => $limit,
-                'unreferenced_candidates' => $limit,
-                'public_surface_changes' => $limit,
-            ],
             'additionalProperties' => false,
         ];
     }

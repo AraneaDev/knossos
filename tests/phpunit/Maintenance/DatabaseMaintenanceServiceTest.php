@@ -106,7 +106,7 @@ final class DatabaseMaintenanceServiceTest extends \Knossos\Tests\Phpunit\Knosso
         assertSame('proj-1', $result->data['project']['id']);
         assertSame('Test', $result->data['project']['name']);
         assertSame(['Set execute=true to permanently remove this project and its stored graph.'], $result->warnings);
-        assertSame(['scans' => 0, 'files' => 0, 'nodes' => 0, 'edges' => 0, 'diagnostics' => 0, 'annotations' => 0], $result->data['counts']);
+        assertSame(['scans' => 0, 'files' => 0, 'nodes' => 0, 'edges' => 0, 'diagnostics' => 0, 'annotations' => 0, 'test_findings' => 0, 'snapshot_test_findings' => 0], $result->data['counts']);
     }
 
     public function testRemoveProjectDryRunWithActiveScan(): void
@@ -763,7 +763,7 @@ final class DatabaseMaintenanceServiceTest extends \Knossos\Tests\Phpunit\Knosso
         $preview = $this->makeService()->removeProject('proj-1', false);
         $result = $this->makeService()->removeProject('proj-1', true);
 
-        assertSame(['scans' => 1, 'files' => 1, 'nodes' => 0, 'edges' => 0, 'diagnostics' => 0, 'annotations' => 0], $preview->data['counts']);
+        assertSame(['scans' => 1, 'files' => 1, 'nodes' => 0, 'edges' => 0, 'diagnostics' => 0, 'annotations' => 0, 'test_findings' => 0, 'snapshot_test_findings' => 0], $preview->data['counts']);
         assertSame(false, $this->pdo->inTransaction(), 'The removal is committed, not left open.');
         assertSame('scan-A', $result->snapshotId);
         assertSame(['id' => 'proj-1', 'name' => 'Test'], $result->data['project']);

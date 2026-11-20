@@ -7,8 +7,8 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Result\PaneStatus;
-use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
+use Knossos\Store\SnapshotFacts;
 use PDO;
 
 /**
@@ -67,7 +67,7 @@ final readonly class ProjectFindings
     public function summary(string $projectId): array
     {
         $kinds = $this->grouped(
-            "SELECT kind AS name, COUNT(*) AS n FROM nodes WHERE project_id = :project AND kind NOT LIKE 'external\\_%' ESCAPE '\\'" . EnrichedFacts::nativeCondition('nodes') . ' GROUP BY kind',
+            "SELECT kind AS name, COUNT(*) AS n FROM nodes WHERE project_id = :project AND kind NOT LIKE 'external\\_%' ESCAPE '\\'" . SnapshotFacts::condition('nodes') . ' GROUP BY kind',
             $projectId,
         );
         $languages = $this->grouped('SELECT language AS name, COUNT(*) AS n FROM files WHERE project_id = :project GROUP BY language', $projectId);
@@ -157,7 +157,7 @@ final readonly class ProjectFindings
         $statement = $this->pdo->prepare(
             'SELECT tf.relative_path, tf.language, tf.line_count, COUNT(DISTINCT sn.file_id) AS dependents FROM edges e '
             . 'JOIN nodes tn ON tn.id = e.target_id JOIN files tf ON tf.id = tn.file_id JOIN nodes sn ON sn.id = e.source_id '
-            . "WHERE e.project_id = ? AND e.kind IN ({$kinds}) AND " . EnrichedFacts::excludeSql('e') . ' AND sn.file_id IS NOT NULL AND sn.file_id <> tn.file_id '
+            . "WHERE e.project_id = ? AND e.kind IN ({$kinds}) AND " . SnapshotFacts::nativeSql('edges', 'e') . ' AND sn.file_id IS NOT NULL AND sn.file_id <> tn.file_id '
             . 'AND ' . SharedNodeKinds::ownedByFileSql('tn.kind') . ' AND ' . SharedNodeKinds::ownedByFileSql('sn.kind') . ' AND tf.line_count > 0 '
             . 'GROUP BY tf.id ORDER BY tf.line_count * COUNT(DISTINCT sn.file_id) DESC, tf.relative_path LIMIT ?',
         );

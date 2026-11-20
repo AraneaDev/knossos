@@ -6,6 +6,7 @@ namespace Knossos\Query;
 
 use Knossos\Boundary\BoundaryReferences;
 use Knossos\Store\ChunkedInQuery;
+use Knossos\Store\SnapshotFacts;
 use PDO;
 
 /**
@@ -44,7 +45,7 @@ final readonly class BoundaryLabels
         $statement = $pdo->prepare(
             // Counted per boundary from the membership key, not by grouping a
             // join, which sorted every membership of the project first.
-            'SELECT b.id, b.name, b.source, b.matcher_json, (SELECT COUNT(*) FROM boundary_memberships bm WHERE bm.boundary_id = b.id) AS members '
+            'SELECT b.id, b.name, b.source, b.matcher_json, (SELECT COUNT(*) FROM boundary_memberships bm WHERE bm.boundary_id = b.id' . SnapshotFacts::condition('boundary_memberships', 'bm') . ') AS members '
             . 'FROM boundaries b WHERE b.project_id = :project ORDER BY b.id',
         );
         $statement->execute(['project' => $projectId]);
