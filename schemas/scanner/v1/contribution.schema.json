@@ -213,6 +213,7 @@
             "configured",
             "partial",
             "prophecy",
+            "shouldHaveReceived",
             "unknown"
           ]
         },

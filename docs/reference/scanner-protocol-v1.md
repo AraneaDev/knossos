@@ -246,8 +246,9 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   configures, each
   `{name, line, api, params?, returns}` where `api` is how the test names the
   member (`spyOn`, `mockFactoryKey`, `objectLiteralKey`, `instance-member`,
-  PHPUnit's `method`, `configured` and `partial`, Mockery's `shouldReceive`,
-  `prophecy`, or `unknown`), `params` is the signature shape
+  PHPUnit's `method`, `configured` and `partial`, Mockery's `shouldReceive`
+  and, for a member a spy assertion names, `shouldHaveReceived`, `prophecy`, or
+  `unknown`), `params` is the signature shape
   above and each `returns` entry is `{api, line, once, assignable, typed}`
   (`assignable` is `true`, `false` or `"unknown"`). A member may also carry
   `called_with`, the argument-list assertions on it, each

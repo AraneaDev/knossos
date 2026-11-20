@@ -10,8 +10,10 @@ use PhpParser\Node\Stmt;
 
 /**
  * Where in a test file an expression sits: the functions around it, innermost
- * last, and the class and method it is in. What a variable or a `$this`
- * property names depends on all three.
+ * last, the class and method it is in, and the Pest test or `beforeEach()`
+ * closure around it. What a variable or a `$this` property names depends on
+ * all of them: in a Pest file, `$this` is the test case each closure is
+ * bound to, and what `beforeEach()` sets on it every test of the file sees.
  */
 final readonly class Site
 {
@@ -22,6 +24,8 @@ final readonly class Site
         public array $functions,
         public ?Stmt\ClassLike $class,
         public ?Stmt\ClassMethod $method,
+        public ?FunctionLike $pestClosure = null,
+        public bool $pestSetUp = false,
     ) {}
 
     /**
@@ -49,16 +53,32 @@ final readonly class Site
         return 'file';
     }
 
-    /** The class whose `$this` properties are in scope here, as a key; null outside a class. */
+    /** The class whose `$this` properties are in scope here, as a key, or the Pest file's test case; null outside both. */
     public function classScope(): ?string
     {
-        return $this->class === null ? null : 'c' . spl_object_id($this->class);
+        if ($this->class !== null) {
+            return 'c' . spl_object_id($this->class);
+        }
+
+        return $this->pestClosure === null ? null : 'pest';
     }
 
-    /** Whether the code here runs in the class's `setUp()`, which every test of the class runs first. */
+    /** The method, or else the Pest closure, the code here runs in, as an id; 0 outside both. */
+    public function ownerId(): int
+    {
+        $owner = $this->method ?? $this->pestClosure;
+
+        return $owner === null ? 0 : spl_object_id($owner);
+    }
+
+    /** Whether the code here runs in the class's `setUp()` or a Pest `beforeEach()`, which every test runs first. */
     public function inSetUp(): bool
     {
-        return $this->method !== null && strtolower($this->method->name->toString()) === 'setup';
+        if ($this->method !== null) {
+            return strtolower($this->method->name->toString()) === 'setup';
+        }
+
+        return $this->pestClosure !== null && $this->pestSetUp;
     }
 
     /** Whether a function declares a parameter of that name. */

@@ -20,8 +20,17 @@ final class DoubleRecord
     /** @var array<int, true> the lines that call the double or hand it on */
     private array $sites = [];
 
+    /** @var array<string, ?Expr> by member, the expression its first pin returns; null for a callback's result */
+    private array $firstPins = [];
+
     /** Whether the framework lets the double stub protected members. */
     public bool $allowsProtected = false;
+
+    /** Whether the test stubs the double through Mockery: `shouldReceive()`, `allows()`, `expects()`. */
+    public bool $stubbed = false;
+
+    /** The canonical name of the test the double is made in; null for one made outside any test. */
+    public ?string $testCase = null;
 
     /**
      * @param Node $node the expression that makes the double, which places it
@@ -59,6 +68,7 @@ final class DoubleRecord
             return;
         }
         $type = PinnedType::of($value);
+        $this->firstPins[$name] ??= $value;
         $this->members[$name]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => $type !== PinnedType::UNKNOWN, 'type' => $type];
     }
 
@@ -66,8 +76,27 @@ final class DoubleRecord
     public function unknownPin(string $name, string $api, int $line): void
     {
         if (isset($this->members[$name])) {
+            $this->firstPins[$name] ??= null;
             $this->members[$name]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => false, 'type' => PinnedType::UNKNOWN];
         }
+    }
+
+    /** Whether the test pins what a member returns. */
+    public function isPinned(string $name): bool
+    {
+        return array_key_exists($name, $this->firstPins);
+    }
+
+    /** The expression a member's first pin makes it return; null when it is not pinned, or pinned to a callback's result. */
+    public function firstPin(string $name): ?Expr
+    {
+        return $this->firstPins[$name] ?? null;
+    }
+
+    /** Whether the double is a Mockery spy the test never stubs, so every call on it returns null. */
+    public function isUnconfiguredSpy(): bool
+    {
+        return in_array($this->pattern, ['Mockery::spy', 'laravel.spy'], true) && !$this->stubbed;
     }
 
     /** Record an assertion on the arguments a member is called with. */
@@ -106,6 +135,7 @@ final class DoubleRecord
             'automock' => $this->automock,
             'invocations' => count($this->sites),
             ...($this->allowsProtected ? ['allows_protected' => true] : []),
+            ...($this->testCase === null ? [] : ['test_case' => $this->testCase]),
             'members' => $members,
         ];
     }

@@ -29,8 +29,11 @@ final readonly class TautologyRule implements TestFidelityRule
 {
     public const ID = 'test.fidelity.tautology.v1';
 
-    /** Matchers that state a property of one value, so two constants under them are not a tautology. */
-    private const CONSTANT_APIS = ['toBeNull', 'toBeUndefined', 'toBeTruthy', 'toBeFalsy', 'toBeInstanceOf', 'toHaveLength'];
+    /** Matchers that state a property of one value, so two constants under them are not a tautology: Vitest's and Jest's, PHPUnit's and Pest's. */
+    private const CONSTANT_APIS = ['toBeNull', 'toBeUndefined', 'toBeTruthy', 'toBeFalsy', 'toBeInstanceOf', 'toHaveLength', 'assertNull', 'assertInstanceOf', 'assertCount', 'toHaveCount'];
+
+    /** Mockery's spy assertions, which hold a call against a spy as `toHaveBeenCalled*` does. */
+    private const SPY_ASSERTIONS = ['shouldHaveReceived', 'shouldNotHaveReceived'];
 
     /** Where an operand's value comes from a double. */
     private const MOCK_SOURCES = ['mock-config', 'mock-call'];
@@ -139,11 +142,17 @@ final readonly class TautologyRule implements TestFidelityRule
             return null;
         }
         $spy = $doubles[$operand->double] ?? null;
-        if ($spy === null || $spy->invocations !== 0 || $case->productionCalls !== 0 || !str_starts_with($assertion->api, 'toHaveBeenCalled')) {
+        if ($spy === null || $spy->invocations !== 0 || $case->productionCalls !== 0 || !self::isCallMatcher($assertion->api)) {
             return null;
         }
 
         return ['unconfigured_spy', FindingConfidence::Warning, 'the spy is not stubbed and the test runs no production code, so nothing could have called it', ['double' => $spy->canonicalName]];
+    }
+
+    /** Whether a matcher asserts a call on a spy: `toHaveBeenCalled*`, or Mockery's `shouldHaveReceived()`. */
+    private static function isCallMatcher(string $api): bool
+    {
+        return str_starts_with($api, 'toHaveBeenCalled') || in_array($api, self::SPY_ASSERTIONS, true);
     }
 
     /**

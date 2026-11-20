@@ -121,6 +121,38 @@ serves the rest of its method; assigned to a `$this` property in `setUp()`, it
 serves every test of the class. Its members are the names `method()`,
 `shouldReceive()` and Prophecy's calls configure, with the values
 `willReturn()` and `andReturn()` pin them to and the argument counts `with()`
-expects. A member whose name is computed, such as `method($name)`, is left
-out. A test file whose doubles cannot be read reports the warning
+expects. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
+`m`, and the arguments it is given or `->with()` lists after it are counted the
+same way. A member whose name is computed, such as `method($name)`, is left
+out. In a Pest file, a double that `beforeEach()` assigns to a `$this` property
+serves every test of the file.
+
+## Test cases
+
+The same test files report each test as a `test_case` fact. A test is a public
+method of a class whose name ends in `Test`, when it is named `test*`, marked
+`#[Test]` or documented `@test`, or a closure handed to Pest's `it()` or
+`test()`. Each one lists:
+
+- its assertions: PHPUnit's `assertSame()`, `assertEquals()`,
+  `assertNotSame()`, `assertNotEquals()`, `assertTrue()`, `assertFalse()`,
+  `assertNull()`, `assertCount()` and `assertInstanceOf()`; Pest's
+  `expect($x)->toBe(...)` and every other `to*` matcher, through `->not` and
+  `->and()`; and Mockery's `shouldHaveReceived()` and `shouldNotHaveReceived()`.
+- where each operand's value comes from: a stub's pinned value, a double,
+  the code under test, a literal, a parameter of the test (a data provider's or
+  dataset's row), or unknown.
+- its production calls and the project files they land in.
+
+A variable or `$this` property is followed to its value, in the test or in
+`setUp()` / `beforeEach()`, only when it is assigned once and nothing else
+changes it. A call counts as production when it constructs a class, calls a
+static method of one, or calls a method on a variable bound to `new X()`. It
+also counts when it is a method the test case inherits, such as Laravel's
+`$this->get('/')`, or a function that is not PHP's own. A class of PHP or of a
+test framework, one the test file declares, and one in a test module run no
+code under test. The file a counted class lives in comes from composer's PSR-4
+maps, read from the nearest `composer.json`; no autoloader is run.
+
+A test file whose doubles or tests cannot be read reports the warning
 `PHP_TEST_FACTS_FAILED` and keeps every other fact.

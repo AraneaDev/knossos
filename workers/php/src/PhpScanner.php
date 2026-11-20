@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace KnossosPhpScanner;
 
-use KnossosPhpScanner\TestFacts\TestDoubleCollector;
+use KnossosPhpScanner\TestFacts\TestFileFacts;
 use KnossosPhpScanner\TestFacts\TestModulePath;
 use PhpParser\ErrorHandler\Collecting;
 use PhpParser\Node;
@@ -120,9 +120,10 @@ final readonly class PhpScanner
 
         $edges = [...$collector->edges(), ...($laravelCollector?->edges() ?? []), ...($symfonyCollector?->edges() ?? [])];
         $diagnostics = [...$diagnostics, ...($laravelCollector?->diagnostics() ?? []), ...($symfonyCollector?->diagnostics() ?? [])];
-        // A test file's mocks, stubs and spies, for the core to hold against the code they stand in for.
+        // A test file's mocks, stubs and spies, for the core to hold against the
+        // code they stand in for, and its tests, for the assertions that cannot fail.
         if ($ast !== [] && TestModulePath::isTest($relativePath)) {
-            [$nodes, $edges, $diagnostics] = TestDoubleCollector::addTo($ast, $relativePath, $source, $nodes, $edges, $diagnostics);
+            [$nodes, $edges, $diagnostics] = TestFileFacts::addTo($ast, $root, $relativePath, $source, $nodes, $edges, $diagnostics);
         }
 
         return [
