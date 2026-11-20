@@ -90,15 +90,15 @@ final class PhpTestCasesTest extends KnossosTestCase
         self::assertEquals([new Assertion('toBe', 12, [new Operand('production', null, null, false), new Operand('literal', '42', null, false)])], $cases['tests/Feature/billing.php#test:11']->assertions);
         assertSame([1, ['src/Billing/Calculator.php']], [$cases['tests/Feature/billing.php#test:11']->productionCalls, $cases['tests/Feature/billing.php#test:11']->subjects], 'A beforeEach() property bound to new Calculator().');
         self::assertEquals([
-            new Assertion('toBeFalse', 17, [new Operand('mock-config', null, $gateway->canonicalName, false, 'true')], true),
+            new Assertion('toBeFalse', 17, [new Operand('mock-call', null, $gateway->canonicalName, false)], true),
             new Assertion('toBe', 17, [new Operand('literal', 'true', null, false), new Operand('literal', 'true', null, false)]),
-        ], $cases['tests/Feature/billing.php#test:15']->assertions, 'The beforeEach() double is configured in the test; ->and() starts a new subject.');
+        ], $cases['tests/Feature/billing.php#test:15']->assertions, 'The beforeEach() double held in a property keeps its identity but pins no value; ->and() starts a new subject.');
         self::assertEquals([new Assertion('toBeInt', 21, [new Operand('parameter', '$cents', null, false)])], $cases['tests/Feature/billing.php#test:20']->assertions);
         self::assertEquals([new Operand('literal', '$expected', null, false), new Operand('literal', '42', null, false)], $cases['tests/Feature/billing.php#test:26']->assertions[0]->operands, 'expect() reads its value; it does not change it.');
         self::assertEquals([new Operand('unknown', '$this->local', null, false), new Operand('literal', '5', null, false)], $cases['tests/Feature/billing.php#test:35']->assertions[0]->operands, 'A property one Pest test sets is not set in another.');
         assertSame(null, $gateway->testCase, 'A double made in beforeEach() answers to every test.');
         assertSame(['charge', 'refund'], array_map(static fn($member): string => $member->name, $gateway->members));
-        self::assertEquals([new Operand('mock-config', null, $gateway->canonicalName, false, 'false')], $cases['tests/Feature/billing.php#test:43']->assertions[0]->operands, 'A pin made in beforeEach() reaches every test of the file.');
+        self::assertEquals([new Operand('mock-call', null, $gateway->canonicalName, false)], $cases['tests/Feature/billing.php#test:43']->assertions[0]->operands, 'A pin made in beforeEach() on a property-held double is no value: code the file does not show may swap the double.');
     }
 
     public function testAFileOfTestsWithoutDoublesGainsItsModule(): void
@@ -188,13 +188,13 @@ final class PhpTestCasesTest extends KnossosTestCase
         assertSame([
             'tests/SharedTest.php#test:12' => [[['mock-call', '$this->stub']]],
             'tests/SharedTest.php#test:17' => [[['literal', '1'], ['mock-call']]],
-            'tests/SharedTest.php#test:21' => [[['literal', '5'], ['mock-config', 2 => '5']]],
+            'tests/SharedTest.php#test:21' => [[['literal', '5'], ['mock-call']]],
             'tests/SharedTest.php#test:25' => [[['literal', '5'], ['mock-call']]],
-        ], $operands($shared), 'A pin made in another test does not reach this one; one made in setUp() does, unless the test shapes the member again.');
+        ], $operands($shared), 'A double held in a property is the double, but no pin on it is a value the source proves: setUp() and other code may swap it.');
 
         $findings = static fn(array $contributions): array => array_map(static fn(TestFinding $finding): array => [$finding->subRule, $finding->confidence->value, $finding->evidence->startLine], self::tautologies($contributions));
         assertSame([['constant', 'definite', 112], ['constant', 'definite', 71]], $findings([$writes]), 'Only the values nothing changes are constants; assertTrue(true) with or without a message is silent.');
-        assertSame([['mock_only', 'warning', 15], ['mock_echo', 'definite', 23]], $findings([$shared]), 'Asserting on a double alone, with no production run, is the mock-only warning; only the setUp() pin that alone reaches its test echoes.');
+        assertSame([['mock_only', 'warning', 15]], $findings([$shared]), 'Asserting on a double alone, with no production run, is the mock-only warning; a setUp() pin on a property-held double does not echo.');
     }
 
     public function testAValueThatMayChangeIndirectlyIsUnknown(): void
@@ -260,11 +260,9 @@ final class PhpTestCasesTest extends KnossosTestCase
             ['constant', 'tests/ProbeTest.php:64'],
             ['constant', 'tests/WriteTest.php:112'],
             ['constant', 'tests/WriteTest.php:71'],
-            ['mock_echo', 'tests/Feature/probes.php:51'],
             ['mock_echo', 'tests/PinTest.php:120'],
-            ['mock_echo', 'tests/PinTest.php:39'],
             ['zero_reach', 'tests/PinTest.php:109'],
-        ], $findings, 'Only locals nothing can change, and pins that alone reach their test, give a tautology (ProbeTest :110 no longer: testStubOverride assigns the same property, so setUp() is not its only assigner); the stub replaced before it is called is a zero-reach warning.');
+        ], $findings, 'Only locals nothing can change, and pins on a local-held double that alone reach their test, give a tautology (a pin on a property-held double, as at probes.php :51 and PinTest :39, never does); the stub replaced before it is called is a zero-reach warning.');
     }
 
     public function testAPropertyIsNeverALiteral(): void
@@ -328,27 +326,50 @@ final class PhpTestCasesTest extends KnossosTestCase
         assertSame([['constant', 'tests/LocalTest.php:33']], $findings, 'Only the local nothing changes is a tautology.');
     }
 
-    public function testAPropertyHoldsAPinnedDoubleOnlyWhenOneMethodAssignsIt(): void
+    public function testAPropertyHeldDoubleKeepsItsIdentityButPinsNoValue(): void
     {
-        $files = ['tests/HeldTest.php', 'tests/Feature/held.php', 'tests/Feature/heldhelper.php'];
-        $scanned = $this->scan('cases', $files);
-        $sources = [];
+        $files = ['tests/HeldTest.php', 'tests/Feature/held.php', 'tests/Feature/heldhelper.php', 'tests/SwapTest.php', 'tests/IdentTest.php', 'tests/Feature/ident.php'];
+        $scanned = array_combine($files, $this->scan('cases', $files));
+        $operands = [];
         foreach ($scanned as $contribution) {
             foreach (self::cases($contribution) as $case) {
                 foreach ($case->assertions as $assertion) {
-                    $sources[$case->canonicalName . ':' . $assertion->line] = array_map(static fn(Operand $operand): string => $operand->source, $assertion->operands);
+                    $operands[$case->canonicalName . ':' . $assertion->line] = array_map(static fn(Operand $operand): string => $operand->source . ($operand->unconfiguredSpy ? '+spy' : ''), $assertion->operands);
                 }
             }
         }
 
-        // setUp() and a helper both assign $this->calc: the helper may swap the stub for the real class. testEcho, which does not call it, loses its echo too.
-        assertSame(['literal', 'unknown'], $sources['tests/HeldTest.php#test:18:18']);
-        assertSame(['literal', 'unknown'], $sources['tests/HeldTest.php#test:21:21']);
-        // A class using a trait, a Pest file calling uses() or handing a helper test(): code the file does not show may assign it.
-        assertSame(['literal', 'unknown'], $sources['tests/HeldTest.php#test:29:29']);
-        assertSame(['unknown', 'literal'], $sources['tests/Feature/held.php#test:11:12']);
-        assertSame(['unknown', 'literal'], $sources['tests/Feature/heldhelper.php#test:11:13']);
-        assertSame([], self::tautologies($scanned), 'None of these healthy tests is a stub echo.');
+        // A helper, a closure, a trait hook, uses() or test() may swap the stub: the read is the double, never its pin.
+        assertSame(['literal', 'mock-call'], $operands['tests/HeldTest.php#test:18:18']);
+        assertSame(['literal', 'mock-call'], $operands['tests/HeldTest.php#test:21:21']);
+        assertSame(['literal', 'mock-call'], $operands['tests/HeldTest.php#test:29:29']);
+        assertSame(['mock-call', 'literal'], $operands['tests/Feature/held.php#test:11:12']);
+        assertSame(['mock-call', 'literal'], $operands['tests/Feature/heldhelper.php#test:11:13']);
+        // Swaps the file shows but no assignment count sees: an in-file parent, destructuring, foreach, a reference, a by-reference argument, an alias, a dynamic name, Closure::bind().
+        foreach ([17, 24, 31, 38, 45, 52, 59, 73] as $line) {
+            self::assertContains(['literal', 'mock-call'], array_filter($operands, static fn(string $key): bool => str_starts_with($key, 'tests/SwapTest.php#test:' . $line . ':'), ARRAY_FILTER_USE_KEY), 'SwapTest :' . $line);
+        }
+        // A spy held in a property of a class using a trait, or of a Pest file calling uses(), is still the spy.
+        assertSame(['mock-call+spy'], $operands['tests/IdentTest.php#test:15:15']);
+        assertSame(['mock-call', 'mock-call'], $operands['tests/IdentTest.php#test:14:14']);
+        assertSame(['mock-call+spy'], $operands['tests/Feature/ident.php#test:5:5']);
+        assertSame(['mock-call+spy', 'mock-call+spy'], $operands['tests/Feature/ident.php#test:6:6']);
+
+        $findings = [];
+        foreach ($scanned as $file => $contribution) {
+            foreach (self::tautologies([$contribution]) as $finding) {
+                $findings[] = [$finding->subRule, $file . ':' . $finding->evidence->startLine];
+            }
+        }
+        sort($findings);
+        assertSame([
+            ['mock_only', 'tests/Feature/ident.php:5'],
+            ['mock_only', 'tests/Feature/ident.php:6'],
+            ['mock_only', 'tests/IdentTest.php:14'],
+            ['mock_only', 'tests/IdentTest.php:24'],
+            ['mock_only', 'tests/IdentTest.php:25'],
+            ['unconfigured_spy', 'tests/IdentTest.php:15'],
+        ], $findings, 'No property-held stub echoes; a property-held spy or double alone keeps its warnings (a spy the file calls is mock-only, not unconfigured).');
     }
 
     public function testFirstClassCallablesScanWithoutAWarning(): void
@@ -412,7 +433,7 @@ final class PhpTestCasesTest extends KnossosTestCase
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
         $root = self::repositoryRoot() . '/tests/Fixtures/test-fidelity/php/cases';
         $checked = 0;
-        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/EscapeTest.php', 'tests/RefTest.php', 'tests/ProjectCaseTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php', 'tests/Feature/helpers.php', 'tests/HookTest.php', 'tests/Feature/ext.php', 'tests/Feature/usestrait.php', 'tests/Feature/fcc.php', 'tests/LocalTest.php', 'tests/HeldTest.php', 'tests/Feature/refs.php', 'tests/Feature/held.php', 'tests/Feature/heldhelper.php'] as $file) {
+        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/EscapeTest.php', 'tests/RefTest.php', 'tests/ProjectCaseTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php', 'tests/Feature/helpers.php', 'tests/HookTest.php', 'tests/Feature/ext.php', 'tests/Feature/usestrait.php', 'tests/Feature/fcc.php', 'tests/LocalTest.php', 'tests/HeldTest.php', 'tests/Feature/refs.php', 'tests/Feature/held.php', 'tests/Feature/heldhelper.php', 'tests/SwapTest.php', 'tests/IdentTest.php', 'tests/Feature/ident.php'] as $file) {
             $contribution = json_decode((string) json_encode((new \KnossosPhpScanner\PhpScanner())->scan($root, $root . '/' . $file, $file)), true, 512, JSON_THROW_ON_ERROR);
             assertSame([], $contribution['diagnostics'], $file);
             foreach ([...$contribution['nodes'], ...$contribution['edges']] as $fact) {
@@ -421,7 +442,7 @@ final class PhpTestCasesTest extends KnossosTestCase
                 $checked += ($fact['kind'] ?? '') === 'test_case' ? 1 : 0;
             }
         }
-        assertSame(173, $checked);
+        assertSame(190, $checked);
     }
 
     /**
