@@ -149,7 +149,7 @@ final class OperandSource
         }
         $held = $this->file->doubles->held($call->var, $site);
         if ($held !== null) {
-            return $this->onDouble($held->double, $call->name, $held->double->framework !== 'prophecy' || $held->revealed, $site, $test);
+            return $this->onDouble($held->double, $call->name, !$held->viaProperty && ($held->double->framework !== 'prophecy' || $held->revealed), $site, $test);
         }
         [$source, $double] = $this->provenance($call->var, $site, $test, $depth + 1);
 
@@ -183,7 +183,10 @@ final class OperandSource
      * answers is set in the test or its setup, and it is one plain value for
      * any call. Otherwise the call is on the double, with no value to hold
      * the assertion against: one of several in turn, one for some arguments,
-     * a callback, a pin made in another test.
+     * a callback, a pin made in another test. A double held in a `$this`
+     * property never answers with a pin: code the file does not show (a
+     * parent class, a trait's hook, a helper handed the test case) may have
+     * swapped it for something else before the call.
      *
      * @return array{string, ?DoubleRecord, ?string}
      */

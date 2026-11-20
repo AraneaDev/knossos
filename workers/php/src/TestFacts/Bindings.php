@@ -30,8 +30,6 @@ final class Bindings
     /** @var array<string, list<array{int, int, bool, Value}>> by class and property: position, method id, whether in `setUp()`, value */
     private array $properties = [];
 
-    /** @var array<string, true> class scopes whose properties code the file does not show may assign: a class using a trait, a Pest file calling `uses()` or handing out `test()` */
-    private array $opaque = [];
 
     /**
      * Bind a local variable from a position on.
@@ -105,29 +103,6 @@ final class Bindings
     public function variableWrites(string $name, Site $site): int
     {
         return count($this->variables[$site->variableScope($name) . '$' . $name] ?? []);
-    }
-
-    /** Note a class scope (`Site::classScope()`, null for none) whose properties code the file does not show may assign. */
-    public function opaque(?string $class): void
-    {
-        if ($class !== null) {
-            $this->opaque[$class] = true;
-        }
-    }
-
-    /**
-     * Whether exactly one method (or Pest closure) assigns a `$this`
-     * property, in a class whose every assignment the file shows: no other
-     * method, helper, trait or `test()` caller may have replaced what it holds.
-     */
-    public function soleProperty(string $name, Site $site): bool
-    {
-        $class = $site->classScope();
-        if ($class === null || isset($this->opaque[$class])) {
-            return false;
-        }
-
-        return count(array_unique(array_map(static fn(array $binding): int => $binding[1], $this->properties[$class . '->' . $name] ?? []))) === 1;
     }
 
     /** How many assignments bind a `$this` property anywhere in the class a site reads it in. */

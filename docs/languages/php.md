@@ -154,9 +154,10 @@ variable variable, an `include` or `require`, `eval()`) proves no local's value.
 class or a Pest file, and a static property are never a literal: code the file
 does not show (a parent class, a trait's hook, `__set()`, a helper handed
 Pest's `test()`) may write them at any time. A property holding a double is
-that double when exactly one method or Pest closure assigns it, and the class
-uses no trait (a Pest file calls no `uses()`, `pest()` or bare `test()`); otherwise a
-helper or hook may have swapped it. Any other property assigned code under test in the test or in `setUp()` / `beforeEach()` is
+that double, for its identity (`mock-call`), but a call on it never gives the
+value pinned on it: a helper or hook may have swapped it for something else.
+Only a double held in a local variable, or used inline, gives its pin
+(`mock-config`). Any other property assigned code under test in the test or in `setUp()` / `beforeEach()` is
 production; any other is unknown. A call on a stub gives its pinned value
 only when exactly one way the member answers is set in the test or its setup,
 and that is one value for any call: not a value for some arguments only
