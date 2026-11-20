@@ -20,8 +20,11 @@ final class DoubleRecord
     /** @var array<int, true> the lines that call the double or hand it on */
     private array $sites = [];
 
-    /** @var array<string, ?Expr> by member, the expression its first pin returns; null for a callback's result */
-    private array $firstPins = [];
+    /**
+     * @var array<string, list<array{?Expr, int, bool}>> by member, each way the test makes it answer: the value
+     * it returns (null when the source does not state one), where that is set, and whether it is one plain value for any call
+     */
+    private array $answers = [];
 
     /** Whether the framework lets the double stub protected members. */
     public bool $allowsProtected = false;
@@ -61,36 +64,46 @@ final class DoubleRecord
         return true;
     }
 
-    /** Record a value the test pins a member to return. */
-    public function pin(string $name, string $api, Expr $value, int $line): void
+    /**
+     * Record a value the test pins a member to return; `$plain` when it is
+     * the member's one answer to any call, not one of several in turn nor
+     * one for some arguments only.
+     */
+    public function pin(string $name, string $api, Expr $value, int $line, bool $plain = true): void
     {
         if (!isset($this->members[$name])) {
             return;
         }
         $type = PinnedType::of($value);
-        $this->firstPins[$name] ??= $value;
+        $this->answers[$name][] = [$value, $value->getStartFilePos(), $plain];
         $this->members[$name]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => $type !== PinnedType::UNKNOWN, 'type' => $type];
     }
 
     /** Record a value the test makes a member return without stating it, such as a callback's result. */
-    public function unknownPin(string $name, string $api, int $line): void
+    public function unknownPin(string $name, string $api, int $line, int $position): void
     {
         if (isset($this->members[$name])) {
-            $this->firstPins[$name] ??= null;
+            $this->answer($name, $position);
             $this->members[$name]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => false, 'type' => PinnedType::UNKNOWN];
         }
     }
 
-    /** Whether the test pins what a member returns. */
-    public function isPinned(string $name): bool
+    /** Record that the test shapes what a member returns in a way the source does not state as one value: a map, a throw, `self`. */
+    public function answer(string $name, int $position): void
     {
-        return array_key_exists($name, $this->firstPins);
+        if (isset($this->members[$name])) {
+            $this->answers[$name][] = [null, $position, false];
+        }
     }
 
-    /** The expression a member's first pin makes it return; null when it is not pinned, or pinned to a callback's result. */
-    public function firstPin(string $name): ?Expr
+    /**
+     * Each way the test makes a member answer: its value, where it is set, and whether it is one plain value.
+     *
+     * @return list<array{?Expr, int, bool}>
+     */
+    public function answersOf(string $name): array
     {
-        return $this->firstPins[$name] ?? null;
+        return $this->answers[$name] ?? [];
     }
 
     /** Whether the double is a Mockery spy the test never stubs, so every call on it returns null. */

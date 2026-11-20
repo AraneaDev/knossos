@@ -14,24 +14,32 @@ use PhpParser\Node\Name;
  * expressions it compares.
  *
  * - PHPUnit's value assertions, on `$this`, `self::`, `static::`, the
- *   `Assert` class or as functions: the first two arguments, expected first.
+ *   `Assert` class or as functions: the values each takes, expected first,
+ *   and never the failure message after them.
  * - Pest's `expect($actual)->toBe($expected)`, through `->not` and from
  *   one matcher to the next; `->and($other)` starts a new subject.
  * - Mockery's `$spy->shouldHaveReceived('m')`: the spy itself.
  */
 final class AssertionSyntax
 {
-    /** PHPUnit's assertions read, each true when it expects the opposite of what it compares. */
+    /**
+     * PHPUnit's assertions read: whether each expects the opposite of what it
+     * compares, and how many of its arguments are values. What follows them is
+     * the failure message, never an operand.
+     */
     private const PHPUNIT = [
-        'assertsame' => ['assertSame', false],
-        'assertequals' => ['assertEquals', false],
-        'assertnotsame' => ['assertNotSame', true],
-        'assertnotequals' => ['assertNotEquals', true],
-        'asserttrue' => ['assertTrue', false],
-        'assertfalse' => ['assertFalse', false],
-        'assertnull' => ['assertNull', false],
-        'assertcount' => ['assertCount', false],
-        'assertinstanceof' => ['assertInstanceOf', false],
+        'assertsame' => ['assertSame', false, 2],
+        'assertequals' => ['assertEquals', false, 2],
+        'assertnotsame' => ['assertNotSame', true, 2],
+        'assertnotequals' => ['assertNotEquals', true, 2],
+        'assertcount' => ['assertCount', false, 2],
+        'assertinstanceof' => ['assertInstanceOf', false, 2],
+        'asserttrue' => ['assertTrue', false, 1],
+        'assertfalse' => ['assertFalse', false, 1],
+        'assertnull' => ['assertNull', false, 1],
+        'assertnotnull' => ['assertNotNull', false, 1],
+        'assertempty' => ['assertEmpty', false, 1],
+        'assertnotempty' => ['assertNotEmpty', false, 1],
     ];
 
     /** Mockery's spy assertions, each true when it expects no such call. */
@@ -147,11 +155,13 @@ final class AssertionSyntax
             $call instanceof Expr\FuncCall => $call->name instanceof Name ? $call->name->getLast() : '',
             default => $call->name instanceof Identifier ? $call->name->toString() : '',
         };
-        $known = self::PHPUNIT[strtolower($name)] ?? null;
+        $lower = strtolower($name);
+        // `assertIsArray()`, `assertIsInt()` and the rest of the `assertIs*` family state a property of one value.
+        $known = self::PHPUNIT[$lower] ?? (str_starts_with($lower, 'assertis') && strlen($lower) > 8 ? [$name, false, 1] : null);
         if ($known === null || $call->isFirstClassCallable()) {
             return null;
         }
-        $operands = array_map(static fn($argument): Expr => $argument->value, array_slice($call->getArgs(), 0, 2));
+        $operands = array_map(static fn($argument): Expr => $argument->value, array_slice($call->getArgs(), 0, $known[2]));
 
         return ['api' => $known[0], 'line' => $call->getStartLine(), 'negated' => $known[1], 'operands' => array_values($operands)];
     }

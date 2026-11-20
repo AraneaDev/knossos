@@ -30,6 +30,12 @@ final class ProjectClasses
      */
     private function __construct(private readonly string $root, private readonly array $prefixes) {}
 
+    /** Drop every composer.json and class location read so far, so the next request reads the tree as it is now. */
+    public static function forget(): void
+    {
+        self::$cache = [];
+    }
+
     /** The project's classes as seen from a test file: by the nearest composer.json between it and the root. */
     public static function of(string $root, string $relativePath): self
     {

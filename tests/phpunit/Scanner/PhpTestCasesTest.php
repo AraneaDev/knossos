@@ -85,8 +85,8 @@ final class PhpTestCasesTest extends KnossosTestCase
         [$pest] = $this->scan('cases', ['tests/Feature/billing.php']);
         $cases = self::cases($pest);
         $gateway = self::doubles($pest)[8];
-        assertSame(['tests/Feature/billing.php#test:11', 'tests/Feature/billing.php#test:15', 'tests/Feature/billing.php#test:20', 'tests/Feature/billing.php#test:26', 'tests/Feature/billing.php#test:31', 'tests/Feature/billing.php#test:35'], array_keys($cases), 'it() and test() with a closure; a pending it() runs nothing.');
-        assertSame(['totals', 'echoes the stub', 'reads a dataset', 'keeps what it expects', 'sets a property', "reads another test's property"], array_values(array_map(static fn(TestCaseFact $case): string => $case->name, $cases)));
+        assertSame(['tests/Feature/billing.php#test:11', 'tests/Feature/billing.php#test:15', 'tests/Feature/billing.php#test:20', 'tests/Feature/billing.php#test:26', 'tests/Feature/billing.php#test:31', 'tests/Feature/billing.php#test:35', 'tests/Feature/billing.php#test:43'], array_keys($cases), 'it() and test() with a closure; a pending it() runs nothing.');
+        assertSame(['totals', 'echoes the stub', 'reads a dataset', 'keeps what it expects', 'sets a property', "reads another test's property", 'refunds'], array_values(array_map(static fn(TestCaseFact $case): string => $case->name, $cases)));
         self::assertEquals([new Assertion('toBe', 12, [new Operand('production', null, null, false), new Operand('literal', '42', null, false)])], $cases['tests/Feature/billing.php#test:11']->assertions);
         assertSame([1, ['src/Billing/Calculator.php']], [$cases['tests/Feature/billing.php#test:11']->productionCalls, $cases['tests/Feature/billing.php#test:11']->subjects], 'A beforeEach() property bound to new Calculator().');
         self::assertEquals([
@@ -97,7 +97,8 @@ final class PhpTestCasesTest extends KnossosTestCase
         self::assertEquals([new Operand('literal', '$expected', null, false), new Operand('literal', '42', null, false)], $cases['tests/Feature/billing.php#test:26']->assertions[0]->operands, 'expect() reads its value; it does not change it.');
         self::assertEquals([new Operand('unknown', '$this->local', null, false), new Operand('literal', '5', null, false)], $cases['tests/Feature/billing.php#test:35']->assertions[0]->operands, 'A property one Pest test sets is not set in another.');
         assertSame(null, $gateway->testCase, 'A double made in beforeEach() answers to every test.');
-        assertSame(['charge'], array_map(static fn($member): string => $member->name, $gateway->members));
+        assertSame(['charge', 'refund'], array_map(static fn($member): string => $member->name, $gateway->members));
+        self::assertEquals([new Operand('mock-config', null, $gateway->canonicalName, false, 'false')], $cases['tests/Feature/billing.php#test:43']->assertions[0]->operands, 'A pin made in beforeEach() reaches every test of the file.');
     }
 
     public function testAFileOfTestsWithoutDoublesGainsItsModule(): void
@@ -160,13 +161,84 @@ final class PhpTestCasesTest extends KnossosTestCase
         assertSame([['mock_echo', 22], ['mock_echo', 29]], array_map(static fn(TestFinding $finding): array => [$finding->subRule, $finding->evidence->startLine], self::tautologies([$test])));
     }
 
+    public function testAValueTheSourceDoesNotProveIsUnknown(): void
+    {
+        [$writes, $shared] = $this->scan('cases', ['tests/WriteTest.php', 'tests/SharedTest.php']);
+        $operands = static fn(ScanContribution $contribution): array => array_map(static fn(TestCaseFact $case): array => array_map(
+            static fn(Assertion $assertion): array => array_map(static fn(Operand $operand): array => array_filter([$operand->source, $operand->text, $operand->value], static fn(?string $part): bool => $part !== null), $assertion->operands),
+            $case->assertions,
+        ), self::cases($contribution));
+
+        assertSame([
+            'tests/WriteTest.php#test:7' => [[['literal', "['a']"], ['unknown', '$items']]],
+            'tests/WriteTest.php#test:13' => [[['literal', '[]'], ['unknown', '$map']]],
+            'tests/WriteTest.php#test:19' => [[['literal', 'true'], ['unknown', '$this->fired']]],
+            'tests/WriteTest.php#test:26' => [[['literal', 'true']]],
+            'tests/WriteTest.php#test:30' => [[['literal', '1'], ['mock-call']]],
+            'tests/WriteTest.php#test:37' => [[['literal', "'x'"], ['mock-call']]],
+            'tests/WriteTest.php#test:45' => [[['literal', '1'], ['parameter', '$n']]],
+            'tests/WriteTest.php#test:49' => [[['literal', '[1]'], ['unknown', '$this->list']]],
+            'tests/WriteTest.php#test:54' => [[['literal', '[1, 2]'], ['unknown', '$ids']]],
+            'tests/WriteTest.php#test:62' => [[['literal', '0'], ['unknown', '$this->count']]],
+            'tests/WriteTest.php#test:68' => [[['literal', '1'], ['literal', '$x']]],
+            'tests/WriteTest.php#test:73' => [[['literal', 'true']], [['literal', 'null']], [['literal', '1'], ['literal', '[1]']]],
+            'tests/WriteTest.php#test:79' => [[['literal', '1'], ['mock-call']]],
+            'tests/WriteTest.php#test:85' => [[['literal', "'x'"], ['mock-call']], [['literal', '1'], ['mock-call']], [['literal', '1'], ['mock-call']], [['literal', '1']]],
+        ], $operands($writes), 'A value an element write, an unset, a callback, a loop or an argument may change is unknown, and so is a pin that is one of several in turn or for some arguments only; a one-value assertion has one operand, its message none; a value nothing changes stays literal.');
+        assertSame([
+            'tests/SharedTest.php#test:12' => [[['mock-call', '$this->stub']]],
+            'tests/SharedTest.php#test:17' => [[['literal', '1'], ['mock-call']]],
+            'tests/SharedTest.php#test:21' => [[['literal', '5'], ['mock-config', 2 => '5']]],
+            'tests/SharedTest.php#test:25' => [[['literal', '5'], ['mock-call']]],
+        ], $operands($shared), 'A pin made in another test does not reach this one; one made in setUp() does, unless the test shapes the member again.');
+
+        $findings = static fn(array $contributions): array => array_map(static fn(TestFinding $finding): array => [$finding->subRule, $finding->confidence->value, $finding->evidence->startLine], self::tautologies($contributions));
+        assertSame([['constant', 'definite', 71]], $findings([$writes]), 'Only the value nothing changes is a constant; assertTrue(true) with or without a message is silent.');
+        assertSame([['mock_only', 'warning', 15], ['mock_echo', 'definite', 23]], $findings([$shared]), 'Asserting on a double alone, with no production run, is the mock-only warning; only the setUp() pin that alone reaches its test echoes.');
+    }
+
+    public function testAWorkerReadsComposerAfreshForEachRequest(): void
+    {
+        $root = sys_get_temp_dir() . '/knossos-php-cases-' . bin2hex(random_bytes(6));
+        mkdir($root . '/tests', 0o777, true);
+        mkdir($root . '/src');
+        mkdir($root . '/lib');
+        try {
+            file_put_contents($root . '/composer.json', '{"autoload": {"psr-4": {"App\\\\": "src/"}}}');
+            file_put_contents($root . '/src/Thing.php', "<?php\nnamespace App;\nfinal class Thing {}\n");
+            file_put_contents($root . '/tests/ThingTest.php', "<?php\nfinal class ThingTest extends \\PHPUnit\\Framework\\TestCase\n{\n    public function testMakes(): void\n    {\n        \\App\\Thing::make();\n    }\n}\n");
+            $client = $this->phpWorkerClient();
+            try {
+                $subjects = static function () use ($client, $root): array {
+                    $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT, 'root' => $root, 'files' => ['tests/ThingTest.php']]), false);
+                    $cases = array_values(array_filter($contributions[0]->nodes, static fn($node): bool => $node->kind === 'test_case'));
+
+                    return TestCaseFact::fromNode($cases[0])->subjects ?? [];
+                };
+                assertSame(['src/Thing.php'], $subjects());
+                file_put_contents($root . '/composer.json', '{"autoload": {"psr-4": {"App\\\\": "lib/"}}}');
+                rename($root . '/src/Thing.php', $root . '/lib/Thing.php');
+                assertSame(['lib/Thing.php'], $subjects(), 'The same worker, a second request: the moved class is found where composer now maps it.');
+            } finally {
+                $client->shutdown();
+            }
+        } finally {
+            foreach (['tests/ThingTest.php', 'lib/Thing.php', 'src/Thing.php', 'composer.json'] as $file) {
+                @unlink($root . '/' . $file);
+            }
+            foreach (['tests', 'src', 'lib', ''] as $directory) {
+                @rmdir($root . '/' . $directory);
+            }
+        }
+    }
+
     public function testEmittedTestCasesFitTheWireSchema(): void
     {
         $schema = json_decode((string) file_get_contents(self::repositoryRoot() . '/schemas/scanner/v1/contribution.schema.json'), true, 512, JSON_THROW_ON_ERROR);
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
         $root = self::repositoryRoot() . '/tests/Fixtures/test-fidelity/php/cases';
         $checked = 0;
-        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php'] as $file) {
+        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php'] as $file) {
             $contribution = json_decode((string) json_encode((new \KnossosPhpScanner\PhpScanner())->scan($root, $root . '/' . $file, $file)), true, 512, JSON_THROW_ON_ERROR);
             assertSame([], $contribution['diagnostics'], $file);
             foreach ([...$contribution['nodes'], ...$contribution['edges']] as $fact) {
@@ -175,7 +247,7 @@ final class PhpTestCasesTest extends KnossosTestCase
                 $checked += ($fact['kind'] ?? '') === 'test_case' ? 1 : 0;
             }
         }
-        assertSame(21, $checked);
+        assertSame(40, $checked);
     }
 
     /**

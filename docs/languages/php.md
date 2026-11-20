@@ -146,7 +146,13 @@ method of a class whose name ends in `Test`, when it is named `test*`, marked
 
 A variable or `$this` property is followed to its value, in the test or in
 `setUp()` / `beforeEach()`, only when it is assigned once and nothing else
-changes it. A call counts as production when it constructs a class, calls a
+changes it: no `++` or `.=`, no write to an element or property of it
+(`$x[] = 1`, `unset($x['k'])`), no reference, no call it is handed to, and no
+callback that assigns the property. A call on a stub gives its pinned value
+only when exactly one way the member answers is set in the test or its setup,
+and that is one value for any call: not a value for some arguments only
+(`with()`), one of several in turn, or a callback's. A one-value assertion such
+as `assertTrue()` has one operand; its failure message is never one. A call counts as production when it constructs a class, calls a
 static method of one, or calls a method on a variable bound to `new X()`. It
 also counts when it is a method the test case inherits, such as Laravel's
 `$this->get('/')`, or a function that is not PHP's own. A class of PHP or of a

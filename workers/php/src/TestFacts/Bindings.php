@@ -73,7 +73,8 @@ final class Bindings
 
     /**
      * What a `$this` property read at a site holds: its latest assignment
-     * earlier in the same method, else its latest in `setUp()`.
+     * earlier in the same method, else its latest in `setUp()`. A setup sees
+     * what an earlier one assigned, as Pest runs a file's `beforeEach()` in order.
      *
      * @return Value|null
      */
@@ -89,7 +90,7 @@ final class Bindings
         foreach ($this->properties[$class . '->' . $name] ?? [] as [$from, $assignedIn, $inSetUp, $value]) {
             if ($assignedIn === $method && $from < $at && $from > $localFrom) {
                 [$local, $localFrom] = [$value, $from];
-            } elseif ($inSetUp && !$site->inSetUp() && $from > $setUpFrom) {
+            } elseif ($inSetUp && (!$site->inSetUp() || $from < $at) && $from > $setUpFrom) {
                 [$setUp, $setUpFrom] = [$value, $from];
             }
         }

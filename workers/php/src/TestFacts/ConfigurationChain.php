@@ -61,6 +61,16 @@ final class ConfigurationChain
     /** Calls on an expectation that make a member return what a callback returns, which the syntax does not show. */
     private const CALLBACKS = ['willreturncallback' => 'willReturnCallback', 'andreturnusing' => 'andReturnUsing'];
 
+    /** Calls on an expectation that shape what a member returns without pinning one stated value. */
+    private const OTHER_ANSWERS = [
+        'willreturnmap', 'willreturnself', 'willreturnargument', 'willreturnreference', 'will', 'willthrowexception',
+        'andreturnvalues', 'andreturnself', 'andreturnnull', 'andreturnfalse', 'andreturntrue', 'andreturnundefined', 'andreturnarg',
+        'andthrow', 'andthrows', 'andthrowexceptions', 'passthru',
+    ];
+
+    /** Calls on an expectation that limit it to some arguments, so what it answers holds for those calls only. */
+    private const GUARDS = ['with', 'withargs', 'withsomeofargs', 'withnoargs'];
+
     /** Mockery's argument expectations, by the api each records. */
     private const MATCHERS = ['with' => 'with', 'withargs' => 'withArgs', 'withnoargs' => 'withNoArgs'];
 
@@ -82,13 +92,14 @@ final class ConfigurationChain
     {
         $framework = $double->framework === 'pest' ? 'mockery' : $double->framework;
         $expecting = null;
-        foreach ($calls as $call) {
+        $guarded = false;
+        foreach ($calls as $index => $call) {
             $name = $call->name instanceof Identifier ? strtolower($call->name->toString()) : null;
             if ($expecting !== null) {
                 if ($framework === 'mockery' && $name === 'getmock') {
                     $expecting = null;
                 } elseif ($configure) {
-                    $expecting = self::configure($double, $framework, $expecting, $call, $name);
+                    $expecting = self::configure($double, $framework, $expecting, $call, $name, $guarded);
                 }
                 continue;
             }
@@ -101,6 +112,7 @@ final class ConfigurationChain
             }
             if (($framework === 'prophecy' && !$revealed) || in_array($name, self::EXPECTS[$framework] ?? [], true)) {
                 $expecting = $configure ? self::expectation($double, $framework, $call, $name) : [];
+                $guarded = self::guarded($framework, $call, array_slice($calls, $index + 1));
                 continue;
             }
             if ($configure) {
@@ -130,6 +142,26 @@ final class ConfigurationChain
             }
 
             return ($framework === 'prophecy' && !$revealed) || in_array($name, self::EXPECTS[$framework] ?? [], true);
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether an expectation answers only some calls: a Prophecy call given
+     * arguments, or an expectation that a later call limits with `with()`.
+     *
+     * @param list<Expr\MethodCall|Expr\StaticCall> $later
+     */
+    private static function guarded(string $framework, Expr\MethodCall|Expr\StaticCall $call, array $later): bool
+    {
+        if ($framework === 'prophecy') {
+            return $call->isFirstClassCallable() || $call->getArgs() !== [];
+        }
+        foreach ($later as $next) {
+            if ($next->name instanceof Identifier && in_array($next->name->toLowerString(), self::GUARDS, true)) {
+                return true;
+            }
         }
 
         return false;
@@ -184,19 +216,24 @@ final class ConfigurationChain
      * @param list<string> $members
      * @return list<string>
      */
-    private static function configure(DoubleRecord $double, string $framework, array $members, Expr\MethodCall|Expr\StaticCall $call, ?string $name): array
+    private static function configure(DoubleRecord $double, string $framework, array $members, Expr\MethodCall|Expr\StaticCall $call, ?string $name, bool $guarded): array
     {
         if ($framework === 'phpunit' && $name === 'method') {
             return self::named($double, $call, 'method');
         }
         $line = $call->getStartLine();
+        $arguments = self::arguments($call);
+        // One value for any call: not one of several in turn, nor one for some arguments only. Each argument is an answer of its own.
+        $plain = in_array($name, ['willreturn', 'andreturn'], true) && !$guarded && array_filter($arguments, static fn(Arg $argument): bool => $argument->unpack) === [];
         foreach ($members as $member) {
             if (isset(self::PINS[$name ?? ''])) {
-                foreach (self::arguments($call) as $argument) {
-                    $double->pin($member, self::PINS[$name], $argument->value, $argument->value->getStartLine());
+                foreach ($arguments as $argument) {
+                    $double->pin($member, self::PINS[$name], $argument->value, $argument->value->getStartLine(), $plain);
                 }
             } elseif (isset(self::CALLBACKS[$name ?? ''])) {
-                $double->unknownPin($member, self::CALLBACKS[$name], $line);
+                $double->unknownPin($member, self::CALLBACKS[$name], $line, $call->getStartFilePos());
+            } elseif (in_array($name, self::OTHER_ANSWERS, true)) {
+                $double->answer($member, $call->getStartFilePos());
             } elseif ($framework !== 'prophecy' && isset(self::MATCHERS[$name ?? '']) && ($framework === 'mockery' || $name === 'with')) {
                 [$count, $spread] = self::argumentCount($call, $name !== 'withargs');
                 $double->matcher($member, self::MATCHERS[$name], $line, $count, $spread);
