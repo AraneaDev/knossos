@@ -97,10 +97,9 @@ final class TestFileIndex
         }
     }
 
-    /** Note that `$this` escapes the class (or Pest file) at a site, so code outside it may write any of its properties. */
-    public function escape(Site $site): void
+    /** Note that `$this` escapes a class scope (`Site::classScope()`, null for none), so code outside it may write any of its properties. */
+    public function escape(?string $scope): void
     {
-        $scope = $site->classScope();
         if ($scope !== null) {
             $this->escaped[$scope] = true;
         }

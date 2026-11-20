@@ -154,8 +154,12 @@ that may write its locals indirectly (`global`, `extract()`,
 no local's value. A class whose `$this` escapes proves no property's value:
 `$this` escapes when it is assigned, passed, returned, captured, used in a
 closure or arrow function, given a computed property name, or used to call a
-method the class does not declare (a trait's or a parent's) other than
-PHPUnit's own helpers. A Pest file counts as one class. A call on a stub gives its pinned value
+method the class does not declare (a trait's or a parent's, through `$this->`,
+`parent::`, `self::` or `static::`) other than PHPUnit's own helpers. A class
+whose parent is anything but `PHPUnit\Framework\TestCase`, such as a project or
+framework base test case, escapes outright, as its inherited code is not in the
+file. A Pest file counts as one class, and Pest's `test()`, which hands a helper
+function the running test case, is an escape of it. A call on a stub gives its pinned value
 only when exactly one way the member answers is set in the test or its setup,
 and that is one value for any call: not a value for some arguments only
 (`with()`), one of several in turn, or a callback's. A one-value assertion such
