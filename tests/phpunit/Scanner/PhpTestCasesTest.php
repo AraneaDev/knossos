@@ -105,7 +105,7 @@ final class PhpTestCasesTest extends KnossosTestCase
     {
         [$test] = $this->scan('cases', ['tests/Feature/plain.php']);
 
-        assertSame(['tests/Feature/plain.php#test:3'], array_keys(self::cases($test)));
+        assertSame(['tests/Feature/plain.php#test:3', 'tests/Feature/plain.php#test:9'], array_keys(self::cases($test)));
         self::assertContains('php:module:tests/Feature/plain.php', array_map(static fn($node): string => $node->localId, $test->nodes));
         self::assertContains(['contains', 'php:module:tests/Feature/plain.php', 'php:test_case:tests/Feature/plain.php#test:3'], self::edges($test));
     }
@@ -184,7 +184,7 @@ final class PhpTestCasesTest extends KnossosTestCase
             'tests/WriteTest.php#test:73' => [[['literal', 'true']], [['literal', 'null']], [['literal', '1'], ['literal', '[1]']]],
             'tests/WriteTest.php#test:79' => [[['literal', '1'], ['mock-call']]],
             'tests/WriteTest.php#test:85' => [[['literal', "'x'"], ['mock-call']], [['literal', '1'], ['mock-call']], [['literal', '1'], ['mock-call']], [['literal', '1']]],
-        ], $operands($writes), 'A value an element write, an unset, a callback, a loop or an argument may change is unknown, and so is a pin that is one of several in turn or for some arguments only; a one-value assertion has one operand, its message none; a value nothing changes stays literal.');
+        ], array_slice($operands($writes), 0, 14), 'A value an element write, an unset, a callback, a loop or an argument may change is unknown, and so is a pin that is one of several in turn or for some arguments only; a one-value assertion has one operand, its message none; a value nothing changes stays literal.');
         assertSame([
             'tests/SharedTest.php#test:12' => [[['mock-call', '$this->stub']]],
             'tests/SharedTest.php#test:17' => [[['literal', '1'], ['mock-call']]],
@@ -193,8 +193,78 @@ final class PhpTestCasesTest extends KnossosTestCase
         ], $operands($shared), 'A pin made in another test does not reach this one; one made in setUp() does, unless the test shapes the member again.');
 
         $findings = static fn(array $contributions): array => array_map(static fn(TestFinding $finding): array => [$finding->subRule, $finding->confidence->value, $finding->evidence->startLine], self::tautologies($contributions));
-        assertSame([['constant', 'definite', 71]], $findings([$writes]), 'Only the value nothing changes is a constant; assertTrue(true) with or without a message is silent.');
+        assertSame([['constant', 'definite', 112], ['constant', 'definite', 71]], $findings([$writes]), 'Only the values nothing changes are constants; assertTrue(true) with or without a message is silent.');
         assertSame([['mock_only', 'warning', 15], ['mock_echo', 'definite', 23]], $findings([$shared]), 'Asserting on a double alone, with no production run, is the mock-only warning; only the setUp() pin that alone reaches its test echoes.');
+    }
+
+    public function testAValueThatMayChangeIndirectlyIsUnknown(): void
+    {
+        $files = ['tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/Feature/probes.php', 'tests/WriteTest.php', 'tests/Feature/plain.php', 'tests/EscapeTest.php'];
+        $scanned = array_combine($files, $this->scan('cases', $files));
+        $sources = [];
+        foreach ($scanned as $file => $contribution) {
+            foreach (self::cases($contribution) as $case) {
+                foreach ($case->assertions as $assertion) {
+                    $sources[$file . ':' . $assertion->line] = array_map(static fn(Operand $operand): string => $operand->source, $assertion->operands);
+                }
+            }
+        }
+        $probes = [
+            // `$this` escapes: an alias captured by a closure, an anonymous class given it, passed whole, a reference to a property, a by-reference foreach over one.
+            'tests/AliasTest.php:26' => ['literal', 'unknown'],
+            'tests/AliasTest.php:36' => ['literal', 'unknown'],
+            'tests/AliasTest.php:43' => ['literal', 'unknown'],
+            'tests/AliasTest.php:56' => ['literal', 'unknown'],
+            'tests/AliasTest.php:62' => ['literal', 'unknown'],
+            // A local written indirectly: a by-reference foreach, extract(), a variable variable, global.
+            'tests/ProbeTest.php:26' => ['literal', 'unknown'],
+            'tests/ProbeTest.php:145' => ['literal', 'unknown'],
+            'tests/ProbeTest.php:153' => ['literal', 'unknown'],
+            'tests/ProbeTest.php:168' => ['literal', 'unknown'],
+            'tests/Feature/probes.php:37' => ['unknown', 'literal'],
+            // parse_str() into the locals, get_defined_vars(), a reference held in an array; a by-reference foreach over a property.
+            'tests/WriteTest.php:100' => ['literal', 'unknown'],
+            'tests/WriteTest.php:106' => ['literal', 'unknown'],
+            'tests/WriteTest.php:119' => ['literal', 'unknown'],
+            'tests/PinTest.php:127' => ['literal', 'unknown'],
+            // `$this` used in a callback, a method the class does not declare (a trait's), a computed property name.
+            'tests/EscapeTest.php:17' => ['literal', 'unknown'],
+            'tests/EscapeTest.php:31' => ['literal', 'unknown'],
+            'tests/EscapeTest.php:45' => ['literal', 'unknown'],
+            // What nothing changes stays literal: a local, and a setUp() property of a class whose `$this` never escapes.
+            'tests/AliasTest.php:70' => ['literal', 'literal'],
+            'tests/ProbeTest.php:64' => ['literal', 'literal'],
+            'tests/PinTest.php:33' => ['literal', 'literal'],
+            'tests/WriteTest.php:112' => ['literal', 'literal'],
+            'tests/Feature/plain.php:10' => ['literal', 'literal'],
+            'tests/EscapeTest.php:58' => ['literal', 'literal'],
+        ];
+        $found = array_intersect_key($sources, $probes);
+        ksort($probes);
+        ksort($found);
+        assertSame($probes, $found);
+
+        $findings = [];
+        foreach ($scanned as $file => $contribution) {
+            foreach (self::tautologies([$contribution]) as $finding) {
+                $findings[] = [$finding->subRule, $file . ':' . $finding->evidence->startLine];
+            }
+        }
+        sort($findings);
+        assertSame([
+            ['constant', 'tests/AliasTest.php:70'],
+            ['constant', 'tests/EscapeTest.php:58'],
+            ['constant', 'tests/Feature/plain.php:10'],
+            ['constant', 'tests/PinTest.php:33'],
+            ['constant', 'tests/ProbeTest.php:64'],
+            ['constant', 'tests/WriteTest.php:112'],
+            ['constant', 'tests/WriteTest.php:71'],
+            ['mock_echo', 'tests/Feature/probes.php:51'],
+            ['mock_echo', 'tests/PinTest.php:120'],
+            ['mock_echo', 'tests/PinTest.php:39'],
+            ['mock_echo', 'tests/ProbeTest.php:110'],
+            ['zero_reach', 'tests/PinTest.php:109'],
+        ], $findings, 'Only values nothing can change, and pins that alone reach their test, give a tautology; the stub replaced before it is called is a zero-reach warning.');
     }
 
     public function testAWorkerReadsComposerAfreshForEachRequest(): void
@@ -238,7 +308,7 @@ final class PhpTestCasesTest extends KnossosTestCase
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
         $root = self::repositoryRoot() . '/tests/Fixtures/test-fidelity/php/cases';
         $checked = 0;
-        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php'] as $file) {
+        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/EscapeTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php'] as $file) {
             $contribution = json_decode((string) json_encode((new \KnossosPhpScanner\PhpScanner())->scan($root, $root . '/' . $file, $file)), true, 512, JSON_THROW_ON_ERROR);
             assertSame([], $contribution['diagnostics'], $file);
             foreach ([...$contribution['nodes'], ...$contribution['edges']] as $fact) {
@@ -247,7 +317,7 @@ final class PhpTestCasesTest extends KnossosTestCase
                 $checked += ($fact['kind'] ?? '') === 'test_case' ? 1 : 0;
             }
         }
-        assertSame(40, $checked);
+        assertSame(99, $checked);
     }
 
     /**

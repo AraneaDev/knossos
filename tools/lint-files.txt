@@ -1400,6 +1400,7 @@ php	workers/php/src/TestFacts/ConfigurationChain.php
 php	workers/php/src/TestFacts/DoubleFactories.php
 php	workers/php/src/TestFacts/DoubleRecord.php
 php	workers/php/src/TestFacts/HeldDouble.php
+php	workers/php/src/TestFacts/IndirectWrites.php
 php	workers/php/src/TestFacts/OperandSource.php
 php	workers/php/src/TestFacts/PinnedType.php
 php	workers/php/src/TestFacts/ProductionCalls.php

@@ -148,7 +148,14 @@ A variable or `$this` property is followed to its value, in the test or in
 `setUp()` / `beforeEach()`, only when it is assigned once and nothing else
 changes it: no `++` or `.=`, no write to an element or property of it
 (`$x[] = 1`, `unset($x['k'])`), no reference, no call it is handed to, and no
-callback that assigns the property. A call on a stub gives its pinned value
+callback that assigns the property. The rule is coarse on purpose. A function
+that may write its locals indirectly (`global`, `extract()`,
+`get_defined_vars()`, a one-argument `parse_str()`, a variable variable) proves
+no local's value. A class whose `$this` escapes proves no property's value:
+`$this` escapes when it is assigned, passed, returned, captured, used in a
+closure or arrow function, given a computed property name, or used to call a
+method the class does not declare (a trait's or a parent's) other than
+PHPUnit's own helpers. A Pest file counts as one class. A call on a stub gives its pinned value
 only when exactly one way the member answers is set in the test or its setup,
 and that is one value for any call: not a value for some arguments only
 (`with()`), one of several in turn, or a callback's. A one-value assertion such

@@ -39,6 +39,12 @@ final class TestFileIndex
     /** @var array<string, true> variables and properties written other than by one plain assignment, by binding key */
     private array $written = [];
 
+    /** @var array<string, true> function scopes (as `Site::variableScope()` keys them) where a local may be written indirectly */
+    private array $tainted = [];
+
+    /** @var array<string, true> class scopes whose `$this` escapes, so any code may write its properties */
+    private array $escaped = [];
+
     /** @var array<string, list<array{int, int}>> by class scope, the source ranges of the setups every test of it runs first */
     private array $setUps = [];
 
@@ -73,6 +79,30 @@ final class TestFileIndex
     {
         if ($site->functions !== []) {
             $this->returns[spl_object_id($site->functions[array_key_last($site->functions)])][] = [$value, $site];
+        }
+    }
+
+    /**
+     * Note that the functions at a site may write their locals indirectly:
+     * a by-reference `foreach`, `global`, `extract()`, a variable variable.
+     * No local of theirs holds a value the source proves.
+     */
+    public function taint(Site $site): void
+    {
+        if ($site->functions === []) {
+            $this->tainted['file'] = true;
+        }
+        foreach ($site->functions as $function) {
+            $this->tainted['f' . spl_object_id($function)] = true;
+        }
+    }
+
+    /** Note that `$this` escapes the class (or Pest file) at a site, so code outside it may write any of its properties. */
+    public function escape(Site $site): void
+    {
+        $scope = $site->classScope();
+        if ($scope !== null) {
+            $this->escaped[$scope] = true;
         }
     }
 
@@ -165,7 +195,7 @@ final class TestFileIndex
     public function stable(Expr $leaf, Site $site): ?array
     {
         $key = self::key($leaf, $site);
-        if ($key === null || isset($this->written[$key])) {
+        if ($key === null || isset($this->written[$key]) || isset($this->tainted[explode('$', $key)[0]]) || isset($this->escaped[explode('->', $key)[0]])) {
             return null;
         }
         $bindings = $this->doubles->bindings();
