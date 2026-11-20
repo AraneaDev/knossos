@@ -175,7 +175,13 @@ final class ProductionCalls
      */
     private function inherited(Identifier|Expr $name): ?array
     {
-        return $name instanceof Identifier && preg_match(self::TEST_CASE_HELPERS, $name->toLowerString()) !== 1 ? [null] : null;
+        return $name instanceof Identifier && !self::isTestCaseHelper($name->toString()) ? [null] : null;
+    }
+
+    /** Whether a method is one of PHPUnit's own TestCase helpers, which asserts, expects, builds a matcher or skips. */
+    public static function isTestCaseHelper(string $method): bool
+    {
+        return preg_match(self::TEST_CASE_HELPERS, strtolower($method)) === 1;
     }
 
     /**

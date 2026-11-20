@@ -55,7 +55,9 @@ final class TestCaseCollector extends NodeVisitorAbstract
      */
     public static function read(array $ast, string $root, string $relativePath, string $source, TestDoubleCollector $doubles): self
     {
-        $collector = new self(new TestFileIndex($doubles, ProjectClasses::of($root, $relativePath), $source), $relativePath);
+        $file = new TestFileIndex($doubles, ProjectClasses::of($root, $relativePath), $source);
+        (new NodeTraverser(new IndirectWrites($file)))->traverse($ast);
+        $collector = new self($file, $relativePath);
         (new NodeTraverser($collector))->traverse($ast);
 
         return $collector;

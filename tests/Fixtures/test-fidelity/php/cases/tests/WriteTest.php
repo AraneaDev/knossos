@@ -93,6 +93,31 @@ final class WriteTest extends TestCase
         $this->assertSame(1, $stub->all());
         $this->assertIsInt(1, 'message');
     }
+    public function testLocalsWrittenByName(): void
+    {
+        $q = 1;
+        parse_str('q=2');
+        $this->assertSame(1, $q);
+    }
+    public function testLocalsListed(): void
+    {
+        $v = 1;
+        $all = get_defined_vars();
+        $this->assertSame(1, $v);
+    }
+    public function testParsedIntoAnArray(): void
+    {
+        $r = 1;
+        parse_str('a=1', $out);
+        $this->assertSame(1, $r);
+    }
+    public function testReferenceInAnArray(): void
+    {
+        $x = [1];
+        $refs = [&$x];
+        $refs[0][] = 2;
+        $this->assertSame([1], $x);
+    }
     protected function setUp(): void
     {
         $this->list = [1];
