@@ -539,6 +539,7 @@ php	src/Store/Upsert.php
 php	src/TestFidelity/ActiveTestFindings.php
 php	src/TestFidelity/DashboardTestFindings.php
 php	src/TestFidelity/Facts/Assertion.php
+php	src/TestFidelity/Facts/CallMatcher.php
 php	src/TestFidelity/Facts/Operand.php
 php	src/TestFidelity/Facts/PinnedValue.php
 php	src/TestFidelity/Facts/StubbedMember.php

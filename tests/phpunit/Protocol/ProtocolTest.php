@@ -354,6 +354,34 @@ final class ProtocolTest extends KnossosTestCase
     }
 
     #[Group('protocol')]
+    public function testContributionSchemaAcceptsPhpTestFacts(): void
+    {
+        $double = self::wireNode('test_double', [
+            'framework' => 'mockery',
+            'pattern' => 'Mockery::mock',
+            'target' => ['kind' => 'class', 'specifier' => 'App\\Cart'],
+            'automock' => false,
+            'invocations' => 1,
+            'allows_protected' => true,
+            'members' => [[
+                'name' => 'total',
+                'line' => 8,
+                'api' => 'instance-member',
+                'called_with' => [['api' => 'toHaveBeenCalledWith', 'line' => 29, 'count' => 3, 'spread' => false]],
+                'returns' => [['api' => 'andReturn', 'line' => 9, 'once' => false, 'assignable' => true, 'typed' => true, 'type' => 'string']],
+            ]],
+        ]);
+        $badMatcher = $double;
+        $badMatcher['attributes']['members'][0]['called_with'][0]['count'] = -1;
+        $badProtected = $double;
+        $badProtected['attributes']['allows_protected'] = 'yes';
+
+        assertSame([], $this->nodeSchemaErrors($double));
+        assertSame(1, count($this->nodeSchemaErrors($badMatcher)));
+        assertSame(1, count($this->nodeSchemaErrors($badProtected)));
+    }
+
+    #[Group('protocol')]
     public function testContributionSchemaRejectsTestDoubleWithoutTarget(): void
     {
         $double = self::wireNode('test_double', ['framework' => 'vitest', 'pattern' => 'vi.fn', 'automock' => false, 'invocations' => 0, 'members' => []]);

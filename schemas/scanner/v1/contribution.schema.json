@@ -164,7 +164,9 @@
         "members"
       ],
       "properties": {
-        "framework": { "enum": ["vitest", "jest"] },
+        "framework": {
+          "enum": ["vitest", "jest", "phpunit", "mockery", "pest", "prophecy"]
+        },
         "pattern": { "type": "string", "minLength": 1 },
         "target": {
           "type": "object",
@@ -186,6 +188,7 @@
         },
         "automock": { "type": "boolean" },
         "invocations": { "type": "integer", "minimum": 0 },
+        "allows_protected": { "type": "boolean" },
         "test_case": { "type": "string", "minLength": 1 },
         "members": {
           "type": "array",
@@ -209,6 +212,10 @@
           ]
         },
         "params": { "type": "array" },
+        "called_with": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/callMatcher" }
+        },
         "returns": {
           "type": "array",
           "items": { "$ref": "#/$defs/pinnedValue" }
@@ -223,7 +230,18 @@
         "line": { "type": "integer", "minimum": 1 },
         "once": { "type": "boolean" },
         "assignable": { "enum": [true, false, "unknown"] },
-        "typed": { "type": "boolean" }
+        "typed": { "type": "boolean" },
+        "type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "callMatcher": {
+      "type": "object",
+      "required": ["api", "line", "count", "spread"],
+      "properties": {
+        "api": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "count": { "type": "integer", "minimum": 0 },
+        "spread": { "type": "boolean" }
       }
     },
     "testCaseAttributes": {

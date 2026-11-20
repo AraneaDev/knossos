@@ -236,7 +236,7 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
 `schemas/scanner/v1/contribution.schema.json`.
 
 - `test_double`, named `<file>#double:<line>:<col>`: a mock, spy, stub or fake.
-  `framework` (`vitest` or `jest`), `pattern` (how it was made, such as
+  `framework` (`vitest`, `jest`, `phpunit`, `mockery`, `pest` or `prophecy`), `pattern` (how it was made, such as
   `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`), `target`
   (`{kind, specifier?, export?, member?}`, `kind` one of `module`, `class`,
   `instance-member`, `global`, `unknown`; a virtual module mock, made with
@@ -246,7 +246,15 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   configures, each
   `{name, line, api, params?, returns}` where `params` is the signature shape
   above and each `returns` entry is `{api, line, once, assignable, typed}`
-  (`assignable` is `true`, `false` or `"unknown"`).
+  (`assignable` is `true`, `false` or `"unknown"`). A member may also carry
+  `called_with`, the argument-list assertions on it, each
+  `{api, line, count, spread}` (`count` arguments listed, `spread` when one is a
+  spread so the real count is open), and a `returns` entry may carry `type`, the
+  pinned value's own type as the worker names it. A `test_double` may carry
+  `allows_protected` (`true` when the framework lets the double stub protected
+  members, as Mockery's `shouldAllowMockingProtectedMethods()` does). A reader
+  drops a malformed `called_with` entry, `type` or `allows_protected` and keeps
+  the double.
 - `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
   `subjects` (canonical names of the production modules those calls land in),
   `should_panic` (optional) and `assertions`, each

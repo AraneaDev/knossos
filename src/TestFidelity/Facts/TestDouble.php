@@ -11,7 +11,7 @@ use Knossos\Scanner\Protocol\NodeFact;
  */
 final readonly class TestDouble
 {
-    private const FRAMEWORKS = ['vitest', 'jest'];
+    private const FRAMEWORKS = ['vitest', 'jest', 'phpunit', 'mockery', 'pest', 'prophecy'];
     private const TARGET_KINDS = ['module', 'class', 'instance-member', 'global', 'unknown'];
 
     /**
@@ -27,6 +27,7 @@ final readonly class TestDouble
         public int $invocations,
         public ?string $testCase,
         public array $members,
+        public bool $allowsProtected = false,
     ) {}
 
     /**
@@ -63,7 +64,7 @@ final readonly class TestDouble
             $members[] = $member;
         }
 
-        return new self($node->canonicalName, $framework, $pattern, $target, $automock, $invocations, $testCase, $members);
+        return new self($node->canonicalName, $framework, $pattern, $target, $automock, $invocations, $testCase, $members, ($attributes['allows_protected'] ?? false) === true);
     }
 
     /**

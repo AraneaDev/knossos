@@ -97,6 +97,67 @@ final class TestDoubleTest extends KnossosTestCase
         assertNull(TestDouble::fromNode(self::node('test_double', self::attributes(['framework' => 'mocha']))));
     }
 
+    public function testReadsCallMatchers(): void
+    {
+        $attributes = self::attributes();
+        $attributes['members'][0]['called_with'] = [['api' => 'toHaveBeenCalledWith', 'line' => 29, 'count' => 3, 'spread' => false]];
+
+        $double = TestDouble::fromNode(self::node('test_double', $attributes));
+
+        assertSame(3, $double?->members[0]->calledWith[0]->count);
+        assertSame('toHaveBeenCalledWith', $double->members[0]->calledWith[0]->api);
+        assertSame(29, $double->members[0]->calledWith[0]->line);
+        assertSame(false, $double->members[0]->calledWith[0]->spread);
+    }
+
+    public function testDropsAMalformedCallMatcherAndKeepsTheDouble(): void
+    {
+        $attributes = self::attributes();
+        $attributes['members'][0]['called_with'] = [
+            ['api' => 'toHaveBeenCalledWith', 'line' => 29, 'count' => -1, 'spread' => false],
+            ['api' => 'toHaveBeenCalledWith', 'line' => 30, 'count' => 1, 'spread' => 'no'],
+            'x',
+            ['api' => 'toHaveBeenCalledWith', 'line' => 31, 'count' => 2, 'spread' => true],
+        ];
+        $notAList = self::attributes();
+        $notAList['members'][0]['called_with'] = 'x';
+
+        $double = TestDouble::fromNode(self::node('test_double', $attributes));
+        $other = TestDouble::fromNode(self::node('test_double', $notAList));
+
+        assertSame(1, count($double?->members[0]->calledWith ?? []));
+        assertSame(31, $double->members[0]->calledWith[0]->line);
+        assertSame('totalForX', $double->members[0]->name);
+        assertSame([], $other?->members[0]->calledWith);
+    }
+
+    public function testReadsAPinnedType(): void
+    {
+        $attributes = self::attributes();
+        $attributes['members'][0]['returns'][0]['type'] = 'string';
+        $malformed = self::attributes();
+        $malformed['members'][0]['returns'][0]['type'] = 5;
+
+        $double = TestDouble::fromNode(self::node('test_double', $attributes));
+        $other = TestDouble::fromNode(self::node('test_double', $malformed));
+
+        assertSame('string', $double?->members[0]->returns[0]->type);
+        assertNull($other?->members[0]->returns[0]->type);
+        assertSame(false, $other->members[0]->returns[0]->assignable);
+    }
+
+    public function testReadsAllowsProtectedAndFrameworksOfPhase3(): void
+    {
+        $double = TestDouble::fromNode(self::node('test_double', self::attributes(['framework' => 'mockery', 'allows_protected' => true])));
+        $plain = TestDouble::fromNode(self::node('test_double', self::attributes(['framework' => 'pest'])));
+        $bad = TestDouble::fromNode(self::node('test_double', self::attributes(['framework' => 'prophecy', 'allows_protected' => 'yes'])));
+
+        assertSame(true, $double?->allowsProtected);
+        assertSame(false, $plain?->allowsProtected);
+        assertSame(false, $bad?->allowsProtected);
+        assertSame('phpunit', TestDouble::fromNode(self::node('test_double', self::attributes(['framework' => 'phpunit'])))?->framework);
+    }
+
     public function testReturnsNullForOtherKinds(): void
     {
         assertNull(TestDouble::fromNode(self::node('class', self::attributes())));
