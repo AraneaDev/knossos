@@ -46,8 +46,36 @@ final class PhpMemberNamesTest extends KnossosTestCase
     {
         $node = $this->classLikes('members', 'src/Edges.php')['Members\DocumentedForms'];
 
-        assertSame(['bare', 'create', 'foo', 'list', 'union'], $node->attributes['member_names']);
+        assertSame(['bare', 'create', 'list', 'make', 'union'], $node->attributes['member_names']);
         assertSame(null, $node->attributes['member_names_open'] ?? null);
+    }
+
+    public function testATagNotInTheSimpleFormOpensTheListWithoutAGuessedName(): void
+    {
+        $nodes = $this->classLikes('members', 'src/Edges.php');
+
+        foreach (['CallableReturn', 'CallableTypeBeforeName', 'CallableUnionBeforeName', 'ProseBeforeParameters'] as $class) {
+            $node = $nodes['Members\\' . $class];
+            assertSame([$class, true, []], [$class, $node->attributes['member_names_open'] ?? null, $node->attributes['member_names']]);
+        }
+    }
+
+    public function testTagsOnOneLineAreJudgedOneByOne(): void
+    {
+        $node = $this->classLikes('members', 'src/Edges.php')['Members\TwoTagsOnOneLine'];
+
+        assertSame(['a', 'b'], $node->attributes['member_names']);
+        assertSame(null, $node->attributes['member_names_open'] ?? null);
+    }
+
+    public function testPrefixedMethodTagsCountAndPrefixedMixinsOpen(): void
+    {
+        $nodes = $this->classLikes('members', 'src/Edges.php');
+
+        assertSame(['a'], $nodes['Members\PhpstanMethod']->attributes['member_names']);
+        assertSame(['a'], $nodes['Members\PsalmMethod']->attributes['member_names']);
+        assertSame(true, $nodes['Members\PsalmMixin']->attributes['member_names_open']);
+        assertSame(true, $nodes['Members\PhpstanMixin']->attributes['member_names_open']);
     }
 
     public function testAMethodLineThatCannotBeReadOpensTheList(): void
