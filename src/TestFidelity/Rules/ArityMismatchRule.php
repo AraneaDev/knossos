@@ -18,17 +18,43 @@ use Knossos\TestFidelity\TestFinding;
  * signature, an overloaded member, a rest parameter on the production side, or a
  * member without a signature.
  * Definite when every parameter on both sides is typed; a warning otherwise.
+ *
+ * A call matcher that lists more arguments than the member takes, or, where the
+ * matcher is exact, fewer than it requires, is a `call_arity` finding. The count
+ * is syntax on both sides, so it is definite; a spread matcher is silent.
  */
 final readonly class ArityMismatchRule extends DriftRule
 {
     public const ID = 'test.fidelity.arity_mismatch.v1';
 
-    /** Reports a stub that declares more parameters than its member takes. */
+    /** Reports a stub that declares more parameters than its member takes, or a matcher that lists a count it cannot meet. */
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
     {
-        $actual = SignatureShape::ofParams($pair->stub->params);
         $declared = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
-        if ($actual === null || $declared === null || $declared->isVariadic() || $actual->requiredCount() <= count($declared->params)) {
+
+        return $declared === null ? null : $this->signature($pair, $declared) ?? $this->calls($pair, $declared);
+    }
+
+    /** A call matcher on the member lists a count the member cannot meet. */
+    private function calls(DriftPair $pair, SignatureShape $declared): ?TestFinding
+    {
+        $violation = CallArity::violation($pair->stub->calledWith, $declared, DriftText::clean($pair->stub->name), $pair->double->framework);
+
+        return $violation === null ? null : $pair->finding(
+            FindingCategory::ArityMismatch,
+            FindingConfidence::Definite,
+            self::ID,
+            'call_arity',
+            $violation['message'],
+            ['expected' => $violation['expected'], 'actual' => $violation['matcher']->count, 'matcher' => $violation['matcher']->api],
+        );
+    }
+
+    /** The double declares more required parameters than the member takes. */
+    private function signature(DriftPair $pair, SignatureShape $declared): ?TestFinding
+    {
+        $actual = SignatureShape::ofParams($pair->stub->params);
+        if ($actual === null || $declared->isVariadic() || $actual->requiredCount() <= count($declared->params)) {
             return null;
         }
 

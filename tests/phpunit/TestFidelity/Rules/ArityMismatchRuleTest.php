@@ -38,6 +38,88 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertSame('find takes 1 argument(s); the double passes 2', $findings[0]->message);
     }
 
+    /**
+     * @param array<string, mixed> $signature
+     * @param list<array{api: string, line: int, count: int, spread: bool}> $matchers
+     * @return list<\Knossos\TestFidelity\TestFinding>
+     */
+    private static function judgeCalls(array $signature, array $matchers, string $framework = 'vitest', ?string $node = null): array
+    {
+        $graph = DriftFixtures::graph(
+            [DriftFixtures::method('find', ['signature' => $signature] + ($node === 'overloaded' ? ['overloaded' => true] : []))],
+            [DriftFixtures::stub('find', null, [], $matchers)],
+            framework: $framework,
+        );
+
+        return [...(new ArityMismatchRule())->findings($graph)];
+    }
+
+    /** @return array{api: string, line: int, count: int, spread: bool} */
+    private static function matcher(int $count, string $api = 'toHaveBeenCalledWith', bool $spread = false): array
+    {
+        return ['api' => $api, 'line' => 31, 'count' => $count, 'spread' => $spread];
+    }
+
+    public function testTooManyMatcherArgumentsIsDefinite(): void
+    {
+        $findings = self::judgeCalls(['params' => [['name' => 'id'], ['name' => 'patch']]], [self::matcher(3)]);
+
+        assertCount(1, $findings);
+        assertSame(FindingConfidence::Definite, $findings[0]->confidence);
+        assertSame('call_arity', $findings[0]->subRule);
+        assertSame('find takes 2 argument(s); the matcher expects 3', $findings[0]->message);
+        assertSame(7, $findings[0]->evidence->startLine);
+    }
+
+    public function testTooFewIsDefinite(): void
+    {
+        $findings = self::judgeCalls(['params' => [['name' => 'id'], ['name' => 'patch'], ['name' => 'deep', 'optional' => true]]], [self::matcher(1)]);
+
+        assertCount(1, $findings);
+        assertSame(FindingConfidence::Definite, $findings[0]->confidence);
+        assertSame('call_arity', $findings[0]->subRule);
+        assertSame('find needs 2 argument(s); the matcher expects 1', $findings[0]->message);
+    }
+
+    public function testAnArgumentCountWithinTheSignatureIsSilent(): void
+    {
+        $signature = ['params' => [['name' => 'id'], ['name' => 'deep', 'optional' => true]]];
+
+        assertSame([], self::judgeCalls($signature, [self::matcher(1), self::matcher(2)]));
+    }
+
+    public function testSpreadIsSilent(): void
+    {
+        assertSame([], self::judgeCalls(['params' => [['name' => 'id']]], [self::matcher(3, 'toHaveBeenCalledWith', true)]));
+    }
+
+    public function testVariadicTargetIsSilent(): void
+    {
+        assertSame([], self::judgeCalls(['params' => [['name' => 'ids', 'variadic' => true]]], [self::matcher(5)]));
+    }
+
+    public function testTruncatedSignatureIsSilentForAMatcher(): void
+    {
+        assertSame([], self::judgeCalls(['params' => [['name' => 'id']], 'truncated' => true], [self::matcher(3)]));
+    }
+
+    public function testAPhpunitWithIsJudgedOnlyForTooMany(): void
+    {
+        $signature = ['params' => [['name' => 'id'], ['name' => 'patch']]];
+
+        assertSame([], self::judgeCalls($signature, [self::matcher(1, 'with')], 'phpunit'));
+        assertCount(1, self::judgeCalls($signature, [self::matcher(3, 'with')], 'phpunit'));
+        assertCount(1, self::judgeCalls($signature, [self::matcher(1, 'with')], 'mockery'));
+    }
+
+    public function testTheFirstOffendingMatcherIsReported(): void
+    {
+        $findings = self::judgeCalls(['params' => [['name' => 'id']]], [self::matcher(1), self::matcher(4), self::matcher(2)]);
+
+        assertCount(1, $findings);
+        assertSame('find takes 1 argument(s); the matcher expects 4', $findings[0]->message);
+    }
+
     public function testUntypedSideIsAWarning(): void
     {
         $findings = self::judge(['params' => [['name' => 'id', 'type' => 'string']]], [['name' => 'id'], ['name' => 'extra']]);
