@@ -78,6 +78,10 @@ final class WorkerServer
         if ($method === 'cancel') {
             return;
         }
+        // What composer maps a class to is read afresh for each request: a
+        // long-lived worker must not keep a composer.json or class file that
+        // has since changed.
+        TestFacts\ProjectClasses::forget();
 
         $result = match ($method) {
             'initialize' => $this->initialize($params),

@@ -39,6 +39,9 @@ final class TestFileIndex
     /** @var array<string, true> variables and properties written other than by one plain assignment, by binding key */
     private array $written = [];
 
+    /** @var array<string, list<array{int, int}>> by class scope, the source ranges of the setups every test of it runs first */
+    private array $setUps = [];
+
     public function __construct(
         public readonly TestDoubleCollector $doubles,
         public readonly ProjectClasses $classes,
@@ -73,9 +76,37 @@ final class TestFileIndex
         }
     }
 
-    /** Note a variable or `$this` property changed other than by a plain assignment: `++`, `.=`, by reference. */
+    /** Note a setup of a class scope (`Site::classScope()`): `setUp()`, or a Pest `beforeEach()` closure, whose pins every test of its class or file sees. */
+    public function setUp(Node\FunctionLike $setUp, string $scope): void
+    {
+        $this->setUps[$scope][] = [$setUp->getStartFilePos(), $setUp->getEndFilePos()];
+    }
+
+    /** Whether code at a position runs before an assertion of a test: it is in the test itself or in a setup of its class or file. */
+    public function reaches(int $position, Node\FunctionLike $test, Site $site): bool
+    {
+        if ($test->getStartFilePos() <= $position && $position <= $test->getEndFilePos()) {
+            return true;
+        }
+        foreach ($this->setUps[$site->classScope() ?? ''] ?? [] as [$start, $end]) {
+            if ($start <= $position && $position <= $end) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Note a variable or `$this` property changed other than by a plain
+     * assignment: `++`, `.=`, by reference, through an element or a property
+     * of it (`$x[] = 1`, `unset($x['k'])`), or handed to a call.
+     */
     public function write(Expr $target, Site $site): void
     {
+        while ($target instanceof Expr\ArrayDimFetch || $target instanceof Expr\NullsafePropertyFetch || ($target instanceof Expr\PropertyFetch && !self::isThisProperty($target))) {
+            $target = $target->var;
+        }
         $key = self::key($target, $site);
         if ($key !== null) {
             $this->written[$key] = true;
@@ -161,13 +192,19 @@ final class TestFileIndex
         return substr($this->source, $node->getStartFilePos(), $node->getEndFilePos() - $node->getStartFilePos() + 1);
     }
 
+    /** Whether a property fetch is a named property of `$this`. */
+    private static function isThisProperty(Expr\PropertyFetch $fetch): bool
+    {
+        return $fetch->var instanceof Expr\Variable && $fetch->var->name === 'this' && $fetch->name instanceof Identifier;
+    }
+
     /** The key a variable or `$this` property is bound under at a site; null for anything else. */
     private static function key(Expr $target, Site $site): ?string
     {
         if ($target instanceof Expr\Variable && is_string($target->name) && $target->name !== 'this') {
             return $site->variableScope($target->name) . '$' . $target->name;
         }
-        if ($target instanceof Expr\PropertyFetch && $target->var instanceof Expr\Variable && $target->var->name === 'this' && $target->name instanceof Identifier) {
+        if ($target instanceof Expr\PropertyFetch && self::isThisProperty($target) && $target->name instanceof Identifier) {
             $class = $site->classScope();
 
             return $class === null ? null : $class . '->' . $target->name->toString();

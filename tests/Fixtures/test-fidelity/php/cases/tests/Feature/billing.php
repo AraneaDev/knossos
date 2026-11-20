@@ -35,3 +35,11 @@ it('sets a property', function () {
 it('reads another test\'s property', function () {
     expect($this->local)->toBe(5);
 });
+
+beforeEach(function () {
+    $this->gateway->shouldReceive('refund')->andReturn(false);
+});
+
+it('refunds', function () {
+    expect($this->gateway->refund())->toBeFalse();
+});

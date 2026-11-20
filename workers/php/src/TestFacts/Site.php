@@ -17,6 +17,9 @@ use PhpParser\Node\Stmt;
  */
 final readonly class Site
 {
+    /** The class scope of a Pest file: the test case every closure of the file is bound to. */
+    public const PEST_SCOPE = 'pest';
+
     /**
      * @param list<FunctionLike> $functions
      */
@@ -60,7 +63,7 @@ final readonly class Site
             return 'c' . spl_object_id($this->class);
         }
 
-        return $this->pestClosure === null ? null : 'pest';
+        return $this->pestClosure === null ? null : self::PEST_SCOPE;
     }
 
     /** The method, or else the Pest closure, the code here runs in, as an id; 0 outside both. */

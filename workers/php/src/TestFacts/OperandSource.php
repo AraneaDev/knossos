@@ -134,7 +134,7 @@ final class OperandSource
         }
         $held = $this->file->doubles->held($call->var, $site);
         if ($held !== null) {
-            return $this->onDouble($held->double, $call->name, $held->double->framework !== 'prophecy' || $held->revealed);
+            return $this->onDouble($held->double, $call->name, $held->double->framework !== 'prophecy' || $held->revealed, $site, $test);
         }
         [$source, $double] = $this->provenance($call->var, $site, $test, $depth + 1);
 
@@ -158,25 +158,32 @@ final class OperandSource
         }
         $facade = $call->class->isSpecialClassName() ? null : $this->file->doubles->facade($call->class->toString());
 
-        return $facade === null ? $this->called($call, $site, $test, $depth) : $this->onDouble($facade, $call->name, true);
+        return $facade === null ? $this->called($call, $site, $test, $depth) : $this->onDouble($facade, $call->name, true, $site, $test);
     }
 
     /**
      * A call on a double: the value pinned on the member it calls, when the
-     * double answers with it (a Prophecy double only once revealed), else
-     * the double itself.
+     * double answers with it (a Prophecy double only once revealed) and the
+     * source states that one value for the test: exactly one way the member
+     * answers is set in the test or its setup, and it is one plain value for
+     * any call. Otherwise the call is on the double, with no value to hold
+     * the assertion against: one of several in turn, one for some arguments,
+     * a callback, a pin made in another test.
      *
      * @return array{string, ?DoubleRecord, ?string}
      */
-    private function onDouble(DoubleRecord $double, Identifier|Expr $name, bool $answers): array
+    private function onDouble(DoubleRecord $double, Identifier|Expr $name, bool $answers, Site $site, FunctionLike $test): array
     {
         $member = $name instanceof Identifier ? $name->toString() : null;
-        if ($member === null || !$answers || !$double->isPinned($member)) {
+        if ($member === null || !$answers) {
             return ['mock-call', $double, null];
         }
-        $pinned = $double->firstPin($member);
+        $reaching = array_values(array_filter($double->answersOf($member), fn(array $answer): bool => $this->file->reaches($answer[1], $test, $site)));
+        if (count($reaching) !== 1 || !$reaching[0][2] || $reaching[0][0] === null) {
+            return ['mock-call', $double, null];
+        }
 
-        return ['mock-config', $double, $pinned === null ? null : $this->file->text($pinned)];
+        return ['mock-config', $double, $this->file->text($reaching[0][0])];
     }
 
     /**
