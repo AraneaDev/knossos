@@ -45,80 +45,49 @@ final class TestDoubleCollector extends NodeVisitorAbstract
     /** @var list<array{Expr, Site, int}> values handed on: to a call, a `return`, an array or another object's property */
     private array $handOffs = [];
 
-    /** @var list<Node\FunctionLike> */
-    private array $functions = [];
-
-    /** @var list<Stmt\ClassLike> */
-    private array $classes = [];
-
-    /** @var list<Stmt\ClassMethod> */
-    private array $methods = [];
+    private readonly ScopeStack $scopes;
 
     private readonly Bindings $bindings;
 
     private function __construct(private readonly string $relativePath, private readonly string $source)
     {
         $this->bindings = new Bindings();
+        $this->scopes = new ScopeStack();
     }
 
     /**
-     * Add a test file's doubles to its facts, or, when reading them fails,
-     * none of them and a warning: the file's other facts are what test impact,
-     * untested code and dead code read, and must not be lost with them.
+     * Read a test file's doubles: one traversal records what the file makes,
+     * binds, calls and hands on, then every chain is read against the double
+     * it starts on. Parses only: nothing in the file is loaded or run.
      *
      * @param list<Node> $ast the file's syntax tree, its names resolved
-     * @param list<array<string, mixed>> $nodes
-     * @param list<array<string, mixed>> $edges
-     * @param list<array<string, mixed>> $diagnostics
-     * @return array{list<array<string, mixed>>, list<array<string, mixed>>, list<array<string, mixed>>}
      */
-    public static function addTo(array $ast, string $relativePath, string $source, array $nodes, array $edges, array $diagnostics): array
+    public static function read(array $ast, string $relativePath, string $source): self
     {
-        try {
-            $collector = new self($relativePath, $source);
-            $traverser = new NodeTraverser();
-            $traverser->addVisitor($collector);
-            $traverser->traverse($ast);
-            [$doubleNodes, $doubleEdges] = $collector->facts();
-        } catch (\Throwable $failure) {
-            $diagnostics[] = [
-                'severity' => 'warning',
-                'code' => 'PHP_TEST_FACTS_FAILED',
-                'message' => 'The file\'s test doubles could not be read, so none are reported: ' . $failure->getMessage(),
-                'evidence' => ['path' => $relativePath, 'start_line' => 1, 'end_line' => 1],
-            ];
+        $collector = new self($relativePath, $source);
+        $traverser = new NodeTraverser();
+        $traverser->addVisitor($collector);
+        $traverser->traverse($ast);
+        $collector->resolve();
 
-            return [$nodes, $edges, $diagnostics];
-        }
-        if ($doubleNodes === []) {
-            return [$nodes, $edges, $diagnostics];
-        }
-        $moduleId = 'php:module:' . $relativePath;
-        if (!in_array($moduleId, array_column($nodes, 'local_id'), true)) {
-            // Not `executable`: a file of test classes runs only when a test runner loads it.
-            $nodes[] = ['local_id' => $moduleId, 'kind' => 'module', 'canonical_name' => $relativePath, 'display_name' => basename($relativePath), 'origin' => 'ast', 'confidence' => 'certain',
-                'evidence' => ['path' => $relativePath, 'start_line' => 1, 'end_line' => 1], 'attributes' => (object) []];
-        }
+        return $collector;
+    }
 
-        return [[...$nodes, ...$doubleNodes], [...$edges, ...$doubleEdges], $diagnostics];
+    /** What the file's variables and `$this` properties hold, by where they are assigned. */
+    public function bindings(): Bindings
+    {
+        return $this->bindings;
     }
 
     /** Record what this node makes, binds, calls or hands on, as the traversal enters it. */
     #[\Override]
     public function enterNode(Node $node): ?int
     {
-        if ($node instanceof Node\FunctionLike) {
-            $this->functions[] = $node;
-        }
-        if ($node instanceof Stmt\ClassLike) {
-            $this->classes[] = $node;
-        } elseif ($node instanceof Stmt\ClassMethod) {
-            $this->methods[] = $node;
-        }
+        $this->scopes->enter($node);
         if ($node instanceof Expr) {
             $this->expression($node);
         } elseif ($node instanceof Stmt\Return_ && $node->expr !== null) {
-            $this->handOffs[] = [$node->expr, $this->site(), $node->getStartLine()];
+            $this->handOffs[] = [$node->expr, $this->scopes->site(), $node->getStartLine()];
         }
 
         return null;
@@ -128,14 +97,7 @@ final class TestDoubleCollector extends NodeVisitorAbstract
     #[\Override]
     public function leaveNode(Node $node): ?int
     {
-        if ($node instanceof Node\FunctionLike) {
-            array_pop($this->functions);
-        }
-        if ($node instanceof Stmt\ClassLike) {
-            array_pop($this->classes);
-        } elseif ($node instanceof Stmt\ClassMethod) {
-            array_pop($this->methods);
-        }
+        $this->scopes->leave($node);
 
         return null;
     }
@@ -163,12 +125,12 @@ final class TestDoubleCollector extends NodeVisitorAbstract
             $this->chain($node);
         }
         if ($node instanceof Expr\CallLike && !$node->isFirstClassCallable() && !self::isAssertion($node)) {
-            $site = $this->site();
+            $site = $this->scopes->site();
             foreach ($node->getArgs() as $argument) {
                 $this->handOffs[] = [$argument->value, $site, $node->getStartLine()];
             }
         } elseif ($node instanceof Expr\Array_) {
-            $site = $this->site();
+            $site = $this->scopes->site();
             foreach ($node->items as $item) {
                 $this->handOffs[] = [$item->value, $site, $item->getStartLine()];
             }
@@ -179,7 +141,7 @@ final class TestDoubleCollector extends NodeVisitorAbstract
     private function assignment(Expr\Assign $node): void
     {
         $target = $node->var;
-        $site = $this->site();
+        $site = $this->scopes->site();
         if ($target instanceof Expr\Variable && is_string($target->name)) {
             $this->bindings->bindVariable($site->variableScope($target->name), $target->name, $node->getEndFilePos(), [$node->expr, $site]);
         } elseif ($target instanceof Expr\PropertyFetch && self::isThis($target->var) && $target->name instanceof Identifier) {
@@ -192,7 +154,7 @@ final class TestDoubleCollector extends NodeVisitorAbstract
     /** Keep the outermost call of a chain, and mark the calls inside it so none is read as a chain of its own. */
     private function chain(Expr\MethodCall|Expr\StaticCall $node): void
     {
-        $this->chains[] = [$node, $this->site()];
+        $this->chains[] = [$node, $this->scopes->site()];
         $current = $node;
         while ($current instanceof Expr\MethodCall) {
             $current = $current->var;
@@ -200,13 +162,8 @@ final class TestDoubleCollector extends NodeVisitorAbstract
         }
     }
 
-    /**
-     * Read every chain against the double it starts on, then every value
-     * handed on, and build the facts.
-     *
-     * @return array{list<array<string, mixed>>, list<array<string, mixed>>}
-     */
-    private function facts(): array
+    /** Read every chain against the double it starts on, then every value handed on. */
+    private function resolve(): void
     {
         foreach ($this->chains as [$outer, $site]) {
             [$double, $revealed, $calls] = $this->start($outer, $site, 0);
@@ -217,15 +174,76 @@ final class TestDoubleCollector extends NodeVisitorAbstract
         foreach ($this->handOffs as [$value, $site, $line]) {
             $this->valueOf($value, $site, 0)?->double->reach($line);
         }
+    }
+
+    /**
+     * The file's doubles, each once, in the order the file makes them.
+     *
+     * @return list<DoubleRecord>
+     */
+    public function records(): array
+    {
         // A facade's one double is listed under every call that configures it.
         $doubles = [];
         foreach ($this->doubles as $double) {
             $doubles[spl_object_id($double)] = $double;
         }
         usort($doubles, static fn(DoubleRecord $a, DoubleRecord $b): int => $a->node->getStartFilePos() <=> $b->node->getStartFilePos());
+
+        return $doubles;
+    }
+
+    /** A double's canonical name: its file, then the line and column it is made at. */
+    public function canonicalOf(DoubleRecord $double): string
+    {
+        return sprintf('%s#double:%d:%d', $this->relativePath, $double->node->getStartLine(), $this->column($double->node));
+    }
+
+    /**
+     * The double an expression read at a site holds, if any: a double made
+     * there, a variable or `$this` property bound to one, or a chain of calls
+     * that hands it back.
+     */
+    public function held(Expr $value, Site $site): ?HeldDouble
+    {
+        return $this->valueOf($value, $site, 0);
+    }
+
+    /** The double a facade class is swapped for in this file, by its fully qualified name; null when none is. */
+    public function facade(string $class): ?DoubleRecord
+    {
+        return $this->facades[strtolower($class)] ?? null;
+    }
+
+    /**
+     * Whether an expression makes a double, or is a chain of calls that
+     * configures one rather than calling it: what it is handed builds or
+     * configures the double, and runs no code under test.
+     */
+    public function configures(Expr $node, Site $site): bool
+    {
+        if (isset($this->doubles[spl_object_id($node)])) {
+            return true;
+        }
+        if (!$node instanceof Expr\MethodCall) {
+            return false;
+        }
+        [$double, $revealed, $calls] = $this->start($node, $site, 0);
+
+        return $double !== null && ConfigurationChain::expects($double, $calls, $revealed);
+    }
+
+    /**
+     * The file's doubles as `test_double` nodes, each with a `contains` edge
+     * from the module and a `doubles` edge to the class it stands in for.
+     *
+     * @return array{list<array<string, mixed>>, list<array<string, mixed>>}
+     */
+    public function facts(): array
+    {
         $nodes = $edges = [];
-        foreach ($doubles as $double) {
-            $canonical = sprintf('%s#double:%d:%d', $this->relativePath, $double->node->getStartLine(), $this->column($double->node));
+        foreach ($this->records() as $double) {
+            $canonical = $this->canonicalOf($double);
             $id = 'php:test_double:' . $canonical;
             $evidence = FrameworkFactStore::evidenceIn($this->relativePath, $double->node);
             $nodes[] = ['local_id' => $id, 'kind' => 'test_double', 'canonical_name' => $canonical, 'display_name' => $double->displayName(), 'origin' => 'ast', 'confidence' => 'certain', 'evidence' => $evidence, 'attributes' => (object) $double->attributes()];
@@ -296,12 +314,6 @@ final class TestDoubleCollector extends NodeVisitorAbstract
         };
     }
 
-    /** Where the traversal is now. */
-    private function site(): Site
-    {
-        return new Site($this->functions, $this->classes === [] ? null : $this->classes[array_key_last($this->classes)], $this->methods === [] ? null : $this->methods[array_key_last($this->methods)]);
-    }
-
     /** The 1-based column a node starts at. */
     private function column(Node $node): int
     {
@@ -336,7 +348,7 @@ final class TestDoubleCollector extends NodeVisitorAbstract
      * @param array{path: string, start_line: int, end_line: int} $evidence
      * @return array<string, mixed>
      */
-    private static function edge(string $kind, string $source, string $target, array $evidence): array
+    public static function edge(string $kind, string $source, string $target, array $evidence): array
     {
         return ['kind' => $kind, 'source' => $source, 'target' => $target, 'origin' => 'ast', 'confidence' => 'certain', 'evidence' => $evidence, 'attributes' => (object) []];
     }

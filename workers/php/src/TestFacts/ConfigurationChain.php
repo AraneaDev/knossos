@@ -48,6 +48,9 @@ final class ConfigurationChain
         'mockery' => ['shouldreceive', 'shouldnotreceive', 'allows', 'expects', 'shouldhavereceived', 'shouldnothavereceived', 'shouldhavebeencalled', 'shouldnothavebeencalled'],
     ];
 
+    /** Mockery's calls that stub a double, so a spy given one is configured. */
+    private const STUBS = ['shouldreceive', 'shouldnotreceive', 'allows', 'expects'];
+
     /** Calls on an expectation that pin a member's return, by the api each records: every argument is one value. */
     private const PINS = [
         'willreturn' => 'willReturn',
@@ -110,6 +113,28 @@ final class ConfigurationChain
         return $expecting === null ? $revealed : null;
     }
 
+    /**
+     * Whether a chain of calls on a double, innermost first, starts an
+     * expectation on it, rather than calling it or handing it back.
+     *
+     * @param list<Expr\MethodCall|Expr\StaticCall> $calls
+     */
+    public static function expects(DoubleRecord $double, array $calls, bool $revealed): bool
+    {
+        $framework = $double->framework === 'pest' ? 'mockery' : $double->framework;
+        foreach ($calls as $call) {
+            $name = $call->name instanceof Identifier ? strtolower($call->name->toString()) : null;
+            if ($name !== null && in_array($name, self::KEEPS[$framework] ?? [], true)) {
+                $revealed = $revealed || $name === 'reveal';
+                continue;
+            }
+
+            return ($framework === 'prophecy' && !$revealed) || in_array($name, self::EXPECTS[$framework] ?? [], true);
+        }
+
+        return false;
+    }
+
     /** Apply what a call that keeps the double does to it: the members `onlyMethods()` lists, Mockery's protected opt-in. */
     private static function kept(DoubleRecord $double, string $name, Expr\MethodCall|Expr\StaticCall $call): void
     {
@@ -139,8 +164,14 @@ final class ConfigurationChain
 
             return [$member];
         }
+        if ($framework === 'mockery' && in_array($name, self::STUBS, true)) {
+            $double->stubbed = true;
+        }
         if ($name === 'method' || $name === 'shouldreceive') {
             return self::named($double, $call, $name === 'method' ? 'method' : 'shouldReceive');
+        }
+        if ($name === 'shouldhavereceived' || $name === 'shouldnothavereceived') {
+            return self::spyAssertion($double, $call);
         }
 
         return [];
@@ -206,6 +237,28 @@ final class ConfigurationChain
         return array_values(array_filter($members, static fn(?string $member): bool => $member !== null));
     }
 
+    /**
+     * The member a Mockery spy assertion, `shouldHaveReceived('m')`, is
+     * about. The argument list it may be given second, `['a', 'b']`, is a
+     * matcher, as `->with('a', 'b')` after it would be.
+     *
+     * @return list<string>
+     */
+    private static function spyAssertion(DoubleRecord $double, Expr\MethodCall|Expr\StaticCall $call): array
+    {
+        $name = self::argument($call, 0);
+        if (!$name instanceof Scalar\String_ || self::member($double, $name->value, $name, 'shouldHaveReceived') === null) {
+            return [];
+        }
+        $listed = self::argument($call, 1);
+        if ($listed !== null && !($listed instanceof Expr\ConstFetch && $listed->name->toLowerString() === 'null')) {
+            [$count, $spread] = $listed instanceof Expr\Array_ ? self::argumentCount($call, false, 1) : [0, true];
+            $double->matcher($name->value, 'with', $call->getStartLine(), $count, $spread);
+        }
+
+        return [$name->value];
+    }
+
     /** Record one named member; null for a name that is not a method name. */
     private static function member(DoubleRecord $double, string $name, Scalar\String_ $written, string $api): ?string
     {
@@ -216,18 +269,19 @@ final class ConfigurationChain
      * How many arguments a matcher lists, and whether the real count is open:
      * a spread argument, Prophecy's `Argument::cetera()`, or a `withArgs()`
      * given a closure or a variable rather than an array. With `$direct` the
-     * call's own arguments are the list; without, its one array argument is.
+     * call's own arguments are the list; without, its array argument at
+     * `$position` is.
      *
      * @return array{int, bool}
      */
-    private static function argumentCount(Expr\MethodCall|Expr\StaticCall $call, bool $direct): array
+    private static function argumentCount(Expr\MethodCall|Expr\StaticCall $call, bool $direct, int $position = 0): array
     {
         if ($call->isFirstClassCallable()) {
             return [0, true];
         }
         $arguments = $call->getArgs();
         if (!$direct) {
-            $list = $arguments[0]->value ?? null;
+            $list = $arguments[$position]->value ?? null;
             if (!$list instanceof Expr\Array_) {
                 return [0, true];
             }

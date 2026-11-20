@@ -13,7 +13,8 @@ use PhpParser\Node\Expr;
  * A local variable holds what it was last assigned before the line that reads
  * it, in its own scope. A `$this` property assigned in a test method holds it
  * for the rest of that method; assigned in `setUp()`, it holds it in every
- * method of the class, which is how one double serves every test.
+ * method of the class, which is how one double serves every test. A Pest
+ * `beforeEach()` is the setUp() of its file.
  *
  * A binding is either a double outright (a closure parameter that Mockery
  * hands the double it is making) or the expression assigned, read later
@@ -96,9 +97,23 @@ final class Bindings
         return $local ?? $setUp;
     }
 
-    /** The method a site is in, as an id; 0 outside one. */
+    /** How many assignments bind a local variable in the scope a site reads it in. */
+    public function variableWrites(string $name, Site $site): int
+    {
+        return count($this->variables[$site->variableScope($name) . '$' . $name] ?? []);
+    }
+
+    /** How many assignments bind a `$this` property anywhere in the class a site reads it in. */
+    public function propertyWrites(string $name, Site $site): int
+    {
+        $class = $site->classScope();
+
+        return $class === null ? 0 : count($this->properties[$class . '->' . $name] ?? []);
+    }
+
+    /** The method or Pest closure a site is in, as an id; 0 outside both. */
     private static function methodId(Site $site): int
     {
-        return $site->method === null ? 0 : spl_object_id($site->method);
+        return $site->ownerId();
     }
 }
