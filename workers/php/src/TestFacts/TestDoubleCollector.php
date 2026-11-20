@@ -148,7 +148,7 @@ final class TestDoubleCollector extends NodeVisitorAbstract
             $this->doubles[spl_object_id($node)] = $double;
             $closure = $node instanceof Expr\CallLike ? DoubleFactories::configuringClosure($node) : null;
             $parameter = $closure?->getParams()[0]->var ?? null;
-            if ($closure !== null && $parameter instanceof Expr\Variable && is_string($parameter->name) && $double->framework !== 'phpunit') {
+            if ($closure !== null && $parameter instanceof Expr\Variable && is_string($parameter->name) && in_array($double->framework, ['mockery', 'pest'], true)) {
                 $this->bindings->bindVariable('f' . spl_object_id($closure), $parameter->name, $closure->getStartFilePos(), $double);
             }
         }
@@ -209,13 +209,13 @@ final class TestDoubleCollector extends NodeVisitorAbstract
     private function facts(): array
     {
         foreach ($this->chains as [$outer, $site]) {
-            [$double, $calls] = $this->start($outer, $site, 0);
+            [$double, $revealed, $calls] = $this->start($outer, $site, 0);
             if ($double !== null) {
-                ConfigurationChain::walk($double, $calls, true);
+                ConfigurationChain::walk($double, $calls, true, $revealed);
             }
         }
         foreach ($this->handOffs as [$value, $site, $line]) {
-            $this->valueOf($value, $site, 0)?->reach($line);
+            $this->valueOf($value, $site, 0)?->double->reach($line);
         }
         // A facade's one double is listed under every call that configures it.
         $doubles = [];
@@ -241,21 +241,22 @@ final class TestDoubleCollector extends NodeVisitorAbstract
     /**
      * The value of an expression when it is a double: a double made, a
      * variable or `$this` property bound to one, or a chain of calls that
-     * hands it back.
+     * hands it back, and whether it is a Prophecy double revealed.
      */
-    private function valueOf(Expr $value, Site $site, int $depth): ?DoubleRecord
+    private function valueOf(Expr $value, Site $site, int $depth): ?HeldDouble
     {
-        [$double, $calls] = $this->start($value, $site, $depth);
+        [$double, $revealed, $calls] = $this->start($value, $site, $depth);
+        $state = $double === null ? null : ConfigurationChain::walk($double, $calls, false, $revealed);
 
-        return $double !== null && ConfigurationChain::walk($double, $calls, false) ? $double : null;
+        return $double === null || $state === null ? null : new HeldDouble($double, $state);
     }
 
     /**
-     * The double a chain of calls starts on, if any, and its calls innermost
-     * first. A facade's static `shouldReceive()` is both the double and the
-     * chain's first call.
+     * The double a chain of calls starts on, if any, whether it is already
+     * revealed, and its calls innermost first. A facade's static
+     * `shouldReceive()` is both the double and the chain's first call.
      *
-     * @return array{?DoubleRecord, list<Expr\MethodCall|Expr\StaticCall>}
+     * @return array{?DoubleRecord, bool, list<Expr\MethodCall|Expr\StaticCall>}
      */
     private function start(Expr $outer, Site $site, int $depth): array
     {
@@ -270,11 +271,13 @@ final class TestDoubleCollector extends NodeVisitorAbstract
             $calls[] = $current;
         }
 
-        return [$double ?? $this->bound($current, $site, $depth), array_reverse($calls)];
+        $held = $double === null ? $this->bound($current, $site, $depth) : new HeldDouble($double, false);
+
+        return [$held?->double, $held->revealed ?? false, array_reverse($calls)];
     }
 
     /** The double a variable or `$this` property holds where it is read, following one binding to another. */
-    private function bound(Expr $leaf, Site $site, int $depth): ?DoubleRecord
+    private function bound(Expr $leaf, Site $site, int $depth): ?HeldDouble
     {
         if ($depth > self::MAX_BINDING_DEPTH) {
             return null;
@@ -286,7 +289,11 @@ final class TestDoubleCollector extends NodeVisitorAbstract
             default => null,
         };
 
-        return is_array($value) ? $this->valueOf($value[0], $value[1], $depth + 1) : $value;
+        return match (true) {
+            is_array($value) => $this->valueOf($value[0], $value[1], $depth + 1),
+            $value === null => null,
+            default => new HeldDouble($value, false),
+        };
     }
 
     /** Where the traversal is now. */

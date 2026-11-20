@@ -37,10 +37,19 @@ final class DoubleRecord
         public readonly string $subject = '',
     ) {}
 
-    /** Record a member the test names, once: a later mention keeps the first line and api. */
-    public function member(string $name, int $line, string $api): void
+    /**
+     * Record a member the test names, once: a later mention keeps the first
+     * line and api. A name that is not a PHP method name names no member, and
+     * says so with false.
+     */
+    public function member(string $name, int $line, string $api): bool
     {
+        if (preg_match('/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/', $name) !== 1) {
+            return false;
+        }
         $this->members[$name] ??= ['name' => $name, 'line' => $line, 'api' => $api, 'called_with' => [], 'returns' => []];
+
+        return true;
     }
 
     /** Record a value the test pins a member to return. */

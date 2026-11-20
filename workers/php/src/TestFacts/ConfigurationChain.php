@@ -65,16 +65,19 @@ final class ConfigurationChain
 
     /**
      * Walk a chain of calls made on a double, innermost first, and say whether
-     * the chain's value is still the double. With `$configure`, record what
-     * the chain configures and the site that calls the double; without, only
-     * answer.
+     * the chain's value is still the double: null when it is not, else whether
+     * it is the double revealed. With `$configure`, record what the chain
+     * configures and the site that calls the double; without, only answer.
+     *
+     * `$revealed` says the chain starts on a Prophecy double already revealed,
+     * as a variable or property assigned `$p->reveal()` holds it: a call on it
+     * calls the double rather than configuring it.
      *
      * @param list<Expr\MethodCall|Expr\StaticCall> $calls
      */
-    public static function walk(DoubleRecord $double, array $calls, bool $configure): bool
+    public static function walk(DoubleRecord $double, array $calls, bool $configure, bool $revealed = false): ?bool
     {
         $framework = $double->framework === 'pest' ? 'mockery' : $double->framework;
-        $revealed = false;
         $expecting = null;
         foreach ($calls as $call) {
             $name = $call->name instanceof Identifier ? strtolower($call->name->toString()) : null;
@@ -101,10 +104,10 @@ final class ConfigurationChain
                 $double->reach($call->getStartLine());
             }
 
-            return false;
+            return null;
         }
 
-        return $expecting === null;
+        return $expecting === null ? $revealed : null;
     }
 
     /** Apply what a call that keeps the double does to it: the members `onlyMethods()` lists, Mockery's protected opt-in. */
@@ -206,12 +209,7 @@ final class ConfigurationChain
     /** Record one named member; null for a name that is not a method name. */
     private static function member(DoubleRecord $double, string $name, Scalar\String_ $written, string $api): ?string
     {
-        if (preg_match('/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/', $name) !== 1) {
-            return null;
-        }
-        $double->member($name, $written->getStartLine(), $api);
-
-        return $name;
+        return $double->member($name, $written->getStartLine(), $api) ? $name : null;
     }
 
     /**
