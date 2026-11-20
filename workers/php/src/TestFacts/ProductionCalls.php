@@ -179,7 +179,7 @@ final class ProductionCalls
     }
 
     /** Whether a method is one of PHPUnit's own TestCase helpers, which asserts, expects, builds a matcher or skips. */
-    public static function isTestCaseHelper(string $method): bool
+    private static function isTestCaseHelper(string $method): bool
     {
         return preg_match(self::TEST_CASE_HELPERS, strtolower($method)) === 1;
     }

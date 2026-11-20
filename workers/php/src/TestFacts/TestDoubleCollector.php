@@ -84,6 +84,11 @@ final class TestDoubleCollector extends NodeVisitorAbstract
     public function enterNode(Node $node): ?int
     {
         $this->scopes->enter($node);
+        if ($node instanceof Stmt\TraitUse) {
+            $this->bindings->opaque($this->scopes->site()->classScope());
+        } elseif (self::opensPestCase($node)) {
+            $this->bindings->opaque(Site::PEST_SCOPE);
+        }
         if ($node instanceof Expr) {
             $this->expression($node);
         } elseif ($node instanceof Stmt\Return_ && $node->expr !== null) {
@@ -202,11 +207,14 @@ final class TestDoubleCollector extends NodeVisitorAbstract
     /**
      * The double an expression read at a site holds, if any: a double made
      * there, a variable or `$this` property bound to one, or a chain of calls
-     * that hands it back.
+     * that hands it back. A `$this` property holds one here only when exactly
+     * one method assigns it, in a class whose every assignment the file shows
+     * (`Bindings::soleProperty()`): otherwise a helper or a trait's hook may
+     * have swapped the double for something else before the read.
      */
     public function held(Expr $value, Site $site): ?HeldDouble
     {
-        return $this->valueOf($value, $site, 0);
+        return $this->valueOf($value, $site, 0, true);
     }
 
     /** The double a facade class is swapped for in this file, by its fully qualified name; null when none is. */
@@ -259,11 +267,12 @@ final class TestDoubleCollector extends NodeVisitorAbstract
     /**
      * The value of an expression when it is a double: a double made, a
      * variable or `$this` property bound to one, or a chain of calls that
-     * hands it back, and whether it is a Prophecy double revealed.
+     * hands it back, and whether it is a Prophecy double revealed. With
+     * `$sole`, a `$this` property holds a double only as `held()` allows.
      */
-    private function valueOf(Expr $value, Site $site, int $depth): ?HeldDouble
+    private function valueOf(Expr $value, Site $site, int $depth, bool $sole = false): ?HeldDouble
     {
-        [$double, $revealed, $calls] = $this->start($value, $site, $depth);
+        [$double, $revealed, $calls] = $this->start($value, $site, $depth, $sole);
         $state = $double === null ? null : ConfigurationChain::walk($double, $calls, false, $revealed);
 
         return $double === null || $state === null ? null : new HeldDouble($double, $state);
@@ -276,7 +285,7 @@ final class TestDoubleCollector extends NodeVisitorAbstract
      *
      * @return array{?DoubleRecord, bool, list<Expr\MethodCall|Expr\StaticCall>}
      */
-    private function start(Expr $outer, Site $site, int $depth): array
+    private function start(Expr $outer, Site $site, int $depth, bool $sole = false): array
     {
         $calls = [];
         $current = $outer;
@@ -289,13 +298,13 @@ final class TestDoubleCollector extends NodeVisitorAbstract
             $calls[] = $current;
         }
 
-        $held = $double === null ? $this->bound($current, $site, $depth) : new HeldDouble($double, false);
+        $held = $double === null ? $this->bound($current, $site, $depth, $sole) : new HeldDouble($double, false);
 
         return [$held?->double, $held->revealed ?? false, array_reverse($calls)];
     }
 
     /** The double a variable or `$this` property holds where it is read, following one binding to another. */
-    private function bound(Expr $leaf, Site $site, int $depth): ?HeldDouble
+    private function bound(Expr $leaf, Site $site, int $depth, bool $sole): ?HeldDouble
     {
         if ($depth > self::MAX_BINDING_DEPTH) {
             return null;
@@ -303,15 +312,26 @@ final class TestDoubleCollector extends NodeVisitorAbstract
         $at = $leaf->getStartFilePos();
         $value = match (true) {
             $leaf instanceof Expr\Variable && is_string($leaf->name) && $leaf->name !== 'this' => $this->bindings->variable($leaf->name, $site, $at),
-            $leaf instanceof Expr\PropertyFetch && self::isThis($leaf->var) && $leaf->name instanceof Identifier => $this->bindings->property($leaf->name->toString(), $site, $at),
+            $leaf instanceof Expr\PropertyFetch && self::isThis($leaf->var) && $leaf->name instanceof Identifier => !$sole || $this->bindings->soleProperty($leaf->name->toString(), $site) ? $this->bindings->property($leaf->name->toString(), $site, $at) : null,
             default => null,
         };
 
         return match (true) {
-            is_array($value) => $this->valueOf($value[0], $value[1], $depth + 1),
+            is_array($value) => $this->valueOf($value[0], $value[1], $depth + 1, $sole),
             $value === null => null,
             default => new HeldDouble($value, false),
         };
+    }
+
+    /** Whether a node hands a Pest file's test case to code the file may not show: `uses()`, `pest()`, or `test()` with no test to define. */
+    private static function opensPestCase(Node $node): bool
+    {
+        if (!$node instanceof Expr\FuncCall || !$node->name instanceof Name) {
+            return false;
+        }
+        $name = strtolower($node->name->getLast());
+
+        return in_array($name, ['uses', 'pest'], true) || ($name === 'test' && ($node->isFirstClassCallable() || $node->getArgs() === []));
     }
 
     /** The 1-based column a node starts at. */

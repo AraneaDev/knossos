@@ -146,15 +146,18 @@ method of a class whose name ends in `Test`, when it is named `test*`, marked
 
 A local variable is followed to its value only when it is assigned once and
 nothing else changes it: no `++` or `.=`, no write to an element or property of
-it (`$x[] = 1`, `unset($x['k'])`), no reference, and no call it is handed to.
+it (`$x[] = 1`, `unset($x['k'])`), no destructuring at any depth (`[[$x]] =`,
+`foreach ($rows as [$x])`), no reference, and no call it is handed to.
 The rule is coarse on purpose. A function that may write its locals indirectly
 (`global`, `extract()`, `get_defined_vars()`, a one-argument `parse_str()`, a
-variable variable) proves no local's value. A `$this` property, in a PHPUnit
+variable variable, an `include` or `require`, `eval()`) proves no local's value. A `$this` property, in a PHPUnit
 class or a Pest file, and a static property are never a literal: code the file
 does not show (a parent class, a trait's hook, `__set()`, a helper handed
 Pest's `test()`) may write them at any time. A property holding a double is
-that double; one assigned code under test in the test or in `setUp()` /
-`beforeEach()` is production; any other is unknown. A call on a stub gives its pinned value
+that double when exactly one method or Pest closure assigns it, and the class
+uses no trait (a Pest file calls no `uses()`, `pest()` or bare `test()`); otherwise a
+helper or hook may have swapped it. Any other property assigned code under test in the test or in `setUp()` / `beforeEach()` is
+production; any other is unknown. A call on a stub gives its pinned value
 only when exactly one way the member answers is set in the test or its setup,
 and that is one value for any call: not a value for some arguments only
 (`with()`), one of several in turn, or a callback's. A one-value assertion such
