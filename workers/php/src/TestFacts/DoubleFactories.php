@@ -15,7 +15,8 @@ use PhpParser\Node\Scalar;
  *
  * PHPUnit's `$this->createMock(Foo::class)` family and `getMockBuilder()`,
  * Mockery's `Mockery::mock()` and `Mockery::spy()` (under any alias), Pest's
- * `mock()` and Prophecy's `$this->prophesize()`. The class a double stands in
+ * `mock()`, Laravel's `$this->mock()`, `partialMock()` and `spy()`, and
+ * Prophecy's `$this->prophesize()`. The class a double stands in
  * for is read from a `Foo::class` constant, resolved through the file's
  * namespace and imports, or from a string, which PHP always reads as fully
  * qualified. A variable or an expression names nothing the worker can know.
@@ -31,6 +32,9 @@ final class DoubleFactories
         'getmockforabstractclass' => ['getMockForAbstractClass', false],
         'getmockbuilder' => ['getMockBuilder', false],
     ];
+
+    /** Laravel's `InteractsWithContainer` helpers on the test case, which make a Mockery double and bind it in the container. */
+    private const LARAVEL = ['mock' => 'laravel.mock', 'partialmock' => 'laravel.partialMock', 'spy' => 'laravel.spy'];
 
     /** Mockery's static factories, by the pattern each records. */
     private const MOCKERY = ['mock' => 'Mockery::mock', 'spy' => 'Mockery::spy'];
@@ -76,12 +80,12 @@ final class DoubleFactories
     }
 
     /**
-     * The closure a Mockery or Pest factory hands the double it makes, to
-     * configure it in: `Mockery::mock(Foo::class, fn ($m) => ...)`.
+     * The closure a Mockery, Pest or Laravel factory hands the double it
+     * makes, to configure it in: `Mockery::mock(Foo::class, fn ($m) => ...)`.
      */
     public static function configuringClosure(Expr\CallLike $call): Expr\Closure|Expr\ArrowFunction|null
     {
-        if ($call instanceof Expr\MethodCall || $call->isFirstClassCallable()) {
+        if ($call->isFirstClassCallable()) {
             return null;
         }
         foreach ($call->getArgs() as $argument) {
@@ -99,6 +103,9 @@ final class DoubleFactories
         $arguments = $call->isFirstClassCallable() ? [] : $call->getArgs();
         if ($method === 'prophesize') {
             return new DoubleRecord($call, 'prophecy', 'prophesize', self::className($arguments[0] ?? null), false);
+        }
+        if (isset(self::LARAVEL[$method]) && $call instanceof Expr\MethodCall) {
+            return new DoubleRecord($call, 'mockery', self::LARAVEL[$method], self::className($arguments[0] ?? null), false);
         }
         if (!isset(self::PHPUNIT[$method])) {
             return null;
@@ -122,9 +129,7 @@ final class DoubleFactories
         $double = new DoubleRecord($call, $framework, $pattern, self::className($first), false);
         if ($first !== null && $first->value instanceof Scalar\String_ && preg_match('/\[([^\]]*)\]\s*$/', $first->value->value, $match) === 1) {
             foreach (explode(',', $match[1]) as $name) {
-                if (preg_match('/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/', trim($name)) === 1) {
-                    $double->member(trim($name), $first->value->getStartLine(), 'partial');
-                }
+                $double->member(trim($name), $first->value->getStartLine(), 'partial');
             }
         }
 
@@ -135,8 +140,7 @@ final class DoubleFactories
     private static function configured(DoubleRecord $double, Expr\Array_ $array): void
     {
         foreach ($array->items as $item) {
-            if ($item->key instanceof Scalar\String_ && !$item->unpack) {
-                $double->member($item->key->value, $item->key->getStartLine(), 'configured');
+            if ($item->key instanceof Scalar\String_ && !$item->unpack && $double->member($item->key->value, $item->key->getStartLine(), 'configured')) {
                 $double->pin($item->key->value, 'configured', $item->value, $item->value->getStartLine());
             }
         }
@@ -146,7 +150,7 @@ final class DoubleFactories
     public static function listed(DoubleRecord $double, Expr\Array_ $array, string $api): void
     {
         foreach ($array->items as $item) {
-            if ($item->value instanceof Scalar\String_ && $item->key === null && $item->value->value !== '') {
+            if ($item->value instanceof Scalar\String_ && $item->key === null) {
                 $double->member($item->value->value, $item->value->getStartLine(), $api);
             }
         }

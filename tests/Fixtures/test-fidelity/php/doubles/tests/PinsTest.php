@@ -29,7 +29,7 @@ final class PinsTest extends TestCase
             ->addMethods(['added'])
             ->getMock();
         $built->method('charge')->willReturn(3);
-        $configured = $this->createConfiguredMock(Foo::class, ['charge' => 4, $key => 5]);
+        $configured = $this->createConfiguredMock(Foo::class, ['charge' => 4, $key => 5, '' => 6, 'not a name' => 7]);
         $partial = $this->createPartialMock(Foo::class, ['charge', $other]);
         $stub = $this->createStub(Foo::class);
         $abstract = $this->getMockForAbstractClass(Foo::class);

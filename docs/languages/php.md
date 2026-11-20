@@ -109,7 +109,8 @@ test-fidelity rules hold against the class it stands in for. It reads
 PHPUnit's `createMock()`, `createStub()`, `createConfiguredMock()`,
 `createPartialMock()`, `getMockForAbstractClass()` and `getMockBuilder()`,
 Mockery's `Mockery::mock()` and `Mockery::spy()` under any alias, Pest's
-`mock()` and Prophecy's `$this->prophesize()`. A Laravel facade's
+`mock()`, Laravel's `$this->mock()`, `$this->partialMock()` and
+`$this->spy()`, and Prophecy's `$this->prophesize()`. A Laravel facade's
 `Cache::shouldReceive()` is one Mockery double per facade, with no class to
 hold it against.
 

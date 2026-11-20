@@ -96,6 +96,40 @@ final class PhpTestDoublesTest extends KnossosTestCase
         assertSame(2, $double->invocations, 'The revealed object handed off twice, once through a variable.');
     }
 
+    public function testACallOnARevealedProphecyCallsIt(): void
+    {
+        [$test] = $this->scan('doubles', ['tests/RevealedTest.php']);
+        $doubles = $this->doubles($test);
+
+        $summary = array_map(static fn(TestDouble $double): array => [array_map(static fn(StubbedMember $member): string => $member->name, $double->members), $double->invocations], $doubles);
+        assertSame([19 => [['charge'], 1], 26 => [[], 1], 33 => [[], 1]], $summary, 'Revealed through a variable, a property, or a property set in setUp(), the double is called, not configured.');
+    }
+
+    public function testRecordsLaravelTestHelpers(): void
+    {
+        [$test] = $this->scan('doubles', ['tests/LaravelHelpersTest.php']);
+        $doubles = $this->doubles($test);
+        $summary = array_map(static fn(TestDouble $double): array => [
+            $double->framework,
+            $double->pattern,
+            $double->target,
+            array_map(static fn(StubbedMember $member): array => [
+                $member->name,
+                $member->line,
+                $member->api,
+                array_map(static fn(PinnedValue $pin): ?string => $pin->type, $member->returns),
+                array_map(static fn(CallMatcher $matcher): array => [$matcher->api, $matcher->count, $matcher->spread], $member->calledWith),
+            ], $double->members),
+        ], $doubles);
+        $foo = ['kind' => 'class', 'export' => 'App\Billing\Foo'];
+
+        assertSame([
+            13 => ['mockery', 'laravel.mock', $foo, [['charge', 14, 'shouldReceive', ['int'], [['with', 2, false]]]]],
+            20 => ['mockery', 'laravel.partialMock', $foo, [['audit', 20, 'shouldReceive', ['null'], []], ['charge', 21, 'shouldReceive', ['string'], [['with', 1, false]]]]],
+            26 => ['mockery', 'laravel.spy', $foo, [['charge', 26, 'shouldReceive', ['int'], [['withNoArgs', 0, false]]]]],
+        ], $summary);
+    }
+
     public function testBindsASetupDoubleAcrossMethods(): void
     {
         [$test] = $this->scan('momus', ['tests/SetUpMockTest.php']);
