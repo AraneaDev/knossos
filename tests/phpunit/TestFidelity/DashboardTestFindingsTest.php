@@ -49,14 +49,14 @@ final class DashboardTestFindingsTest extends KnossosTestCase
     {
         $section = $this->section();
 
-        assertSame([2, 2], [$section['definite'], $section['warning']]);
-        // The ghost is a stale mock; the self comparison is another test finding.
-        assertSame(1, $section['stale']);
+        assertSame([3, 2], [$section['definite'], $section['warning']]);
+        // The ghost and the arity mismatch are stale mocks; the self comparison is another test finding.
+        assertSame(2, $section['stale']);
         assertSame(['src/UserService.ts'], array_keys($section['by_production_file']));
         $group = $section['by_production_file']['src/UserService.ts'];
-        assertSame([1, 'UserService'], [$group['doubles'], $group['target']]);
-        assertCount(1, $group['keys']);
-        assertSame(['getProfil(): ghost'], $group['reasons']);
+        assertSame([2, 'UserService'], [$group['doubles'], $group['target']]);
+        assertCount(2, $group['keys']);
+        assertSame(['getProfil(): ghost', 'updateProfile(): arity'], $group['reasons']);
         assertSame(false, $section['by_production_file_truncated']);
     }
 
@@ -86,9 +86,9 @@ final class DashboardTestFindingsTest extends KnossosTestCase
     {
         $section = $this->section();
 
-        assertSame(['definite', 'definite', 'warning', 'warning'], array_column($section['list'], 'confidence'));
-        assertSame([['tests/UserService.spec.ts', 7], ['tests/UserService.spec.ts', 32], ['tests/UserService.spec.ts', 17], ['tests/UserService.spec.ts', 23]], array_map(static fn(array $item): array => [$item['file'], $item['line']], $section['list']));
-        assertSame(['src/UserService.ts', null, 'src/UserService.ts', 'src/UserService.ts'], array_column($section['list'], 'target_file'));
+        assertSame(['definite', 'definite', 'definite', 'warning', 'warning'], array_column($section['list'], 'confidence'));
+        assertSame([['tests/UserService.spec.ts', 7], ['tests/UserService.spec.ts', 29], ['tests/UserService.spec.ts', 32], ['tests/UserService.spec.ts', 17], ['tests/UserService.spec.ts', 23]], array_map(static fn(array $item): array => [$item['file'], $item['line']], $section['list']));
+        assertSame(['src/UserService.ts', 'src/UserService.ts', null, 'src/UserService.ts', 'src/UserService.ts'], array_column($section['list'], 'target_file'));
         assertSame(false, $section['list_truncated']);
         assertSame(['key', 'category', 'sub_rule', 'confidence', 'message', 'file', 'line', 'target_file'], array_keys($section['list'][0]));
     }
@@ -139,8 +139,8 @@ final class DashboardTestFindingsTest extends KnossosTestCase
     public function testSuppressionsAreApplied(): void
     {
         $suppressed = $this->section((string) json_encode(['version' => 1, 'test_finding_suppressions' => [['rule' => 'GHOST_MEMBER']]]));
-        assertSame([1, 2, null], [$suppressed['definite'], $suppressed['warning'], $suppressed['suppressions_invalid']]);
-        assertSame([], $suppressed['by_production_file']);
+        assertSame([2, 2, null], [$suppressed['definite'], $suppressed['warning'], $suppressed['suppressions_invalid']]);
+        assertSame(['updateProfile(): arity'], $suppressed['by_production_file']['src/UserService.ts']['reasons']);
     }
 
     public function testAnInvalidConfigIsSaidNotSwallowed(): void
@@ -148,6 +148,6 @@ final class DashboardTestFindingsTest extends KnossosTestCase
         $section = $this->section(null, (string) json_encode(['version' => 1, 'test_finding_suppressions' => [['rule' => '']]]));
 
         assertSame('PROJECT_CONFIG_INVALID: test_finding_suppressions entries need a rule.', $section['suppressions_invalid']);
-        assertSame([2, 2], [$section['definite'], $section['warning']]);
+        assertSame([3, 2], [$section['definite'], $section['warning']]);
     }
 }

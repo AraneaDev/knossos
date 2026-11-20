@@ -40,15 +40,16 @@ final class DriftFixtures
      * @param list<NodeFact> $extra further production nodes, contributed with the class
      * @param list<EdgeFact> $extraEdges
      * @param array<string, mixed>|null $targetAttributes the target node's attributes; by default the complete name list of what it contains
+     * @param string $framework the framework the double is of
      */
-    public static function graph(array $methods, array $members, array $target = ['kind' => 'class', 'export' => 'UserService'], array $extra = [], array $extraEdges = [], string $targetKind = 'class', ?array $targetAttributes = null): TestFidelityGraph
+    public static function graph(array $methods, array $members, array $target = ['kind' => 'class', 'export' => 'UserService'], array $extra = [], array $extraEdges = [], string $targetKind = 'class', ?array $targetAttributes = null, string $framework = 'vitest'): TestFidelityGraph
     {
         $names = array_map(static fn(NodeFact $method): string => $method->displayName, $methods);
         sort($names, SORT_STRING);
         $class = self::node($targetKind, 'src/UserService.ts#UserService', 'UserService', $targetAttributes ?? [$targetKind === 'module' ? 'exports' : 'member_names' => $names]);
         $edges = array_map(static fn(NodeFact $method): EdgeFact => self::edge('contains', $class, $method->localId), $methods);
         $double = self::node('test_double', 'tests/a.test.ts#double:6:3', 'vi.spyOn', [
-            'framework' => 'vitest', 'pattern' => 'vi.spyOn', 'target' => $target, 'automock' => false, 'invocations' => 0, 'members' => $members,
+            'framework' => $framework, 'pattern' => 'vi.spyOn', 'target' => $target, 'automock' => false, 'invocations' => 0, 'members' => $members,
         ], 6);
 
         return TestFidelityGraph::fromContributions([
@@ -78,10 +79,11 @@ final class DriftFixtures
     /**
      * @param list<mixed>|null $params
      * @param list<array<string, mixed>> $returns
+     * @param list<array<string, mixed>> $calledWith the call matchers on the member, as the wire states them
      * @return array<string, mixed>
      */
-    public static function stub(string $name, ?array $params = null, array $returns = []): array
+    public static function stub(string $name, ?array $params = null, array $returns = [], array $calledWith = []): array
     {
-        return ['name' => $name, 'line' => 7, 'api' => 'spyOn', 'returns' => $returns] + ($params === null ? [] : ['params' => $params]);
+        return ['name' => $name, 'line' => 7, 'api' => 'spyOn', 'returns' => $returns, 'called_with' => $calledWith] + ($params === null ? [] : ['params' => $params]);
     }
 }
