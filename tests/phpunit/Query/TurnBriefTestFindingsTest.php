@@ -344,8 +344,8 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
         }
     }
 
-    /** A mock that already named a module the scan could not resolve is not the deletion's doing. */
-    public function testAMissingModuleFromBeforeTheTurnIsNotIntroducedByDeletingItsFile(): void
+    /** A mock of a module that never existed stays out of the brief when another file goes; the overlap with the deleted path is pinned in TurnTestFindingsTest. */
+    public function testAMissingModuleFromBeforeTheTurnIsNotIntroducedByDeletingAnotherFile(): void
     {
         foreach (['fresh' => false, 'watcher' => true] as $case => $watcher) {
             // src/Legacy.* never existed, so the mock names a module that is genuinely missing, and the deletion is of another file.
