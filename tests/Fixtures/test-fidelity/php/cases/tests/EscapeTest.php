@@ -59,3 +59,32 @@ final class KeptTest extends TestCase
     }
     private function helper(): void {}
 }
+final class StaticSyntaxCallTest extends TestCase
+{
+    use Records;
+    private array $events;
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->events = [];
+    }
+    public function testCallsATraitMethodThroughSelf(): void
+    {
+        self::record('e');
+        $this->assertSame([], $this->events);
+    }
+}
+final class StaticSyntaxCallStaticTest extends TestCase
+{
+    use Records;
+    private array $events;
+    protected function setUp(): void
+    {
+        $this->events = [];
+    }
+    public function testCallsATraitMethodThroughStatic(): void
+    {
+        static::record('e');
+        $this->assertSame([], $this->events);
+    }
+}

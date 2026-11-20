@@ -231,6 +231,9 @@ final class PhpTestCasesTest extends KnossosTestCase
             'tests/EscapeTest.php:17' => ['literal', 'unknown'],
             'tests/EscapeTest.php:31' => ['literal', 'unknown'],
             'tests/EscapeTest.php:45' => ['literal', 'unknown'],
+            // A trait method called through self:: or static::, in a class extending PHPUnit's TestCase directly.
+            'tests/EscapeTest.php:74' => ['literal', 'unknown'],
+            'tests/EscapeTest.php:88' => ['literal', 'unknown'],
             // What nothing changes stays literal: a local, and a setUp() property of a class whose `$this` never escapes.
             'tests/AliasTest.php:70' => ['literal', 'literal'],
             'tests/ProbeTest.php:64' => ['literal', 'literal'],
@@ -265,6 +268,31 @@ final class PhpTestCasesTest extends KnossosTestCase
             ['mock_echo', 'tests/ProbeTest.php:110'],
             ['zero_reach', 'tests/PinTest.php:109'],
         ], $findings, 'Only values nothing can change, and pins that alone reach their test, give a tautology; the stub replaced before it is called is a zero-reach warning.');
+    }
+
+    public function testInheritedCodeAndPestTestEscapeTheirProperties(): void
+    {
+        $files = ['tests/RefTest.php', 'tests/Feature/helpers.php', 'tests/ProjectCaseTest.php'];
+        $scanned = array_combine($files, $this->scan('cases', $files));
+        $sources = [];
+        foreach ($scanned as $file => $contribution) {
+            foreach (self::cases($contribution) as $case) {
+                foreach ($case->assertions as $assertion) {
+                    $sources[$file . ':' . $assertion->line] = array_map(static fn(Operand $operand): string => $operand->source, $assertion->operands);
+                }
+            }
+        }
+
+        // An inherited method reached through parent::, static:: or self::, and a parent setUp() run after the child's assignment.
+        assertSame(['literal', 'unknown'], $sources['tests/RefTest.php:71']);
+        assertSame(['literal', 'unknown'], $sources['tests/RefTest.php:81']);
+        assertSame(['literal', 'unknown'], $sources['tests/RefTest.php:86']);
+        assertSame(['literal', 'unknown'], $sources['tests/RefTest.php:91']);
+        // Pest's test() hands a helper function the running test case.
+        assertSame(['unknown', 'literal'], $sources['tests/Feature/helpers.php:13']);
+        // A class extending a project TestCase inherits code the file does not show.
+        assertSame(['literal', 'unknown'], $sources['tests/ProjectCaseTest.php:13']);
+        assertSame([], array_merge(...array_map(static fn(ScanContribution $contribution): array => self::tautologies([$contribution]), array_values($scanned))), 'None of these healthy tests is a tautology.');
     }
 
     public function testAWorkerReadsComposerAfreshForEachRequest(): void
@@ -308,7 +336,7 @@ final class PhpTestCasesTest extends KnossosTestCase
         require_once self::repositoryRoot() . '/workers/php/vendor/autoload.php';
         $root = self::repositoryRoot() . '/tests/Fixtures/test-fidelity/php/cases';
         $checked = 0;
-        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/EscapeTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php'] as $file) {
+        foreach (['tests/EchoTest.php', 'tests/ProductionTest.php', 'tests/SpyTest.php', 'tests/FlowTest.php', 'tests/WriteTest.php', 'tests/SharedTest.php', 'tests/AliasTest.php', 'tests/ProbeTest.php', 'tests/PinTest.php', 'tests/EscapeTest.php', 'tests/RefTest.php', 'tests/ProjectCaseTest.php', 'tests/Feature/billing.php', 'tests/Feature/plain.php', 'tests/Feature/probes.php', 'tests/Feature/helpers.php'] as $file) {
             $contribution = json_decode((string) json_encode((new \KnossosPhpScanner\PhpScanner())->scan($root, $root . '/' . $file, $file)), true, 512, JSON_THROW_ON_ERROR);
             assertSame([], $contribution['diagnostics'], $file);
             foreach ([...$contribution['nodes'], ...$contribution['edges']] as $fact) {
@@ -317,7 +345,7 @@ final class PhpTestCasesTest extends KnossosTestCase
                 $checked += ($fact['kind'] ?? '') === 'test_case' ? 1 : 0;
             }
         }
-        assertSame(99, $checked);
+        assertSame(124, $checked);
     }
 
     /**
