@@ -36,6 +36,21 @@ final class MockedModulePathsTest extends KnossosTestCase
         assertSame(['lib/a.mts', 'lib/a.mjs'], MockedModulePaths::of('lib/a.test.ts', './a.mjs'));
     }
 
+    /** The worker resolves a mock target with its own table; the two must name the same sources. */
+    public function testItNamesTheSourcesTheWorkerResolvesAJavaScriptExtensionTo(): void
+    {
+        $worker = (string) file_get_contents(self::repositoryRoot() . '/workers/typescript/src/syntax-predicates.js');
+        assertSame(1, preg_match('/export const TYPESCRIPT_SOURCES = \{(.*?)\};/s', $worker, $table));
+        preg_match_all('/"(\.\w+)":\s*\[([^\]]*)\]/', $table[1], $rows, PREG_SET_ORDER);
+
+        foreach ($rows as $row) {
+            preg_match_all('/"(\.\w+)"/', $row[2], $sources);
+            $expected = [...array_map(static fn(string $source): string => 'src/a' . $source, $sources[1]), 'src/a' . $row[1]];
+            assertSame($expected, MockedModulePaths::of('tests/a.test.ts', '../src/a' . $row[1]), $row[1]);
+        }
+        assertSame(4, count($rows));
+    }
+
     public function testASpecifierFromTheProjectRootAndADotSegmentAreFolded(): void
     {
         assertSame('a/b', MockedModulePaths::of('spec.ts', './a/./b')[0]);

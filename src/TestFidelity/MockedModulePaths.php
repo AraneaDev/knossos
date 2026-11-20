@@ -12,7 +12,7 @@ namespace Knossos\TestFidelity;
  * Read against the test file's folder with the suffixes the TypeScript worker
  * tries, and no others. A specifier with a JavaScript extension names the
  * TypeScript sources it compiles from first, then itself (the worker's
- * `TYPESCRIPT_SOURCES`, workers/typescript/src/dynamic-import-collector.js);
+ * `TYPESCRIPT_SOURCES`, workers/typescript/src/syntax-predicates.js);
  * any other specifier names itself with each of the worker's
  * `REQUIRE_SUFFIXES` (workers/typescript/src/syntax-predicates.js).
  *

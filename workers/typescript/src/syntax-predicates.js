@@ -145,6 +145,14 @@ function exportsAnything(sourceFile) {
     return ts.forEachChild(sourceFile, namesExports) === true;
 }
 
+/** A JavaScript extension => the TypeScript sources a specifier naming it resolves to first. */
+export const TYPESCRIPT_SOURCES = {
+    ".js": [".ts", ".tsx"],
+    ".jsx": [".tsx"],
+    ".mjs": [".mts"],
+    ".cjs": [".cts"],
+};
+
 /** What a `require` specifier may leave off, in the order it is tried. */
 export const REQUIRE_SUFFIXES = [
     // Node's own order, then what a TypeScript loader adds.

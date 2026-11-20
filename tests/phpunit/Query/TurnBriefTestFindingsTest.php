@@ -348,8 +348,8 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
     public function testAMissingModuleFromBeforeTheTurnIsNotIntroducedByDeletingItsFile(): void
     {
         foreach (['fresh' => false, 'watcher' => true] as $case => $watcher) {
-            // The worker reads a `.js` mock specifier as resolving to nothing while src/UserService.ts exists.
-            [$pdo, $projectId, $root] = $this->project(healthy: true, extra: [self::MOCK => "import { it, vi } from 'vitest';\n\nvi.mock('../src/UserService.js', () => ({}));\n\nit('runs', () => {});\n"]);
+            // src/Legacy.* never existed, so the mock names a module that is genuinely missing, and the deletion is of another file.
+            [$pdo, $projectId, $root] = $this->project(healthy: true, extra: [self::MOCK => "import { it, vi } from 'vitest';\n\nvi.mock('../src/Legacy.js', () => ({}));\n\nit('runs', () => {});\n"]);
             try {
                 $missing = $pdo->query("SELECT COUNT(*) FROM test_findings WHERE sub_rule = 'missing_module'")->fetchColumn();
                 assertSame(1, (int) $missing, 'the missing module was there before the turn');

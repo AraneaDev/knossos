@@ -163,6 +163,22 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
         assertSame([], self::findings($pdo));
     }
 
+    /**
+     * A NodeNext project writes `.js`, `.jsx` and `.mjs` for the sources it
+     * compiles (`.ts`, `.tsx`, `.mts`), in mocks as in imports. The healthy
+     * mocks are silent; a factory key the module lacks and a module no source
+     * names are the ghosts.
+     */
+    public function testNodeNextMocksResolveTheirJsSpecifierToTheTypeScriptSource(): void
+    {
+        [$pdo] = $this->scanned(['nodenext' => '']);
+
+        assertSame(self::sorted([
+            'GHOST_MEMBER/missing_module/definite@tests/gone.test.ts:3',
+            'GHOST_MEMBER/missing_export/definite@tests/stale.test.ts:3',
+        ]), self::findings($pdo));
+    }
+
     public function testFindingsAreDeterministic(): void
     {
         $ids = static fn(PDO $pdo): array => $pdo->query('SELECT id FROM test_findings ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);

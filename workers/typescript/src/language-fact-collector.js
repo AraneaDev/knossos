@@ -43,7 +43,11 @@ import {
     normalize,
     relativeInside,
 } from "./project-paths.js";
-import { REQUIRE_SUFFIXES, storeMemberNames } from "./syntax-predicates.js";
+import {
+    REQUIRE_SUFFIXES,
+    storeMemberNames,
+    TYPESCRIPT_SOURCES,
+} from "./syntax-predicates.js";
 import { TableDispatch } from "./table-dispatch.js";
 import {
     importsModule,
@@ -639,7 +643,10 @@ export class TypeScriptLanguageFactCollector {
      * The compiler binds a `require` argument to its module only in a
      * JavaScript file; in TypeScript it is a string. Each candidate is tried
      * in the order Node loads it, so `require('./x')` beside both `x.js` and
-     * `x.ts` means the `.js`.
+     * `x.ts` means the `.js`. A specifier that names a JavaScript extension
+     * is the exception, as it is for the compiler (NodeNext and bundler
+     * resolution): `./x.js` is `x.ts` or `x.tsx` when one exists, then
+     * `x.js` itself. Module mocks reach their target through this too.
      */
     requiredSourceFile(location) {
         if (
@@ -647,6 +654,12 @@ export class TypeScriptLanguageFactCollector {
             !/^\.\.?(\/|$)/.test(location.text)
         )
             return undefined;
+        const extension = path.extname(location.text);
+        const stem = location.text.slice(0, -extension.length || undefined);
+        for (const source of TYPESCRIPT_SOURCES[extension] ?? []) {
+            const file = this.sourceFileNamed(stem + source, [""]);
+            if (file !== undefined) return file;
+        }
         return this.sourceFileNamed(location.text);
     }
 
