@@ -549,6 +549,7 @@ php	src/TestFidelity/FindingCategory.php
 php	src/TestFidelity/FindingConfidence.php
 php	src/TestFidelity/MockedModulePaths.php
 php	src/TestFidelity/Rules/ArityMismatchRule.php
+php	src/TestFidelity/Rules/CallArity.php
 php	src/TestFidelity/Rules/DoubleTests.php
 php	src/TestFidelity/Rules/DriftPair.php
 php	src/TestFidelity/Rules/DriftRule.php
@@ -1153,6 +1154,7 @@ php	tests/phpunit/Scanner/PackagedWorkerConformanceTest.php
 php	tests/phpunit/Scanner/PhpAuditFixturesTest.php
 php	tests/phpunit/Scanner/PhpCommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/PhpLivewireBladeTest.php
+php	tests/phpunit/Scanner/PhpMemberNamesTest.php
 php	tests/phpunit/Scanner/PhpScannerReceiverFactsTest.php
 php	tests/phpunit/Scanner/PhpScannerTest.php
 php	tests/phpunit/Scanner/PhpSignaturesTest.php
@@ -1382,6 +1384,7 @@ php	workers/php/src/LaravelRouteNameFactCollector.php
 php	workers/php/src/LaravelTestRequestFactCollector.php
 php	workers/php/src/LaravelTraversalContext.php
 php	workers/php/src/LivewireBladeFactCollector.php
+php	workers/php/src/MemberNames.php
 php	workers/php/src/PhpScanner.php
 php	workers/php/src/ReceiverTypeInference.php
 php	workers/php/src/RefusedAfterReadException.php
@@ -1712,6 +1715,7 @@ js	workers/typescript/src/__tests__/angular-inject.test.js
 js	workers/typescript/src/__tests__/build-output-sources.test.js
 js	workers/typescript/src/__tests__/bundler-module-roots.test.js
 js	workers/typescript/src/__tests__/call-argument-sites.test.js
+js	workers/typescript/src/__tests__/call-matchers.test.js
 js	workers/typescript/src/__tests__/component-source.test.js
 js	workers/typescript/src/__tests__/components.test.js
 js	workers/typescript/src/__tests__/config-ownership.test.js
@@ -1804,6 +1808,7 @@ js	workers/typescript/src/source-caches.js
 js	workers/typescript/src/source-reading.js
 js	workers/typescript/src/syntax-predicates.js
 js	workers/typescript/src/table-dispatch.js
+js	workers/typescript/src/test-call-matchers.js
 js	workers/typescript/src/test-case-flow.js
 js	workers/typescript/src/test-case-production.js
 js	workers/typescript/src/test-cases.js
