@@ -93,7 +93,6 @@ OPENERS = {
     "decorator": "def register(cls):\n    return cls\n\n\n@register\nclass C:\n    pass\n",
     "attrs": "import attr\n\n\n@attr.s\nclass C:\n    x = attr.ib()\n",
     "unresolved dataclass": "@dataclass\nclass C:\n    x: int\n",
-    "generic base": "from typing import Generic, TypeVar\n\nT = TypeVar('T')\n\n\nclass C(Generic[T]):\n    pass\n",
     "subscripted project base": "class Base:\n    pass\n\n\nclass C(Base[int]):\n    pass\n",
     "unresolvable base": "class C(Unknown):\n    pass\n",
     "builtin base": "class C(Exception):\n    pass\n",
@@ -115,6 +114,34 @@ OPENERS = {
     "module-level setattr": "class C:\n    pass\n\n\nsetattr(C, 'extra', 1)\n",
     "rebound": "def wrap(cls):\n    return cls\n\n\nclass C:\n    pass\n\n\nC = wrap(C)\n",
     "imported instead": "try:\n    from fast import C\nexcept ImportError:\n\n    class C:\n        pass\n",
+    # Review I2: dynamic module code may write any class it names.
+    "module exec": "class C:\n    a = 1\n\n\nexec('C.b = 2')\n",
+    "module eval": "class C:\n    a = 1\n\n\neval('setattr(C, \"b\", 2)')\n",
+    "module globals write": "class C:\n    a = 1\n\n\nglobals()['C'].b = 2\n",
+    "module vars write": "class C:\n    a = 1\n\n\nvars()['C'].b = 2\n",
+    "sys.modules write": "import sys\n\n\nclass C:\n    a = 1\n\n\nsys.modules[__name__].C.b = 2\n",
+    # Review I3a: a class handed to a call may be written by it.
+    "helper writes param": "def install(t):\n    t.b = 2\n\n\nclass C:\n    a = 1\n\n\ninstall(C)\n",
+    "helper setattr param": "def install(t, n):\n    setattr(t, n, 2)\n\n\nclass C:\n    a = 1\n\n\ninstall(C, 'b')\n",
+    "keyword argument": "import registry\n\n\nclass C:\n    a = 1\n\n\nregistry.add(target=C)\n",
+    "call in a function": "import registry\n\n\nclass C:\n    a = 1\n\n\ndef setup():\n    registry.add(C)\n",
+    "starred argument": "import registry\n\n\nclass C:\n    a = 1\n\n\nregistry.add(*[C])\n",
+    # Review I3b: a base bound twice may be either class.
+    "base imported twice": (
+        "try:\n    from a import B\nexcept ImportError:\n    from b import B\n\n\nclass C(B):\n    z = 1\n"
+    ),
+    "base under TYPE_CHECKING": (
+        "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from a import B\nelse:\n    from b import B\n\n\n"
+        "class C(B):\n    z = 1\n"
+    ),
+    "base module imported twice": (
+        "try:\n    import a\nexcept ImportError:\n    import b as a\n\n\nclass C(a.B):\n    z = 1\n"
+    ),
+    "generic of a base bound twice": (
+        "try:\n    from a import B\nexcept ImportError:\n    from b import B\n\n\nclass C(B[int]):\n    z = 1\n"
+    ),
+    # Review M1: a bare call in the class body may write the class through its frame.
+    "class body call": "from zope.interface import implements\n\n\nclass C:\n    implements(object)\n    a = 1\n",
 }
 
 
@@ -127,10 +154,11 @@ def test_opening_constructs(project, scan_collect, source: str) -> None:
 
 
 @pytest.mark.skipif(sys.version_info < (3, 12), reason="type parameter syntax is Python 3.12")
-def test_type_parameters_open_the_list_as_a_generic_base_does(project, scan_collect) -> None:
+def test_type_parameters_keep_the_list_closed_as_a_generic_base_does(project, scan_collect) -> None:
+    # Ruling P19: `class C[T]` is `class C(Generic[T])`, which adds no member.
     attributes = _class(project, scan_collect, "class C[T]:\n    pass\n")
 
-    assert attributes["member_names_open"] is True
+    assert "member_names_open" not in attributes
 
 
 CLOSED = {
@@ -146,6 +174,22 @@ CLOSED = {
     "typing.final": "import typing\n\n\n@typing.final\nclass C:\n    pass\n",
     "literal slots": "class C:\n    __slots__ = {'a': 'doc'}\n",
     "single slot": "class C:\n    __slots__ = 'a'\n",
+    # Ruling P19: Generic[...] and Protocol[...] add no member and give no edge.
+    "generic base": "from typing import Generic, TypeVar\n\nT = TypeVar('T')\n\n\nclass C(Generic[T]):\n    pass\n",
+    "typing.Generic": "import typing\n\nT = typing.TypeVar('T')\n\n\nclass C(typing.Generic[T]):\n    pass\n",
+    "protocol base": "from typing import Protocol, TypeVar\n\nT = TypeVar('T')\n\n\nclass C(Protocol[T]):\n    pass\n",
+    "typing_extensions.Generic": (
+        "from typing_extensions import Generic, TypeVar\n\nT = TypeVar('T')\n\n\nclass C(Generic[T]):\n    pass\n"
+    ),
+    "typing_extensions.Protocol": (
+        "import typing_extensions\n\nT = typing_extensions.TypeVar('T')\n\n\n"
+        "class C(typing_extensions.Protocol[T]):\n    pass\n"
+    ),
+    # Review I3a: a read-only builtin reads the class it is handed.
+    "read-only builtins": (
+        "class C:\n    a = 1\n\n\ndef check(x):\n    return isinstance(x, C) or issubclass(type(x), C) or repr(C)\n"
+    ),
+    "a call in the class body that binds a name": "import attr\n\n\nclass C:\n    a = attr.ib()\n",
 }
 
 

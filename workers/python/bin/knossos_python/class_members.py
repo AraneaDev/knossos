@@ -10,6 +10,7 @@ neither list records them, and a reader never judges one.
 """
 
 import ast
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
@@ -24,6 +25,32 @@ CLOSED_DECORATORS = frozenset({"dataclasses.dataclass", "typing.final", "typing_
 """Class decorators that add no name besides dunders: every other may add any."""
 
 _RUNS_DYNAMIC_CODE = frozenset({"exec", "eval"})
+
+GENERIC_BASES = frozenset(
+    {"typing.Generic", "typing.Protocol", "typing_extensions.Generic", "typing_extensions.Protocol"}
+)
+"""Subscripted, these give no ``extends`` edge and add no member (Ruling P19), as PEP 695 type parameters do not."""
+
+READ_ONLY_CALLS = frozenset(
+    {
+        "callable",
+        "cast",
+        "dir",
+        "getattr",
+        "hasattr",
+        "hash",
+        "id",
+        "isinstance",
+        "issubclass",
+        "print",
+        "repr",
+        "str",
+        "super",
+        "type",
+        "typing.cast",
+    }
+)
+"""Calls that only read the class they are handed: any other call may write it (``install(C)``)."""
 
 
 def is_dunder(name: str) -> bool:
@@ -118,25 +145,33 @@ def _literal_name(node: ast.AST | None) -> str | None:
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
 
 
-def module_exports(tree: ast.Module, is_package: bool) -> dict[str, Any]:
+def runs_dynamic_code(tree: ast.Module) -> bool:
+    """Whether the module binds or writes names no source spells.
+
+    ``globals()``, ``exec``, ``eval`` or ``sys.modules`` anywhere, or
+    ``locals()`` or ``vars()`` at module level, can reach any of its names:
+    its exports and the attributes of every class it declares.
+    """
+    if any(_named_call(node, ("locals", "vars")) for node in scope_nodes(tree.body)):
+        return True
+    return any(
+        _named_call(node, {"globals", *_RUNS_DYNAMIC_CODE}) or dotted(node) == "sys.modules" for node in ast.walk(tree)
+    )
+
+
+def module_exports(tree: ast.Module, is_package: bool, dynamic: bool) -> dict[str, Any]:
     """A module node's ``exports``, and ``exports_open`` when names may come from elsewhere.
 
     The list holds every top-level binding, in every branch of an ``if`` or
     ``try``, and every name a ``global`` declaration hands the module. It is
-    open for ``import *``, a module ``__getattr__``, a write through
-    ``globals()``, ``locals()`` or ``vars()`` at module level, ``sys.modules``,
-    ``exec`` or ``eval``. A package is always open: any submodule, one added
+    open for ``import *``, a module ``__getattr__`` and ``dynamic`` code
+    (:func:`runs_dynamic_code`). A package is always open: any submodule, one added
     after this scan included, becomes its attribute once imported, and this
     worker lists no directory, so the list could never be shown complete.
     """
-    module_level = list(scope_nodes(tree.body))
-    names, opened = scope_bindings(module_level)
+    names, opened = scope_bindings(scope_nodes(tree.body))
     names |= {name for node in ast.walk(tree) if isinstance(node, ast.Global) for name in node.names}
-    opened = opened or is_package or "__getattr__" in names
-    opened = opened or any(_named_call(node, ("locals", "vars")) for node in module_level)
-    opened = opened or any(
-        _named_call(node, {"globals", *_RUNS_DYNAMIC_CODE}) or dotted(node) == "sys.modules" for node in ast.walk(tree)
-    )
+    opened = opened or is_package or dynamic or "__getattr__" in names
     return {"exports": sorted(name for name in names if not is_dunder(name))} | (
         {"exports_open": True} if opened else {}
     )
@@ -183,6 +218,9 @@ class _ClassScan:
             self.opened = True
         elif _named_call(item, ("locals",)) or (isinstance(item, ast.AugAssign) and dotted(item.target) == "__slots__"):
             self.opened = True
+        elif isinstance(item, ast.Expr) and isinstance(item.value, ast.Call):
+            # `implements(I)`: a call made for its effect may write the class through its frame.
+            self.opened = self.opened or dotted(item.value.func) not in READ_ONLY_CALLS
         elif isinstance(item, (ast.Assign, ast.AnnAssign)):
             targets = item.targets if isinstance(item, ast.Assign) else [item.target]
             if any(dotted(target) == "__slots__" for target in targets):
@@ -231,22 +269,53 @@ class ClassMembers:
         self.tree = tree
         self.resolve = resolve
         self._written: set[str] | None = None
+        self._bindings: Counter[str] | None = None
+        self.dynamic = runs_dynamic_code(tree)
 
     def attributes(self, node: ast.ClassDef, unseen_base: bool) -> dict[str, Any]:
         """``member_names`` for ``node``, with ``member_names_open`` when a name may come from elsewhere.
 
-        ``unseen_base`` says a base gave no ``extends`` edge (a subscripted
-        base such as ``Generic[T]``, a call, a builtin, a name that does not
-        resolve): what it gives the class is unseen, so the list is open.
+        ``unseen_base`` says a base may give names this scan cannot see
+        (:meth:`unseen_base`). Type parameters (``class C[T]``) add none.
         """
         scan = _ClassScan(node)
         names = scan.names | {name for name in (mangled(node.name, each) for each in scan.names) if name}
-        opened = scan.opened or unseen_base or bool(node.keywords) or bool(getattr(node, "type_params", None))
+        opened = scan.opened or unseen_base or bool(node.keywords) or self.dynamic
         opened = opened or not all(self.closed_decorator(decorator) for decorator in node.decorator_list)
         opened = opened or node.name in self.written_names()
         return {"member_names": sorted(name for name in names if not is_dunder(name))} | (
             {"member_names_open": True} if opened else {}
         )
+
+    def unseen_base(self, base: ast.expr, resolved: bool) -> bool:
+        """Whether a base may give the class names this scan cannot see.
+
+        A base with no ``extends`` edge does (``Base[int]``, a call, a
+        builtin, a name that does not resolve), except ``object`` and a
+        subscripted ``Generic`` or ``Protocol`` (Ruling P19). So does one whose
+        name the module binds more than once, as a ``try``/``except
+        ImportError`` or ``TYPE_CHECKING``/``else`` pair of imports does: its
+        one edge names a class that may not be the one that runs.
+        """
+        named = base.value if isinstance(base, ast.Subscript) else base
+        name = dotted(named)
+        if name is not None and self.bindings()[name.split(".")[0]] > 1:
+            return True
+        if resolved:
+            return False
+        if isinstance(base, ast.Subscript):
+            target = self.resolve(name) if name else None
+            return target is None or target.split(":", 2)[-1] not in GENERIC_BASES
+        return name != "object"
+
+    def bindings(self) -> Counter[str]:
+        """How many times the module scope binds each name."""
+        if self._bindings is None:
+            counts: Counter[str] = Counter()
+            for node in scope_nodes(self.tree.body):
+                counts.update(scope_bindings([node])[0])
+            self._bindings = counts
+        return self._bindings
 
     def closed_decorator(self, decorator: ast.expr) -> bool:
         """Whether a class decorator adds no member (``dataclass``, ``final``), as its import resolves."""
@@ -255,11 +324,13 @@ class ClassMembers:
         return resolved is not None and resolved.split(":", 2)[-1] in CLOSED_DECORATORS
 
     def written_names(self) -> set[str]:
-        """Names the module writes an attribute on (``C.x = v``, ``setattr(C, ...)``) or binds other than by ``class``.
+        """Names the module writes an attribute on, hands to a call, or binds other than by ``class``.
 
-        A class written so may gain any member, and one rebound
-        (``C = register(C)``, ``from x import C`` in a ``try``, a ``def C``)
-        may not be the class its body declares.
+        A class written (``C.x = v``, ``setattr(C, ...)``) or handed to a call
+        that may write it (``install(C)``; :data:`READ_ONLY_CALLS` only read)
+        may gain any member, and one rebound (``C = register(C)``, ``from x
+        import C`` in a ``try``, a ``def C``) may not be the class its body
+        declares.
         """
         if self._written is None:
             written: set[str] = set()
@@ -268,8 +339,12 @@ class ClassMembers:
                     written.add(dotted(node.value) or "")
                 elif isinstance(node, (ast.Name, ast.FunctionDef, ast.AsyncFunctionDef, ast.Import, ast.ImportFrom)):
                     written |= scope_bindings([node])[0]
-                elif _named_call(node, ("setattr", "delattr")) and isinstance(node, ast.Call) and node.args:
-                    written.add(dotted(node.args[0]) or "")
+                elif isinstance(node, ast.Call) and dotted(node.func) not in READ_ONLY_CALLS:
+                    arguments = [*node.args, *(keyword.value for keyword in node.keywords)]
+                    for argument in arguments:
+                        spelled = argument.value if isinstance(argument, ast.Starred) else argument
+                        written.add(dotted(spelled) or "")
+                        written |= {dotted(each) or "" for each in getattr(spelled, "elts", [])}
             self._written = written
         return self._written
 

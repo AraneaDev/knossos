@@ -220,10 +220,16 @@ defs, class-body bindings, nested classes, the names in `__slots__`, `self.` and
 `__x`; `member_names_open` is set when a name may come from elsewhere
 (`__getattr__`, `__getattribute__`, `__init_subclass__`, a class keyword such as
 a metaclass, a decorator other than `dataclass` or `final`, a base that gives no
-`extends` edge other than `object`, a subscripted one such as `Generic[T]`
-included, a non-literal `setattr`, a write to `__dict__` or `vars()`, a class
-body with a `for`, `while`, `with`, `match`, `exec` or `locals()`, a module
-write to the class or a rebinding of its name). `exports` lists every top-level
+`extends` edge other than `object`, `Generic[…]` and `Protocol[…]`, a base whose
+name the module binds more than once, a non-literal `setattr`, a write to
+`__dict__` or `vars()`, a class body with a `for`, `while`, `with`, `match`,
+`exec`, `locals()` or a bare call, a module write to the class, the class
+handed to a call other than a read-only builtin such as `isinstance`, a
+rebinding of its name, or module-level `exec`, `eval`, `globals()` or
+`vars()`). Type parameters (`class C[T]`) keep it closed. Inherited names come
+from the class's `extends` edges: a reader takes a name as absent only when
+every ancestor is in the scan with a list that is complete and not open, so an
+external or open ancestor leaves it unknown. `exports` lists every top-level
 binding in both branches of an `if` or `try` and the names a `global`
 declaration hands the module; `exports_open` is set for `import *`, a module
 `__getattr__`, `globals()`, `exec`, `eval`, `sys.modules`, and on every

@@ -45,7 +45,7 @@ class Attrs:
 
 
 class Box(Generic[T]):
-    pass
+    item: T
 
 
 class Failure(Exception):
@@ -73,3 +73,23 @@ class Patched:
 
 
 Patched.added = 1
+
+
+def install(target: type) -> None:
+    target.installed = True
+
+
+class Installed:
+    pass
+
+
+install(Installed)
+
+try:
+    from fast_base import Base
+except ImportError:
+    from slow_base import Base
+
+
+class TwoWays(Base):
+    pass

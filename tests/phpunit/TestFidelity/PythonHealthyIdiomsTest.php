@@ -20,8 +20,10 @@ use PHPUnit\Framework\Attributes\Group;
  * `@property`, `@retry` and `@contextmanager` member) and a member of each
  * class whose names may come from elsewhere (`__getattr__`,
  * `__getattribute__`, `__init_subclass__`, a metaclass, a decorator, attrs,
- * `Generic[T]`, a builtin base, a dynamic `setattr`, a `__dict__` write, a
- * class body loop, a module-level write) or of a module with `__getattr__`.
+ * a builtin base, a dynamic `setattr`, a `__dict__` write, a class body loop,
+ * a module-level write, a class handed to a helper, a base imported two ways)
+ * or of a module with `__getattr__`. A `Generic[T]` base keeps the list
+ * closed (Ruling P19).
  *
  * Until the worker reports test facts (Task 3), the scan asserts the
  * production name lists those stubs are judged against: each opener's list
@@ -41,7 +43,8 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
             $nodes['class members.Repo']['member_names'],
         );
         assertSame(['slot'], $nodes['class members.Slotted']['member_names']);
-        foreach (['class members.Repo', 'class members.Slotted', 'module members'] as $closed) {
+        assertSame(['item'], $nodes['class openers.Box']['member_names']);
+        foreach (['class members.Repo', 'class members.Slotted', 'class openers.Box', 'module members'] as $closed) {
             assertSame([$closed, null, null], [$closed, $nodes[$closed]['member_names_open'] ?? null, $nodes[$closed]['exports_open'] ?? null]);
         }
         assertSame(['Repo', 'Slotted', 'contextmanager', 'retry'], $nodes['module members']['exports']);
@@ -54,10 +57,10 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
         }
         sort($open);
         assertSame([
-            'class openers.Attrs', 'class openers.Bag', 'class openers.Box', 'class openers.Decorated',
-            'class openers.Failure', 'class openers.Generated', 'class openers.Guarded', 'class openers.Lazy',
+            'class openers.Attrs', 'class openers.Bag', 'class openers.Decorated', 'class openers.Failure',
+            'class openers.Generated', 'class openers.Guarded', 'class openers.Installed', 'class openers.Lazy',
             'class openers.Meta', 'class openers.Patched', 'class openers.Registered', 'class openers.Settings',
-            'class openers.WithMeta', 'module dynamic_module',
+            'class openers.TwoWays', 'class openers.WithMeta', 'module dynamic_module',
         ], $open);
     }
 

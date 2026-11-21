@@ -223,7 +223,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # Known before any call is visited: a call may precede the class.
         self.protocols |= declared_protocols(self.tree, self.name)
         self.visit(self.tree)
-        self.facts.nodes[self.module_id]["attributes"] |= module_exports(self.tree, self.is_package)
+        self.facts.nodes[self.module_id]["attributes"] |= module_exports(
+            self.tree, self.is_package, self.members.dynamic
+        )
         if self.serves_app:
             self.facts.nodes[self.module_id]["attributes"]["executable"] = True
         if self.untyped_calls:
@@ -425,8 +427,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
             self.called_attributes.add(id(base))
             name = dotted(base)
             target = self.resolve_name(name, "class") if name else None
-            # A base with no edge (`Generic[T]`, a call, a builtin) gives names this scan cannot see.
-            unseen_base = unseen_base or (not target and name != "object")
+            # A base with no edge (`Base[int]`, a call, a builtin) gives names this scan cannot see.
+            unseen_base = unseen_base or self.members.unseen_base(base, bool(target))
             if target:
                 self.facts.add_edge("extends", local_id, target, base)
                 if target.startswith("py:class:"):
