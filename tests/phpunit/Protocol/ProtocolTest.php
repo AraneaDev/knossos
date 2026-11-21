@@ -382,6 +382,36 @@ final class ProtocolTest extends KnossosTestCase
     }
 
     #[Group('protocol')]
+    public function testContributionSchemaAcceptsPythonTestFacts(): void
+    {
+        $double = self::wireNode('test_double', [
+            'framework' => 'pytest-mock',
+            'pattern' => 'pytest_mock.mocker.patch.object',
+            'target' => ['kind' => 'class', 'specifier' => 'app.cart'],
+            'automock' => false,
+            'invocations' => 1,
+            'members' => [[
+                'name' => 'total',
+                'line' => 8,
+                'api' => 'patch.object',
+                'called_with' => [['api' => 'assert_called_with', 'line' => 29, 'count' => 2, 'spread' => false, 'keywords' => ['user', 'token']]],
+                'returns' => [],
+            ]],
+        ]);
+        $badKeywords = $double;
+        $badKeywords['attributes']['members'][0]['called_with'][0]['keywords'] = [3];
+        $badApi = $double;
+        $badApi['attributes']['members'][0]['api'] = 'patch.nothing';
+        $badFramework = $double;
+        $badFramework['attributes']['framework'] = 'nose';
+
+        assertSame([], $this->nodeSchemaErrors($double));
+        assertSame(1, count($this->nodeSchemaErrors($badKeywords)));
+        assertSame(1, count($this->nodeSchemaErrors($badApi)));
+        assertSame(1, count($this->nodeSchemaErrors($badFramework)));
+    }
+
+    #[Group('protocol')]
     public function testContributionSchemaRejectsTestDoubleWithoutTarget(): void
     {
         $double = self::wireNode('test_double', ['framework' => 'vitest', 'pattern' => 'vi.fn', 'automock' => false, 'invocations' => 0, 'members' => []]);

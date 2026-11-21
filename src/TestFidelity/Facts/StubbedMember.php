@@ -9,8 +9,8 @@ namespace Knossos\TestFidelity\Facts;
  */
 final readonly class StubbedMember
 {
-    /** How the test named the member: the TypeScript worker's forms, then PHPUnit's, Mockery's and Prophecy's. */
-    private const APIS = ['spyOn', 'mockFactoryKey', 'objectLiteralKey', 'instance-member', 'method', 'shouldReceive', 'configured', 'partial', 'addMethods', 'prophecy', 'shouldHaveReceived', 'unknown'];
+    /** How the test named the member: the TypeScript worker's forms, then PHPUnit's, Mockery's and Prophecy's, then Python's. */
+    private const APIS = ['spyOn', 'mockFactoryKey', 'objectLiteralKey', 'instance-member', 'method', 'shouldReceive', 'configured', 'partial', 'addMethods', 'prophecy', 'shouldHaveReceived', 'patch', 'patch.object', 'patch.multiple', 'patch.dict', 'spy', 'setattr', 'attribute', 'assigned', 'unknown'];
 
     /**
      * @param list<mixed>|null $params the member's signature parameters as the wire states them

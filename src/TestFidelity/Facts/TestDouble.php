@@ -11,7 +11,7 @@ use Knossos\Scanner\Protocol\NodeFact;
  */
 final readonly class TestDouble
 {
-    private const FRAMEWORKS = ['vitest', 'jest', 'phpunit', 'mockery', 'pest', 'prophecy'];
+    private const FRAMEWORKS = ['vitest', 'jest', 'phpunit', 'mockery', 'pest', 'prophecy', 'unittest', 'pytest-mock', 'pytest'];
     private const TARGET_KINDS = ['module', 'class', 'instance-member', 'global', 'unknown'];
 
     /**

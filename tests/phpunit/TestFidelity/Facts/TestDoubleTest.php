@@ -131,6 +131,49 @@ final class TestDoubleTest extends KnossosTestCase
         assertSame([], $other?->members[0]->calledWith);
     }
 
+    public function testReadsPythonFrameworksAndApis(): void
+    {
+        $attributes = self::attributes(['framework' => 'pytest-mock', 'pattern' => 'pytest_mock.mocker.patch.object']);
+        $attributes['members'][0]['api'] = 'patch.object';
+        $apis = [];
+        foreach (['unittest', 'pytest'] as $framework) {
+            $apis[$framework] = TestDouble::fromNode(self::node('test_double', self::attributes(['framework' => $framework])))?->framework;
+        }
+
+        $double = TestDouble::fromNode(self::node('test_double', $attributes));
+
+        assertSame('pytest-mock', $double?->framework);
+        assertSame('patch.object', $double->members[0]->api);
+        assertSame(['unittest' => 'unittest', 'pytest' => 'pytest'], $apis);
+    }
+
+    public function testReadsMatcherKeywords(): void
+    {
+        $attributes = self::attributes();
+        $attributes['members'][0]['called_with'] = [['api' => 'assert_called_with', 'line' => 29, 'count' => 2, 'spread' => false, 'keywords' => ['user', 'token']]];
+
+        $double = TestDouble::fromNode(self::node('test_double', $attributes));
+
+        assertSame(['user', 'token'], $double?->members[0]->calledWith[0]->keywords);
+        assertSame(false, $double->members[0]->calledWith[0]->spread);
+    }
+
+    public function testAMalformedKeywordListMakesTheMatcherSpread(): void
+    {
+        $attributes = self::attributes();
+        $attributes['members'][0]['called_with'] = [
+            ['api' => 'assert_called_with', 'line' => 29, 'count' => 1, 'spread' => false, 'keywords' => [3]],
+            ['api' => 'assert_called_with', 'line' => 30, 'count' => 1, 'spread' => false, 'keywords' => 'user'],
+        ];
+
+        $double = TestDouble::fromNode(self::node('test_double', $attributes));
+
+        assertSame(2, count($double?->members[0]->calledWith ?? []));
+        assertSame(true, $double->members[0]->calledWith[0]->spread);
+        assertSame([], $double->members[0]->calledWith[0]->keywords);
+        assertSame(true, $double->members[0]->calledWith[1]->spread);
+    }
+
     public function testReadsAPinnedType(): void
     {
         $attributes = self::attributes();
