@@ -22,6 +22,10 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
  * A manual mock under `__mocks__/` is a stand-in, never the subject: neither
  * a double defined in one, nor a double whose target or subject is one, is
  * reported. Always a warning: a test may mean to check its own wiring.
+ *
+ * In PHP the unit is the class: a double of a whole class (`createMock`,
+ * `Mockery::mock`) replaces the subject when the file that declares the class
+ * is among the subjects of a test the double answers to.
  */
 final readonly class MocksSubjectRule implements TestFidelityRule
 {
@@ -36,14 +40,15 @@ final readonly class MocksSubjectRule implements TestFidelityRule
     {
         foreach ($graph->doubles() as $double) {
             $target = $graph->target($double);
-            if ($target === null || $double->target['kind'] !== 'module' || isset($double->target['member']) || $graph->isExternal($double)) {
+            $php = $target !== null && TestFidelityGraph::isPhp($target);
+            if ($target === null || $double->target['kind'] !== ($php ? 'class' : 'module') || isset($double->target['member']) || $graph->isExternal($double)) {
                 continue;
             }
-            $module = DoubleTests::file($target->canonicalName);
+            $module = $php ? $target->evidence->relativePath : DoubleTests::file($target->canonicalName);
             if (self::isManualMock($module) || self::isManualMock(DoubleTests::file($double->canonicalName))) {
                 continue;
             }
-            $case = self::caught($double, $module, $graph);
+            $case = $php ? self::exercising($double, $module, $graph) : self::caught($double, $module, $graph);
             if ($case === null) {
                 continue;
             }
@@ -73,6 +78,18 @@ final readonly class MocksSubjectRule implements TestFidelityRule
                 continue;
             }
             if ($subjects === [$module] || self::namedFor(DoubleTests::file($case->canonicalName)) === self::baseName($module)) {
+                return $case;
+            }
+        }
+
+        return null;
+    }
+
+    /** The first test the double answers to among whose subjects is the file it replaces a class of, or null. */
+    private static function exercising(TestDouble $double, string $file, TestFidelityGraph $graph): ?TestCaseFact
+    {
+        foreach (DoubleTests::of($double, $graph) as $case) {
+            if (in_array($file, $case->subjects, true)) {
                 return $case;
             }
         }

@@ -610,7 +610,7 @@ final class DashboardServiceTest extends KnossosTestCase
         }
     }
 
-    /** The summary matches the graph: components by kind without external symbols, files by language. */
+    /** The summary matches the graph: components by kind without external symbols or derived test facts, files by language. */
     #[Group('query')]
     public function testTheSummaryCountsComponentsByKindAndFilesByLanguage(): void
     {
@@ -618,7 +618,7 @@ final class DashboardServiceTest extends KnossosTestCase
         try {
             $summary = (new DashboardService($pdo))->dashboard($root)['summary'];
             $count = static fn(string $sql): int => (int) $pdo->query(str_replace(':p', $pdo->quote($projectId), $sql))->fetchColumn();
-            assertSame($count("SELECT COUNT(*) FROM nodes WHERE project_id = :p AND kind NOT LIKE 'external%'"), $summary['components']);
+            assertSame($count("SELECT COUNT(*) FROM nodes WHERE project_id = :p AND kind NOT LIKE 'external%' AND kind NOT IN ('" . implode("', '", \Knossos\Store\SnapshotFacts::DERIVED_NODE_KINDS) . "')"), $summary['components']);
             assertSame($count('SELECT COUNT(*) FROM files WHERE project_id = :p'), $summary['files']);
             assertSame($summary['components'], array_sum(array_column($summary['kinds'], 'count')));
             assertSame($summary['files'], array_sum(array_column($summary['languages'], 'files')));

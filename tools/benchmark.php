@@ -131,19 +131,20 @@ function removeTree(string $path): void
 const SCENARIO_ROUNDS = 5;
 
 /**
- * Run the `test_fidelity_rescan_one_file` scenario under `$directory`: a cold
- * scan of its corpus, then rounds of editing the one production file and
- * scanning again. Each round reads the five test files of its twenty doubles
- * again and judges every double, and a round that parsed any other number of
- * files fails the run; the median round is the measurement.
+ * Run a test-fidelity scenario under `$directory`: a cold scan of its corpus,
+ * then rounds of editing the one production file and scanning again. Each
+ * round judges every one of the twenty doubles again; the TypeScript corpus
+ * reads their five test files again, the PHP one reuses them. A round that
+ * parsed any other number of files than the corpus says fails the run; the
+ * median round is the measurement.
  *
  * @return array<string, mixed>
  */
-function runTestFidelityScenario(string $directory, float $limit): array
+function runTestFidelityScenario(string $scenario, string $directory, float $limit): array
 {
     $corpus = $directory . '/corpus';
     $database = $directory . '/knossos.sqlite';
-    $generation = jsonObject(runMeasured([PHP_BINARY, __DIR__ . '/generate-test-fidelity-corpus.php', $corpus], 30));
+    $generation = jsonObject(runMeasured([PHP_BINARY, __DIR__ . '/generate-test-fidelity-corpus.php', $corpus, BENCHMARK_SCENARIOS[$scenario]], 30));
     $scan = static fn(string $mode, float $timeout): array => runMeasured([
         PHP_BINARY, BENCHMARK_ROOT . '/bin/knossos', 'scan', $corpus,
         '--mode=' . $mode, '--snapshot-retention=2', '--db=' . $database, '--json',
@@ -152,14 +153,14 @@ function runTestFidelityScenario(string $directory, float $limit): array
     jsonObject($cold);
     $rounds = [];
     $stages = [];
-    // The production file and every test file of its doubles.
-    $reached = 1 + (int) $generation['test_files'];
+    // The files the edit reaches: the production file, and for TypeScript every test file of its doubles.
+    $reached = (int) $generation['parsed_files'];
     for ($round = 0; $round < SCENARIO_ROUNDS; ++$round) {
         $production = $corpus . '/' . $generation['production_file'];
-        file_put_contents($production, (string) file_get_contents($production) . sprintf("\nexport const benchmarkChange%d = true;\n", $round));
-        $incremental = $scan('incremental', $limit * 1.5 + 5);
+        file_put_contents($production, (string) file_get_contents($production) . sprintf((string) $generation['edit'], $round));
+        $incremental = $scan('incremental', $limit * 1.5 + 30);
         $result = jsonObject($incremental);
-        $error = benchmarkScenarioParseError('test_fidelity_rescan_one_file', $round, $reached, $result['data']['parsed_files'] ?? null);
+        $error = benchmarkScenarioParseError($scenario, $round, $reached, $result['data']['parsed_files'] ?? null);
         if ($error !== null) {
             throw new RuntimeException($error);
         }
@@ -282,7 +283,7 @@ try {
     $scenarios = [];
     foreach ($budgets['scenarios'] ?? [] as $scenario => $limits) {
         $limit = (float) $limits['incremental_scan_seconds'];
-        $actual = runTestFidelityScenario($temporaryRoot . '/scenario-' . $scenario, $limit);
+        $actual = runTestFidelityScenario((string) $scenario, $temporaryRoot . '/scenario-' . $scenario, $limit);
         $scenarios[$scenario] = ['limits' => $limits, 'actual' => $actual];
         $violations = [...$violations, ...benchmarkScenarioViolations((string) $scenario, $limit, $actual['incremental_scan_seconds'])];
         fwrite(STDOUT, sprintf("%s: cold=%.2fs incremental=%.2fs (median of %d)\n", $scenario, $actual['cold_scan_seconds'], $actual['incremental_scan_seconds'], SCENARIO_ROUNDS));

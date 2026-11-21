@@ -63,5 +63,11 @@ final class PhpSignaturesTest extends KnossosTestCase
         assertSame(12, count($signatures['App\Api::many']['params']));
         assertSame(true, $signatures['App\Api::many']['truncated']);
         assertSame(false, array_key_exists('truncated', $signatures['App\Api::scan']));
+
+        // A body that reads its arguments as a list takes any number of them; a closure, arrow function or class inside it reads its own.
+        assertSame(['params' => [['name' => 'message']], 'variadic' => true], $signatures['App\Api::log']);
+        assertSame(['params' => [], 'variadic' => true], $signatures['App\Api::count']);
+        assertSame(['params' => []], $signatures['App\Api::nested']);
+        assertSame(false, array_key_exists('variadic', $signatures['App\Api::scan']), 'A rest parameter says so on itself.');
     }
 }

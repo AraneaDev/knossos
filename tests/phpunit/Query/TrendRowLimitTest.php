@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\Query;
 use Knossos\Query\ArchitectureQueryService;
 use Knossos\Query\DashboardService;
 use Knossos\Store\SnapshotBounds;
+use Knossos\Store\SnapshotFacts;
 use Knossos\Store\SnapshotPayload;
 use Knossos\Store\SqliteValues;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -35,7 +36,8 @@ final class TrendRowLimitTest extends KnossosTestCase
                 . 'INSERT INTO nodes (id, project_id, language, kind, canonical_name, display_name, origin, confidence, owner_key, last_scan_id) '
                 . "SELECT 'bulk-' || x, :project, 'php', 'function', 'bulk' || x, 'bulk' || x, 'ast', 'certain', 'bulk', :scan FROM n",
             )->execute(['project' => $projectId, 'scan' => $scan]);
-            $rows = (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE project_id = '{$projectId}'")->fetchColumn();
+            // A snapshot leaves out the test facts a scan derives (the fixture's test_case).
+            $rows = (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE project_id = '{$projectId}' AND kind NOT IN ('" . implode("', '", SnapshotFacts::DERIVED_NODE_KINDS) . "')")->fetchColumn();
 
             $series = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->architectureTrends($projectId, 2)->data['series'];
             $active = array_values(array_filter($series, static fn(array $p): bool => ($p['active'] ?? false) === true))[0];

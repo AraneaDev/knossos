@@ -11,6 +11,7 @@ final readonly class PinnedValue
 {
     /**
      * @param bool|string $assignable true, false or "unknown": whether the pinned value fits the member's declared return type
+     * @param string|null $type the pinned value's own type as the worker names it, null when it states none
      */
     public function __construct(
         public string $api,
@@ -18,6 +19,7 @@ final readonly class PinnedValue
         public bool $once,
         public bool|string $assignable,
         public bool $typed,
+        public ?string $type = null,
     ) {}
 
     /**
@@ -40,6 +42,8 @@ final readonly class PinnedValue
             return null;
         }
 
-        return new self($api, $line, $once, $assignable, $typed);
+        $type = $raw['type'] ?? null;
+
+        return new self($api, $line, $once, $assignable, $typed, is_string($type) && $type !== '' ? $type : null);
     }
 }

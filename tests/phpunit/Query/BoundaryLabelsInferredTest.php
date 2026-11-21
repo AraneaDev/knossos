@@ -130,9 +130,9 @@ final class BoundaryLabelsInferredTest extends KnossosTestCase
             sort($axes);
             sort($named);
             assertSame($axes, $named);
-            // The namespace labels what the two declared boundaries leave; the package spanning the repository labels nothing.
+            // The namespace labels what the two declared boundaries leave; the package spanning the repository labels only the test file's module, which no namespace holds.
             assertSame(['Core', 'Edge'], $d['boundaries']['declared']);
-            assertSame(['inferred' => ['namespace:App'], 'inferred_truncated' => false], array_intersect_key($d['boundaries'], ['inferred' => 0, 'inferred_truncated' => 0]));
+            assertSame(['inferred' => ['composer:fixture/turn-brief', 'namespace:App'], 'inferred_truncated' => false], array_intersect_key($d['boundaries'], ['inferred' => 0, 'inferred_truncated' => 0]));
             assertCount(count($axes) - count($d['boundaries']['declared']), $d['boundaries']['inferred']);
         } finally {
             $this->removeTempTree($root);

@@ -145,7 +145,7 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
             $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
             $byLanguage = $service->auditTests($projectId)->data['summary']['by_language'];
 
-            assertSame('no test facts', $byLanguage['php']);
+            assertSame(['definite' => 0, 'warning' => 0], $byLanguage['php'], 'The PHP worker emits test facts; this project has no PHP findings.');
             assertSame('no test facts', $byLanguage['python']);
             assertSame('no test facts', $byLanguage['rust']);
             assertSame(['definite', 'warning'], array_keys($byLanguage['typescript']));

@@ -23,15 +23,20 @@ final class Signature
     /** Characters of a type's text a signature keeps at most. */
     public const MAX_TYPE_LENGTH = 80;
 
+    /** PHP's functions that read the arguments a function was called with, beyond those it declares. */
+    private const READS_ARGUMENTS = ['func_get_args', 'func_num_args', 'func_get_arg'];
+
     private function __construct() {}
 
     /**
      * The `signature` attribute of a function or method.
      *
      * `optional` marks a parameter with a default value, `variadic` one that
-     * takes the rest.
+     * takes the rest. A function whose own body reads its arguments as a list
+     * (`func_get_args()`, `func_num_args()`, `func_get_arg()`) takes any
+     * number past its parameters, which the signature's own `variadic` says.
      *
-     * @return array{params: list<array{name: string, type?: string, optional?: true, variadic?: true}>, returns?: string, truncated?: true}
+     * @return array{params: list<array{name: string, type?: string, optional?: true, variadic?: true}>, returns?: string, variadic?: true, truncated?: true}
      */
     public static function of(Node\FunctionLike $node): array
     {
@@ -54,8 +59,44 @@ final class Signature
         if ($node->getReturnType() !== null) {
             $signature['returns'] = self::type($node->getReturnType(), $truncated);
         }
+        if (self::readsArguments($node)) {
+            $signature['variadic'] = true;
+        }
 
         return $truncated ? [...$signature, 'truncated' => true] : $signature;
+    }
+
+    /**
+     * Whether a function's own body calls `func_get_args()`, `func_num_args()`
+     * or `func_get_arg()`: not a closure, function or class declared in it,
+     * whose arguments those calls would read instead.
+     */
+    private static function readsArguments(Node\FunctionLike $function): bool
+    {
+        $pending = $function->getStmts() ?? [];
+        while ($pending !== []) {
+            $node = array_pop($pending);
+            if ($node instanceof Node\Expr\FuncCall && $node->name instanceof Node\Name && in_array($node->name->toLowerString(), self::READS_ARGUMENTS, true)) {
+                return true;
+            }
+            if ($node instanceof Node\FunctionLike || $node instanceof Node\Stmt\ClassLike) {
+                continue;
+            }
+            foreach ($node->getSubNodeNames() as $name) {
+                $child = $node->{$name};
+                if ($child instanceof Node) {
+                    $pending[] = $child;
+                } elseif (is_array($child)) {
+                    foreach ($child as $item) {
+                        if ($item instanceof Node) {
+                            $pending[] = $item;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     /** A declared type's text within the length kept; sets `$truncated` when it was cut. */

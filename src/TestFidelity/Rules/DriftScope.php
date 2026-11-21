@@ -8,7 +8,8 @@ use Knossos\TestFidelity\TestFidelityGraph;
 
 /**
  * The stubbed members the drift rules can judge: those of a double whose
- * target is a module, class or interface the scan holds inside the project.
+ * target is a module, class, interface or (PHP's) trait the scan holds
+ * inside the project.
  *
  * Where a double replaces something else (a global, an unknown, a function, a
  * package) there is no member list to compare against, so nothing is yielded.
@@ -16,7 +17,7 @@ use Knossos\TestFidelity\TestFidelityGraph;
 final class DriftScope
 {
     /** Target kinds whose contained nodes are the members a double can stub. */
-    private const OWNER_KINDS = ['module', 'class', 'interface'];
+    private const OWNER_KINDS = ['module', 'class', 'interface', 'trait'];
 
     /** Names a module double carries that are not exports. */
     private const NOT_MEMBERS = ['default', '__esModule'];

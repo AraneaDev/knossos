@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace KnossosPhpScanner;
 
+use KnossosPhpScanner\TestFacts\TestFileFacts;
+use KnossosPhpScanner\TestFacts\TestModulePath;
 use PhpParser\ErrorHandler\Collecting;
 use PhpParser\Node;
 use PhpParser\NodeTraverser;
@@ -116,12 +118,20 @@ final readonly class PhpScanner
             $nodes = self::withLivewireFacts($nodes, $livewireCollector, $relativePath);
         }
 
+        $edges = [...$collector->edges(), ...($laravelCollector?->edges() ?? []), ...($symfonyCollector?->edges() ?? [])];
+        $diagnostics = [...$diagnostics, ...($laravelCollector?->diagnostics() ?? []), ...($symfonyCollector?->diagnostics() ?? [])];
+        // A test file's mocks, stubs and spies, for the core to hold against the
+        // code they stand in for, and its tests, for the assertions that cannot fail.
+        if ($ast !== [] && TestModulePath::isTest($relativePath)) {
+            [$nodes, $edges, $diagnostics] = TestFileFacts::addTo($ast, $root, $relativePath, $source, $nodes, $edges, $diagnostics);
+        }
+
         return [
             'owner_key' => 'knossos.php:file:' . $relativePath,
             'nodes' => $nodes,
-            'edges' => [...$collector->edges(), ...($laravelCollector?->edges() ?? []), ...($symfonyCollector?->edges() ?? [])],
+            'edges' => $edges,
             'content_hash' => $contentHash,
-            'diagnostics' => [...$diagnostics, ...($laravelCollector?->diagnostics() ?? []), ...($symfonyCollector?->diagnostics() ?? [])],
+            'diagnostics' => $diagnostics,
         ];
     }
 

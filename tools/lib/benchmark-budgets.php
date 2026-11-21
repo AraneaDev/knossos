@@ -19,9 +19,10 @@ const BENCHMARK_METRICS = ['cold_scan_seconds', 'incremental_scan_seconds', 'que
 
 /**
  * The scenarios a budget file may hold, each with its own corpus and the one
- * limit it declares: the median incremental scan after an edit.
+ * limit it declares: the median incremental scan after an edit. Each maps to
+ * the language of its corpus, as `generate-test-fidelity-corpus.php` takes it.
  */
-const BENCHMARK_SCENARIOS = ['test_fidelity_rescan_one_file'];
+const BENCHMARK_SCENARIOS = ['test_fidelity_rescan_one_file' => 'typescript', 'test_fidelity_rescan_one_file_php' => 'php'];
 
 /**
  * Why the benchmark budgets cannot be enforced as they stand; empty when they can.
@@ -66,8 +67,8 @@ function benchmarkScenarioErrors(mixed $scenarios): array
     }
     $errors = [];
     foreach ($scenarios as $name => $limits) {
-        if (!in_array($name, BENCHMARK_SCENARIOS, true)) {
-            $errors[] = sprintf('scenarios.%s is not a scenario the benchmark runs (%s).', (string) $name, implode(', ', BENCHMARK_SCENARIOS));
+        if (!isset(BENCHMARK_SCENARIOS[$name])) {
+            $errors[] = sprintf('scenarios.%s is not a scenario the benchmark runs (%s).', (string) $name, implode(', ', array_keys(BENCHMARK_SCENARIOS)));
             continue;
         }
         $error = budgetNumberError(sprintf('scenarios.%s.incremental_scan_seconds', $name), is_array($limits) ? ($limits['incremental_scan_seconds'] ?? null) : null, 0.0);
@@ -115,9 +116,9 @@ function benchmarkScenarioViolations(string $scenario, float $limit, float $seco
 
 /**
  * Why a scenario's rescan does not measure what it is for, or null when it
- * does: the edit has to make the scan parse the production file and every
- * test file again, or the median would time a rescan of fewer files and
- * pass for the wrong reason.
+ * does: the edit has to make the scan parse the files its corpus says it
+ * reaches (the production file, and for TypeScript every test file again), or
+ * the median would time a rescan of fewer files and pass for the wrong reason.
  */
 function benchmarkScenarioParseError(string $scenario, int $round, int $expected, mixed $parsed): ?string
 {
