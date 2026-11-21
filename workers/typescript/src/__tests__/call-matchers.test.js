@@ -92,7 +92,9 @@ describe("the arguments a call matcher expects", () => {
             { count: 0, spread: true },
         ]);
     });
+});
 
+describe("the member a call matcher is about", () => {
     it("finds the member a matcher is about through the object that holds it", () => {
         const { nodes } = scan(
             inTest(
