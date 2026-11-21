@@ -7,6 +7,7 @@ namespace Knossos\TestFidelity\Rules;
 use Knossos\TestFidelity\Facts\PinnedValue;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
+use Knossos\TestFidelity\PhpTypeFit;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\TestFidelity\TestFinding;
 
@@ -19,6 +20,12 @@ use Knossos\TestFidelity\TestFinding;
  * Silent for a member with no signature, a cut-short one, or an overloaded one,
  * whose node holds only one of its signatures. Only a whole signature that
  * declares no return type is called inferred.
+ *
+ * The PHP worker has no type checker: it leaves every pin `"unknown"` with
+ * the pinned value's own `type`, and `PhpTypeFit` judges the fit here, for a
+ * PHP target only. A refusal it can show on both sides is definite, one that
+ * rests on a relation outside the project a warning; a PHP method with no
+ * declared return type is never judged.
  */
 final readonly class ReturnDriftRule extends DriftRule
 {
@@ -27,17 +34,20 @@ final readonly class ReturnDriftRule extends DriftRule
     /** Reports a stub that pins a value the member's return type refuses. */
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
     {
-        $pinned = self::worst($pair->stub->returns);
         // A missing, truncated or overloaded signature says nothing reliable about the return type.
         $signature = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
-        if ($signature === null || $pinned === null) {
+        if ($signature === null || $pair->member === null) {
+            return null;
+        }
+        [$pinned, $typed] = self::worst(self::refused($pair->stub->returns, $signature->returns, $pair, $graph));
+        if ($pinned === null) {
             return null;
         }
         $declared = $signature->returns ?? 'an inferred type';
 
         return $pair->finding(
             FindingCategory::ReturnDrift,
-            $pinned->typed ? FindingConfidence::Definite : FindingConfidence::Warning,
+            $typed ? FindingConfidence::Definite : FindingConfidence::Warning,
             self::ID,
             'return_type',
             sprintf('%s returns %s; the double pins a value it does not admit (%s)', DriftText::clean($pair->stub->name), DriftText::clean($declared), DriftText::clean($pinned->api)),
@@ -47,19 +57,53 @@ final readonly class ReturnDriftRule extends DriftRule
     }
 
     /**
-     * The value that is surely wrong: the first typed one the worker refuses, else the first it refuses.
+     * The pinned values the member's return type refuses, each with whether
+     * the refusal rests on declared types: the worker's verdict, or for a PHP
+     * target whose worker left it unknown, `PhpTypeFit`'s.
      *
      * @param list<PinnedValue> $returns
+     * @return list<array{PinnedValue, bool}>
      */
-    private static function worst(array $returns): ?PinnedValue
+    private static function refused(array $returns, ?string $declared, DriftPair $pair, TestFidelityGraph $graph): array
     {
-        $refused = array_values(array_filter($returns, static fn(PinnedValue $value): bool => $value->assignable === false));
-        foreach ($refused as $value) {
-            if ($value->typed) {
-                return $value;
+        $php = TestFidelityGraph::isPhp($pair->target);
+        $refused = [];
+        foreach ($returns as $value) {
+            if ($value->assignable === false) {
+                $refused[] = [$value, $value->typed];
+            } elseif ($php && $value->assignable === 'unknown' && $value->type !== null) {
+                $fit = PhpTypeFit::judge($value->type, $declared, $graph, self::declaringClass($pair));
+                if ($fit['fits'] === false) {
+                    $refused[] = [$value, $fit['typed']];
+                }
             }
         }
 
-        return $refused[0] ?? null;
+        return $refused;
+    }
+
+    /** The class a PHP method is declared in, which `self` and `static` name: its canonical name up to `::`. */
+    private static function declaringClass(DriftPair $pair): ?string
+    {
+        $owner = strstr($pair->member->canonicalName ?? '', '::', true);
+
+        return $owner === false || $owner === '' ? null : $owner;
+    }
+
+    /**
+     * The value that is surely wrong: the first refused on declared types, else the first refused.
+     *
+     * @param list<array{PinnedValue, bool}> $refused
+     * @return array{PinnedValue|null, bool}
+     */
+    private static function worst(array $refused): array
+    {
+        foreach ($refused as [$value, $typed]) {
+            if ($typed) {
+                return [$value, true];
+            }
+        }
+
+        return [$refused[0][0] ?? null, false];
     }
 }

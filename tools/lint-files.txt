@@ -548,6 +548,7 @@ php	src/TestFidelity/Facts/TestDouble.php
 php	src/TestFidelity/FindingCategory.php
 php	src/TestFidelity/FindingConfidence.php
 php	src/TestFidelity/MockedModulePaths.php
+php	src/TestFidelity/PhpTypeFit.php
 php	src/TestFidelity/Rules/ArityMismatchRule.php
 php	src/TestFidelity/Rules/CallArity.php
 php	src/TestFidelity/Rules/DoubleTests.php
@@ -1298,6 +1299,7 @@ php	tests/phpunit/TestFidelity/DriftEndToEndTest.php
 php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
 php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
 php	tests/phpunit/TestFidelity/MockedModulePathsTest.php
+php	tests/phpunit/TestFidelity/PhpTypeFitTest.php
 php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/CaseFixtures.php

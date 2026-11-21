@@ -155,6 +155,27 @@ final class MocksSubjectRuleTest extends KnossosTestCase
         assertSame([$mock->localId], array_map(static fn(TestFinding $finding): string => $finding->doubleOrCaseReference, $findings));
     }
 
+    public function testAPhpClassDoubleOfTheSubjectWarns(): void
+    {
+        // `createMock(Ledger::class)` in a test whose production calls land in src/Ledger.php.
+        $ledger = DriftFixtures::phpType('interface', 'App\\Ledger', file: 'src/Ledger.php');
+        $double = CaseFixtures::double(3, 'createMock', ['kind' => 'class', 'export' => 'App\\Ledger'], file: 'tests/LedgerTest.php');
+        $judge = static fn(array $subjects): array => [...(new MocksSubjectRule())->findings(CaseFixtures::graph(
+            [CaseFixtures::testCase([], 1, $subjects, 10, 'tests/LedgerTest.php'), $double],
+            [$ledger],
+            [DriftFixtures::edge('doubles', $double, 'php:class:App\\Ledger')],
+        ))];
+
+        $findings = $judge(['src/Billing.php', 'src/Ledger.php']);
+
+        assertCount(1, $findings);
+        assertSame(FindingConfidence::Warning, $findings[0]->confidence);
+        assertSame("createMock replaces src/Ledger.php, which the test 'does a thing' exercises", $findings[0]->message);
+        assertSame($ledger->localId, $findings[0]->targetReference);
+        assertSame(['module' => 'src/Ledger.php', 'test_case' => 'tests/LedgerTest.php#test:10'], $findings[0]->attributes);
+        assertSame([], $judge(['src/Billing.php']));
+    }
+
     public function testIdNamesTheCategory(): void
     {
         assertSame('test.fidelity.mocks_subject.v1', (new MocksSubjectRule())->id());

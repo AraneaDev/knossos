@@ -215,4 +215,34 @@ final class GhostMemberRuleTest extends KnossosTestCase
 
         assertSame('vi.spyOn stubs bad name, which UserService no longer has', self::judge($graph)[0]->message);
     }
+    public function testVendorTargetIsNotAGhost(): void
+    {
+        // `createMock(LoggerInterface::class)`, `Psr\Log` only in vendor/: the scan holds no node to judge against.
+        $graph = DriftFixtures::phpGraph([['find', []]], [DriftFixtures::stub('debugg')], doubled: 'Psr\\Log\\LoggerInterface');
+
+        assertSame([], self::judge($graph));
+    }
+
+    public function testAPhpMagicTargetIsNotAGhost(): void
+    {
+        // The class declares __call(): any name may answer (Nemesis `magic-php`).
+        $graph = DriftFixtures::phpGraph([['__call', []]], [DriftFixtures::stub('anything')], targetAttributes: ['member_names' => ['__call'], 'member_names_open' => true]);
+
+        assertSame([], self::judge($graph));
+    }
+
+    public function testAPhpMemberMatchesInAnyCase(): void
+    {
+        // PHP method names are case-insensitive; an interface target is reached through the worker's `php:class:` reference.
+        assertSame([], self::judge(DriftFixtures::phpGraph([['findById', []]], [DriftFixtures::stub('FINDBYID')])));
+        assertSame([], self::judge(DriftFixtures::phpGraph([['findById', []]], [DriftFixtures::stub('findbyid')], targetKind: 'interface', targetAttributes: ['member_names' => ['findById']])));
+        // A `@method` docblock name is listed with no node of its own.
+        assertSame([], self::judge(DriftFixtures::phpGraph([], [DriftFixtures::stub('FINDBYID')], targetAttributes: ['member_names' => ['findById']])));
+        assertSame(['createMock stubs findByld, which UserService no longer has; did you mean findById?'], array_map(static fn($finding): string => $finding->message, self::judge(DriftFixtures::phpGraph([['findById', []]], [DriftFixtures::stub('findByld')], targetKind: 'interface'))));
+    }
+
+    public function testATypeScriptMemberMatchesOnlyInItsOwnCase(): void
+    {
+        assertCount(1, self::judge(DriftFixtures::graph([DriftFixtures::method('total')], [DriftFixtures::stub('Total')])));
+    }
 }

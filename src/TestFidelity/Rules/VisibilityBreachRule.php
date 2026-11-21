@@ -15,6 +15,12 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
  * it at run time, so the double works but reaches past the public interface:
  * a warning. A worker marks only those two keywords; a member with neither
  * and no `#` is public and is never reported.
+ *
+ * PHP visibility holds at run time: a double cannot replace a `private`
+ * method, nor a `protected` one unless it opted in (Mockery's
+ * `shouldAllowMockingProtectedMethods()`, or a PHPUnit `getMockBuilder()`
+ * double), so for a PHP target either is definite, and an opted-in
+ * protected one is silent.
  */
 final readonly class VisibilityBreachRule extends DriftRule
 {
@@ -31,10 +37,14 @@ final readonly class VisibilityBreachRule extends DriftRule
         if ($visibility !== 'private' && $visibility !== 'protected') {
             return null;
         }
+        $php = TestFidelityGraph::isPhp($pair->target);
+        if ($php && $visibility === 'protected' && ($pair->double->allowsProtected || $pair->double->pattern === 'getMockBuilder')) {
+            return null;
+        }
 
         return $pair->finding(
             FindingCategory::VisibilityBreach,
-            FindingConfidence::Warning,
+            $php ? FindingConfidence::Definite : FindingConfidence::Warning,
             self::ID,
             'visibility',
             sprintf('%s is %s; the double bypasses the public interface', $name, $visibility),

@@ -15,7 +15,8 @@ use Knossos\TestFidelity\TestFinding;
  *
  * Silent where the evidence runs out: an external target, a target whose worker
  * sent no complete name list, a type with an ancestor the scan cannot see, a
- * member found through inheritance.
+ * member found through inheritance. A PHP name is matched in any case, as PHP
+ * matches method names.
  */
 final readonly class GhostMemberRule extends DriftRule
 {
@@ -64,7 +65,7 @@ final readonly class GhostMemberRule extends DriftRule
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
     {
         $names = self::completeNames($pair);
-        if ($names === null || $pair->member !== null || in_array($pair->stub->name, $names, true) || $graph->hasUnseenAncestor($pair->target)) {
+        if ($names === null || $pair->member !== null || self::listed($pair, $names) || $graph->hasUnseenAncestor($pair->target)) {
             return null;
         }
         $suggestion = self::suggestion($pair->stub->name, $names);
@@ -103,6 +104,20 @@ final readonly class GhostMemberRule extends DriftRule
         }
 
         return array_values(array_filter($names, is_string(...)));
+    }
+
+    /**
+     * Whether the target's name list holds the stubbed name; in any case for a PHP target.
+     *
+     * @param list<string> $names
+     */
+    private static function listed(DriftPair $pair, array $names): bool
+    {
+        if (!TestFidelityGraph::isPhp($pair->target)) {
+            return in_array($pair->stub->name, $names, true);
+        }
+
+        return in_array(strtolower($pair->stub->name), array_map(strtolower(...), $names), true);
     }
 
     /**

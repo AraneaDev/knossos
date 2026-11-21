@@ -248,9 +248,11 @@ final class PhpTestCasesTest extends KnossosTestCase
         ksort($found);
         assertSame($probes, $found);
 
+        // The stubbed class is in the project: a double of a class outside it is never zero-reach.
+        [$repo] = $this->scan('cases', ['src/Repo.php']);
         $findings = [];
         foreach ($scanned as $file => $contribution) {
-            foreach (self::tautologies([$contribution]) as $finding) {
+            foreach (self::tautologies([$contribution, $repo]) as $finding) {
                 $findings[] = [$finding->subRule, $file . ':' . $finding->evidence->startLine];
             }
         }
