@@ -32,4 +32,13 @@ final class ResolutionTest extends TestCase
         $computed = \Mockery::mock('App\\' . 'Billing\Foo');
         $none = \Mockery::mock();
     }
+
+    public function testFurtherTypes(): void
+    {
+        $both = m::mock(Bar::class, \Countable::class);
+        $listed = \Mockery::mock('App\Billing\Foo, \Countable , App\Billing\Payable');
+        $built = m::mock(Bar::class, ['charge' => 1], fn ($mock) => $mock);
+        $open = m::mock(Bar::class, $interface);
+        $trait = $this->getMockForTrait(Bar::class);
+    }
 }

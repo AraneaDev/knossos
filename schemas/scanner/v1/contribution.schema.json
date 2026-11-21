@@ -189,6 +189,11 @@
         "automock": { "type": "boolean" },
         "invocations": { "type": "integer", "minimum": 0 },
         "allows_protected": { "type": "boolean" },
+        "also_implements": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "also_implements_open": { "type": "boolean" },
         "test_case": { "type": "string", "minLength": 1 },
         "members": {
           "type": "array",
@@ -212,6 +217,7 @@
             "shouldReceive",
             "configured",
             "partial",
+            "addMethods",
             "prophecy",
             "shouldHaveReceived",
             "unknown"

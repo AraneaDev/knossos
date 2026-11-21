@@ -26,6 +26,30 @@ final class Api
     public function wide(\App\Some\Very\Long\Namespace\Name\That\Goes\On\AndOn|\App\Another\Equally\Long\Namespace\Name\ForGoodMeasure $value): void {}
 
     public function many($a, $b, $c, $d, $e, $f, $g, $h, $i, $j, $k, $l, $m): void {}
+
+    public function log($message)
+    {
+        if ($message !== '') {
+            return \func_get_args();
+        }
+    }
+
+    public function count()
+    {
+        return func_num_args() + strlen((string) func_get_arg(0));
+    }
+
+    public function nested()
+    {
+        return [fn () => func_get_args(), function () {
+            return func_num_args();
+        }, new class {
+            public function inner()
+            {
+                return func_get_args();
+            }
+        }];
+    }
 }
 
 function helper(array $rows, callable $each = null): iterable {}

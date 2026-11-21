@@ -168,7 +168,9 @@ as the source writes it:
   that declares no return type has no `returns`. A signature therefore reads
   the same whether or not the project's dependencies are installed.
 - `optional` marks a parameter a caller may leave out, `variadic` one that
-  takes the rest. A receiver the caller does not pass (`this`, `self`) is not
+  takes the rest. A signature may carry `"variadic": true` itself, beside
+  `params`, when the function takes any number of arguments past them without
+  a rest parameter (a PHP body that calls `func_get_args()`). A receiver the caller does not pass (`this`, `self`) is not
   listed. A destructured parameter is named by its shape, `{…}` or `[…]`.
 - At most 12 parameters are listed and a type's text is at most 80 characters.
   A signature that lost a parameter or part of a type says `"truncated": true`.
@@ -254,7 +256,8 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   configures, each
   `{name, line, api, params?, returns}` where `api` is how the test names the
   member (`spyOn`, `mockFactoryKey`, `objectLiteralKey`, `instance-member`,
-  PHPUnit's `method`, `configured` and `partial`, Mockery's `shouldReceive`
+  PHPUnit's `method`, `configured`, `partial` and `addMethods` (a name the
+  double adds to its class, which is never a ghost), Mockery's `shouldReceive`
   and, for a member a spy assertion names, `shouldHaveReceived`, `prophecy`, or
   `unknown`), `params` is the signature shape
   above and each `returns` entry is `{api, line, once, assignable, typed}`
@@ -264,9 +267,13 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   spread so the real count is open), and a `returns` entry may carry `type`, the
   pinned value's own type as the worker names it. A `test_double` may carry
   `allows_protected` (`true` when the framework lets the double stub protected
-  members, as Mockery's `shouldAllowMockingProtectedMethods()` does). A reader
-  drops a malformed `called_with` entry, `type` or `allows_protected` and keeps
-  the double.
+  members, as Mockery's `shouldAllowMockingProtectedMethods()` does), and
+  `also_implements`, the further classes and interfaces the double is made to
+  be, fully qualified (Mockery's `mock(A::class, B::class)`), or
+  `also_implements_open: true` when the worker could not name them all. A
+  reader drops a malformed `called_with` entry, `type` or `allows_protected`
+  and keeps the double; a malformed `also_implements` leaves what the double
+  implements unknown.
 - `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
   `subjects` (canonical names of the production modules those calls land in),
   `should_panic` (optional) and `assertions`, each

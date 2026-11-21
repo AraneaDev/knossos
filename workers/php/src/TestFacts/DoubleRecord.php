@@ -30,6 +30,12 @@ final class DoubleRecord
     /** Whether the framework lets the double stub protected members. */
     public bool $allowsProtected = false;
 
+    /**
+     * @var list<string>|null the further classes and interfaces the double is made to implement, fully qualified
+     * (Mockery's `mock(A::class, B::class)`); null when an argument may name one the syntax does not show
+     */
+    public ?array $alsoImplements = [];
+
     /** Whether the test stubs the double through Mockery: `shouldReceive()`, `allows()`, `expects()`. */
     public bool $stubbed = false;
 
@@ -180,6 +186,7 @@ final class DoubleRecord
             'automock' => $this->automock,
             'invocations' => count($this->sites),
             ...($this->allowsProtected ? ['allows_protected' => true] : []),
+            ...($this->alsoImplements === null ? ['also_implements_open' => true] : ($this->alsoImplements === [] ? [] : ['also_implements' => $this->alsoImplements])),
             ...($this->testCase === null ? [] : ['test_case' => $this->testCase]),
             'members' => $members,
         ];
