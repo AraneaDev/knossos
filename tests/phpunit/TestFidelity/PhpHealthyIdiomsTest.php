@@ -18,7 +18,10 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * - a counter or collector a by-reference closure writes inside a double's
  *   configuration (`willReturnCallback()`, `$this->callback()`, Mockery's
- *   `andReturnUsing()`, a Laravel configuring closure) is not a constant;
+ *   `andReturnUsing()`, a Laravel configuring closure) is not a constant, nor
+ *   is a local a call inside the configuration may write (`Mockery::capture()`,
+ *   `array_shift()`, `$i++`);
+ * - a name PHPUnit's `addMethods()` adds is the double's own in any case;
  * - a name a parent's or trait's `@method` or `__call()` answers is no ghost;
  * - a method that reads `func_get_args()`, `func_num_args()` or
  *   `func_get_arg()` in its own body takes any number of arguments;
@@ -49,8 +52,11 @@ final class PhpHealthyIdiomsTest extends KnossosTestCase
         sort($findings);
 
         $expected = [
-            // Genuine: the assertion reads back the stub's own value.
+            // Genuine: the assertion reads back the stub's own value; a local pinned in a chain is still that pin.
             'TAUTOLOGY/mock_echo/definite@tests/EdgeTest.php:25',
+            'TAUTOLOGY/mock_echo/definite@tests/CaptureTest.php:59',
+            // Genuine: a link of the chain (with($label), willReturn($label)) reads the local, it does not write it.
+            'TAUTOLOGY/constant/definite@tests/CaptureTest.php:60',
             'TAUTOLOGY/mock_echo/definite@tests/EdgeTest.php:53',
             // Genuine: a closure inside the method reads func_get_args(), not the method itself.
             'ARITY_MISMATCH/call_arity/definite@tests/EdgeTest.php:37',

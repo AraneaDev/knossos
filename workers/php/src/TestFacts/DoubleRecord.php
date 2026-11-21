@@ -15,7 +15,7 @@ use PhpParser\Node\Expr;
  */
 final class DoubleRecord
 {
-    /** @var array<string, array{name: string, line: int, api: string, params?: list<array<string, mixed>>, called_with: list<array{api: string, line: int, count: int, spread: bool}>, returns: list<array<string, mixed>>}> */
+    /** @var array<string, array{name: string, line: int, api: string, params?: list<array<string, mixed>>, called_with: list<array{api: string, line: int, count: int, spread: bool}>, returns: list<array<string, mixed>>}> by lower-case name */
     private array $members = [];
 
     /** @var array<int, true> the lines that call the double or hand it on */
@@ -57,16 +57,17 @@ final class DoubleRecord
     ) {}
 
     /**
-     * Record a member the test names, once: a later mention keeps the first
-     * line and api. A name that is not a PHP method name names no member, and
-     * says so with false.
+     * Record a member the test names, once: a later mention, in any case as
+     * PHP matches method names, keeps the first spelling, line and api. A
+     * name that is not a PHP method name names no member, and says so with
+     * false.
      */
     public function member(string $name, int $line, string $api): bool
     {
         if (preg_match('/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*$/', $name) !== 1) {
             return false;
         }
-        $this->members[$name] ??= ['name' => $name, 'line' => $line, 'api' => $api, 'called_with' => [], 'returns' => []];
+        $this->members[strtolower($name)] ??= ['name' => $name, 'line' => $line, 'api' => $api, 'called_with' => [], 'returns' => []];
 
         return true;
     }
@@ -78,20 +79,20 @@ final class DoubleRecord
      */
     public function pin(string $name, string $api, Expr $value, int $line, bool $plain = true): void
     {
-        if (!isset($this->members[$name])) {
+        if (!isset($this->members[strtolower($name)])) {
             return;
         }
         $type = PinnedType::of($value);
-        $this->answers[$name][] = [$value, $value->getStartFilePos(), $plain];
-        $this->members[$name]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => $type !== PinnedType::UNKNOWN, 'type' => $type];
+        $this->answers[strtolower($name)][] = [$value, $value->getStartFilePos(), $plain];
+        $this->members[strtolower($name)]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => $type !== PinnedType::UNKNOWN, 'type' => $type];
     }
 
     /** Record a value the test makes a member return without stating it, such as a callback's result. */
     public function unknownPin(string $name, string $api, int $line, int $position): void
     {
-        if (isset($this->members[$name])) {
+        if (isset($this->members[strtolower($name)])) {
             $this->answer($name, $position);
-            $this->members[$name]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => false, 'type' => PinnedType::UNKNOWN];
+            $this->members[strtolower($name)]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => false, 'type' => PinnedType::UNKNOWN];
         }
     }
 
@@ -101,12 +102,12 @@ final class DoubleRecord
      */
     public function selfPin(string $name, string $api, int $line, int $position): void
     {
-        if (!isset($this->members[$name])) {
+        if (!isset($this->members[strtolower($name)])) {
             return;
         }
         $this->answer($name, $position);
         if ($this->target !== null) {
-            $this->members[$name]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => true, 'type' => 'class:' . $this->target];
+            $this->members[strtolower($name)]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => true, 'type' => 'class:' . $this->target];
         }
     }
 
@@ -117,20 +118,20 @@ final class DoubleRecord
      */
     public function replacement(string $name, ?Expr $callback): void
     {
-        if (!isset($this->members[$name]) || isset($this->members[$name]['params']) || !($callback instanceof Expr\Closure || $callback instanceof Expr\ArrowFunction)) {
+        if (!isset($this->members[strtolower($name)]) || isset($this->members[strtolower($name)]['params']) || !($callback instanceof Expr\Closure || $callback instanceof Expr\ArrowFunction)) {
             return;
         }
         $signature = Signature::of($callback);
         if (!isset($signature['truncated'])) {
-            $this->members[$name]['params'] = $signature['params'];
+            $this->members[strtolower($name)]['params'] = $signature['params'];
         }
     }
 
     /** Record that the test shapes what a member returns in a way the source does not state as one value: a map, a throw. */
     public function answer(string $name, int $position): void
     {
-        if (isset($this->members[$name])) {
-            $this->answers[$name][] = [null, $position, false];
+        if (isset($this->members[strtolower($name)])) {
+            $this->answers[strtolower($name)][] = [null, $position, false];
         }
     }
 
@@ -141,7 +142,7 @@ final class DoubleRecord
      */
     public function answersOf(string $name): array
     {
-        return $this->answers[$name] ?? [];
+        return $this->answers[strtolower($name)] ?? [];
     }
 
     /** Whether the double is a Mockery spy the test never stubs, so every call on it returns null. */
@@ -153,8 +154,8 @@ final class DoubleRecord
     /** Record an assertion on the arguments a member is called with. */
     public function matcher(string $name, string $api, int $line, int $count, bool $spread): void
     {
-        if (isset($this->members[$name])) {
-            $this->members[$name]['called_with'][] = ['api' => $api, 'line' => $line, 'count' => $count, 'spread' => $spread];
+        if (isset($this->members[strtolower($name)])) {
+            $this->members[strtolower($name)]['called_with'][] = ['api' => $api, 'line' => $line, 'count' => $count, 'spread' => $spread];
         }
     }
 
