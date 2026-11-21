@@ -102,7 +102,7 @@ class TargetResolver:
     def in_module(self, module: str, spelled: str, rest: list[str]) -> Located | None:
         declared = self.index.module_declarations(module).get(rest[0])
         if len(rest) == 1:
-            return Located(Owner("module", declaring_module(declared) or module, spelled), rest[0], declared)
+            return Located(Owner("module", declaring_module(declared, rest[0]) or module, spelled), rest[0], declared)
         if len(rest) == 2 and declared is not None and declared.startswith("py:class:"):
             return Located(Owner("class", declared.removeprefix("py:class:"), spelled), rest[1])
         return None
@@ -130,7 +130,7 @@ class TargetResolver:
         if owner.kind != "module":
             return Located(owner, member)
         declared = self.index.module_declarations(owner.name).get(member)
-        moved = declaring_module(declared)
+        moved = declaring_module(declared, member)
         return Located(Owner("module", moved or owner.name, owner.specifier), member, declared)
 
     def local_instance(self, node: ast.AST) -> str | None:
@@ -177,8 +177,14 @@ def _patches(call: ast.Call) -> bool:
     return (func.attr == "object" and prefix == "patch") or func.attr in {"spy", "setattr"}
 
 
-def declaring_module(declared: str | None) -> str | None:
-    """The module a ``py:function:`` or ``py:class:`` reference is declared in."""
+def declaring_module(declared: str | None, member: str) -> str | None:
+    """The module a ``py:function:`` or ``py:class:`` reference is declared in, when it declares it as ``member``.
+
+    ``from a import Name as Alias`` binds ``Alias`` in the importing module
+    only: ``a`` has no ``Alias``, so a patch of it stays with the module that
+    binds it, whose names include the alias.
+    """
     if declared is None or not declared.startswith(("py:function:", "py:class:")):
         return None
-    return declared.split(":", 2)[2].rsplit(".", 1)[0]
+    module, _, leaf = declared.split(":", 2)[2].rpartition(".")
+    return module if leaf == member else None

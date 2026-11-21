@@ -31,8 +31,9 @@ use PHPUnit\Framework\Attributes\Group;
  * no definite finding beside one planted twin. The fixture also holds the
  * double idioms that must stay silent: `mock_open` on `builtins.open`,
  * `create=True`, `raising=False`, an unspec'd `Mock`, a class-level
- * `autospec=True` asserted with its instance, `mocker.spy` on a class and
- * `patch.dict`. Ruling P5: a false definite the rules give before Task 5's
+ * `autospec=True` asserted with its instance, `mocker.spy` on a class,
+ * `patch.dict`, and a class and a function a module imports under an alias,
+ * patched where that module uses them (review C1). Ruling P5: a false definite the rules give before Task 5's
  * gates is listed here as "cleared by Task 5"; none is.
  */
 #[Group('test-fidelity')]

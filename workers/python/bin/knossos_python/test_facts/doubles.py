@@ -18,7 +18,7 @@ from .bindings import Bindings
 from .configuration import Configuration
 from .factories import Arguments, Construct, arguments_of, construct_of, is_given, is_true, literal_string
 from .file_index import TestFileIndex
-from .frozen_names import BUILTINS, MOCK_CLASSES
+from .frozen_names import BUILTINS, MOCK_CLASSES, is_dunder
 from .imports import NameResolver
 from .records import DoubleRecord
 from .targets import Located, Owner, TargetResolver
@@ -71,6 +71,9 @@ class TestDoubles:
             self._patch(record, arguments)
         if arguments.spread:
             record.names_open = True
+        if record.self_member is not None and is_dunder(record.self_member):
+            # Ruling P3: a dunder is no member, and a target without its member would read as the whole owner.
+            record.owner = None
         self.configuration.keywords(record, arguments.extra, None)
         return record
 

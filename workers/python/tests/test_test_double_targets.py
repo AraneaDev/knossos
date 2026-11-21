@@ -292,3 +292,53 @@ def test_a_relative_import_past_the_top_names_nothing(project, scan_collect) -> 
     root = project({"tests/test_it.py": source})
 
     assert doubles(scan_collect(root, ["tests/test_it.py"]), "tests/test_it.py") == {}
+
+
+ALIASED = {
+    "a.py": "class Name:\n    def run(self) -> int:\n        return 1\n\n\ndef func() -> int:\n    return 1\n",
+    "b.py": "from a import Name as Alias, func as run_it\nfrom a import func\n",
+}
+
+ALIASES = """\
+from unittest.mock import patch
+import b
+
+
+def test_it(monkeypatch, mocker):
+    with patch("b.Alias"), patch("b.run_it"), patch.object(b, "Alias"), patch.object(b, "run_it"):
+        pass
+    monkeypatch.setattr("b.run_it", lambda: 1)
+    mocker.patch.object(b, "Alias")
+    with patch("b.func"), patch("b.Alias.run"):
+        pass
+"""
+
+
+def test_a_name_imported_under_an_alias_stays_with_the_module_that_binds_it(project, scan_collect) -> None:
+    found = scan_test(project, scan_collect, ALIASES, ALIASED)
+
+    # Renamed by the import, the name is the importing module's own: `a` has no `Alias` or `run_it`.
+    for position in ["6:10", "6:28", "6:47", "6:73", "8:5", "9:5"]:
+        assert (position, found[position][1]) == (position, "py:module:b")
+    # Imported under its own name, it is judged where it is declared.
+    assert (found["10:10"][1], members(found["10:10"][0])) == ("py:module:a", ["func"])
+    assert (found["10:27"][1], members(found["10:27"][0])) == ("py:class:a.Name", ["run"])
+
+
+DUNDER = """\
+from unittest.mock import patch
+
+
+def test_it():
+    with patch("repo.Repo.__init__", return_value=None), patch("repo.Repo.save"):
+        pass
+"""
+
+
+def test_a_patched_dunder_names_no_target(project, scan_collect) -> None:
+    found = scan_test(project, scan_collect, DUNDER)
+
+    # Ruling P3: a dunder is never a member, and without one the double would read as the whole class.
+    dunder = found["5:10"]
+    assert (dunder[0]["target"], dunder[1], dunder[0]["members"]) == ({"kind": "unknown"}, None, [])
+    assert found["5:58"][1] == "py:class:repo.Repo"

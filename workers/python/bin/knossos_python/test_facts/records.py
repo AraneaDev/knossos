@@ -37,6 +37,9 @@ class Pin:
     once: bool
     type: str
     value: ast.AST | None
+    # Configured through a handle held in `self.` or a fixture, which code the file does not show may swap:
+    # the pin is a type, never a value a test case may read back (the R14 analog, Decision 5).
+    held: bool = False
 
     def wire(self) -> dict[str, Any]:
         return {

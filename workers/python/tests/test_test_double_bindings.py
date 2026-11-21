@@ -312,3 +312,26 @@ def test_every_copied_fixture_scans(scan_collect) -> None:
 
 def test_the_repo_source_has_no_double() -> None:
     assert "Mock" not in REPO
+
+
+def _records(root: Path, source: str) -> dict[int, Any]:
+    package = sys.modules["knossos_python.test_facts"]
+    from knossos_python.module_index import ProjectModuleIndex
+
+    index = ProjectModuleIndex(root, 2_000_000)
+    files = package.file_index.TestFileIndex(ast.parse(source))
+    names = package.imports.NameResolver(index, files, "tests/test_it.py", "tests.test_it")
+    return {record.node.lineno: record for record in package.doubles.TestDoubles(files, names).doubles()}
+
+
+def test_a_pin_through_a_held_handle_is_marked_held(project) -> None:
+    held = _records(project({"repo.py": REPO, "tests/test_it.py": SETUP}), SETUP)
+    fixture = _records(project({"tests/test_fixture.py": FIXTURE}), FIXTURE)
+    local = _records(project({"repo.py": REPO, "tests/test_local.py": CONFIGURED}), CONFIGURED)
+
+    # Pinned through `self.` or a fixture, which code the file does not show may swap: the R14 analog.
+    assert [(pin.member, pin.held) for pin in held[8].pins] == [("price", True)]
+    assert [(pin.member, pin.held) for pin in held[9].pins] == [("helper", True)]
+    assert [(pin.member, pin.held) for pin in fixture[8].pins] == [("price", True)]
+    # A local handle, and a constructor keyword, pin a value the test itself set.
+    assert [(pin.member, pin.held) for pin in local[11].pins] == [("save", False), ("load", False), ("load", False)]

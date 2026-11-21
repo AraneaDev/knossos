@@ -42,6 +42,8 @@ class Configuration:
         self.names = names
         self.bindings: Bindings | None = None
         self.records: dict[int, DoubleRecord] = {}
+        # Whether the use being read reaches its double through a held handle.
+        self._held = False
 
     def read(self, records: dict[int, DoubleRecord]) -> None:
         self.records = records
@@ -115,6 +117,13 @@ class Configuration:
     # -- one use of a handle ----------------------------------------------------------------------------------------
 
     def _use(self, handle: Handle, node: ast.AST) -> None:
+        self._held = handle.held
+        try:
+            self._read_use(handle, node)
+        finally:
+            self._held = False
+
+    def _read_use(self, handle: Handle, node: ast.AST) -> None:
         record = handle.record.resolved()
         focus = handle.member
         chain: list[ast.Attribute] = []
@@ -302,7 +311,7 @@ class Configuration:
             record.params.append((member, signature_of(callable_, receiver=False)["params"]))
 
     def _pin(self, record: DoubleRecord, member: str | None, api: str, value: ast.expr, once: bool) -> None:
-        record.pins.append(Pin(member, api, value.lineno, once, self._type(value), value))
+        record.pins.append(Pin(member, api, value.lineno, once, self._type(value), value, self._held))
 
     def _type(self, value: ast.AST) -> str:
         def class_of(callee: ast.AST) -> str | None:

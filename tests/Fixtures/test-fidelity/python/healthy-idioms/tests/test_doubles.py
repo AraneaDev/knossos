@@ -44,3 +44,13 @@ def test_a_spy_on_a_class_records_the_instance(mocker):
 def test_a_dict_and_the_environment_are_no_class_doubles():
     with mock.patch.dict(os.environ, {"A": "1"}), mock.patch.dict("members.__dict__", {"extra": 1}):
         assert os.environ["A"] == "1"
+
+
+def test_a_name_imported_under_an_alias_is_patched_where_it_is_used(monkeypatch, mocker):
+    import aliasing
+
+    with mock.patch("aliasing.Store"), mock.patch.object(aliasing, "setup_class"):
+        aliasing.build()
+    monkeypatch.setattr("aliasing.setup_class", lambda target: None)
+    mocker.patch.object(aliasing, "Store")
+    mocker.patch("aliasing.setup_class")
