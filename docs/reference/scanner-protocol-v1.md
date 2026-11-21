@@ -201,6 +201,14 @@ worker could read it, and a list that cannot be complete says so with
 index signature). A reader judges a name absent only from a list that is
 present, complete and not open; a node without one says nothing.
 
+A PHP class, interface, trait or enum node may carry `member_names` too: the
+methods it declares itself, its `@method` docblock names, its trait-use aliases
+and an enum's built-ins. Inherited names come from its `extends`, `implements`
+and `uses_trait` edges. A `uses_trait` edge may carry `visibility_changed`, the
+method names whose visibility the trait use changes in place
+(`use T { load as public; }`), omitted when there are none; a reader takes
+those members' visibility as unknown.
+
 #### Repeated edges
 
 A worker reports an edge once per site it saw: `helper(); helper();` is two

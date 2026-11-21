@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace KnossosPhpScanner\TestFacts;
 
+use KnossosPhpScanner\Signature;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
 
@@ -14,7 +15,7 @@ use PhpParser\Node\Expr;
  */
 final class DoubleRecord
 {
-    /** @var array<string, array{name: string, line: int, api: string, called_with: list<array{api: string, line: int, count: int, spread: bool}>, returns: list<array<string, mixed>>}> */
+    /** @var array<string, array{name: string, line: int, api: string, params?: list<array<string, mixed>>, called_with: list<array{api: string, line: int, count: int, spread: bool}>, returns: list<array<string, mixed>>}> */
     private array $members = [];
 
     /** @var array<int, true> the lines that call the double or hand it on */
@@ -88,7 +89,38 @@ final class DoubleRecord
         }
     }
 
-    /** Record that the test shapes what a member returns in a way the source does not state as one value: a map, a throw, `self`. */
+    /**
+     * Record that a member returns the double itself (`willReturnSelf()`): an
+     * instance of the class it replaces, when the code names one.
+     */
+    public function selfPin(string $name, string $api, int $line, int $position): void
+    {
+        if (!isset($this->members[$name])) {
+            return;
+        }
+        $this->answer($name, $position);
+        if ($this->target !== null) {
+            $this->members[$name]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => true, 'type' => 'class:' . $this->target];
+        }
+    }
+
+    /**
+     * Record the parameters of the function a member is replaced with
+     * (`willReturnCallback(function (string $to) {...})`), once; a callback
+     * that is not written in place, or whose signature is cut short, has none.
+     */
+    public function replacement(string $name, ?Expr $callback): void
+    {
+        if (!isset($this->members[$name]) || isset($this->members[$name]['params']) || !($callback instanceof Expr\Closure || $callback instanceof Expr\ArrowFunction)) {
+            return;
+        }
+        $signature = Signature::of($callback);
+        if (!isset($signature['truncated'])) {
+            $this->members[$name]['params'] = $signature['params'];
+        }
+    }
+
+    /** Record that the test shapes what a member returns in a way the source does not state as one value: a map, a throw. */
     public function answer(string $name, int $position): void
     {
         if (isset($this->members[$name])) {

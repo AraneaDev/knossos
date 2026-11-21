@@ -253,6 +253,28 @@ final class PhpTestDoublesTest extends KnossosTestCase
         assertSame(['getMockForAbstractClass', false, []], $summary($doubles[35]));
     }
 
+    /**
+     * A callback written in place gives its member the replacement's
+     * parameters (the first one wins), and `willReturnSelf()` pins an
+     * instance of the class the double replaces; a facade names none.
+     */
+    public function testRecordsAReplacementSignatureAndASelfAnswer(): void
+    {
+        [$test] = $this->scan('doubles', ['tests/PinsTest.php']);
+        $doubles = $this->doubles($test);
+        $members = [];
+        foreach ($doubles[40]->members as $member) {
+            $members[$member->name] = [$member->params, array_map(static fn(PinnedValue $pin): array => [$pin->api, $pin->type, $pin->typed], $member->returns)];
+        }
+
+        assertSame([
+            'send' => [[['name' => 'to', 'type' => 'string'], ['name' => 'urgent', 'type' => 'bool', 'optional' => true], ['name' => 'rest', 'variadic' => true]], [['willReturnCallback', 'unknown', false], ['willReturnCallback', 'unknown', false]]],
+            'chain' => [null, [['willReturnSelf', 'class:App\Billing\Foo', true]]],
+            'named' => [null, [['willReturnCallback', 'unknown', false]]],
+        ], $members);
+        assertSame([['remember', []]], array_map(static fn(StubbedMember $member): array => [$member->name, $member->returns], $doubles[47]->members));
+    }
+
     public function testEmittedDoublesFitTheWireSchema(): void
     {
         $schema = json_decode((string) file_get_contents(self::repositoryRoot() . '/schemas/scanner/v1/contribution.schema.json'), true, 512, JSON_THROW_ON_ERROR);
