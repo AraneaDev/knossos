@@ -25,10 +25,15 @@ use PHPUnit\Framework\Attributes\Group;
  * or of a module with `__getattr__`. A `Generic[T]` base keeps the list
  * closed (Ruling P19).
  *
- * Until the worker reports test facts (Task 3), the scan asserts the
- * production name lists those stubs are judged against: each opener's list
- * is open and each closed list holds every name stubbed. Ruling P4: an empty
- * findings list before any double exists would assert nothing.
+ * The scan asserts the production name lists those stubs are judged
+ * against (each opener's list is open, each closed list holds every name
+ * stubbed), and, now the worker reports the doubles (Task 3), that they give
+ * no definite finding beside one planted twin. The fixture also holds the
+ * double idioms that must stay silent: `mock_open` on `builtins.open`,
+ * `create=True`, `raising=False`, an unspec'd `Mock`, a class-level
+ * `autospec=True` asserted with its instance, `mocker.spy` on a class and
+ * `patch.dict`. Ruling P5: a false definite the rules give before Task 5's
+ * gates is listed here as "cleared by Task 5"; none is.
  */
 #[Group('test-fidelity')]
 #[Group('python-scanner')]
@@ -80,6 +85,36 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
         }
     }
 
+    public function testHealthyIdiomsGiveNoFalseDefinite(): void
+    {
+        $pdo = $this->scan();
+        $rows = $pdo->query(
+            'SELECT f.category, f.sub_rule, f.confidence, fl.relative_path, f.start_line FROM test_findings f '
+            . 'JOIN projects p ON p.id = f.project_id AND f.last_scan_id = p.active_scan_id JOIN files fl ON fl.id = f.file_id',
+        )->fetchAll(PDO::FETCH_NUM);
+        $findings = array_map(static fn(array $row): string => vsprintf('%s/%s/%s@%s:%d', $row), $rows);
+        sort($findings);
+        $doubles = (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE language = 'py' AND kind = 'test_double'")->fetchColumn();
+
+        // Every stub, opener and double idiom of the fixture is a double the rules judge, so the list asserts something.
+        assertSame(true, $doubles > 25);
+        assertSame([
+            // Genuine: the planted twin, a name `Repo` does not have.
+            'GHOST_MEMBER/missing_member/definite@tests/test_planted.py:7',
+        ], $findings);
+    }
+
+    /** Scan a fresh copy of the fixture. */
+    private function scan(): PDO
+    {
+        $root = self::scratchPath('python-healthy-idioms');
+        $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/python/healthy-idioms', $root);
+        $pdo = $this->freshTestDatabase();
+        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+
+        return $pdo;
+    }
+
     /**
      * The attributes of each Python class, module and method node of one scan, keyed `<kind> <canonical name>`.
      *
@@ -87,10 +122,7 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
      */
     private function scannedNodes(): array
     {
-        $root = self::scratchPath('python-healthy-idioms');
-        $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/python/healthy-idioms', $root);
-        $pdo = $this->freshTestDatabase();
-        (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root);
+        $pdo = $this->scan();
         $nodes = [];
         $rows = $pdo->query("SELECT kind, canonical_name, attributes_json FROM nodes WHERE language = 'py' AND kind IN ('class', 'module', 'method')")->fetchAll(PDO::FETCH_NUM);
         foreach ($rows as [$kind, $name, $json]) {

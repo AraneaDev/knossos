@@ -1178,6 +1178,7 @@ php	tests/phpunit/Scanner/PythonAuditFixturesTest.php
 php	tests/phpunit/Scanner/PythonModuleIdentityTest.php
 php	tests/phpunit/Scanner/PythonReadAttributionTest.php
 php	tests/phpunit/Scanner/PythonScannerTest.php
+php	tests/phpunit/Scanner/PythonTestFactsSchemaTest.php
 php	tests/phpunit/Scanner/PythonWorkerReadsTest.php
 php	tests/phpunit/Scanner/ReturnedReceiverTest.php
 php	tests/phpunit/Scanner/RouteAttributesAgreementTest.php

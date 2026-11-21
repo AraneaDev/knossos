@@ -49,7 +49,7 @@ def path_loading_fixtures(tree: ast.Module, conftest: PurePosixPath) -> dict[str
     }
     fixtures: dict[str, PurePosixPath] = {}
     for function in functions:
-        name = _fixture_name(function)
+        name = fixture_name(function)
         if name is None:
             continue
         path = _loaded_path(function, conftest, paths) or _returned_loader(function, loaders)
@@ -58,7 +58,7 @@ def path_loading_fixtures(tree: ast.Module, conftest: PurePosixPath) -> dict[str
     return fixtures
 
 
-def _fixture_name(function: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
+def fixture_name(function: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
     """The name a test takes ``function`` under when ``@pytest.fixture`` or ``@fixture`` decorates it, else ``None``."""
     for decorator in function.decorator_list:
         call = decorator if isinstance(decorator, ast.Call) else None

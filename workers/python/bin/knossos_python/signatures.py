@@ -50,7 +50,7 @@ class _Text:
         return text[: MAX_TYPE_LENGTH - 1] + "…"
 
 
-def signature_of(node: ast.FunctionDef | ast.AsyncFunctionDef, receiver: bool) -> dict[str, Any]:
+def signature_of(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, receiver: bool) -> dict[str, Any]:
     """The `signature` attribute of a function or method.
 
     Types are the annotations written: an unannotated parameter has no `type`
@@ -94,8 +94,9 @@ def signature_of(node: ast.FunctionDef | ast.AsyncFunctionDef, receiver: bool) -
             param["kind"] = kind
         params.append(param)
     signature: dict[str, Any] = {"params": params}
-    if node.returns is not None:
-        signature["returns"] = text.of(node.returns)
+    returns = None if isinstance(node, ast.Lambda) else node.returns
+    if returns is not None:
+        signature["returns"] = text.of(returns)
     if text.cut or len(entries) > MAX_PARAMS:
         signature["truncated"] = True
     return signature
