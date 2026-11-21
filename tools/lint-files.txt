@@ -1414,6 +1414,7 @@ php	workers/php/src/TestFacts/TestDoubleCollector.php
 php	workers/php/src/TestFacts/TestFileFacts.php
 php	workers/php/src/TestFacts/TestFileIndex.php
 php	workers/php/src/TestFacts/TestModulePath.php
+php	workers/php/src/TraitUseVisibility.php
 php	workers/php/src/UnreadableFileException.php
 php	workers/php/src/VariableTypeScope.php
 php	workers/php/src/WorkerInputException.php

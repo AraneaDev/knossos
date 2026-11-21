@@ -47,6 +47,7 @@ final readonly class TestFidelityGraph
      * @param array<string, list<string>> $children container reference => contained references
      * @param array<string, list<string>> $parents type reference => the types it extends, implements or uses, in edge order
      * @param array<string, string> $phpTypes lower-case FQCN => the reference of the PHP class-like node of that name
+     * @param array<string, array<string, true>> $visibilityChanged type reference => lower-case names of the methods whose visibility a trait use there changes
      */
     private function __construct(
         private array $nodes,
@@ -58,6 +59,7 @@ final readonly class TestFidelityGraph
         private array $children,
         private array $parents,
         private array $phpTypes,
+        private array $visibilityChanged,
     ) {}
 
     /**
@@ -70,7 +72,7 @@ final readonly class TestFidelityGraph
      */
     public static function fromContributions(array $contributions): self
     {
-        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = [];
+        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = $visibilityChanged = [];
         foreach ($contributions as $contribution) {
             foreach ($contribution->nodes as $node) {
                 if (isset($nodes[$node->localId])) {
@@ -98,6 +100,9 @@ final readonly class TestFidelityGraph
                     $children[$edge->sourceReference][] = $edge->targetReference;
                 } elseif (in_array($edge->kind, self::INHERITANCE_KINDS, true)) {
                     $parents[$edge->sourceReference][] = $edge->targetReference;
+                    foreach (self::changedNames($edge->attributes) as $name) {
+                        $visibilityChanged[$edge->sourceReference][$name] = true;
+                    }
                 }
             }
         }
@@ -108,7 +113,32 @@ final readonly class TestFidelityGraph
             $byFile[self::fileOf($case->canonicalName)][] = $case;
         }
 
-        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents, $phpTypes);
+        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents, $phpTypes, $visibilityChanged);
+    }
+
+    /**
+     * The lower-case method names a `uses_trait` edge's `visibility_changed` attribute lists.
+     *
+     * @param array<string, mixed> $attributes
+     * @return list<string>
+     */
+    private static function changedNames(array $attributes): array
+    {
+        $names = $attributes['visibility_changed'] ?? null;
+
+        return is_array($names) ? array_values(array_map(strtolower(...), array_filter($names, is_string(...)))) : [];
+    }
+
+    /** Whether a trait use in `$owner` or a type it inherits from changes the visibility of the method `$name`, in any case. */
+    public function visibilityChanged(NodeFact $owner, string $name): bool
+    {
+        foreach ($this->reachable($owner)[0] as $type) {
+            if (isset($this->visibilityChanged[$type][strtolower($name)])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

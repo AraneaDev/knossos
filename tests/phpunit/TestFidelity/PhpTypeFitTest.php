@@ -157,4 +157,21 @@ final class PhpTypeFitTest extends KnossosTestCase
         assertSame(self::UNKNOWN, self::judge('bool', 'true'), 'Which bool the pin is, the type does not say.');
         assertSame(self::UNKNOWN, self::judge('int', '?'), 'A declared type the worker could not write.');
     }
+
+    public function testACoercingDoubleLeavesScalarsAndNullOnVoidOpen(): void
+    {
+        // Mockery's and Prophecy's generated code is not strict: '5' is coerced to int, and a void method drops what it is given.
+        $loose = static fn(string $pinned, string $declared): array => PhpTypeFit::judge($pinned, $declared, self::graph(), null, false);
+
+        assertSame(self::UNKNOWN, $loose('string', 'int'));
+        assertSame(self::UNKNOWN, $loose('float', 'int'));
+        assertSame(self::UNKNOWN, $loose('bool', 'string'));
+        assertSame(self::UNKNOWN, $loose('null', 'void'));
+        assertSame(self::FITS, $loose('int', 'int'));
+        assertSame(self::REFUSED, $loose('array', 'int'), 'An array is coerced to no scalar.');
+        assertSame(self::REFUSED, $loose('class:App\Card', 'int'));
+        assertSame(self::REFUSED, $loose('int', 'void'), 'Only null is dropped silently.');
+        assertSame(self::REFUSED, $loose('null', 'int'), 'A non-nullable return refuses null in any mode.');
+        assertSame(self::REFUSED, self::judge('null', 'void'), 'A strict double still refuses it.');
+    }
 }

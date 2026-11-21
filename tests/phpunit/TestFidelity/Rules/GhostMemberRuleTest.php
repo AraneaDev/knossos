@@ -215,6 +215,7 @@ final class GhostMemberRuleTest extends KnossosTestCase
 
         assertSame('vi.spyOn stubs bad name, which UserService no longer has', self::judge($graph)[0]->message);
     }
+
     public function testVendorTargetIsNotAGhost(): void
     {
         // `createMock(LoggerInterface::class)`, `Psr\Log` only in vendor/: the scan holds no node to judge against.

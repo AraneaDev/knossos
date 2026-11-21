@@ -349,7 +349,7 @@ final class PhpTestCasesTest extends KnossosTestCase
         assertSame(['mock-call', 'literal'], $operands['tests/Feature/heldhelper.php#test:11:13']);
         // Swaps the file shows but no assignment count sees: an in-file parent, destructuring, foreach, a reference, a by-reference argument, an alias, a dynamic name, Closure::bind().
         foreach ([17, 24, 31, 38, 45, 52, 59, 73] as $line) {
-            self::assertContains(['literal', 'mock-call'], array_filter($operands, static fn(string $key): bool => str_starts_with($key, 'tests/SwapTest.php#test:' . $line . ':'), ARRAY_FILTER_USE_KEY), 'SwapTest :' . $line);
+            assertSame(['literal', 'mock-call'], $operands['tests/SwapTest.php#test:' . $line . ':' . $line] ?? null, 'SwapTest :' . $line);
         }
         // A spy held in a property of a class using a trait, or of a Pest file calling uses(), is still the spy.
         assertSame(['mock-call+spy'], $operands['tests/IdentTest.php#test:15:15']);
