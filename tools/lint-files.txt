@@ -1300,6 +1300,7 @@ php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
 php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
 php	tests/phpunit/TestFidelity/MockedModulePathsTest.php
 php	tests/phpunit/TestFidelity/PhpAcceptanceTest.php
+php	tests/phpunit/TestFidelity/PhpHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/PhpTypeFitTest.php
 php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
