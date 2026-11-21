@@ -26,6 +26,11 @@ use PhpParser\NodeVisitorAbstract;
  *   closure's import is read here because the closure may sit in a double's
  *   configuration (`willReturnCallback(function () use (&$count) {...})`),
  *   which the test-case pass does not read as the test's own code.
+ * - Inside a double's configuration, which the test-case pass skips, a
+ *   variable handed to a call that is not a link of the chain is a write of
+ *   it (`with(Mockery::capture($sql))`, `willReturn(array_shift($queue))`),
+ *   and so is an `++`, `.=` or assignment there. A link's own arguments
+ *   (`willReturn($value)`) are the pins it configures, and are left as read.
  *
  * A `$this` property needs no such reading: it is never followed to a
  * literal (`OperandSource::property()`).
@@ -36,6 +41,9 @@ final class IndirectWrites extends NodeVisitorAbstract
     private const WRITES_LOCALS = ['extract', 'get_defined_vars', 'parse_str'];
 
     private readonly ScopeStack $scopes;
+
+    /** The outermost expression of the double configuration the traversal is in; null outside one. */
+    private ?Expr $configuration = null;
 
     public function __construct(private readonly TestFileIndex $file)
     {
@@ -63,8 +71,29 @@ final class IndirectWrites extends NodeVisitorAbstract
                 }
             }
         }
+        if ($this->configuration !== null) {
+            $this->configurationWrites($node);
+        } elseif ($node instanceof Expr\CallLike && $this->file->doubles->configures($node, $this->scopes->site())) {
+            $this->configuration = $node;
+        }
 
         return null;
+    }
+
+    /**
+     * Note what a node inside a double's configuration writes: the variables
+     * handed to a call that is not a link of the chain, and the target of an
+     * `++`, `.=` or assignment.
+     */
+    private function configurationWrites(Node $node): void
+    {
+        if ($node instanceof Expr\AssignOp || $node instanceof Expr\Assign || $node instanceof Expr\AssignRef || $node instanceof Expr\PreInc || $node instanceof Expr\PreDec || $node instanceof Expr\PostInc || $node instanceof Expr\PostDec) {
+            $this->file->write($node->var, $this->scopes->site());
+        } elseif ($node instanceof Expr\CallLike && !$node->isFirstClassCallable() && !$this->file->doubles->configures($node, $site = $this->scopes->site())) {
+            foreach ($node->getArgs() as $argument) {
+                $this->file->write($argument->value, $site);
+            }
+        }
     }
 
     /** Step out of the scope a node opened. */
@@ -72,6 +101,9 @@ final class IndirectWrites extends NodeVisitorAbstract
     public function leaveNode(Node $node): ?int
     {
         $this->scopes->leave($node);
+        if ($node === $this->configuration) {
+            $this->configuration = null;
+        }
 
         return null;
     }
