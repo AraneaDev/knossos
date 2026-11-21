@@ -107,7 +107,8 @@ In a test file (one under `tests/`, or named like `FooTest.php`), the worker
 reports each mock, stub and spy as a `test_double` fact, which the
 test-fidelity rules hold against the class it stands in for. It reads
 PHPUnit's `createMock()`, `createStub()`, `createConfiguredMock()`,
-`createPartialMock()`, `getMockForAbstractClass()` and `getMockBuilder()`,
+`createPartialMock()`, `getMockForAbstractClass()`, `getMockForTrait()` and
+`getMockBuilder()`,
 Mockery's `Mockery::mock()` and `Mockery::spy()` under any alias, Pest's
 `mock()`, Laravel's `$this->mock()`, `$this->partialMock()` and
 `$this->spy()`, and Prophecy's `$this->prophesize()`. A Laravel facade's
@@ -116,17 +117,27 @@ hold it against.
 
 The class is the one a `Foo::class` constant names, through the file's
 namespace and imports, or a string such as `'App\Foo'`. A class name held in a
-variable or built at runtime names nothing. A double assigned to a variable
-serves the rest of its method; assigned to a `$this` property in `setUp()`, it
-serves every test of the class. Its members are the names `method()`,
-`shouldReceive()` and Prophecy's calls configure, with the values
-`willReturn()` and `andReturn()` pin them to and the argument counts `with()`
-expects. `willReturnSelf()` and `andReturnSelf()` pin an instance of the class
+variable or built at runtime names nothing. A Mockery double made to be
+several types, `Mockery::mock(Foo::class, Bar::class)` or
+`Mockery::mock('Foo, Bar')`, keeps every one, so a member of `Bar` is no
+ghost; when a further argument may name a type the code does not show (a
+variable), the double's members are not judged as ghosts at all. A double
+assigned to a variable serves the rest of its method; assigned to a `$this`
+property in `setUp()`, it serves every test of the class. Its members are the
+names `method()`, `shouldReceive()` and Prophecy's calls configure, with the
+values `willReturn()` and `andReturn()` pin them to and the argument counts
+`with()` expects. Mockery's `anyArgs()`, `noArgs()`, `andAnyOtherArgs()` and
+`andAnyOthers()`, and Prophecy's `Argument::cetera()`, leave the count open.
+The names PHPUnit's `addMethods()` lists are the double's own and never a
+ghost. `willReturnSelf()` and `andReturnSelf()` pin an instance of the class
 the double stands in for, and a function written in place for
-`willReturnCallback()` or `andReturnUsing()` gives the member its parameters. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
+`willReturnCallback()` or `andReturnUsing()` gives the member its
+parameters. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
 `m`, and the arguments it is given or `->with()` lists after it are counted the
 same way. A member whose name is computed, such as `method($name)`, is left
-out. In a Pest file, a double that `beforeEach()` assigns to a `$this` property
+out. A method whose own body calls `func_get_args()`, `func_num_args()` or
+`func_get_arg()` takes any number of arguments, and its signature says
+`"variadic": true`. In a Pest file, a double that `beforeEach()` assigns to a `$this` property
 serves every test of the file.
 
 ## Test cases
@@ -182,7 +193,9 @@ own semantics:
 
 - Names are matched without regard to case, as PHP calls methods. A class
   that declares `__call()` or `__callStatic()`, or forwards with `@mixin`, may
-  answer any name, so no stubbed name on it is a ghost.
+  answer any name, so no stubbed name on it is a ghost; nor is one on a class
+  whose parent or trait does. A parent's, interface's or trait's `@method`
+  names count as the class's own.
 - Visibility holds at run time. Stubbing a `private` method is a definite
   breach. A `protected` one is definite only under `createMock()` or
   `createStub()` for a method that is not abstract, or under Mockery, Pest or
@@ -191,8 +204,11 @@ own semantics:
 - A pinned value is held against the native return type only; a docblock's
   `@return` is not read. PHPUnit checks the value strictly, so `null` for a
   `void` method is drift. Mockery, Pest and Prophecy let PHP coerce one scalar
-  into another and drop a `null` given to `void`, so those fits are unknown.
-  `self` and `static` declared in a trait stand for the class using it.
+  into another, turn a `Stringable` object into a `string` and drop a `null`
+  given to `void`, so those fits are unknown. The double itself pinned on a
+  `void` method (`willReturnSelf()`) breaks nothing at run time, so it is a
+  warning. `self` and `static` declared in a trait stand for the class using
+  it.
 - A class the scan does not hold, or a relation that could live in `vendor/` or
   PHP itself, makes drift a warning at most. A facade double names no class,
   so nothing it stubs is held against one.

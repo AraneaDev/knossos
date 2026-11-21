@@ -299,6 +299,19 @@ final readonly class TestFidelityGraph
     }
 
     /**
+     * `$owner` and every type the scan holds that it inherits from, through
+     * `uses_trait`, `extends`, `implements` and `re_exports`, itself first
+     * and nearest first. An ancestor the scan does not hold is left out;
+     * `hasUnseenAncestor()` says whether there is one.
+     *
+     * @return list<NodeFact>
+     */
+    public function lineage(NodeFact $owner): array
+    {
+        return array_values(array_filter(array_map(fn(string $reference): ?NodeFact => $this->nodes[$reference] ?? null, $this->reachable($owner)[0])));
+    }
+
+    /**
      * Whether `$owner` has an ancestor, or a re-exported module, that the scan
      * does not hold or that lies outside the project: a name it lacks may
      * still be inherited from there, so its absence proves nothing.

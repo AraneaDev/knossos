@@ -28,7 +28,8 @@ use Knossos\TestFidelity\TestFinding;
  * declared return type is never judged. Only a PHPUnit double returns its
  * value under strict types; Mockery, Pest and Prophecy let PHP coerce it.
  * `self` and `static` name the declaring class, or the doubled class when a
- * trait declares the method.
+ * trait declares the method. The double itself pinned on a `void` method
+ * (`willReturnSelf()`) breaks nothing at run time, so it is a warning.
  */
 final readonly class ReturnDriftRule extends DriftRule
 {
@@ -36,6 +37,9 @@ final readonly class ReturnDriftRule extends DriftRule
 
     /** The PHP type kinds `self` and `static` may name. */
     private const CLASS_KINDS = ['class', 'interface'];
+
+    /** The PHP apis that pin the double itself as a member's return. */
+    private const SELF_APIS = ['willReturnSelf', 'andReturnSelf'];
 
     /** Reports a stub that pins a value the member's return type refuses. */
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
@@ -80,12 +84,23 @@ final readonly class ReturnDriftRule extends DriftRule
             } elseif ($php && $value->assignable === 'unknown' && $value->type !== null) {
                 $fit = PhpTypeFit::judge($value->type, $declared, $graph, self::selfClass($pair, $graph), $pair->double->framework === 'phpunit');
                 if ($fit['fits'] === false) {
-                    $refused[] = [$value, $fit['typed']];
+                    $refused[] = [$value, $fit['typed'] && !self::isSelfOnVoid($value, $declared)];
                 }
             }
         }
 
         return $refused;
+    }
+
+    /**
+     * Whether a pin makes a `void` method return the double itself
+     * (`willReturnSelf()`, `andReturnSelf()`): no framework fails on it, as
+     * the method's generated body returns nothing, so it is only a warning
+     * (Ruling R18).
+     */
+    private static function isSelfOnVoid(PinnedValue $value, ?string $declared): bool
+    {
+        return in_array($value->api, self::SELF_APIS, true) && strtolower(ltrim((string) $declared, '\\')) === 'void';
     }
 
     /**

@@ -174,4 +174,19 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertCount(1, self::judgePhp('array', 'int', framework: 'mockery'));
         assertSame(FindingConfidence::Definite, self::judgePhp('null', 'void')[0]->confidence, 'PHPUnit refuses null on void.');
     }
+
+    public function testTheDoubleItselfPinnedOnVoidIsAWarning(): void
+    {
+        // Ruling R18: the void template returns nothing, so neither framework fails on `willReturnSelf()`.
+        $self = static fn(string $api, string $returns, string $framework = 'phpunit'): array => [...(new ReturnDriftRule())->findings(DriftFixtures::phpGraph(
+            [['total', ['signature' => ['params' => [], 'returns' => $returns]]]],
+            [DriftFixtures::stub('total', null, [['api' => $api, 'line' => 9, 'once' => false, 'assignable' => 'unknown', 'typed' => true, 'type' => 'class:App\\UserService']])],
+            ['framework' => $framework],
+        ))];
+
+        assertSame([FindingConfidence::Warning], array_map(static fn($finding) => $finding->confidence, $self('willReturnSelf', 'void')));
+        assertSame([FindingConfidence::Warning], array_map(static fn($finding) => $finding->confidence, $self('andReturnSelf', 'void', 'mockery')));
+        assertSame([FindingConfidence::Definite], array_map(static fn($finding) => $finding->confidence, $self('willReturn', 'void')), 'A stated value on void stays definite.');
+        assertSame([FindingConfidence::Definite], array_map(static fn($finding) => $finding->confidence, $self('willReturnSelf', 'int')), 'The double itself is no int.');
+    }
 }

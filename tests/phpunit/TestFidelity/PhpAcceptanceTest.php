@@ -40,7 +40,8 @@ use PHPUnit\Framework\Attributes\Group;
  * Nemesis's GHOST_METHOD is `GHOST_MEMBER/missing_member`, and an
  * ARITY_MISMATCH is `call_arity` for a `with()` and `signature` for a callback.
  *
- * Disagreements, and where Knossos deliberately differs from both:
+ * Disagreements, where Knossos deliberately differs from both, and the gaps
+ * (cases a tool reports that Knossos has no rule for yet: items 6, 7, 14 and 15):
  *
  * 1. `momus` `Drift003Test.php:14`, `:21`, `:28`, `PartialMockTest.php:13`,
  *    `:19`: Momus warns, Nemesis reports definite drift; both sides carry
@@ -61,10 +62,10 @@ use PHPUnit\Framework\Attributes\Group;
  *    return type is declared, so the contract cannot be verified. Knossos holds a pin
  *    against the native return type only, and says nothing where there is
  *    none, on the healthy twin (`:28`-`:30`) as on the planted stubs.
- * 6. `momus` `AnonymousTest.php:13`: Momus reports an anonymous subclass of
+ * 6. A gap: `momus` `AnonymousTest.php:13`: Momus reports an anonymous subclass of
  *    `InvoiceRepository` adding a method; Nemesis does not see the construct.
- *    Knossos reads no anonymous class as a double: silent.
- * 7. `momus` `ConstructorTest.php:13`: Momus reports constructor drift on
+ *    Knossos reads no anonymous class as a double yet: silent.
+ * 7. A gap: `momus` `ConstructorTest.php:13`: Momus reports constructor drift on
  *    `getMockBuilder()->enableOriginalConstructor()`; Nemesis does not see it.
  *    Knossos has no constructor-drift rule yet: silent.
  * 8. `momus` `BrokenTest.php:10`: Nemesis reports drift in a file that does
@@ -91,20 +92,31 @@ use PHPUnit\Framework\Attributes\Group;
  *    `assertTrue(true)` beside them is silent, as in both tools (Ruling R10).
  * 13. `nemesis-magic` `BagTest.php:15`: Momus reports a ghost, Nemesis nothing;
  *    `Bag` declares `__call()`, so Nemesis's silence is expected.
- * 14. `nemesis-experiments/final`: Nemesis reports a final class (`:14`), a
+ * 14. A gap: `nemesis-experiments/final`: Nemesis reports a final class (`:14`), a
  *    final method (`:17`) and a constructor (`:20`) as definite breaches, a
  *    static method (`:18`) as a warning, and warns at `:20` that the
- *    constructor declares no return type. Knossos does not yet judge whether a
- *    class or member can be doubled at all, and is silent where no return
- *    type is declared. At `:18` it reports definite drift instead,
- *    `willReturn(null)` for `build(): self`, which PHPUnit 12.5 refuses
- *    ("may not return value of type null"). Momus's zero-reach at `:16` is expected.
- * 15. `nemesis-experiments/fluent` `QueryTest.php:17`: Nemesis reports
+ *    constructor declares no return type. Knossos has no rule yet for whether
+ *    a class or member can be doubled at all (final, static, `__construct`),
+ *    and is silent where no return type is declared. At `:18` it reports
+ *    definite drift instead, `willReturn(null)` for `build(): self`, which
+ *    PHPUnit 12.5 refuses ("may not return value of type null"). Momus's
+ *    zero-reach at `:16` is expected.
+ * 15. A gap: `nemesis-experiments/fluent` `QueryTest.php:17`: Nemesis reports
  *    `Order::Random`, a case the enum lacks. Knossos reads no enum cases yet,
  *    so the pin's type is unknown: silent.
  * 16. Momus's MOCK-001 (over-mocking, `pest` `FeatureFlagTest.php:1`) is an
  *    on-request check, not a scan one; MOCK-002 (info) is not
  *    `MOCKS_SUBJECT` here, since these tests run no production code.
+ * 17. `nemesis-experiments/fluent` `QueryTest.php:15`: Nemesis reports
+ *    `willReturnSelf()` on a `void` method as definite drift; Knossos
+ *    deliberately gives a warning (Ruling R18): the void method's generated
+ *    body returns nothing, so neither PHPUnit nor Mockery fails on it.
+ *
+ * Rulings these fixtures hold no case of, pinned by their own tests instead:
+ * R2 (PHPUnit `with()` judged only for too many), R11 and R12 (what a property
+ * or helper call may write), R15 (`self` in a trait), R16 and Decision 4
+ * (which doubles reach protected methods), the warning for a relation only
+ * `vendor/` holds, and the silence on a Laravel facade double.
  */
 #[Group('test-fidelity')]
 #[Group('php-scanner')]
@@ -204,7 +216,7 @@ final class PhpAcceptanceTest extends KnossosTestCase
     }
 
     /** A name stubbed on a class that answers `__call()` is no ghost; the one finding is about the assertion, not the double's contract. */
-    public function testNemesisMagicIsSilent(): void
+    public function testNemesisMagicHasNoContractFinding(): void
     {
         [$pdo] = $this->scanned('nemesis-magic');
         $findings = self::findings($pdo);
@@ -227,7 +239,7 @@ final class PhpAcceptanceTest extends KnossosTestCase
                 'TAUTOLOGY/zero_reach/warning@tests/SealedTest.php:16',
             ]],
             'fluent' => ['fluent', [
-                'RETURN_DRIFT/return_type/definite@tests/QueryTest.php:15',
+                'RETURN_DRIFT/return_type/warning@tests/QueryTest.php:15',
                 'TAUTOLOGY/mock_only/warning@tests/QueryTest.php:19',
             ]],
             'mockery' => ['mockery', [

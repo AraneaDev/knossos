@@ -174,4 +174,28 @@ final class PhpTypeFitTest extends KnossosTestCase
         assertSame(self::REFUSED, $loose('null', 'int'), 'A non-nullable return refuses null in any mode.');
         assertSame(self::REFUSED, self::judge('null', 'void'), 'A strict double still refuses it.');
     }
+
+    public function testACoercingDoubleLeavesAClassThatMayBeStringableOpenAgainstString(): void
+    {
+        // Ruling R20: outside strict types PHP turns a Stringable object returned for `string` into a string.
+        $named = DriftFixtures::phpType('class', 'App\Name', file: 'src/Name.php');
+        $child = DriftFixtures::phpType('class', 'App\Child', file: 'src/Child.php');
+        $plain = DriftFixtures::phpType('class', 'App\Plain', file: 'src/Plain.php');
+        $marked = DriftFixtures::phpType('class', 'App\Marked', file: 'src/Marked.php');
+        $toString = DriftFixtures::phpMethod($named, '__toString');
+        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.php:file:src', [$named, $child, $plain, $marked, $toString], [
+            DriftFixtures::edge('contains', $named, $toString->localId),
+            DriftFixtures::edge('extends', $child, 'php:class:App\Name'),
+            DriftFixtures::edge('implements', $marked, 'php:interface:Stringable'),
+        ])]);
+        $loose = static fn(string $class): array => PhpTypeFit::judge('class:' . $class, 'string', $graph, null, false);
+
+        assertSame(self::UNKNOWN, $loose('App\Name'), 'It declares __toString().');
+        assertSame(self::UNKNOWN, $loose('App\Child'), 'It inherits __toString().');
+        assertSame(self::UNKNOWN, $loose('App\Marked'), 'It implements Stringable, which the scan does not hold.');
+        assertSame(self::UNKNOWN, $loose('Vendor\Thing'), 'Outside the project, nothing shows it is not Stringable.');
+        assertSame(self::REFUSED, $loose('App\Plain'), 'Nothing in or above it makes a string.');
+        assertSame(self::REFUSED, PhpTypeFit::judge('class:App\Name', 'string', $graph), 'A strict double still refuses it.');
+        assertSame(self::REFUSED, PhpTypeFit::judge('class:App\Name', 'int', $graph, null, false), 'A Stringable object is coerced to no int.');
+    }
 }
