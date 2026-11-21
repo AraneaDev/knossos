@@ -17,10 +17,13 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
  * and no `#` is public and is never reported.
  *
  * PHP visibility holds at run time: a double cannot replace a `private`
- * method, nor a `protected` one unless it opted in (Mockery's
- * `shouldAllowMockingProtectedMethods()`, or a PHPUnit `getMockBuilder()`
- * double), so for a PHP target either is definite, and an opted-in
- * protected one is silent.
+ * method, which for a PHP target is definite. A `protected` one is definite
+ * only where the double cannot reach it: under PHPUnit's `createMock()` or
+ * `createStub()` for a method that is not abstract, or under Mockery, Pest or
+ * Prophecy without `shouldAllowMockingProtectedMethods()`. PHPUnit's other
+ * doubles (`createPartialMock()`, `getMockBuilder()`, the abstract and trait
+ * doubles) reach protected methods, so they are silent. A visibility a trait
+ * use changes (`use T { load as public; }`) is unknown, and silent.
  */
 final readonly class VisibilityBreachRule extends DriftRule
 {
@@ -38,7 +41,7 @@ final readonly class VisibilityBreachRule extends DriftRule
             return null;
         }
         $php = TestFidelityGraph::isPhp($pair->target);
-        if ($php && $visibility === 'protected' && ($pair->double->allowsProtected || $pair->double->pattern === 'getMockBuilder')) {
+        if ($php && (($visibility === 'protected' && self::reachesProtected($pair)) || $graph->visibilityChanged($pair->target, $pair->stub->name))) {
             return null;
         }
 
@@ -50,6 +53,17 @@ final readonly class VisibilityBreachRule extends DriftRule
             sprintf('%s is %s; the double bypasses the public interface', $name, $visibility),
             ['visibility' => $visibility],
         );
+    }
+
+    /** Whether a PHP double can replace a protected method at run time: it opted in, or PHPUnit made it any way but a plain mock or stub of a concrete method. */
+    private static function reachesProtected(DriftPair $pair): bool
+    {
+        $double = $pair->double;
+        if ($double->allowsProtected) {
+            return true;
+        }
+
+        return $double->framework === 'phpunit' && (!in_array($double->pattern, ['createMock', 'createStub'], true) || ($pair->member->attributes['abstract'] ?? false) === true);
     }
 
     /**

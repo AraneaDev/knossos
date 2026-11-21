@@ -25,11 +25,17 @@ use Knossos\TestFidelity\TestFinding;
  * the pinned value's own `type`, and `PhpTypeFit` judges the fit here, for a
  * PHP target only. A refusal it can show on both sides is definite, one that
  * rests on a relation outside the project a warning; a PHP method with no
- * declared return type is never judged.
+ * declared return type is never judged. Only a PHPUnit double returns its
+ * value under strict types; Mockery, Pest and Prophecy let PHP coerce it.
+ * `self` and `static` name the declaring class, or the doubled class when a
+ * trait declares the method.
  */
 final readonly class ReturnDriftRule extends DriftRule
 {
     public const ID = 'test.fidelity.return_drift.v1';
+
+    /** The PHP type kinds `self` and `static` may name. */
+    private const CLASS_KINDS = ['class', 'interface'];
 
     /** Reports a stub that pins a value the member's return type refuses. */
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
@@ -72,7 +78,7 @@ final readonly class ReturnDriftRule extends DriftRule
             if ($value->assignable === false) {
                 $refused[] = [$value, $value->typed];
             } elseif ($php && $value->assignable === 'unknown' && $value->type !== null) {
-                $fit = PhpTypeFit::judge($value->type, $declared, $graph, self::declaringClass($pair));
+                $fit = PhpTypeFit::judge($value->type, $declared, $graph, self::selfClass($pair, $graph), $pair->double->framework === 'phpunit');
                 if ($fit['fits'] === false) {
                     $refused[] = [$value, $fit['typed']];
                 }
@@ -82,12 +88,21 @@ final readonly class ReturnDriftRule extends DriftRule
         return $refused;
     }
 
-    /** The class a PHP method is declared in, which `self` and `static` name: its canonical name up to `::`. */
-    private static function declaringClass(DriftPair $pair): ?string
+    /**
+     * The class `self` and `static` name in a PHP method: the class or
+     * interface declaring it (its canonical name up to `::`). A trait, or an
+     * owner the scan does not hold, is no class: then the doubled class, which
+     * uses it, and null when the double replaces no class or interface.
+     */
+    private static function selfClass(DriftPair $pair, TestFidelityGraph $graph): ?string
     {
         $owner = strstr($pair->member->canonicalName ?? '', '::', true);
+        $declaring = $owner === false || $owner === '' ? null : $graph->phpType($owner);
+        if ($declaring !== null && in_array($declaring->kind, self::CLASS_KINDS, true)) {
+            return $declaring->canonicalName;
+        }
 
-        return $owner === false || $owner === '' ? null : $owner;
+        return in_array($pair->target->kind, self::CLASS_KINDS, true) ? $pair->target->canonicalName : null;
     }
 
     /**

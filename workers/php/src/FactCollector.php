@@ -680,7 +680,7 @@ final class FactCollector extends NodeVisitorAbstract
             return;
         }
         foreach ($node->traits as $trait) {
-            $this->addEdge('uses_trait', $class['id'], self::reference('trait', $this->name($trait)), $trait);
+            $this->addEdge('uses_trait', $class['id'], self::reference('trait', $this->name($trait)), $trait, attributes: array_filter(['visibility_changed' => TraitUseVisibility::changed($node, $this->name($trait), $this->name(...))]));
         }
     }
 

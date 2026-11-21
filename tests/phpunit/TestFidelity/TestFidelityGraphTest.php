@@ -202,6 +202,7 @@ final class TestFidelityGraphTest extends KnossosTestCase
 
         assertSame('src/inner.ts#helper', $graph->member($facade, 'helper')?->canonicalName);
     }
+
     /**
      * PHP doubles as the PHP worker emits them: every `doubles` edge names
      * `php:class:<FQCN>`, whatever the target's kind, in the case the test wrote.

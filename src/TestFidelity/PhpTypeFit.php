@@ -18,6 +18,11 @@ namespace Knossos\TestFidelity;
  * refusal is only a warning. `mixed`, an absent type, and whatever the
  * declared type leaves open (which `bool` a `true` return is, whether a
  * string names a callable) are unknown, and the rule is silent.
+ *
+ * A Mockery or Prophecy double's generated code is not strict-types, so PHP
+ * coerces a scalar it returns (`'5'` for an `int`) and a `void` method drops
+ * the `null` it is given: for such a double those fits are unknown. A PHPUnit
+ * double checks its return value strictly and keeps the strict judgement.
  */
 final class PhpTypeFit
 {
@@ -40,6 +45,9 @@ final class PhpTypeFit
         'void' => [], 'never' => [], 'true' => [], 'false' => [],
     ];
 
+    /** The scalar types PHP coerces one into another outside strict-types mode. */
+    private const COERCED = ['int', 'float', 'string', 'bool'];
+
     /** Built-in declared types, each with the pinned kinds whose fit the type leaves open. */
     private const OPEN = ['true' => ['bool'], 'false' => ['bool'], 'callable' => ['string', 'array', 'class'], 'iterable' => ['class']];
 
@@ -52,11 +60,12 @@ final class PhpTypeFit
      * @param string $pinned the pin's type as the worker names it
      * @param string|null $declared the declared return type as the PHP worker writes it (`?int`, `A|B`, `(A&B)|null`)
      * @param string|null $self the class `self` and `static` stand for: the one declaring the method
+     * @param bool $strict whether the double returns its value under strict types (PHPUnit), or lets PHP coerce it (Mockery, Prophecy)
      * @return array{fits: bool|null, typed: bool}
      */
-    public static function judge(string $pinned, ?string $declared, TestFidelityGraph $graph, ?string $self = null): array
+    public static function judge(string $pinned, ?string $declared, TestFidelityGraph $graph, ?string $self = null, bool $strict = true): array
     {
-        $pin = self::pin($pinned);
+        $pin = self::pin($pinned, $strict);
         $verdict = $pin === null || $declared === null || $declared === '' ? null : self::union($pin, $declared, $graph, $self);
 
         return match ($verdict) {
@@ -68,23 +77,24 @@ final class PhpTypeFit
     }
 
     /**
-     * The pinned kind, and the class for `class:<FQCN>`; null for a type outside the list.
+     * The pinned kind, the class for `class:<FQCN>`, and whether the double
+     * returns it strictly; null for a type outside the list.
      *
-     * @return array{string, string}|null
+     * @return array{string, string, bool}|null
      */
-    private static function pin(string $pinned): ?array
+    private static function pin(string $pinned, bool $strict): ?array
     {
         if (str_starts_with($pinned, 'class:')) {
-            return strlen($pinned) > strlen('class:') ? ['class', substr($pinned, strlen('class:'))] : null;
+            return strlen($pinned) > strlen('class:') ? ['class', substr($pinned, strlen('class:')), $strict] : null;
         }
 
-        return in_array($pinned, self::PINNED, true) ? [$pinned, ''] : null;
+        return in_array($pinned, self::PINNED, true) ? [$pinned, '', $strict] : null;
     }
 
     /**
      * A union fits when any member fits; else it is unknown when any member is, doubted when any is.
      *
-     * @param array{string, string} $pin
+     * @param array{string, string, bool} $pin
      */
     private static function union(array $pin, string $declared, TestFidelityGraph $graph, ?string $self): ?string
     {
@@ -102,7 +112,7 @@ final class PhpTypeFit
     /**
      * An intersection fits when every member fits; it is refused when any member is.
      *
-     * @param array{string, string} $pin
+     * @param array{string, string, bool} $pin
      */
     private static function intersection(array $pin, string $declared, TestFidelityGraph $graph, ?string $self): ?string
     {
@@ -119,11 +129,11 @@ final class PhpTypeFit
     /**
      * One named type: a built-in, `self` or `static`, or a class.
      *
-     * @param array{string, string} $pin
+     * @param array{string, string, bool} $pin
      */
     private static function single(array $pin, string $declared, TestFidelityGraph $graph, ?string $self): ?string
     {
-        [$kind, $class] = $pin;
+        [$kind, $class, $strict] = $pin;
         $name = strtolower(ltrim($declared, '\\'));
         if ($name === 'self' || $name === 'static') {
             return $self === null ? null : self::single($pin, $self, $graph, null);
@@ -132,7 +142,11 @@ final class PhpTypeFit
             return null;
         }
         if (isset(self::BUILTINS[$name])) {
-            return in_array($kind, self::BUILTINS[$name], true) ? self::FITS : self::REFUSED;
+            return match (true) {
+                in_array($kind, self::BUILTINS[$name], true) => self::FITS,
+                !$strict && self::coerces($kind, $name) => null,
+                default => self::REFUSED,
+            };
         }
 
         return match ($kind) {
@@ -144,6 +158,12 @@ final class PhpTypeFit
             'closure' => $name === 'closure' ? self::FITS : self::REFUSED,
             default => self::REFUSED,
         };
+    }
+
+    /** Whether PHP outside strict-types mode may accept a `$kind` value for a declared `$name`: one scalar for another, or null for void. */
+    private static function coerces(string $kind, string $name): bool
+    {
+        return (in_array($kind, self::COERCED, true) && in_array($name, self::COERCED, true)) || ($kind === 'null' && $name === 'void');
     }
 
     /**

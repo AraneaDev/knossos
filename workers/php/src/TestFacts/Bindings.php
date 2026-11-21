@@ -30,7 +30,6 @@ final class Bindings
     /** @var array<string, list<array{int, int, bool, Value}>> by class and property: position, method id, whether in `setUp()`, value */
     private array $properties = [];
 
-
     /**
      * Bind a local variable from a position on.
      *

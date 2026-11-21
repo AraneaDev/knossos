@@ -129,4 +129,26 @@ final class PhpMemberNamesTest extends KnossosTestCase
 
         return $nodes;
     }
+
+    public function testATraitUseThatChangesAVisibilitySaysWhich(): void
+    {
+        $client = $this->phpWorkerClient();
+        try {
+            $contributions = iterator_to_array($client->scan(['limits' => ScanLimits::DEFAULT,
+                'root' => self::repositoryRoot() . '/tests/Fixtures/test-fidelity/php/members',
+                'files' => ['src/Edges.php'],
+            ]), false);
+        } finally {
+            $client->shutdown();
+        }
+        $uses = [];
+        foreach ($contributions[0]->edges as $edge) {
+            if ($edge->kind === 'uses_trait') {
+                $uses[$edge->sourceReference] = $edge->attributes;
+            }
+        }
+
+        // `plain as protected;` changes plain's visibility; `foo as protected hidden;` makes a new name and leaves foo alone.
+        assertSame(['visibility_changed' => ['plain']], $uses['php:class:Members\\UsesAliases']);
+    }
 }
