@@ -137,8 +137,8 @@ parameters. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
 same way. A member whose name is computed, such as `method($name)`, is left
 out. A method whose own body calls `func_get_args()`, `func_num_args()` or
 `func_get_arg()` takes any number of arguments, and its signature says
-`"variadic": true`. In a Pest file, a double that `beforeEach()` assigns to a `$this` property
-serves every test of the file.
+`"variadic": true`. In a Pest file, a double that `beforeEach()` assigns to a
+`$this` property serves every test of the file.
 
 ## Test cases
 
@@ -160,7 +160,9 @@ method of a class whose name ends in `Test`, when it is named `test*`, marked
 A local variable is followed to its value only when it is assigned once and
 nothing else changes it: no `++` or `.=`, no write to an element or property of
 it (`$x[] = 1`, `unset($x['k'])`), no destructuring at any depth (`[[$x]] =`,
-`foreach ($rows as [$x])`), no reference, and no call it is handed to.
+`foreach ($rows as [$x])`), no reference, and no call it is handed to, inside
+a double's configuration too (`->with(Mockery::capture($x))`); the value a
+link such as `willReturn($x)` pins is only read.
 The rule is coarse on purpose. A function that may write its locals indirectly
 (`global`, `extract()`, `get_defined_vars()`, a one-argument `parse_str()`, a
 variable variable, an `include` or `require`, `eval()`) proves no local's value. A `$this` property, in a PHPUnit

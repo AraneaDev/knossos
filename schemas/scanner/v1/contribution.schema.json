@@ -153,7 +153,7 @@
       }
     },
     "testDoubleAttributes": {
-      "description": "What a test_double node carries: the mocking framework, the pattern that made the double, what it replaces, whether it is an automock, how often its file calls it, the test_case it belongs to and the members the test configures. Optional: a worker that does not read tests emits none of these nodes.",
+      "description": "What a test_double node carries: the mocking framework, the pattern that made the double, what it replaces, whether it is an automock, how often its file calls it, the test_case it belongs to and the members the test configures; optionally also_implements, the further types it is made to be, or also_implements_open when the worker could not name them all. Optional: a worker that does not read tests emits none of these nodes.",
       "type": "object",
       "required": [
         "framework",
