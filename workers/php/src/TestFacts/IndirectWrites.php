@@ -46,17 +46,17 @@ final class IndirectWrites extends NodeVisitorAbstract
     #[\Override]
     public function enterNode(Node $node): ?int
     {
-        $outer = $this->scopes->site();
+        // A site is built only for a node that needs one: most nodes write nothing.
+        $outer = $node instanceof Expr\Closure ? $this->scopes->site() : null;
         $this->scopes->enter($node);
-        $site = $this->scopes->site();
         if (($node instanceof Expr\Variable && !is_string($node->name)) || $node instanceof Stmt\Global_ || $node instanceof Expr\Include_ || $node instanceof Expr\Eval_ || self::writesLocals($node)) {
-            $this->file->taint($site);
+            $this->file->taint($this->scopes->site());
         }
         if ($node instanceof Stmt\Foreach_ && $node->byRef) {
-            $this->file->write($node->expr, $site);
+            $this->file->write($node->expr, $this->scopes->site());
         } elseif ($node instanceof Node\ArrayItem && $node->byRef) {
-            $this->file->write($node->value, $site);
-        } elseif ($node instanceof Expr\Closure) {
+            $this->file->write($node->value, $this->scopes->site());
+        } elseif ($outer !== null && $node instanceof Expr\Closure) {
             foreach ($node->uses as $use) {
                 if ($use->byRef) {
                     $this->file->write($use->var, $outer);
