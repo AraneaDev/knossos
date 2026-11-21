@@ -25,7 +25,7 @@ def test_an_unspecd_mock_takes_any_name():
     double = mock.Mock()
     double.anything.return_value = 1
     double.anything.assert_not_called()
-    assert double.anything() == 1
+    assert Repo().method(double.anything()) == 1
 
 
 def test_a_class_autospec_records_the_instance():

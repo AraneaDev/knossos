@@ -183,6 +183,11 @@ class Bindings:
         self._receiver_writes = writes
         return writes
 
+    def receiver_class(self, node: ast.AST) -> ast.ClassDef | None:
+        """The class whose method ``node`` is the receiver of, or None."""
+        method = self._method_receiver(node)
+        return None if method is None else method[1]
+
     def receiver_of(self, node: ast.AST) -> bool:
         """Whether ``node`` is the receiver (``self``, ``cls``) of the method it is read in."""
         return self._method_receiver(node) is not None
@@ -258,13 +263,21 @@ class Bindings:
         name = binding.name
         if binding.kind != "param" or not isinstance(function, FUNCTIONS) or id(binding.node) in self.injected:
             return []
-        if name in MOCKER_FIXTURES or name in PYTEST_BUILTIN_FIXTURES or _parametrized(function, name):
+        if (
+            name in MOCKER_FIXTURES
+            or name in PYTEST_BUILTIN_FIXTURES
+            or parametrized(function, name, self._class_of(function))
+        ):
             return []
         if not (function.name.startswith(TEST_PREFIX) or fixture_name(function) is not None):
             return []
         scope = self.files.scope_of(function)
         owners = [id(scope.node)] if isinstance(scope.node, ast.ClassDef) else []
         return [*owners, id(self.files.tree)]
+
+    def _class_of(self, function: ast.AST) -> ast.ClassDef | None:
+        scope = self.files.scope_of(function).node
+        return scope if isinstance(scope, ast.ClassDef) else None
 
     def _declares(self, owner: int, name: str) -> bool:
         return any(
@@ -299,9 +312,11 @@ def _is_static(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     )
 
 
-def _parametrized(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
-    """Whether a ``parametrize`` mark on ``function`` names ``name``, which then takes no fixture."""
-    for decorator in function.decorator_list:
+def parametrized(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, name: str, klass: ast.ClassDef | None = None
+) -> bool:
+    """Whether a ``parametrize`` mark on ``function``, or on its class, names ``name``, which then takes no fixture."""
+    for decorator in [*function.decorator_list, *(klass.decorator_list if klass is not None else [])]:
         if not isinstance(decorator, ast.Call) or not decorator.args:
             continue
         func = decorator.func

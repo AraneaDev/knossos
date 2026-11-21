@@ -33,8 +33,19 @@ use PHPUnit\Framework\Attributes\Group;
  * `create=True`, `raising=False`, an unspec'd `Mock`, a class-level
  * `autospec=True` asserted with its instance, `mocker.spy` on a class,
  * `patch.dict`, and a class and a function a module imports under an alias,
- * patched where that module uses them (review C1). Ruling P5: a false definite the rules give before Task 5's
- * gates is listed here as "cleared by Task 5"; none is.
+ * patched where that module uses them (review C1).
+ *
+ * Now the worker reports the test cases (Task 4), `tests/test_cases.py`
+ * holds the assertions that only look as if they cannot fail, each operand
+ * written where a literal or a pin does not show it (Review Focus 1): a
+ * `nonlocal` and a `global` counter a `side_effect` bumps, a collector and a
+ * container counter, a walrus in a comprehension, a frame write, `exec`, a
+ * list handed to a call, a yield fixture, `monkeypatch`, a NaN and an
+ * `__eq__` under test compared with themselves, `parametrize` arguments, a
+ * conditional and a `finally` binding, `side_effect` and `reset_mock` over a
+ * pin, an `AsyncMock` member not awaited, and a pin read back through a
+ * fixture and through `setUp`. Ruling P5: a false definite the rules give
+ * before Task 5's gates is listed here as "cleared by Task 5"; none is.
  */
 #[Group('test-fidelity')]
 #[Group('python-scanner')]
@@ -66,7 +77,9 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
             'class openers.Attrs', 'class openers.Bag', 'class openers.Decorated', 'class openers.Failure',
             'class openers.Generated', 'class openers.Guarded', 'class openers.Installed', 'class openers.Lazy',
             'class openers.Meta', 'class openers.Patched', 'class openers.Registered', 'class openers.Settings',
-            'class openers.TwoWays', 'class openers.WithMeta', 'module dynamic_module',
+            'class openers.TwoWays', 'class openers.WithMeta',
+            // The frame-write idioms' own module, which `exec` and `globals()` there may write.
+            'module dynamic_module', 'module tests.test_frames',
         ], $open);
     }
 
@@ -97,8 +110,11 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
         sort($findings);
         $doubles = (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE language = 'py' AND kind = 'test_double'")->fetchColumn();
 
-        // Every stub, opener and double idiom of the fixture is a double the rules judge, so the list asserts something.
+        $cases = (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE language = 'py' AND kind = 'test_case'")->fetchColumn();
+
+        // Every stub, opener and double idiom of the fixture is a double the rules judge, and every test a case, so the list asserts something.
         assertSame(true, $doubles > 25);
+        assertSame(true, $cases > 30);
         assertSame([
             // Genuine: the planted twin, a name `Repo` does not have.
             'GHOST_MEMBER/missing_member/definite@tests/test_planted.py:7',

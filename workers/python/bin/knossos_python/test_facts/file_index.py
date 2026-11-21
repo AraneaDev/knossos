@@ -1,6 +1,6 @@
 """One walk of a test file: its scopes, the names each binds, and the nodes its test facts are read from.
 
-The test facts of a file (its doubles here, its cases in Task 4) read this
+The test facts of a file (its doubles and its cases) read this
 index rather than walking the tree again, so a test file is walked once for
 them all (Ruling P11). Every node keeps its parent and the innermost scope it
 sits in, and every statement its place in the block that holds it, which is
@@ -71,11 +71,12 @@ class TestFileIndex:
         self.attributes: list[ast.Attribute] = []
         self.functions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
         self.classes: list[ast.ClassDef] = []
+        self.asserts: list[ast.Assert] = []
         # By the function or lambda node, the values its own `return`, `yield` and `yield from` hand back.
         self.returns: dict[int, list[ast.expr]] = {}
         self.module_scope = Scope(tree, None, "module")
         self._walk()
-        for listed in (self.calls, self.names, self.attributes, self.functions, self.classes):
+        for listed in (self.calls, self.names, self.attributes, self.functions, self.classes, self.asserts):
             listed.sort(key=position)
 
     def scope_of(self, node: ast.AST) -> Scope:
@@ -95,6 +96,8 @@ class TestFileIndex:
             self.scopes[id(node)] = scope
             if isinstance(node, ast.stmt):
                 statement = node
+                if isinstance(node, ast.Assert):
+                    self.asserts.append(node)
             inner = self._record(node, parent, scope, statement)
             for name, value in ast.iter_fields(node):
                 child_scope = inner if inner is not None and self._inside(node, name) else scope
@@ -252,6 +255,28 @@ class TestFileIndex:
             if reaches and (best is None or binding.index >= best.index):
                 best = binding
         return best
+
+    def function_of(self, node: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | None:
+        """The innermost function or lambda ``node`` is evaluated in, or None at module or class level."""
+        scope: Scope | None = self.scope_of(node)
+        while scope is not None and scope.kind == "class":
+            scope = scope.parent
+        found = None if scope is None else scope.node
+        return found if isinstance(found, (*FUNCTIONS, ast.Lambda)) else None
+
+    def statement_of(self, node: ast.AST) -> ast.stmt | None:
+        current: ast.AST | None = node
+        while current is not None and not isinstance(current, ast.stmt):
+            current = self.parents.get(id(current))
+        return current
+
+    def precedes(self, statement: ast.AST, use: ast.AST) -> bool:
+        """Whether ``statement`` runs before ``use`` whenever ``use`` runs: earlier in a block that holds ``use``."""
+        slot = self.slots.get(id(statement))
+        if slot is None:
+            return False
+        index = self._index_in(slot[0], use)
+        return index is not None and slot[1] < index
 
     def _index_in(self, block: Block, node: ast.AST) -> int | None:
         current: ast.AST | None = node
