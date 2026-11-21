@@ -20,9 +20,12 @@ use PhpParser\NodeVisitorAbstract;
  *   `extract()`, `get_defined_vars()`, a one-argument `parse_str()`, a
  *   variable variable, an `include`/`require` or `eval`, whose code shares
  *   the function's locals) proves no local's value.
- * - A reference taken to a value (`[&$x]`, `foreach ($x as &$v)`) is a write
- *   of it; a by-reference `foreach` also writes its value variable, which the
- *   test-case pass reads as an assignment.
+ * - A reference taken to a value (`[&$x]`, `foreach ($x as &$v)`, a closure's
+ *   `use (&$x)`) is a write of it; a by-reference `foreach` also writes its
+ *   value variable, which the test-case pass reads as an assignment. A
+ *   closure's import is read here because the closure may sit in a double's
+ *   configuration (`willReturnCallback(function () use (&$count) {...})`),
+ *   which the test-case pass does not read as the test's own code.
  *
  * A `$this` property needs no such reading: it is never followed to a
  * literal (`OperandSource::property()`).
@@ -43,6 +46,7 @@ final class IndirectWrites extends NodeVisitorAbstract
     #[\Override]
     public function enterNode(Node $node): ?int
     {
+        $outer = $this->scopes->site();
         $this->scopes->enter($node);
         $site = $this->scopes->site();
         if (($node instanceof Expr\Variable && !is_string($node->name)) || $node instanceof Stmt\Global_ || $node instanceof Expr\Include_ || $node instanceof Expr\Eval_ || self::writesLocals($node)) {
@@ -52,6 +56,12 @@ final class IndirectWrites extends NodeVisitorAbstract
             $this->file->write($node->expr, $site);
         } elseif ($node instanceof Node\ArrayItem && $node->byRef) {
             $this->file->write($node->value, $site);
+        } elseif ($node instanceof Expr\Closure) {
+            foreach ($node->uses as $use) {
+                if ($use->byRef) {
+                    $this->file->write($use->var, $outer);
+                }
+            }
         }
 
         return null;

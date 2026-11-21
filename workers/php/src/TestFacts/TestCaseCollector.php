@@ -67,7 +67,6 @@ final class TestCaseCollector extends NodeVisitorAbstract
     #[\Override]
     public function enterNode(Node $node): ?int
     {
-        $outer = $this->scopes->site();
         $this->scopes->enter($node);
         $site = $this->scopes->site();
         $this->file->declare($node, $site);
@@ -99,7 +98,7 @@ final class TestCaseCollector extends NodeVisitorAbstract
 
             return NodeVisitor::DONT_TRAVERSE_CHILDREN;
         }
-        $this->changes($node, $outer, $site);
+        $this->changes($node, $site);
         $this->assertion($node, $site);
         if ($node instanceof Expr\CallLike) {
             $this->file->call($node, $site);
@@ -216,9 +215,9 @@ final class TestCaseCollector extends NodeVisitorAbstract
      * Note the variables and properties an expression changes other than by
      * one plain assignment: `++`, `.=`, a reference, a destructuring, a write
      * to an element or a property of it, or an argument a callee may take by
-     * reference or change.
+     * reference or change. A closure's `use (&$x)` is `IndirectWrites`'s.
      */
-    private function changes(Expr $node, Site $outer, Site $site): void
+    private function changes(Expr $node, Site $site): void
     {
         if ($node instanceof Expr\AssignOp || $node instanceof Expr\PreInc || $node instanceof Expr\PreDec || $node instanceof Expr\PostInc || $node instanceof Expr\PostDec) {
             $this->writes([$node->var], $site);
@@ -228,8 +227,6 @@ final class TestCaseCollector extends NodeVisitorAbstract
             $this->writes(self::destructured($node->var), $site);
         } elseif ($node instanceof Expr\Assign && !$node->var instanceof Expr\Variable && !TestFileIndex::isThisProperty($node->var)) {
             $this->writes([$node->var], $site);
-        } elseif ($node instanceof Expr\Closure) {
-            $this->writes(array_map(static fn(Expr\ClosureUse $use): ?Expr => $use->byRef ? $use->var : null, $node->uses), $outer);
         } elseif ($node instanceof Expr\CallLike && !$node->isFirstClassCallable() && !AssertionSyntax::reads($node)) {
             $this->writes(array_map(static fn($argument): Expr => $argument->value, $node->getArgs()), $site);
         }
