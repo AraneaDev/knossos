@@ -17,31 +17,13 @@ from .ast_helpers import (
     ref,
     superseded_definitions,
 )
+from .class_members import ClassMembers, assigned_self_attributes, merge_member_names, module_exports, visibility
 from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnricher, PythonFrameworkRoleEnricher
 from .launches import LaunchRecorder
 from .module_index import ProjectModuleIndex
 from .outbound import OutboundCallRecorder
 from .receiver_types import ReceiverTypeInference
-from .signatures import signature_of
-
-
-def assigned_self_attributes(node: ast.ClassDef) -> frozenset[str]:
-    """The `self.<name>` attributes the methods of `node` assign, in any form of assignment."""
-    names: set[str] = set()
-    for item in node.body:
-        if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for statement in ast.walk(item):
-            if isinstance(statement, ast.Assign):
-                targets = statement.targets
-            elif isinstance(statement, (ast.AnnAssign, ast.AugAssign)):
-                targets = [statement.target]
-            else:
-                continue
-            for target in targets:
-                if isinstance(target, ast.Attribute) and dotted(target.value) == "self":
-                    names.add(target.attr)
-    return frozenset(names)
+from .signatures import decoration, overloaded_definitions, signature_of
 
 
 def sys_path_directories(tree: ast.Module, relative: str) -> list[PurePosixPath]:
@@ -167,6 +149,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.module_collision = module_collision
         self.tree = tree
         self.superseded = superseded_definitions(tree)
+        self.overloaded = overloaded_definitions(tree)
+        self.members = ClassMembers(tree, self.resolve_name)
         self.aliases: dict[str, str] = {}
         self.containers: list[tuple[str, str, str]] = []
         self.local_function_scopes: list[dict[str, str]] = []
@@ -239,6 +223,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # Known before any call is visited: a call may precede the class.
         self.protocols |= declared_protocols(self.tree, self.name)
         self.visit(self.tree)
+        self.facts.nodes[self.module_id]["attributes"] |= module_exports(self.tree, self.is_package)
         if self.serves_app:
             self.facts.nodes[self.module_id]["attributes"]["executable"] = True
         if self.untyped_calls:
@@ -434,15 +419,19 @@ class PythonAstFactCollector(ast.NodeVisitor):
         )
         self.facts.add_edge("contains", self.current(), local_id, node)
         bases: list[str] = []
+        unseen_base = False
         for base in node.bases:
             # The `extends` edge below is what a base is; not also a reference.
             self.called_attributes.add(id(base))
             name = dotted(base)
             target = self.resolve_name(name, "class") if name else None
+            # A base with no edge (`Generic[T]`, a call, a builtin) gives names this scan cannot see.
+            unseen_base = unseen_base or (not target and name != "object")
             if target:
                 self.facts.add_edge("extends", local_id, target, base)
                 if target.startswith("py:class:"):
                     bases.append(target.removeprefix("py:class:"))
+        merge_member_names(self.facts.nodes[local_id]["attributes"], self.members.attributes(node, unseen_base))
         if any(is_protocol_base(base) for base in node.bases):
             self.protocols.add(canonical)
         if any(self.is_ast_visitor_base(base) for base in node.bases):
@@ -505,6 +494,8 @@ class PythonAstFactCollector(ast.NodeVisitor):
         attributes: dict[str, Any]
         attributes = {"async": async_function, "decorators": decorators, "python_framework_roles": roles}
         attributes["signature"] = signature_of(node, kind == "method" and "staticmethod" not in decorators)
+        attributes |= decoration(node, self.resolve_name, node in self.overloaded)
+        attributes |= visibility(node.name) if kind == "method" else {}
         if self.registered_by_object(decorators) or (
             self.loaded_by_path and not self.containers and not node.name.startswith("_")
         ):

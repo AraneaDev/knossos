@@ -1302,6 +1302,7 @@ php	tests/phpunit/TestFidelity/MockedModulePathsTest.php
 php	tests/phpunit/TestFidelity/PhpAcceptanceTest.php
 php	tests/phpunit/TestFidelity/PhpHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/PhpTypeFitTest.php
+php	tests/phpunit/TestFidelity/PythonHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/CaseFixtures.php

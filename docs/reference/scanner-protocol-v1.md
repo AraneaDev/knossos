@@ -215,17 +215,20 @@ present, complete and not open; a node without one says nothing.
 
 A Python class node may carry `member_names` and a module node `exports`, with
 the same `member_names_open` and `exports_open` flags. `member_names` lists its
-defs, class-body bindings, nested classes, `__slots__`, `self.` and `cls.`
-writes (`setattr` with a literal name included) and `_C__x` for each `__x`;
-`member_names_open` is set when a name may come from elsewhere (`__getattr__`,
-`__getattribute__`, `__init_subclass__`, a class keyword such as a metaclass, a
-decorator other than `dataclass` or `final`, a base that gives no `extends`
-edge, a non-literal `setattr`, a write to `__dict__` or `vars()`, a class body
-with a `for`, `with`, `match` or `exec`, a module-level write to the class).
-`exports` lists every top-level binding in both branches of an `if` or `try`,
-the names a function declares `global` and assigns, and a package's submodules;
-`exports_open` is set for `import *`, a module `__getattr__`, a `globals()`
-write or `exec`.
+defs, class-body bindings, nested classes, the names in `__slots__`, `self.` and
+`cls.` writes (`setattr` with a literal name included) and `_C__x` for each
+`__x`; `member_names_open` is set when a name may come from elsewhere
+(`__getattr__`, `__getattribute__`, `__init_subclass__`, a class keyword such as
+a metaclass, a decorator other than `dataclass` or `final`, a base that gives no
+`extends` edge other than `object`, a subscripted one such as `Generic[T]`
+included, a non-literal `setattr`, a write to `__dict__` or `vars()`, a class
+body with a `for`, `while`, `with`, `match`, `exec` or `locals()`, a module
+write to the class or a rebinding of its name). `exports` lists every top-level
+binding in both branches of an `if` or `try` and the names a `global`
+declaration hands the module; `exports_open` is set for `import *`, a module
+`__getattr__`, `globals()`, `exec`, `eval`, `sys.modules`, and on every
+package: a submodule becomes the package's attribute once imported, and is
+never listed. Neither list holds a dunder name (`__x__`).
 
 A PHP class, interface, trait or enum node may carry `member_names` too: the
 methods it declares itself, its `@method` docblock names, its trait-use aliases
