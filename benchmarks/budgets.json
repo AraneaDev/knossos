@@ -29,6 +29,9 @@
   "scenarios": {
     "test_fidelity_rescan_one_file": {
       "incremental_scan_seconds": 8
+    },
+    "test_fidelity_rescan_one_file_php": {
+      "incremental_scan_seconds": 2
     }
   }
 }

@@ -61,10 +61,13 @@ final class ConfigurationChain
     /** Calls on an expectation that make a member return what a callback returns, which the syntax does not show. */
     private const CALLBACKS = ['willreturncallback' => 'willReturnCallback', 'andreturnusing' => 'andReturnUsing'];
 
+    /** Calls on an expectation that make a member return the double itself, by the api each records. */
+    private const SELF = ['willreturnself' => 'willReturnSelf', 'andreturnself' => 'andReturnSelf'];
+
     /** Calls on an expectation that shape what a member returns without pinning one stated value. */
     private const OTHER_ANSWERS = [
-        'willreturnmap', 'willreturnself', 'willreturnargument', 'willreturnreference', 'will', 'willthrowexception',
-        'andreturnvalues', 'andreturnself', 'andreturnnull', 'andreturnfalse', 'andreturntrue', 'andreturnundefined', 'andreturnarg',
+        'willreturnmap', 'willreturnargument', 'willreturnreference', 'will', 'willthrowexception',
+        'andreturnvalues', 'andreturnnull', 'andreturnfalse', 'andreturntrue', 'andreturnundefined', 'andreturnarg',
         'andthrow', 'andthrows', 'andthrowexceptions', 'passthru',
     ];
 
@@ -232,6 +235,9 @@ final class ConfigurationChain
                 }
             } elseif (isset(self::CALLBACKS[$name ?? ''])) {
                 $double->unknownPin($member, self::CALLBACKS[$name], $line, $call->getStartFilePos());
+                $double->replacement($member, self::argument($call, 0));
+            } elseif (isset(self::SELF[$name ?? ''])) {
+                $double->selfPin($member, self::SELF[$name], $line, $call->getStartFilePos());
             } elseif (in_array($name, self::OTHER_ANSWERS, true)) {
                 $double->answer($member, $call->getStartFilePos());
             } elseif ($framework !== 'prophecy' && isset(self::MATCHERS[$name ?? '']) && ($framework === 'mockery' || $name === 'with')) {

@@ -121,7 +121,9 @@ serves the rest of its method; assigned to a `$this` property in `setUp()`, it
 serves every test of the class. Its members are the names `method()`,
 `shouldReceive()` and Prophecy's calls configure, with the values
 `willReturn()` and `andReturn()` pin them to and the argument counts `with()`
-expects. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
+expects. `willReturnSelf()` and `andReturnSelf()` pin an instance of the class
+the double stands in for, and a function written in place for
+`willReturnCallback()` or `andReturnUsing()` gives the member its parameters. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
 `m`, and the arguments it is given or `->with()` lists after it are counted the
 same way. A member whose name is computed, such as `method($name)`, is left
 out. In a Pest file, a double that `beforeEach()` assigns to a `$this` property
@@ -172,3 +174,25 @@ maps, read from the nearest `composer.json`; no autoloader is run.
 
 A test file whose doubles or tests cannot be read reports the warning
 `PHP_TEST_FACTS_FAILED` and keeps every other fact.
+
+## How the rules judge PHP tests
+
+The test-fidelity rules read these facts as they read TypeScript's, with PHP's
+own semantics:
+
+- Names are matched without regard to case, as PHP calls methods. A class
+  that declares `__call()` or `__callStatic()`, or forwards with `@mixin`, may
+  answer any name, so no stubbed name on it is a ghost.
+- Visibility holds at run time. Stubbing a `private` method is a definite
+  breach. A `protected` one is definite only under `createMock()` or
+  `createStub()` for a method that is not abstract, or under Mockery, Pest or
+  Prophecy without `shouldAllowMockingProtectedMethods()`: PHPUnit's other
+  doubles reach protected methods.
+- A pinned value is held against the native return type only; a docblock's
+  `@return` is not read. PHPUnit checks the value strictly, so `null` for a
+  `void` method is drift. Mockery, Pest and Prophecy let PHP coerce one scalar
+  into another and drop a `null` given to `void`, so those fits are unknown.
+  `self` and `static` declared in a trait stand for the class using it.
+- A class the scan does not hold, or a relation that could live in `vendor/` or
+  PHP itself, makes drift a warning at most. A facade double names no class,
+  so nothing it stubs is held against one.

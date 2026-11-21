@@ -34,4 +34,16 @@ final class PinsTest extends TestCase
         $stub = $this->createStub(Foo::class);
         $abstract = $this->getMockForAbstractClass(Foo::class);
     }
+
+    public function testAnswersThatAreNotLiterals(): void
+    {
+        $mock = $this->createMock(Foo::class);
+        $mock->method('send')->willReturnCallback(function (string $to, bool $urgent = false, ...$rest) {
+            return true;
+        });
+        $mock->method('send')->willReturnCallback(fn (int $only) => true);
+        $mock->method('chain')->willReturnSelf();
+        $mock->method('named')->willReturnCallback($this->answer(...));
+        \Illuminate\Support\Facades\Cache::shouldReceive('remember')->andReturnSelf();
+    }
 }
