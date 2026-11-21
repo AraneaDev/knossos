@@ -30,6 +30,7 @@ final class DoubleFactories
         'createconfiguredmock' => ['createConfiguredMock', false],
         'createpartialmock' => ['createPartialMock', false],
         'getmockforabstractclass' => ['getMockForAbstractClass', false],
+        'getmockfortrait' => ['getMockForTrait', false],
         'getmockbuilder' => ['getMockBuilder', false],
     ];
 
@@ -122,11 +123,29 @@ final class DoubleFactories
         return $double;
     }
 
-    /** A Mockery or Pest factory, with the members a `'Foo[a,b]'` partial mock names. */
+    /**
+     * A Mockery or Pest factory, with the members a `'Foo[a,b]'` partial mock
+     * names, and the further types it is made to implement: a type named
+     * after the first (`mock(A::class, B::class)`), or after a comma in the
+     * first (`mock('A, B')`). An argument that may name one but does not
+     * show it (a variable, a call) leaves the further types open.
+     */
     private static function mockery(Expr\StaticCall|Expr\FuncCall $call, string $framework, string $pattern): DoubleRecord
     {
-        $first = $call->isFirstClassCallable() ? null : ($call->getArgs()[0] ?? null);
-        $double = new DoubleRecord($call, $framework, $pattern, self::className($first), false);
+        $arguments = $call->isFirstClassCallable() ? [] : array_values($call->getArgs());
+        $first = $arguments[0] ?? null;
+        $types = $first !== null && $first->value instanceof Scalar\String_ && str_contains($first->value->value, ',') && !str_contains($first->value->value, ']')
+            ? array_map(static fn(string $type): ?string => self::className(new Arg(new Scalar\String_($type))), explode(',', $first->value->value))
+            : [self::className($first)];
+        foreach (array_slice($arguments, 1) as $argument) {
+            $value = $argument->value;
+            if ($argument->unpack || !($value instanceof Expr\Array_ || $value instanceof Expr\Closure || $value instanceof Expr\ArrowFunction)) {
+                $types[] = self::className($argument);
+            }
+        }
+        $double = new DoubleRecord($call, $framework, $pattern, $types[0], false);
+        $also = array_slice($types, 1);
+        $double->alsoImplements = in_array(null, $also, true) ? null : array_values(array_filter($also, is_string(...)));
         if ($first !== null && $first->value instanceof Scalar\String_ && preg_match('/\[([^\]]*)\]\s*$/', $first->value->value, $match) === 1) {
             foreach (explode(',', $match[1]) as $name) {
                 $double->member(trim($name), $first->value->getStartLine(), 'partial');

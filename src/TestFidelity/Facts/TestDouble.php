@@ -17,6 +17,7 @@ final readonly class TestDouble
     /**
      * @param array<string, string> $target what the double replaces: `kind`, and when stated `specifier`, `export` and `member`
      * @param list<StubbedMember> $members
+     * @param list<string>|null $alsoImplements the further classes and interfaces the double is made to be, fully qualified (Mockery's `mock(A::class, B::class)`); null when the wire names some the reader could not read
      */
     public function __construct(
         public string $canonicalName,
@@ -28,6 +29,7 @@ final readonly class TestDouble
         public ?string $testCase,
         public array $members,
         public bool $allowsProtected = false,
+        public ?array $alsoImplements = [],
     ) {}
 
     /**
@@ -64,7 +66,25 @@ final readonly class TestDouble
             $members[] = $member;
         }
 
-        return new self($node->canonicalName, $framework, $pattern, $target, $automock, $invocations, $testCase, $members, ($attributes['allows_protected'] ?? false) === true);
+        return new self($node->canonicalName, $framework, $pattern, $target, $automock, $invocations, $testCase, $members, ($attributes['allows_protected'] ?? false) === true, self::alsoImplements($attributes));
+    }
+
+    /**
+     * The `also_implements` list; null when `also_implements_open` says it
+     * may be incomplete, or for a malformed one, which keeps the double but
+     * leaves unknown what it implements.
+     *
+     * @param array<string, mixed> $attributes
+     * @return list<string>|null
+     */
+    private static function alsoImplements(array $attributes): ?array
+    {
+        $raw = $attributes['also_implements'] ?? [];
+        if (($attributes['also_implements_open'] ?? false) !== false || !is_array($raw) || !array_is_list($raw) || array_filter($raw, static fn(mixed $name): bool => !is_string($name) || $name === '') !== []) {
+            return null;
+        }
+
+        return $raw;
     }
 
     /**

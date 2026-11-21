@@ -74,6 +74,9 @@ final class ConfigurationChain
     /** Calls on an expectation that limit it to some arguments, so what it answers holds for those calls only. */
     private const GUARDS = ['with', 'withargs', 'withsomeofargs', 'withnoargs'];
 
+    /** Mockery's matchers that stand for a whole or open argument list, not one argument. */
+    private const MOCKERY_LISTS = ['anyargs' => true, 'noargs' => true, 'andanyotherargs' => true, 'andanyothers' => true];
+
     /** Mockery's argument expectations, by the api each records. */
     private const MATCHERS = ['with' => 'with', 'withargs' => 'withArgs', 'withnoargs' => 'withNoArgs'];
 
@@ -170,12 +173,18 @@ final class ConfigurationChain
         return false;
     }
 
-    /** Apply what a call that keeps the double does to it: the members `onlyMethods()` lists, Mockery's protected opt-in. */
+    /**
+     * Apply what a call that keeps the double does to it: the members
+     * `onlyMethods()` lists, the ones `addMethods()` gives the double as its
+     * own, Mockery's protected opt-in.
+     */
     private static function kept(DoubleRecord $double, string $name, Expr\MethodCall|Expr\StaticCall $call): void
     {
         $listed = self::argument($call, 0);
         if (($name === 'onlymethods' || $name === 'setmethods') && $listed instanceof Expr\Array_) {
             DoubleFactories::listed($double, $listed, 'partial');
+        } elseif ($name === 'addmethods' && $listed instanceof Expr\Array_) {
+            DoubleFactories::listed($double, $listed, 'addMethods');
         } elseif ($name === 'shouldallowmockingprotectedmethods') {
             $double->allowsProtected = true;
         }
@@ -310,7 +319,8 @@ final class ConfigurationChain
 
     /**
      * How many arguments a matcher lists, and whether the real count is open:
-     * a spread argument, Prophecy's `Argument::cetera()`, or a `withArgs()`
+     * a spread argument, an argument-list matcher (`Argument::cetera()`,
+     * `Mockery::anyArgs()`), or a `withArgs()`
      * given a closure or a variable rather than an array. With `$direct` the
      * call's own arguments are the list; without, its array argument at
      * `$position` is.
@@ -332,16 +342,29 @@ final class ConfigurationChain
 
             return [count($list->items), $spread];
         }
-        $spread = array_filter($arguments, static fn(Arg $argument): bool => $argument->unpack || self::isCetera($argument->value)) !== [];
+        $spread = array_filter($arguments, static fn(Arg $argument): bool => $argument->unpack || self::isOpenList($argument->value)) !== [];
 
         return [count($arguments), $spread];
     }
 
-    /** Whether an argument is Prophecy's `Argument::cetera()`, which matches any arguments that remain. */
-    private static function isCetera(Expr $value): bool
+    /**
+     * Whether an argument matches an open or whole argument list rather than
+     * one argument: Prophecy's `Argument::cetera()`, or Mockery's `anyArgs()`,
+     * `noArgs()`, `andAnyOtherArgs()` or `andAnyOthers()`, called on Mockery
+     * under any alias or as Mockery's global helper function (Ruling R19).
+     */
+    private static function isOpenList(Expr $value): bool
     {
-        return $value instanceof Expr\StaticCall && $value->class instanceof Name && strtolower($value->class->getLast()) === 'argument'
-            && $value->name instanceof Identifier && strtolower($value->name->toString()) === 'cetera';
+        if ($value instanceof Expr\FuncCall && $value->name instanceof Name) {
+            return isset(self::MOCKERY_LISTS[$value->name->toLowerString()]);
+        }
+        if (!$value instanceof Expr\StaticCall || !$value->class instanceof Name || !$value->name instanceof Identifier) {
+            return false;
+        }
+        $class = strtolower($value->class->getLast());
+        $name = $value->name->toLowerString();
+
+        return ($class === 'argument' && $name === 'cetera') || ($class === 'mockery' && isset(self::MOCKERY_LISTS[$name]));
     }
 
     /**

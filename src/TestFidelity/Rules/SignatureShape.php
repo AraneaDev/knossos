@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace Knossos\TestFidelity\Rules;
 
 /**
- * A signature as the wire states it, `{params: [{name, type?, optional?, variadic?}], returns?, truncated?}`,
- * read into a form the rules can count and compare.
+ * A signature as the wire states it, `{params: [{name, type?, optional?, variadic?}], returns?, variadic?, truncated?}`,
+ * read into a form the rules can count and compare. A signature's own
+ * `variadic` says the function reads arguments past its parameters
+ * (PHP's `func_get_args()`), as a rest parameter would take them.
  */
 final readonly class SignatureShape
 {
     /** @param list<array{type: ?string, optional: bool, variadic: bool}> $params */
-    private function __construct(public array $params, public ?string $returns) {}
+    private function __construct(public array $params, public ?string $returns, private bool $takesMore = false) {}
 
     /**
      * A production member's `signature` attribute; null when absent, malformed, cut short,
@@ -31,7 +33,7 @@ final readonly class SignatureShape
             return null;
         }
 
-        return new self($params, $returns === null || $returns === '' ? null : $returns);
+        return new self($params, $returns === null || $returns === '' ? null : $returns, ($raw['variadic'] ?? false) === true);
     }
 
     /**
@@ -46,9 +48,12 @@ final readonly class SignatureShape
         return $params === null ? null : new self($params, null);
     }
 
-    /** Whether a rest parameter accepts any number of arguments. */
+    /** Whether a rest parameter, or a body that reads its arguments as a list, accepts any number of arguments. */
     public function isVariadic(): bool
     {
+        if ($this->takesMore) {
+            return true;
+        }
         foreach ($this->params as $param) {
             if ($param['variadic']) {
                 return true;

@@ -98,6 +98,13 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertSame([], self::judgeCalls(['params' => [['name' => 'ids', 'variadic' => true]]], [self::matcher(5)]));
     }
 
+    public function testASignatureThatReadsItsArgumentsAsAListIsSilent(): void
+    {
+        // PHP's `function log() { $args = func_get_args(); }` takes any number past its parameters.
+        assertSame([], self::judgeCalls(['params' => [['name' => 'message']], 'variadic' => true], [self::matcher(3, 'with')], 'phpunit'));
+        assertCount(1, self::judgeCalls(['params' => [['name' => 'message']]], [self::matcher(3, 'with')], 'phpunit'));
+    }
+
     public function testTruncatedSignatureIsSilentForAMatcher(): void
     {
         assertSame([], self::judgeCalls(['params' => [['name' => 'id']], 'truncated' => true], [self::matcher(3)]));

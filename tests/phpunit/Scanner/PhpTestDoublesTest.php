@@ -170,6 +170,20 @@ final class PhpTestDoublesTest extends KnossosTestCase
         foreach ([31, 32, 33] as $line) {
             assertSame(['kind' => 'unknown'], $doubles[$line]->target, "A computed class name gives no target (line {$line}).");
         }
+        assertSame([], $doubles[15]->alsoImplements);
+    }
+
+    public function testKeepsEveryTypeAMockeryDoubleIsMadeToBe(): void
+    {
+        [$test] = $this->scan('doubles', ['tests/ResolutionTest.php']);
+        $doubles = $this->doubles($test);
+        $types = static fn(int $line): array => [$doubles[$line]->target['export'] ?? null, $doubles[$line]->alsoImplements];
+
+        assertSame(['App\Billing\Foo', ['Countable']], $types(38), 'A type named after the first.');
+        assertSame(['App\Billing\Foo', ['Countable', 'App\Billing\Payable']], $types(39), "Each type of a 'A, B' string.");
+        assertSame(['App\Billing\Foo', []], $types(40), 'Expectations and a configuring closure name no type.');
+        assertSame(['App\Billing\Foo', null], $types(41), 'A variable may name one the syntax does not show.');
+        assertSame(['getMockForTrait', 'App\Billing\Foo'], [$doubles[42]->pattern, $doubles[42]->target['export'] ?? null], 'getMockForTrait() makes a PHPUnit double (Ruling R16).');
     }
 
     public function testAFacadeDoubleHasAnUnknownTarget(): void
@@ -246,7 +260,7 @@ final class PhpTestDoublesTest extends KnossosTestCase
             array_map(static fn(StubbedMember $member): array => [$member->name, $member->line, $member->api, array_map(static fn(PinnedValue $pin): array => [$pin->api, $pin->type], $member->returns)], $double->members),
         ];
 
-        assertSame(['getMockBuilder', false, [['charge', 28, 'partial', [['willReturn', 'int']]]]], $summary($doubles[26]), 'addMethods() names members the class lacks on purpose.');
+        assertSame(['getMockBuilder', false, [['charge', 28, 'partial', [['willReturn', 'int']]], ['added', 29, 'addMethods', []]]], $summary($doubles[26]), 'addMethods() names members the double adds to the class, its own, under an api of their own.');
         assertSame(['createConfiguredMock', false, [['charge', 32, 'configured', [['configured', 'int']]]]], $summary($doubles[32]));
         assertSame(['createPartialMock', false, [['charge', 33, 'partial', []]]], $summary($doubles[33]));
         assertSame(['createStub', true, []], $summary($doubles[34]));
@@ -357,6 +371,8 @@ final class PhpTestDoublesTest extends KnossosTestCase
             'automock' => $double->automock,
             'invocations' => $double->invocations,
             'allows_protected' => $double->allowsProtected ? true : null,
+            'also_implements' => $double->alsoImplements === [] ? null : $double->alsoImplements,
+            'also_implements_open' => $double->alsoImplements === null ? true : null,
             'test_case' => $double->testCase,
             'members' => array_map(static fn(StubbedMember $member): array => array_filter([
                 'name' => $member->name,
