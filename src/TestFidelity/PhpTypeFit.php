@@ -20,9 +20,11 @@ namespace Knossos\TestFidelity;
  * string names a callable) are unknown, and the rule is silent.
  *
  * A Mockery or Prophecy double's generated code is not strict-types, so PHP
- * coerces a scalar it returns (`'5'` for an `int`) and a `void` method drops
- * the `null` it is given: for such a double those fits are unknown. A PHPUnit
- * double checks its return value strictly and keeps the strict judgement.
+ * coerces a scalar it returns (`'5'` for an `int`), turns a `Stringable`
+ * object returned for `string` into a string, and a `void` method drops the
+ * `null` it is given: for such a double those fits are unknown, as is a class
+ * that may be `Stringable` against `string`. A PHPUnit double checks its
+ * return value strictly and keeps the strict judgement.
  */
 final class PhpTypeFit
 {
@@ -144,7 +146,7 @@ final class PhpTypeFit
         if (isset(self::BUILTINS[$name])) {
             return match (true) {
                 in_array($kind, self::BUILTINS[$name], true) => self::FITS,
-                !$strict && self::coerces($kind, $name) => null,
+                !$strict && (self::coerces($kind, $name) || ($kind === 'class' && $name === 'string' && self::mayBeStringable($class, $graph))) => null,
                 default => self::REFUSED,
             };
         }
@@ -164,6 +166,20 @@ final class PhpTypeFit
     private static function coerces(string $kind, string $name): bool
     {
         return (in_array($kind, self::COERCED, true) && in_array($name, self::COERCED, true)) || ($kind === 'null' && $name === 'void');
+    }
+
+    /**
+     * Whether a class may turn into a string, as PHP outside strict-types
+     * mode turns a `Stringable` one returned for `string`: it implements
+     * declares or inherits `__toString()`, or the scan cannot show it does
+     * not: a class outside the project, or one with an ancestor the scan does
+     * not hold (PHP's own `Stringable` among them).
+     */
+    private static function mayBeStringable(string $class, TestFidelityGraph $graph): bool
+    {
+        $node = $graph->phpType($class);
+
+        return $node === null || $graph->hasUnseenAncestor($node) || $graph->member($node, '__toString') !== null;
     }
 
     /**

@@ -242,6 +242,48 @@ final class GhostMemberRuleTest extends KnossosTestCase
         assertSame(['createMock stubs findByld, which UserService no longer has; did you mean findById?'], array_map(static fn($finding): string => $finding->message, self::judge(DriftFixtures::phpGraph([['findById', []]], [DriftFixtures::stub('findByld')], targetKind: 'interface'))));
     }
 
+    public function testAPhpAncestorsNamesAndMagicCount(): void
+    {
+        // `class UserService extends Base`, `use Magic;`: a parent's `@method` names and a parent's or trait's `__call()` answer too.
+        $judge = static function (string $edge, string $kind, array $attributes, string $stub = 'magicCount'): array {
+            $ancestor = DriftFixtures::phpType($kind, 'App\Base', $attributes, 'src/Base.php');
+
+            return self::judge(DriftFixtures::phpGraph([['find', []]], [DriftFixtures::stub($stub)], extra: [$ancestor], extraEdges: [
+                DriftFixtures::edge($edge, DriftFixtures::phpType('class', 'App\UserService'), $ancestor->localId),
+            ]));
+        };
+
+        assertSame([], $judge('extends', 'class', ['member_names' => ['magicCount']]), "A parent's @method name.");
+        assertSame([], $judge('extends', 'class', ['member_names' => ['__call'], 'member_names_open' => true]), 'A parent that declares __call().');
+        assertSame([], $judge('uses_trait', 'trait', ['member_names' => ['__call'], 'member_names_open' => true]), 'A trait that declares __call().');
+        assertSame([], $judge('implements', 'interface', ['member_names' => ['magicCount']]), "An interface's @method name.");
+        assertSame([], $judge('extends', 'class', []), 'A parent that sends no list leaves the whole incomplete.');
+        assertSame(['createMock stubs gone, which UserService no longer has'], array_map(static fn($finding): string => $finding->message, $judge('extends', 'class', ['member_names' => ['magicCount']], 'gone')), 'A name no complete list in the lineage holds is still a ghost.');
+    }
+
+    public function testANameAFurtherTypeOfTheDoubleMayOfferIsNotAGhost(): void
+    {
+        // `Mockery::mock(UserService::class, Second::class)`: the double is both.
+        $second = DriftFixtures::phpType('interface', 'App\Second', ['member_names' => ['second']], 'src/Second.php');
+        $judge = static fn(string $stub, array $double): array => self::judge(DriftFixtures::phpGraph([['find', []]], [DriftFixtures::stub($stub)], ['framework' => 'mockery', ...$double], extra: [$second]));
+
+        assertSame([], $judge('second', ['also_implements' => ['App\Second']]));
+        assertSame([], $judge('SECOND', ['also_implements' => ['app\second']]), 'In any case.');
+        assertSame([], $judge('third', ['also_implements' => ['Psr\Log\LoggerInterface']]), 'A further type the scan does not hold may have it.');
+        assertSame([], $judge('third', ['also_implements_open' => true]), 'A further type the worker could not name may have it.');
+        assertSame([], $judge('third', ['also_implements' => 'App\Second']), 'A malformed list leaves it unknown.');
+        assertCount(1, $judge('third', ['also_implements' => ['App\Second']]), 'A name no type of the double has is a ghost.');
+        assertCount(1, $judge('third', []));
+    }
+
+    public function testANamePhpunitsAddMethodsAddsIsNotAGhost(): void
+    {
+        $added = ['name' => 'extra', 'line' => 7, 'api' => 'addMethods', 'returns' => []];
+
+        assertSame([], self::judge(DriftFixtures::phpGraph([['find', []]], [$added], ['pattern' => 'getMockBuilder'])));
+        assertCount(1, self::judge(DriftFixtures::phpGraph([['find', []]], [['api' => 'method'] + $added], ['pattern' => 'getMockBuilder'])));
+    }
+
     public function testATypeScriptMemberMatchesOnlyInItsOwnCase(): void
     {
         assertCount(1, self::judge(DriftFixtures::graph([DriftFixtures::method('total')], [DriftFixtures::stub('Total')])));
