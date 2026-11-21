@@ -170,8 +170,9 @@ as the source writes it:
 - `optional` marks a parameter a caller may leave out, `variadic` one that
   takes the rest. A signature may carry `"variadic": true` itself, beside
   `params`, when the function takes any number of arguments past them without
-  a rest parameter (a PHP body that calls `func_get_args()`). A receiver the caller does not pass (`this`, `self`) is not
-  listed. A destructured parameter is named by its shape, `{…}` or `[…]`.
+  a rest parameter (a PHP body that calls `func_get_args()`). A receiver the
+  caller does not pass (`this`, `self`) is not listed. A destructured
+  parameter is named by its shape, `{…}` or `[…]`.
 - At most 12 parameters are listed and a type's text is at most 80 characters.
   A signature that lost a parameter or part of a type says `"truncated": true`.
 - Control characters and line separators in a type are replaced by a space:
