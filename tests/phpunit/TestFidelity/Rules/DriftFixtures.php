@@ -58,6 +58,52 @@ final class DriftFixtures
         ]);
     }
 
+    /**
+     * A PHP class-like node, as the PHP worker emits one: `php:<kind>:<FQCN>` in `$file`.
+     *
+     * @param array<string, mixed> $attributes
+     */
+    public static function phpType(string $kind, string $fqcn, array $attributes = [], string $file = 'src/UserService.php'): NodeFact
+    {
+        return new NodeFact('php:' . $kind . ':' . $fqcn, $kind, $fqcn, substr((string) strrchr('\\' . $fqcn, '\\'), 1), Origin::Ast, Confidence::Certain, new Evidence($file, 1, 1), $attributes);
+    }
+
+    /**
+     * A PHP method node of `$owner`, its canonical name `<FQCN>::<name>`.
+     *
+     * @param array<string, mixed> $attributes
+     */
+    public static function phpMethod(NodeFact $owner, string $name, array $attributes = []): NodeFact
+    {
+        return new NodeFact('php:method:' . $owner->canonicalName . '::' . $name, 'method', $owner->canonicalName . '::' . $name, $name, Origin::Ast, Confidence::Certain, $owner->evidence, $attributes);
+    }
+
+    /**
+     * A PHP class `App\UserService` with the given methods, and a PHPUnit double
+     * whose `doubles` edge names `php:class:<$doubled>`, as the PHP worker
+     * emits every one whatever the target's kind.
+     *
+     * @param list<array{string, array<string, mixed>}> $methods name and attributes of each
+     * @param list<array<string, mixed>> $members
+     * @param array<string, mixed> $doubleAttributes overrides of the double's attributes
+     * @param array<string, mixed>|null $targetAttributes the class's attributes; by default the complete name list of its methods
+     * @param list<NodeFact> $extra further production nodes
+     * @param list<EdgeFact> $extraEdges
+     */
+    public static function phpGraph(array $methods, array $members, array $doubleAttributes = [], string $targetKind = 'class', ?array $targetAttributes = null, array $extra = [], array $extraEdges = [], string $doubled = 'App\\UserService'): TestFidelityGraph
+    {
+        $class = self::phpType($targetKind, 'App\\UserService', $targetAttributes ?? ['member_names' => array_map(static fn(array $method): string => $method[0], $methods)]);
+        $nodes = array_map(static fn(array $method): NodeFact => self::phpMethod($class, $method[0], $method[1]), $methods);
+        $double = new NodeFact('php:test_double:tests/UserServiceTest.php#double:6:3', 'test_double', 'tests/UserServiceTest.php#double:6:3', 'createMock', Origin::Ast, Confidence::Certain, new Evidence('tests/UserServiceTest.php', 6, 6), [
+            'framework' => 'phpunit', 'pattern' => 'createMock', 'target' => ['kind' => 'class', 'export' => $doubled], 'automock' => false, 'invocations' => 0, 'members' => $members, ...$doubleAttributes,
+        ]);
+
+        return TestFidelityGraph::fromContributions([
+            new ScanContribution('knossos.php:file:src/UserService.php', [$class, ...$nodes, ...$extra], [...array_map(static fn(NodeFact $method): EdgeFact => self::edge('contains', $class, $method->localId), $nodes), ...$extraEdges]),
+            new ScanContribution('knossos.php:file:tests/UserServiceTest.php', [$double], [self::edge('doubles', $double, 'php:class:' . $doubled)]),
+        ]);
+    }
+
     /** A double with no `doubles` edge, replacing a module by specifier. */
     public static function moduleGraph(string $specifier): TestFidelityGraph
     {

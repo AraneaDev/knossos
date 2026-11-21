@@ -70,4 +70,37 @@ final class VisibilityBreachRuleTest extends KnossosTestCase
     {
         assertSame([], [...(new VisibilityBreachRule())->findings(DriftFixtures::graph([], [DriftFixtures::stub('#gone')]))]);
     }
+    /**
+     * The rule's verdicts on a PHP double stubbing a method of each visibility.
+     *
+     * @param array<string, mixed> $double overrides of the double's attributes
+     * @return list<array{string, FindingConfidence}>
+     */
+    private static function judgePhp(array $double = []): array
+    {
+        $graph = DriftFixtures::phpGraph(
+            [['hash', ['visibility' => 'private']], ['load', ['visibility' => 'protected']], ['find', ['visibility' => 'public']]],
+            [DriftFixtures::stub('hash'), DriftFixtures::stub('load'), DriftFixtures::stub('find')],
+            $double,
+        );
+
+        return array_map(static fn($finding): array => [$finding->message, $finding->confidence], [...(new VisibilityBreachRule())->findings($graph)]);
+    }
+
+    public function testPhpPrivateAndProtectedAreDefinite(): void
+    {
+        // PHP visibility holds at run time: a double cannot replace a private method, nor a protected one unless it opted in.
+        assertSame([
+            ['hash is private; the double bypasses the public interface', FindingConfidence::Definite],
+            ['load is protected; the double bypasses the public interface', FindingConfidence::Definite],
+        ], self::judgePhp());
+    }
+
+    public function testPhpProtectedWithAllowsProtectedIsSilent(): void
+    {
+        $private = [['hash is private; the double bypasses the public interface', FindingConfidence::Definite]];
+
+        assertSame($private, self::judgePhp(['allows_protected' => true]), 'shouldAllowMockingProtectedMethods() reaches protected methods, never private ones.');
+        assertSame($private, self::judgePhp(['pattern' => 'getMockBuilder']), 'A getMockBuilder() double reaches protected methods.');
+    }
 }

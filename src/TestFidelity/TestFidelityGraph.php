@@ -20,11 +20,22 @@ use Knossos\TestFidelity\Facts\TestDouble;
  * references the worker emitted, before reconciliation resolves them: a
  * `doubles` edge whose target is not among the contributions has no target
  * here.
+ *
+ * A PHP worker cannot know across files whether a name is a class, an
+ * interface, a trait or an enum, so it names every double's target
+ * `php:class:<FQCN>`; such a reference, and any PHP type reference, resolves
+ * to the class-like node of that name, in any case, as PHP resolves names.
  */
 final readonly class TestFidelityGraph
 {
     /** Edge kinds that put another node's members in scope on the source: a type's parents, and what a module re-exports. */
     private const INHERITANCE_KINDS = ['uses_trait', 'extends', 'implements', 're_exports'];
+
+    /** The node kinds a PHP type reference may name. */
+    private const PHP_TYPE_KINDS = ['class', 'interface', 'trait', 'enum'];
+
+    /** A PHP type reference: `php:<kind>:<FQCN>`, the name captured. */
+    private const PHP_TYPE_REFERENCE = '/^php:(?:class|interface|trait|enum):\\\\?(.+)$/sD';
 
     /**
      * @param array<string, NodeFact> $nodes every node by reference; the first contribution to emit one wins
@@ -35,6 +46,7 @@ final readonly class TestFidelityGraph
      * @param array<string, string> $targets double reference => target reference
      * @param array<string, list<string>> $children container reference => contained references
      * @param array<string, list<string>> $parents type reference => the types it extends, implements or uses, in edge order
+     * @param array<string, string> $phpTypes lower-case FQCN => the reference of the PHP class-like node of that name
      */
     private function __construct(
         private array $nodes,
@@ -45,6 +57,7 @@ final readonly class TestFidelityGraph
         private array $targets,
         private array $children,
         private array $parents,
+        private array $phpTypes,
     ) {}
 
     /**
@@ -57,13 +70,16 @@ final readonly class TestFidelityGraph
      */
     public static function fromContributions(array $contributions): self
     {
-        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = [];
+        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = [];
         foreach ($contributions as $contribution) {
             foreach ($contribution->nodes as $node) {
                 if (isset($nodes[$node->localId])) {
                     continue;
                 }
                 $nodes[$node->localId] = $node;
+                if (self::isPhp($node) && in_array($node->kind, self::PHP_TYPE_KINDS, true)) {
+                    $phpTypes[strtolower(ltrim($node->canonicalName, '\\'))] ??= $node->localId;
+                }
                 if (isset($factNodes[$node->canonicalName])) {
                     continue;
                 }
@@ -92,7 +108,7 @@ final readonly class TestFidelityGraph
             $byFile[self::fileOf($case->canonicalName)][] = $case;
         }
 
-        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents);
+        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents, $phpTypes);
     }
 
     /**
@@ -148,7 +164,58 @@ final readonly class TestFidelityGraph
     {
         $reference = $this->targets[$this->nodeOf($double)->localId] ?? null;
 
-        return $reference === null ? null : ($this->nodes[$reference] ?? null);
+        return $reference === null ? null : $this->resolve($reference);
+    }
+
+    /** The node a reference names: the node emitted under it, else for a PHP type reference the class-like of that name in any case. */
+    private function resolve(string $reference): ?NodeFact
+    {
+        if (isset($this->nodes[$reference])) {
+            return $this->nodes[$reference];
+        }
+
+        return preg_match(self::PHP_TYPE_REFERENCE, $reference, $match) === 1 ? $this->phpType($match[1]) : null;
+    }
+
+    /** The PHP class, interface, trait or enum the scan holds under a fully qualified name, in any case; null when it holds none. */
+    public function phpType(string $name): ?NodeFact
+    {
+        $reference = $this->phpTypes[strtolower(ltrim($name, '\\'))] ?? null;
+
+        return $reference === null ? null : $this->nodes[$reference];
+    }
+
+    /** Whether a node came from the PHP worker, whose class and member names PHP matches in any case. */
+    public static function isPhp(NodeFact $node): bool
+    {
+        return str_starts_with($node->localId, 'php:');
+    }
+
+    /**
+     * Whether PHP type `$class` is `$type`: itself, or a type it reaches
+     * through `extends` and `implements` (a trait it uses is no type it is).
+     * Null when that cannot be shown either way: `$class` or `$type` is not
+     * in the project, or an ancestor of `$class` lies outside it.
+     */
+    public function phpIsA(string $class, string $type): ?bool
+    {
+        $wanted = strtolower(ltrim($type, '\\'));
+        if (strtolower(ltrim($class, '\\')) === $wanted) {
+            return true;
+        }
+        $start = $this->phpType($class);
+        $target = $this->phpType($type);
+        if ($start === null || self::isOutside($start)) {
+            return null;
+        }
+        [$reached, $unseen] = $this->reachable($start, static fn(string $reference): bool => !str_starts_with($reference, 'php:trait:'));
+        foreach ($reached as $reference) {
+            if (strtolower($this->nodes[$reference]->canonicalName) === $wanted) {
+                return true;
+            }
+        }
+
+        return $unseen || $target === null || self::isOutside($target) ? null : false;
     }
 
     /** Whether the double has a `doubles` edge at all, to a node the scan holds or not. */
@@ -167,20 +234,12 @@ final readonly class TestFidelityGraph
      */
     public function member(NodeFact $owner, string $name): ?NodeFact
     {
-        $queue = [$owner->localId];
-        $visited = [$owner->localId => true];
-        while ($queue !== []) {
-            $type = array_shift($queue);
+        $anyCase = self::isPhp($owner);
+        foreach ($this->reachable($owner)[0] as $type) {
             foreach ($this->children[$type] ?? [] as $reference) {
                 $child = $this->nodes[$reference] ?? null;
-                if ($child !== null && $child->displayName === $name) {
+                if ($child !== null && ($anyCase ? strcasecmp($child->displayName, $name) === 0 : $child->displayName === $name)) {
                     return $child;
-                }
-            }
-            foreach ($this->parents[$type] ?? [] as $parent) {
-                if (!isset($visited[$parent])) {
-                    $visited[$parent] = true;
-                    $queue[] = $parent;
                 }
             }
         }
@@ -221,29 +280,38 @@ final readonly class TestFidelityGraph
 
     /**
      * The references reachable from `$owner` through inheritance edges, itself
-     * first and nearest first, and whether one of them is unseen or external.
+     * first and nearest first (breadth first, each once, so a cyclic
+     * hierarchy terminates), and whether one of them is unseen or external.
      *
+     * @param (\Closure(string): bool)|null $follows which parent references to walk; all by default
      * @return array{list<string>, bool}
      */
-    private function reachable(NodeFact $owner): array
+    private function reachable(NodeFact $owner, ?\Closure $follows = null): array
     {
         $queue = [$owner->localId];
         $visited = [$owner->localId => true];
         $unseen = false;
         for ($i = 0; $i < count($queue); $i++) {
             foreach ($this->parents[$queue[$i]] ?? [] as $parent) {
-                $node = $this->nodes[$parent] ?? null;
-                if ($node === null || ($node->attributes['external'] ?? false) === true || str_starts_with($node->kind, 'external_')) {
-                    $unseen = true;
+                if ($follows !== null && !$follows($parent)) {
+                    continue;
                 }
-                if (!isset($visited[$parent]) && $node !== null) {
-                    $visited[$parent] = true;
-                    $queue[] = $parent;
+                $node = $this->resolve($parent);
+                $unseen = $unseen || $node === null || self::isOutside($node);
+                if ($node !== null && !isset($visited[$node->localId])) {
+                    $visited[$node->localId] = true;
+                    $queue[] = $node->localId;
                 }
             }
         }
 
         return [$queue, $unseen];
+    }
+
+    /** Whether a node stands for something outside the project: marked external, an `external_` kind, or declared under `vendor/`. */
+    private static function isOutside(NodeFact $node): bool
+    {
+        return ($node->attributes['external'] ?? false) === true || str_starts_with($node->kind, 'external_') || str_starts_with($node->evidence->relativePath, 'vendor/');
     }
 
     /** Whether a node reference names a node some contribution of the scan emitted. */
@@ -257,8 +325,9 @@ final readonly class TestFidelityGraph
      * members cannot be checked.
      *
      * True when the target node is marked external or declared in a `.d.ts`
-     * file, when the double's edge names an external node no contribution
-     * emits (a lib global such as `console`), or when the double has
+     * file or under `vendor/`, when the double's edge names an external node
+     * no contribution emits (a lib global such as `console`) or a PHP class
+     * the scan does not hold (one in `vendor/` or PHP's own), or when the double has
      * no target and names a bare package specifier (`axios`, `@scope/pkg`,
      * `node:fs`). A relative or absolute path, or a path alias (`@/…`, `~/…`,
      * `#…`), is inside the project even when it does not resolve, which is
@@ -268,10 +337,10 @@ final readonly class TestFidelityGraph
     {
         $target = $this->target($double);
         if ($target !== null) {
-            return ($target->attributes['external'] ?? false) === true || str_starts_with($target->kind, 'external_') || str_ends_with($target->evidence->relativePath, '.d.ts');
+            return self::isOutside($target) || str_ends_with($target->evidence->relativePath, '.d.ts');
         }
-        // An owner no contribution emits and a worker named as external: a lib global such as `console` or `Date`.
-        if (preg_match('/^[^:]+:external_/', $this->targets[$this->nodeOf($double)->localId] ?? '') === 1) {
+        // An owner no contribution emits and a worker named as external (a lib global such as `console` or `Date`), or a PHP class the project does not declare.
+        if (preg_match('/^(?:[^:]+:external_|php:)/', $this->targets[$this->nodeOf($double)->localId] ?? '') === 1) {
             return true;
         }
         $specifier = $double->target['specifier'] ?? '';
