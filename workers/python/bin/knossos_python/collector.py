@@ -151,7 +151,6 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.superseded = superseded_definitions(tree)
         self.overloaded = overloaded_definitions(tree)
         self.members = ClassMembers(tree, self.resolve_name)
-        self.rebound = self.members.rebound(self.superseded)
         self.aliases: dict[str, str] = {}
         self.containers: list[tuple[str, str, str]] = []
         self.local_function_scopes: list[dict[str, str]] = []
@@ -497,7 +496,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
         attributes: dict[str, Any]
         attributes = {"async": async_function, "decorators": decorators, "python_framework_roles": roles}
         attributes["signature"] = signature_of(node, kind == "method" and "staticmethod" not in decorators)
-        attributes |= decoration(node, self.resolve_name, node in self.overloaded, node in self.rebound)
+        attributes |= decoration(
+            node, self.resolve_name, node in self.overloaded, self.members.rebound(node, self.superseded)
+        )
         attributes |= visibility(node.name) if kind == "method" else {}
         if self.registered_by_object(decorators) or (
             self.loaded_by_path and not self.containers and not node.name.startswith("_")

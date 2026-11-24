@@ -43,8 +43,9 @@ final readonly class TestFidelityGraph
 
     /**
      * The Python bases outside the project that add no member a double may
-     * stub but these (their metaclass's own, as `dir()` shows them on 3.11 to
-     * 3.14), so a class inheriting from one keeps a complete name list:
+     * stub but these (their metaclass's own, as `dir()` shows them on 3.14,
+     * the one version checked, with the pure-Python `_py_abc` caches added),
+     * so a class inheriting from one keeps a complete name list:
      * `abc.ABC`, `typing.Protocol` and `typing.Generic`, by qualified name.
      * Every other base outside the project (`enum.Enum`, `typing.NamedTuple`,
      * `typing.TypedDict`, `Exception`) is unseen, its names unknown.

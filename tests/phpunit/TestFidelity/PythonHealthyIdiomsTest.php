@@ -58,7 +58,9 @@ use PHPUnit\Framework\Attributes\Group;
  * silent: `Enum`'s and `NamedTuple`'s own names, an `abc.ABC` subclass's
  * members and `register`, a function and a method their scope rebinds
  * (`functools.partial`, a fallback import), `*args` and `**kwargs`, and a
- * class double that names no test.
+ * class double that names no test. `tests/test_rewriting.py` adds the
+ * rebinds review I1 and I2 found: a class decorator that rewrites a method, a
+ * `globals()` write, and an import its module binds again.
  */
 #[Group('test-fidelity')]
 #[Group('python-scanner')]
@@ -91,8 +93,10 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
             'class openers.Generated', 'class openers.Guarded', 'class openers.Installed', 'class openers.Lazy',
             'class openers.Meta', 'class openers.Patched', 'class openers.Registered', 'class openers.Settings',
             'class openers.TwoWays', 'class openers.WithMeta',
+            // A class a decorator rewrites, and a module a `globals()` write reaches (review I2).
+            'class rewriting.Store',
             // The frame-write idioms' own module, which `exec` and `globals()` there may write.
-            'module dynamic_module', 'module tests.test_frames',
+            'module dynamic_module', 'module rewriting', 'module tests.test_frames',
         ], $open);
     }
 

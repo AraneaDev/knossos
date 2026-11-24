@@ -24,6 +24,19 @@ OPENING_HOOKS = frozenset({"__getattr__", "__getattribute__", "__init_subclass__
 CLOSED_DECORATORS = frozenset({"dataclasses.dataclass", "typing.final", "typing_extensions.final"})
 """Class decorators that add no name besides dunders: every other may add any."""
 
+PLAIN_CLASS_DECORATORS = CLOSED_DECORATORS | frozenset(
+    {
+        "enum.unique",
+        "functools.total_ordering",
+        "typing.runtime_checkable",
+        "typing_extensions.runtime_checkable",
+    }
+)
+"""Class decorators that leave every method the class body defines as it is written."""
+
+PLAIN_METACLASSES = frozenset({"abc.ABCMeta", "enum.EnumMeta", "enum.EnumType", "type"})
+"""Metaclasses that leave every method the class body defines as it is written."""
+
 _RUNS_DYNAMIC_CODE = frozenset({"exec", "eval"})
 
 GENERIC_BASES = frozenset(
@@ -167,6 +180,18 @@ def rebound_definitions(tree: ast.Module, superseded: set[ast.AST]) -> set[ast.A
         also = assigned_self_attributes(scope) if isinstance(scope, ast.ClassDef) else rewritten
         marked.update(each for each in definitions if counts[each.name] > 1 or each.name in also)
     return marked
+
+
+def rebinding_names(tree: ast.Module) -> frozenset[str]:
+    """The names a module binds at its top level other than by an import, or any scope declares ``global``.
+
+    A name it imports and then binds again (``kw = partial(kw, 1)``) is no
+    longer the import's.
+    """
+    imports = (ast.Import, ast.ImportFrom)
+    bound = {name for node in scope_nodes(tree.body) if not isinstance(node, imports) for name in _bound_names(node)}
+    declared = {name for node in ast.walk(tree) if isinstance(node, ast.Global) for name in node.names}
+    return frozenset(bound | declared)
 
 
 def _bound_names(node: ast.AST) -> list[str]:
@@ -317,11 +342,48 @@ class ClassMembers:
         self.resolve = resolve
         self._written: set[str] | None = None
         self._bindings: Counter[str] | None = None
+        self._rebound: set[ast.AST] | None = None
+        self._owners: dict[int, ast.ClassDef] = {}
         self.dynamic = runs_dynamic_code(tree)
 
-    def rebound(self, superseded: set[ast.AST]) -> set[ast.AST]:
-        """The module's defs whose name their scope binds again (:func:`rebound_definitions`)."""
-        return rebound_definitions(self.tree, superseded)
+    def rebound(self, node: ast.FunctionDef | ast.AsyncFunctionDef, superseded: set[ast.AST]) -> bool:
+        """Whether a def may not hold its own signature at run time.
+
+        One whose name its scope binds again (:func:`rebound_definitions`);
+        every def when the module runs dynamic code (``globals()["g"] =
+        partial(g, 1)``, ``exec``); and every method of a class that something
+        may rewrite (:meth:`rewritable`). Asked as each def is visited, so a
+        decorator's import has been read.
+        """
+        if self._rebound is None:
+            functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+            self._rebound = rebound_definitions(self.tree, superseded)
+            classes = [item for item in ast.walk(self.tree) if isinstance(item, ast.ClassDef)]
+            self._owners = {
+                id(item): klass for klass in classes for item in scope_nodes(klass.body) if isinstance(item, functions)
+            }
+        owner = self._owners.get(id(node))
+        return self.dynamic or node in self._rebound or (owner is not None and self.rewritable(owner))
+
+    def rewritable(self, node: ast.ClassDef) -> bool:
+        """Whether something but the class body may replace the class's methods.
+
+        A class decorator outside :data:`PLAIN_CLASS_DECORATORS`
+        (``setattr(cls, name, partialmethod(fn, …))``), a metaclass outside
+        :data:`PLAIN_METACLASSES`, or a write or call the module hands the
+        class to (:meth:`written_names`).
+        """
+        resolved = [self._resolved(decorator) for decorator in node.decorator_list]
+        if not all(name in PLAIN_CLASS_DECORATORS for name in resolved):
+            return True
+        metaclasses = [self._resolved(keyword.value) for keyword in node.keywords if keyword.arg == "metaclass"]
+        return not all(name in PLAIN_METACLASSES for name in metaclasses) or node.name in self.written_names()
+
+    def _resolved(self, expression: ast.expr) -> str | None:
+        """What a decorator or a metaclass names, as its import resolves, without the reference's kind."""
+        name = dotted(expression.func if isinstance(expression, ast.Call) else expression)
+        resolved = self.resolve(name) if name else None
+        return None if resolved is None else resolved.split(":", 2)[-1]
 
     def attributes(self, node: ast.ClassDef, unseen_base: bool) -> dict[str, Any]:
         """``member_names`` for ``node``, with ``member_names_open`` when a name may come from elsewhere.

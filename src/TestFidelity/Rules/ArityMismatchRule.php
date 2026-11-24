@@ -27,7 +27,10 @@ use Knossos\TestFidelity\TestFinding;
  * decision), and silent for a decorated member, whose signature a decorator
  * may have replaced. Accepted residual: a Python call made unbound,
  * `Repo.save(repo, x)`, records the receiver, so a matcher written for it
- * reads as one argument too many.
+ * reads as one argument too many. So is a rebind from another file
+ * (`Repo.save = wrap(Repo.save)` in another module), which no worker sees: the
+ * def's signature is then judged for a name that holds another (the residual
+ * GHOST_MEMBER records for cross-file writes).
  */
 final readonly class ArityMismatchRule extends DriftRule
 {

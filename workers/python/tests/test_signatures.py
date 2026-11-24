@@ -298,6 +298,66 @@ def test_a_def_its_scope_binds_again_counts_as_decorated(project, scan_collect) 
     assert "decorated" not in attributes["api.plain"]
 
 
+REWRITTEN = """\
+import abc
+import functools
+from dataclasses import dataclass
+
+
+def inject(cls):
+    for name, fn in list(vars(cls).items()):
+        setattr(cls, name, functools.partialmethod(fn, "session"))
+    return cls
+
+
+class Wrapping(type):
+    pass
+
+
+@inject
+class Injected:
+    def save(self, session, value):
+        return value
+
+
+class Meta(metaclass=Wrapping):
+    def save(self, value):
+        return value
+
+
+class Handed:
+    def save(self, value):
+        return value
+
+
+inject(Handed)
+
+
+@dataclass
+@functools.total_ordering
+class Plain(metaclass=abc.ABCMeta):
+    def save(self, value):
+        return value
+"""
+
+
+def test_a_method_something_may_rewrite_counts_as_decorated(project, scan_collect) -> None:
+    # Review I2: a class decorator, a project metaclass, or a call handed the class may replace its methods.
+    [contribution] = scan_collect(project({"api.py": REWRITTEN}), ["api.py"])
+    attributes = _attributes(contribution)
+
+    decorated = sorted(name for name, values in attributes.items() if values.get("decorated") is True)
+    assert decorated == ["api.Handed::save", "api.Injected::save", "api.Meta::save"]
+
+
+def test_dynamic_code_makes_every_def_count_as_decorated(project, scan_collect) -> None:
+    # Review I2: `globals()["g"] = partial(g, 1)` rebinds a name no source spells.
+    source = 'import functools\n\n\ndef g(a, b):\n    return a\n\n\nglobals()["g"] = functools.partial(g, 1)\n'
+    [contribution] = scan_collect(project({"api.py": source}), ["api.py"])
+
+    assert _attributes(contribution)["api.g"].get("decorated") is True
+
+
 OVERLOADS = """\
 from typing import overload
 

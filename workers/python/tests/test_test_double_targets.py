@@ -342,3 +342,34 @@ def test_a_patched_dunder_names_no_target(project, scan_collect) -> None:
     dunder = found["5:10"]
     assert (dunder[0]["target"], dunder[1], dunder[0]["members"]) == ({"kind": "unknown"}, None, [])
     assert found["5:58"][1] == "py:class:repo.Repo"
+
+
+REBOUND_IMPORTS = {
+    "arity.py": "def kw(a, b, *, c=0):\n    return a\n\n\ndef star(a, b):\n    return a\n\n\n"
+    "def kept(a):\n    return a\n",
+    "rebind.py": (
+        "import functools\n\nfrom arity import kw, kept\nfrom arity import *\n\n"
+        "kw = functools.partial(kw, 1)\nstar = functools.partial(star, 1)\n\n\n"
+        "def install():\n    global kept\n    kept = len\n"
+    ),
+    "plain.py": "from arity import kw\n",
+}
+
+REBOUND_PATCHES = """\
+from unittest.mock import patch
+
+
+def test_it():
+    with patch("rebind.kw"), patch("rebind.star"), patch("rebind.kept"), patch("plain.kw"):
+        pass
+"""
+
+
+def test_an_import_the_importer_binds_again_stays_with_the_importer(project, scan_collect) -> None:
+    # Review I1: `kw = partial(kw, 1)` holds another signature than `arity.kw`, so it is judged where it is bound.
+    found = scan_test(project, scan_collect, REBOUND_PATCHES, REBOUND_IMPORTS)
+    targets = {key: edge for key, (_, edge) in found.items()}
+
+    assert [targets[key] for key in ("5:10", "5:30", "5:52")] == ["py:module:rebind"] * 3
+    # An import its module never binds again is judged where it is declared.
+    assert targets["5:74"] == "py:module:arity"

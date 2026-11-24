@@ -345,6 +345,14 @@ final class GhostMemberRuleTest extends KnossosTestCase
         assertSame(['missing_member definite _is_runtime_protocol'], self::python(['_is_runtime_protocol'], ['py:external_symbol:abc.ABC']));
     }
 
+    public function testPythonClassesAnswerTypesMro(): void
+    {
+        // Review M1: `type.mro` is the one name every class answers that its body never binds; a module has none.
+        assertSame([], self::python(['mro']));
+        assertSame([], self::python(['mro'], ['py:class:abc.ABC']));
+        assertSame(['missing_export definite mro'], self::python(['mro'], kind: 'module'));
+    }
+
     public function testPythonExternalAncestorsAreUnseen(): void
     {
         // Carried item (a): every other base outside the project may give names the scan cannot see.

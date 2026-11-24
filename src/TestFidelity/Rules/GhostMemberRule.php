@@ -33,7 +33,9 @@ use Knossos\TestFidelity\TestFinding;
  * Accepted residual: a write from another file (`C.x = 1` in another module,
  * `m.FLAG = 1` from outside `m`) adds a name no worker sees, so a double of
  * that name reads as a ghost. The worker sees only writes in the class's or
- * the module's own file.
+ * the module's own file. The same residual reaches ARITY_MISMATCH: a rebind
+ * from another file (`Repo.save = wrap(Repo.save)`) leaves the def's signature
+ * standing for a name that now holds another.
  */
 final readonly class GhostMemberRule extends DriftRule
 {
@@ -44,6 +46,9 @@ final readonly class GhostMemberRule extends DriftRule
 
     /** Longest name considered for a suggestion. */
     private const SUGGESTION_LENGTH = 64;
+
+    /** What every Python class answers from `type` without its body binding it: `type.mro`, its one name that is not a dunder. */
+    private const PYTHON_CLASS_NAMES = ['mro'];
 
     /** Files a project imports that are not code, so no node stands for them. */
     private const ASSET_EXTENSIONS = '/\.(?:css|scss|sass|less|json|svg|png|jpe?g|gif|webp|ico|md|mdx|html|txt|csv|ya?ml|vue|svelte|astro|graphql|gql|wasm|woff2?|ttf|otf|eot|mp3|mp4|webm|wav|ogg)$/Di';
@@ -91,7 +96,7 @@ final readonly class GhostMemberRule extends DriftRule
         }
         $names = self::completeNames($pair->target, $graph);
         if ($names !== null && $python) {
-            $names = [...$names, ...$graph->knownBaseNames($pair->target)];
+            $names = [...$names, ...$graph->knownBaseNames($pair->target), ...($pair->target->kind === 'class' ? self::PYTHON_CLASS_NAMES : [])];
         }
         if ($names === null || $pair->member !== null || self::listed($pair, $names) || $graph->hasUnseenAncestor($pair->target) || !self::absentFromAlso($pair, $graph)) {
             return null;
