@@ -131,6 +131,8 @@ class EchoGuard:
         if pin is None or pin.held or pin.value is None:
             # Several pins, or one set through a held handle (the R14 analog): no one value the call answers with.
             # A `side_effect` or `new=` pin never gets here: either defeats the double first.
+            # `pin.held` is defence in depth, unreachable today: a held handle is made in a setUp or a fixture,
+            # never in the test, so the same-function check above refuses it first.
             return None
         statement = self.files.statement_of(pin.value)
         if statement is None or not self.files.precedes(statement, call):

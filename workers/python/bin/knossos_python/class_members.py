@@ -137,6 +137,53 @@ def scope_bindings(nodes: Iterable[ast.AST]) -> tuple[set[str], bool]:
     return names, star
 
 
+def rebound_definitions(tree: ast.Module, superseded: set[ast.AST]) -> set[ast.AST]:
+    """Each module-level or class-level ``def`` whose name its scope binds again: its signature may not be the name's.
+
+    ``f = wrap(f)``, a second ``def f`` in another branch, a ``try`` import
+    with a fallback ``def``, ``m = partialmethod(m, 1)`` in a class body, a
+    function's ``global f``, a method's ``self.m = …``: any of them may leave
+    the name holding something else, with another signature. A ``def`` a
+    later one in the same block replaces (``superseded``) is not a binding the
+    name keeps, so it is not counted.
+    """
+    functions = (ast.FunctionDef, ast.AsyncFunctionDef)
+    declared = (ast.Global, ast.Nonlocal)
+    rewritten = {name for node in ast.walk(tree) if isinstance(node, declared) for name in node.names}
+    scopes: list[ast.Module | ast.ClassDef] = [
+        tree,
+        *(item for item in ast.walk(tree) if isinstance(item, ast.ClassDef)),
+    ]
+    marked: set[ast.AST] = set()
+    for scope in scopes:
+        counts: Counter[str] = Counter()
+        definitions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+        for node in scope_nodes(scope.body):
+            if node in superseded:
+                continue
+            if isinstance(node, functions):
+                definitions.append(node)
+            counts.update(_bound_names(node))
+        also = assigned_self_attributes(scope) if isinstance(scope, ast.ClassDef) else rewritten
+        marked.update(each for each in definitions if counts[each.name] > 1 or each.name in also)
+    return marked
+
+
+def _bound_names(node: ast.AST) -> list[str]:
+    """The names one node of a scope binds, rebinds or deletes."""
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return [node.name]
+    if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+        return [node.id]
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        return [alias.asname or alias.name.split(".")[0] for alias in node.names if alias.name != "*"]
+    if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
+        return [node.name]
+    if isinstance(node, ast.MatchMapping) and node.rest:
+        return [node.rest]
+    return []
+
+
 def _named_call(node: ast.AST, names: Iterable[str]) -> bool:
     return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in names
 
@@ -271,6 +318,10 @@ class ClassMembers:
         self._written: set[str] | None = None
         self._bindings: Counter[str] | None = None
         self.dynamic = runs_dynamic_code(tree)
+
+    def rebound(self, superseded: set[ast.AST]) -> set[ast.AST]:
+        """The module's defs whose name their scope binds again (:func:`rebound_definitions`)."""
+        return rebound_definitions(self.tree, superseded)
 
     def attributes(self, node: ast.ClassDef, unseen_base: bool) -> dict[str, Any]:
         """``member_names`` for ``node``, with ``member_names_open`` when a name may come from elsewhere.

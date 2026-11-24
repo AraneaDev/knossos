@@ -24,6 +24,15 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
  * doubles (`createPartialMock()`, `getMockBuilder()`, the abstract and trait
  * doubles) reach protected methods, so they are silent. A visibility a trait
  * use changes (`use T { load as public; }`) is unknown, and silent.
+ *
+ * Python's worker marks `_x` protected and `__x` (not a dunder) private. A
+ * single underscore is a convention only, so it is a warning. A `__x` member
+ * is stored name-mangled (`_C__x`), so a double that replaces it under the
+ * spelling `__x` raises `AttributeError`: definite, where the target's whole
+ * lineage is in the scan with complete name lists. An ancestor outside the
+ * project or an open list (a metaclass `__getattr__`) may answer the name, so
+ * then it is a warning. The mangled spelling `_C__x` names no member node, so
+ * it is never reported.
  */
 final readonly class VisibilityBreachRule extends DriftRule
 {
@@ -40,6 +49,9 @@ final readonly class VisibilityBreachRule extends DriftRule
         if ($visibility !== 'private' && $visibility !== 'protected') {
             return null;
         }
+        if (TestFidelityGraph::isPython($pair->target)) {
+            return self::python($pair, $graph, $visibility);
+        }
         $php = TestFidelityGraph::isPhp($pair->target);
         if ($php && (($visibility === 'protected' && self::reachesProtected($pair)) || $graph->visibilityChanged($pair->target, $pair->stub->name))) {
             return null;
@@ -51,6 +63,24 @@ final readonly class VisibilityBreachRule extends DriftRule
             self::ID,
             'visibility',
             sprintf('%s is %s; the double bypasses the public interface', $name, $visibility),
+            ['visibility' => $visibility],
+        );
+    }
+
+    /** The finding on a Python `_x` (a warning) or `__x` (definite where nothing unseen may answer the name). */
+    private static function python(DriftPair $pair, TestFidelityGraph $graph, string $visibility): ?TestFinding
+    {
+        $name = DriftText::clean($pair->stub->name);
+        if ($visibility === 'protected') {
+            return $pair->finding(FindingCategory::VisibilityBreach, FindingConfidence::Warning, self::ID, 'visibility', sprintf('%s is protected; the double bypasses the public interface', $name), ['visibility' => $visibility]);
+        }
+
+        return $pair->finding(
+            FindingCategory::VisibilityBreach,
+            $graph->hasClosedLineage($pair->target) ? FindingConfidence::Definite : FindingConfidence::Warning,
+            self::ID,
+            'visibility',
+            sprintf('%s is name-mangled; a double cannot replace it under that name', $name),
             ['visibility' => $visibility],
         );
     }

@@ -185,6 +185,8 @@ class OperandReader:
     def _answer(self, handle: Handle, member: str | None, call: ast.Call, awaited: bool) -> Source:
         """A call of a double: the value pinned on ``member`` when it answers with it for certain, else the double."""
         record = handle.record.resolved()
+        # `handle.held` (the R14 analog) is defence in depth, unreachable today: a held double is made in a setUp
+        # or a fixture, so `EchoGuard.pinned`'s same-function check would refuse it anyway.
         if handle.held or (member is not None and is_dunder(member)):
             return self._double(record)
         return self._double(record, self.echoes.pinned(record, member, call, awaited))

@@ -549,6 +549,8 @@ php	src/TestFidelity/FindingCategory.php
 php	src/TestFidelity/FindingConfidence.php
 php	src/TestFidelity/MockedModulePaths.php
 php	src/TestFidelity/PhpTypeFit.php
+php	src/TestFidelity/PythonAnnotation.php
+php	src/TestFidelity/PythonTypeFit.php
 php	src/TestFidelity/Rules/ArityMismatchRule.php
 php	src/TestFidelity/Rules/CallArity.php
 php	src/TestFidelity/Rules/DoubleTests.php
@@ -558,6 +560,7 @@ php	src/TestFidelity/Rules/DriftScope.php
 php	src/TestFidelity/Rules/DriftText.php
 php	src/TestFidelity/Rules/GhostMemberRule.php
 php	src/TestFidelity/Rules/MocksSubjectRule.php
+php	src/TestFidelity/Rules/PythonCallBinding.php
 php	src/TestFidelity/Rules/ReturnDriftRule.php
 php	src/TestFidelity/Rules/SignatureShape.php
 php	src/TestFidelity/Rules/TautologyRule.php
@@ -1304,12 +1307,14 @@ php	tests/phpunit/TestFidelity/PhpAcceptanceTest.php
 php	tests/phpunit/TestFidelity/PhpHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/PhpTypeFitTest.php
 php	tests/phpunit/TestFidelity/PythonHealthyIdiomsTest.php
+php	tests/phpunit/TestFidelity/PythonTypeFitTest.php
 php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/CaseFixtures.php
 php	tests/phpunit/TestFidelity/Rules/DriftFixtures.php
 php	tests/phpunit/TestFidelity/Rules/GhostMemberRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/MocksSubjectRuleTest.php
+php	tests/phpunit/TestFidelity/Rules/PythonFixtures.php
 php	tests/phpunit/TestFidelity/Rules/ReturnDriftRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/TautologyRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/VisibilityBreachRuleTest.php

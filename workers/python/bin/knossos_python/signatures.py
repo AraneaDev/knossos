@@ -103,7 +103,10 @@ def signature_of(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, rece
 
 
 def decoration(
-    node: ast.FunctionDef | ast.AsyncFunctionDef, resolve: Callable[[str], str | None], overloaded: bool
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    resolve: Callable[[str], str | None],
+    overloaded: bool,
+    rebound: bool = False,
 ) -> dict[str, Any]:
     """The `decorated` and `overloaded` attributes of a function or method.
 
@@ -111,10 +114,12 @@ def decoration(
     (:data:`PLAIN_DECORATORS`, :data:`BUILTIN_DECORATORS`), each judged by
     what its import resolves to: a decorator may replace the function, so its
     signature says nothing certain about the call. A decorator this worker
-    cannot name, `@registry[key]`, counts. `overloaded` marks a def in a run of
-    same-named defs that `@overload` stubs belong to.
+    cannot name, `@registry[key]`, counts. So does `rebound`, a def whose name
+    its scope binds again (`f = wrap(f)`, a `def` in another branch), which
+    may leave the name holding another signature. `overloaded` marks a def in
+    a run of same-named defs that `@overload` stubs belong to.
     """
-    attributes: dict[str, Any] = {}
+    attributes: dict[str, Any] = {"decorated": True} if rebound else {}
     for decorator in node.decorator_list:
         name = dotted(decorator.func if isinstance(decorator, ast.Call) else decorator)
         resolved = resolve(name) if name else None

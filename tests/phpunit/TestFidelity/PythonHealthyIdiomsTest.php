@@ -46,6 +46,19 @@ use PHPUnit\Framework\Attributes\Group;
  * pin, an `AsyncMock` member not awaited, and a pin read back through a
  * fixture and through `setUp`. Ruling P5: a false definite the rules give
  * before Task 5's gates is listed here as "cleared by Task 5"; none is.
+ *
+ * Now the rules judge Python (Task 5), `tests/test_planted.py` sets each
+ * planted finding beside its healthy twin: a ghost on a closed class and on
+ * an `abc.ABC` subclass, a
+ * `__x` stubbed as written beside `_C__x`, a matcher with an unknown keyword
+ * beside one that binds, a local `Mock`'s echo beside a pin handed to
+ * production, a single-bound constant beside one compared with production,
+ * `_x` (a warning) beside a public name, and a `str` pin on `-> int` (a
+ * warning) beside an `int`. `tests/test_bases.py` holds what must stay
+ * silent: `Enum`'s and `NamedTuple`'s own names, an `abc.ABC` subclass's
+ * members and `register`, a function and a method their scope rebinds
+ * (`functools.partial`, a fallback import), `*args` and `**kwargs`, and a
+ * class double that names no test.
  */
 #[Group('test-fidelity')]
 #[Group('python-scanner')]
@@ -116,8 +129,15 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
         assertSame(true, $doubles > 25);
         assertSame(true, $cases > 30);
         assertSame([
-            // Genuine: the planted twin, a name `Repo` does not have.
+            // Genuine, each the planted twin of the healthy idiom beside it (Task 5).
+            'ARITY_MISMATCH/call_arity/definite@tests/test_planted.py:37',
             'GHOST_MEMBER/missing_member/definite@tests/test_planted.py:7',
+            'GHOST_MEMBER/missing_member/definite@tests/test_planted.py:92',
+            'RETURN_DRIFT/return_type/warning@tests/test_planted.py:84',
+            'TAUTOLOGY/constant/definite@tests/test_planted.py:65',
+            'TAUTOLOGY/mock_echo/definite@tests/test_planted.py:53',
+            'VISIBILITY_BREACH/visibility/definite@tests/test_planted.py:25',
+            'VISIBILITY_BREACH/visibility/warning@tests/test_planted.py:74',
         ], $findings);
     }
 

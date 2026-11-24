@@ -21,7 +21,13 @@ use Knossos\TestFidelity\TestFinding;
  *
  * A call matcher that lists more arguments than the member takes, or, where the
  * matcher is exact, fewer than it requires, is a `call_arity` finding. The count
- * is syntax on both sides, so it is definite; a spread matcher is silent.
+ * is syntax on both sides, so it is definite; a spread matcher is silent. A
+ * Python matcher is bound by keyword name and parameter kind as well
+ * (`PythonCallBinding`), definite with or without `autospec` (the user's
+ * decision), and silent for a decorated member, whose signature a decorator
+ * may have replaced. Accepted residual: a Python call made unbound,
+ * `Repo.save(repo, x)`, records the receiver, so a matcher written for it
+ * reads as one argument too many.
  */
 final readonly class ArityMismatchRule extends DriftRule
 {
@@ -38,7 +44,7 @@ final readonly class ArityMismatchRule extends DriftRule
     /** A call matcher on the member lists a count the member cannot meet. */
     private function calls(DriftPair $pair, SignatureShape $declared): ?TestFinding
     {
-        $violation = CallArity::violation($pair->stub->calledWith, $declared, DriftText::clean($pair->stub->name), $pair->double->framework);
+        $violation = CallArity::violation($pair->stub->calledWith, $declared, DriftText::clean($pair->stub->name), $pair->double->framework, TestFidelityGraph::isPython($pair->target));
 
         return $violation === null ? null : $pair->finding(
             FindingCategory::ArityMismatch,

@@ -5,26 +5,31 @@ declare(strict_types=1);
 namespace Knossos\TestFidelity\Rules;
 
 /**
- * A signature as the wire states it, `{params: [{name, type?, optional?, variadic?}], returns?, variadic?, truncated?}`,
+ * A signature as the wire states it, `{params: [{name, type?, optional?, variadic?, kind?}], returns?, variadic?, truncated?}`,
  * read into a form the rules can count and compare. A signature's own
  * `variadic` says the function reads arguments past its parameters
- * (PHP's `func_get_args()`), as a rest parameter would take them.
+ * (PHP's `func_get_args()`), as a rest parameter would take them. A Python
+ * parameter's `kind` says only a position (`positional_only`) or only a
+ * keyword (`keyword_only`) can pass it, and its rest parameters keep their
+ * stars in the name (`*args`, `**kwargs`).
  */
 final readonly class SignatureShape
 {
-    /** @param list<array{type: ?string, optional: bool, variadic: bool}> $params */
+    /** @param list<array{name: string, type: ?string, optional: bool, variadic: bool, kind: ?string}> $params */
     private function __construct(public array $params, public ?string $returns, private bool $takesMore = false) {}
 
     /**
      * A production member's `signature` attribute; null when absent, malformed, cut short,
-     * or the node is marked overloaded (it carries only the first of several signatures).
+     * when the node is marked overloaded (it carries only the first of several signatures),
+     * or decorated (a decorator may replace the function, so its signature says nothing
+     * certain about the call).
      *
      * @param array<string, mixed> $attributes the member node's attributes
      */
     public static function ofMember(array $attributes): ?self
     {
         $raw = $attributes['signature'] ?? null;
-        if (!is_array($raw) || ($raw['truncated'] ?? false) !== false || ($attributes['overloaded'] ?? false) === true) {
+        if (!is_array($raw) || ($raw['truncated'] ?? false) !== false || ($attributes['overloaded'] ?? false) === true || ($attributes['decorated'] ?? false) === true) {
             return null;
         }
         $params = self::params($raw['params'] ?? null);
@@ -90,7 +95,7 @@ final readonly class SignatureShape
     /**
      * The parameters of a list as the wire states them; null when it is not a list of named parameters.
      *
-     * @return list<array{type: ?string, optional: bool, variadic: bool}>|null
+     * @return list<array{name: string, type: ?string, optional: bool, variadic: bool, kind: ?string}>|null
      */
     private static function params(mixed $raw): ?array
     {
@@ -103,10 +108,11 @@ final readonly class SignatureShape
                 return null;
             }
             $type = $param['type'] ?? null;
-            if ($type !== null && !is_string($type)) {
+            $kind = $param['kind'] ?? null;
+            if (($type !== null && !is_string($type)) || ($kind !== null && !is_string($kind))) {
                 return null;
             }
-            $params[] = ['type' => $type === '' ? null : $type, 'optional' => ($param['optional'] ?? false) === true, 'variadic' => ($param['variadic'] ?? false) === true];
+            $params[] = ['name' => $param['name'], 'type' => $type === '' ? null : $type, 'optional' => ($param['optional'] ?? false) === true, 'variadic' => ($param['variadic'] ?? false) === true, 'kind' => $kind];
         }
 
         return $params;

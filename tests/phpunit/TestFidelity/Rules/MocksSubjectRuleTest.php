@@ -176,6 +176,33 @@ final class MocksSubjectRuleTest extends KnossosTestCase
         assertSame([], $judge(['src/Billing.php']));
     }
 
+    public function testPythonClassDoubleOfTheSubjectWarns(): void
+    {
+        // The R8 analog: `Mock(spec=Repo)` in a test whose production calls land in src/app/repo.py.
+        $repo = PythonFixtures::node('class', 'app.repo.Repo', ['member_names' => []]);
+        $module = PythonFixtures::node('module', 'app.repo', ['exports' => ['Repo']]);
+        $judge = static function (array $subjects, array $target = ['kind' => 'class', 'export' => 'app.repo.Repo'], ?string $testCase = 'tests/test_repo.py#test:10', ?NodeFact $owner = null) use ($repo): array {
+            $owner ??= $repo;
+            $case = PythonFixtures::node('test_case', 'tests/test_repo.py#test:10', ['name' => 'test_saves', 'production_calls' => 1, 'subjects' => $subjects, 'assertions' => []], 'tests/test_repo.py');
+            $double = PythonFixtures::node('test_double', 'tests/test_repo.py#double:12:5', [
+                'framework' => 'unittest', 'pattern' => 'unittest.mock.Mock', 'target' => $target, 'automock' => false, 'invocations' => 1, 'members' => [],
+            ] + ($testCase === null ? [] : ['test_case' => $testCase]), 'tests/test_repo.py');
+
+            return array_map(static fn(TestFinding $finding): string => $finding->confidence->value . ' ' . $finding->message, [...(new MocksSubjectRule())->findings(CaseFixtures::graph(
+                [$case, $double],
+                [$owner],
+                [PythonFixtures::edge('doubles', $double, $owner->localId)],
+            ))]);
+        };
+
+        assertSame(["warning tests/test_repo.py#double:12:5 replaces src/app/repo.py, which the test 'test_saves' exercises"], $judge(['src/app/repo.py']));
+        assertSame(["warning tests/test_repo.py#double:12:5 replaces src/app/repo.py, which the test 'test_saves' exercises"], $judge(['src/app/repo.py'], ['kind' => 'module', 'specifier' => 'app.repo'], owner: $module));
+        assertSame([], $judge(['src/app/service.py']));
+        // A patch of one member is a partial mock; a double that names no test would answer to every test of its file.
+        assertSame([], $judge(['src/app/repo.py'], ['kind' => 'class', 'export' => 'app.repo.Repo', 'member' => 'save']));
+        assertSame([], $judge(['src/app/repo.py'], testCase: null));
+    }
+
     public function testIdNamesTheCategory(): void
     {
         assertSame('test.fidelity.mocks_subject.v1', (new MocksSubjectRule())->id());

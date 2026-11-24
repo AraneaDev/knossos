@@ -14,3 +14,11 @@ class Money:
 
 def fill(buffer: list[int]) -> None:
     buffer.append(1)
+
+
+def count(items: list[int]) -> int:
+    return len(items)
+
+
+def apply(supplier) -> int:
+    return supplier()

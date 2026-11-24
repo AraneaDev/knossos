@@ -20,6 +20,20 @@ use Knossos\TestFidelity\TestFinding;
  * `mock(A::class, B::class)`). A name PHPUnit's `addMethods()` adds is the
  * double's own and never a ghost. A PHP name is matched in any case, as PHP
  * matches method names.
+ *
+ * A Python dunder (`__x__`) is never judged, on a class or a module: it is a
+ * protocol hook the runtime or `MagicMock` answers, and no worker lists one
+ * (Ruling P3). A Python base outside the project is an unseen ancestor
+ * (`enum.Enum`'s `name` and `value`, `NamedTuple`'s `_replace`, a
+ * `TypedDict`), except `abc.ABC`, `typing.Protocol` and `typing.Generic`,
+ * which add only their metaclass's names. Openness flows down: an ancestor
+ * whose list is open (a metaclass, `__init_subclass__`, a dynamic base) leaves
+ * every subclass open, however closed its own list.
+ *
+ * Accepted residual: a write from another file (`C.x = 1` in another module,
+ * `m.FLAG = 1` from outside `m`) adds a name no worker sees, so a double of
+ * that name reads as a ghost. The worker sees only writes in the class's or
+ * the module's own file.
  */
 final readonly class GhostMemberRule extends DriftRule
 {
@@ -71,7 +85,14 @@ final readonly class GhostMemberRule extends DriftRule
         if ($pair->stub->api === 'addMethods') {
             return null;
         }
+        $python = TestFidelityGraph::isPython($pair->target);
+        if ($python && preg_match('/^__.+__$/sD', $pair->stub->name) === 1) {
+            return null;
+        }
         $names = self::completeNames($pair->target, $graph);
+        if ($names !== null && $python) {
+            $names = [...$names, ...$graph->knownBaseNames($pair->target)];
+        }
         if ($names === null || $pair->member !== null || self::listed($pair, $names) || $graph->hasUnseenAncestor($pair->target) || !self::absentFromAlso($pair, $graph)) {
             return null;
         }

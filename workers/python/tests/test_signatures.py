@@ -215,6 +215,89 @@ def test_a_shadowed_builtin_decorator_counts_as_decorated(project, scan_collect)
     assert _attributes(contribution)["api.C::m"].get("decorated") is True
 
 
+REBOUND = """\
+import functools
+
+try:
+    from fast import imported
+except ImportError:
+    def imported(x):
+        return x
+
+
+def wrapped(x):
+    return x
+
+
+wrapped = functools.partial(wrapped, 1)
+
+
+def branched(x):
+    return x
+
+
+if True:
+    def branched(x, y):
+        return x
+
+
+def rewritten(x):
+    return x
+
+
+def install():
+    global rewritten
+    rewritten = len
+
+
+def replaced(x):
+    return x
+
+
+def replaced(x, y):
+    return x
+
+
+def plain(x):
+    return x
+
+
+class C:
+    def partial(self, a):
+        return a
+
+    partial = functools.partialmethod(partial, 1)
+
+    def shadowed(self, a):
+        return a
+
+    def __init__(self):
+        self.shadowed = len
+
+    def kept(self, a):
+        return a
+"""
+
+
+def test_a_def_its_scope_binds_again_counts_as_decorated(project, scan_collect) -> None:
+    # Whatever the name holds may have another signature than the def's.
+    [contribution] = scan_collect(project({"api.py": REBOUND}), ["api.py"])
+    attributes = _attributes(contribution)
+
+    decorated = sorted(name for name, values in attributes.items() if values.get("decorated") is True)
+    assert decorated == [
+        "api.C::partial",
+        "api.C::shadowed",
+        "api.branched",
+        "api.imported",
+        "api.rewritten",
+        "api.wrapped",
+    ]
+    # A def a later one in the same block replaces binds nothing the name keeps: the later one stands alone.
+    assert "decorated" not in attributes["api.replaced"]
+    assert "decorated" not in attributes["api.plain"]
+
+
 OVERLOADS = """\
 from typing import overload
 

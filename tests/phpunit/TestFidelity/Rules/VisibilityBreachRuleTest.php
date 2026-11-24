@@ -135,4 +135,48 @@ final class VisibilityBreachRuleTest extends KnossosTestCase
 
         assertSame(['keep is protected; the double bypasses the public interface'], array_map(static fn($finding): string => $finding->message, [...(new VisibilityBreachRule())->findings($graph)]));
     }
+
+    /**
+     * Each finding on a Python double of `Repo._guard` (protected) and `Repo.__secret` (private), confidence and message.
+     *
+     * @param list<string> $stubbed
+     * @param array<string, mixed>|null $classAttributes
+     * @param list<\Knossos\Scanner\Protocol\EdgeFact> $edges
+     * @return list<string>
+     */
+    private static function python(array $stubbed, ?array $classAttributes = null, array $edges = []): array
+    {
+        $graph = PythonFixtures::graph(
+            [['_guard', ['visibility' => 'protected']], ['__secret', ['visibility' => 'private']], ['run', []]],
+            array_map(static fn(string $name): array => PythonFixtures::stub($name), $stubbed),
+            ownerAttributes: $classAttributes,
+            extraEdges: $edges,
+        );
+
+        return array_map(static fn($finding): string => $finding->confidence->value . ' ' . $finding->message, [...(new VisibilityBreachRule())->findings($graph)]);
+    }
+
+    public function testPythonSingleUnderscoreIsAWarning(): void
+    {
+        assertSame(['warning _guard is protected; the double bypasses the public interface'], self::python(['_guard']));
+        assertSame([], self::python(['run']));
+    }
+
+    public function testPythonMangledIsDefinite(): void
+    {
+        assertSame(['definite __secret is name-mangled; a double cannot replace it under that name'], self::python(['__secret']));
+        // The mangled spelling names the member as Python stores it: no node, never reported.
+        assertSame([], self::python(['_Repo__secret']));
+    }
+
+    public function testPythonMangledWithAnOpenOrUnseenLineageIsAWarning(): void
+    {
+        // A metaclass `__getattr__` (an open list) or a base outside the project may answer the name.
+        $open = ['member_names' => ['_Repo__secret', '__secret', '_guard', 'run'], 'member_names_open' => true];
+        assertSame(['warning __secret is name-mangled; a double cannot replace it under that name'], self::python(['__secret'], $open));
+        $owner = PythonFixtures::node('class', 'app.repo.Repo');
+        assertSame(['warning __secret is name-mangled; a double cannot replace it under that name'], self::python(['__secret'], edges: [PythonFixtures::edge('extends', $owner, 'py:external_symbol:enum.Enum')]));
+        // `abc.ABC` is seen, and adds no name that could answer it.
+        assertSame(['definite __secret is name-mangled; a double cannot replace it under that name'], self::python(['__secret'], edges: [PythonFixtures::edge('extends', $owner, 'py:class:abc.ABC')]));
+    }
 }

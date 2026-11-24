@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\TestFidelity\Rules;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\Rules\ArityMismatchRule;
 use Knossos\TestFidelity\TestFidelityGraph;
+use Knossos\TestFidelity\TestFinding;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertCount;
@@ -175,6 +176,105 @@ final class ArityMismatchRuleTest extends KnossosTestCase
 
         assertSame([], [...(new ArityMismatchRule())->findings($graph)]);
         assertSame([], self::findings(DriftFixtures::graph([DriftFixtures::method('find', ['signature' => ['params' => []]])], [DriftFixtures::stub('find')])));
+    }
+
+    /**
+     * Python matchers on `Session.open(username, token)` unless `$params` says otherwise.
+     *
+     * @param list<array<string, mixed>> $matchers
+     * @param list<array<string, mixed>>|null $params
+     * @param array<string, mixed> $attributes further attributes of the member node
+     * @return list<TestFinding>
+     */
+    private static function python(array $matchers, ?array $params = null, array $attributes = []): array
+    {
+        $params ??= [['name' => 'username', 'type' => 'str'], ['name' => 'token', 'type' => 'str']];
+
+        return self::findings(PythonFixtures::graph([['open', PythonFixtures::signature($params, 'str') + $attributes]], [PythonFixtures::stub('open', calledWith: $matchers)]));
+    }
+
+    /**
+     * Each finding's confidence and message.
+     *
+     * @param list<TestFinding> $findings
+     * @return list<string>
+     */
+    private static function messages(array $findings): array
+    {
+        return array_map(static fn(TestFinding $finding): string => $finding->confidence->value . ' ' . $finding->message, $findings);
+    }
+
+    public function testPythonUnknownKeywordIsDefinite(): void
+    {
+        // Nemesis `kwargs`: `user` was renamed to `username`; the test's keyword was not.
+        $findings = self::python([PythonFixtures::matcher(2, ['user', 'token'])]);
+
+        assertSame(['definite open has no parameter user; the matcher passes it by name'], self::messages($findings));
+        assertSame('call_arity', $findings[0]->subRule);
+        assertSame([], self::python([PythonFixtures::matcher(2, ['username', 'token'])]));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['token'])]));
+    }
+
+    public function testPythonKeywordOnlyByPositionIsTooMany(): void
+    {
+        $params = [['name' => 'a'], ['name' => 'b', 'kind' => 'keyword_only']];
+
+        assertSame(['definite open takes 1 argument(s); the matcher expects 2'], self::messages(self::python([PythonFixtures::matcher(2)], $params)));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['b'])], $params));
+        assertSame(['definite open takes 2 argument(s); the matcher expects 3'], self::messages(self::python([PythonFixtures::matcher(3)])));
+    }
+
+    public function testPythonPositionalOnlyByNameIsDefinite(): void
+    {
+        $params = [['name' => 'x', 'kind' => 'positional_only'], ['name' => 'y']];
+
+        assertSame(['definite open has no parameter x; the matcher passes it by name'], self::messages(self::python([PythonFixtures::matcher(2, ['x', 'y'])], $params)));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['y'])], $params));
+        // Under `**kwargs` the keyword lands there, and the positional-only parameter is left unbound.
+        $open = [...$params, ['name' => '**kwargs', 'variadic' => true]];
+        assertSame(['definite open needs 2 argument(s); the matcher expects 2'], self::messages(self::python([PythonFixtures::matcher(2, ['x', 'y'])], $open)));
+    }
+
+    public function testPythonRequiredParameterLeftUnboundIsDefinite(): void
+    {
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], self::messages(self::python([PythonFixtures::matcher(1)])));
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], self::messages(self::python([PythonFixtures::matcher(1, ['token'])])));
+        $keywordOnly = [['name' => 'a'], ['name' => 'b', 'kind' => 'keyword_only'], ['name' => 'c', 'optional' => true, 'kind' => 'keyword_only']];
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], self::messages(self::python([PythonFixtures::matcher(1)], $keywordOnly)));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['b'])], $keywordOnly));
+    }
+
+    public function testPythonKwargsAndArgsOpenTheirHalf(): void
+    {
+        $args = [['name' => 'a'], ['name' => '*args', 'variadic' => true], ['name' => 'c', 'kind' => 'keyword_only']];
+        assertSame([], self::python([PythonFixtures::matcher(5, ['c'])], $args));
+        assertSame(['definite open has no parameter z; the matcher passes it by name'], self::messages(self::python([PythonFixtures::matcher(3, ['c', 'z'])], $args)));
+        assertSame(['definite open needs 2 argument(s); the matcher expects 3'], self::messages(self::python([PythonFixtures::matcher(3)], $args)));
+
+        $kwargs = [['name' => 'a'], ['name' => '**kwargs', 'variadic' => true]];
+        assertSame([], self::python([PythonFixtures::matcher(3, ['z', 'w'])], $kwargs));
+        assertSame(['definite open takes 1 argument(s); the matcher expects 2'], self::messages(self::python([PythonFixtures::matcher(2)], $kwargs)));
+    }
+
+    public function testPythonSpreadMalformedAndDecoratedAreSilent(): void
+    {
+        // A spread, or a form that records the receiver (a class-level autospec, `mocker.spy` on a class), comes spread.
+        assertSame([], self::python([PythonFixtures::matcher(5, [], true)]));
+        // More keywords than arguments, or one named twice, is no call Python could make.
+        assertSame([], self::python([PythonFixtures::matcher(1, ['user', 'token'])]));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['user', 'user'])]));
+        assertSame([], self::python([PythonFixtures::matcher(3)], attributes: ['decorated' => true]));
+        // The first matcher that cannot bind is the one reported.
+        assertSame(['definite open has no parameter user; the matcher passes it by name'], self::messages(self::python([PythonFixtures::matcher(2), PythonFixtures::matcher(2, ['user', 'token'])])));
+    }
+
+    public function testPythonUntypedSideEffectLambdaIsAWarning(): void
+    {
+        $member = PythonFixtures::stub('open', params: [['name' => 'a'], ['name' => 'b'], ['name' => 'c']]);
+        $untyped = self::findings(PythonFixtures::graph([['open', PythonFixtures::signature([['name' => 'username'], ['name' => 'token']])]], [$member]));
+
+        assertSame(['warning open takes 2 argument(s); the double passes 3'], self::messages($untyped));
+        assertSame('signature', $untyped[0]->subRule);
     }
 
     /** @return list<\Knossos\TestFidelity\TestFinding> */

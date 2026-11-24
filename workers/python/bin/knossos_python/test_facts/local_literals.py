@@ -9,7 +9,8 @@ reaching the use (an earlier statement of a block that holds the use, so not
 a branch the use sits outside). A ``nonlocal`` or ``global`` declaration of
 the name, here or in any scope nested inside, hands it to code this cannot
 follow, and ``locals()``, ``vars()``, ``globals()``, ``exec`` and ``eval``
-anywhere in the function, or a frame read anywhere in the file
+(also as ``builtins.exec`` or ``__builtins__["exec"]``) anywhere in the
+function, or a frame read anywhere in the file
 (``sys._getframe``, ``inspect.currentframe``, ``f_locals``), may write any
 local. The value is immutable, so no call, method or alias can change it in
 place: a list, dict or set is never followed.
@@ -27,6 +28,9 @@ from .file_index import FUNCTIONS, Binding, Scope, TestFileIndex
 
 DYNAMIC_CALLS = frozenset({"locals", "vars", "globals", "exec", "eval"})
 """Builtins that read or write a function's locals by name."""
+
+BUILTINS_MODULES = frozenset({"builtins", "__builtins__"})
+"""The names that hold the builtins themselves, so ``builtins.exec`` is ``exec`` under another spelling."""
 
 FRAME_NAMES = frozenset(
     {
@@ -79,11 +83,18 @@ class LocalLiterals:
         self._dynamic: set[int] = set()
         self._frames = False
         for name in files.names:
-            if name.id in DYNAMIC_CALLS:
+            # `__builtins__` reaches the same functions by key as well: `__builtins__["exec"](…)`.
+            if name.id in DYNAMIC_CALLS or name.id == "__builtins__":
                 self._mark_dynamic(name)
             elif name.id in FRAME_NAMES:
                 self._frames = True
         for attribute in files.attributes:
+            if (
+                attribute.attr in DYNAMIC_CALLS
+                and isinstance(attribute.value, ast.Name)
+                and attribute.value.id in BUILTINS_MODULES
+            ):
+                self._mark_dynamic(attribute)
             if attribute.attr in FRAME_NAMES or (
                 attribute.attr in INSPECT_FRAMES
                 and isinstance(attribute.value, ast.Name)

@@ -8,6 +8,7 @@ use Knossos\TestFidelity\Facts\PinnedValue;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\PhpTypeFit;
+use Knossos\TestFidelity\PythonTypeFit;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\TestFidelity\TestFinding;
 
@@ -30,6 +31,13 @@ use Knossos\TestFidelity\TestFinding;
  * `self` and `static` name the declaring class, or the doubled class when a
  * trait declares the method. The double itself pinned on a `void` method
  * (`willReturnSelf()`) breaks nothing at run time, so it is a warning.
+ *
+ * The Python worker leaves every pin `"unknown"` too, and `PythonTypeFit`
+ * judges it against the annotation. Python never enforces an annotation and a
+ * mock returns what it is given, so nothing breaks for certain: a refused
+ * Python pin is always a warning (the user's decision, against spec §2). A
+ * `new=` value replaces the member itself rather than pinning what it returns,
+ * so it is not judged; a decorated member has no signature to judge against.
  */
 final readonly class ReturnDriftRule extends DriftRule
 {
@@ -40,6 +48,9 @@ final readonly class ReturnDriftRule extends DriftRule
 
     /** The PHP apis that pin the double itself as a member's return. */
     private const SELF_APIS = ['willReturnSelf', 'andReturnSelf'];
+
+    /** The Python api that pins the replacement itself, not what it returns. */
+    private const PYTHON_REPLACEMENT = 'new';
 
     /** Reports a stub that pins a value the member's return type refuses. */
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
@@ -69,7 +80,8 @@ final readonly class ReturnDriftRule extends DriftRule
     /**
      * The pinned values the member's return type refuses, each with whether
      * the refusal rests on declared types: the worker's verdict, or for a PHP
-     * target whose worker left it unknown, `PhpTypeFit`'s.
+     * or Python target whose worker left it unknown, `PhpTypeFit`'s or
+     * `PythonTypeFit`'s. A Python refusal never rests on declared types.
      *
      * @param list<PinnedValue> $returns
      * @return list<array{PinnedValue, bool}>
@@ -77,6 +89,9 @@ final readonly class ReturnDriftRule extends DriftRule
     private static function refused(array $returns, ?string $declared, DriftPair $pair, TestFidelityGraph $graph): array
     {
         $php = TestFidelityGraph::isPhp($pair->target);
+        if (TestFidelityGraph::isPython($pair->target)) {
+            return self::pythonRefused($returns, $declared, $graph);
+        }
         $refused = [];
         foreach ($returns as $value) {
             if ($value->assignable === false) {
@@ -86,6 +101,27 @@ final readonly class ReturnDriftRule extends DriftRule
                 if ($fit['fits'] === false) {
                     $refused[] = [$value, $fit['typed'] && !self::isSelfOnVoid($value, $declared)];
                 }
+            }
+        }
+
+        return $refused;
+    }
+
+    /**
+     * The Python pins the annotation refuses, each only a warning.
+     *
+     * @param list<PinnedValue> $returns
+     * @return list<array{PinnedValue, bool}>
+     */
+    private static function pythonRefused(array $returns, ?string $declared, TestFidelityGraph $graph): array
+    {
+        $refused = [];
+        foreach ($returns as $value) {
+            if ($value->api === self::PYTHON_REPLACEMENT) {
+                continue;
+            }
+            if ($value->assignable === false || ($value->assignable === 'unknown' && $value->type !== null && PythonTypeFit::judge($value->type, $declared, $graph) === false)) {
+                $refused[] = [$value, false];
             }
         }
 

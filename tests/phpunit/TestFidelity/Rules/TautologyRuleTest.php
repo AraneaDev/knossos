@@ -319,6 +319,58 @@ final class TautologyRuleTest extends KnossosTestCase
         )));
     }
 
+    /**
+     * The sub-rule and confidence of each finding on one Python test case of `$assertions`, beside one unconfigured spy.
+     *
+     * @param list<array<string, mixed>> $assertions
+     * @return list<string>
+     */
+    private static function python(array $assertions, int $productionCalls = 0, int $invocations = 0): array
+    {
+        $case = PythonFixtures::node('test_case', 'tests/test_repo.py#test:10', ['name' => 'test_it', 'production_calls' => $productionCalls, 'subjects' => [], 'assertions' => $assertions], 'tests/test_repo.py');
+        $spy = PythonFixtures::node('test_double', 'tests/test_repo.py#double:11:11', [
+            'framework' => 'pytest-mock', 'pattern' => 'pytest_mock.mocker.spy', 'target' => ['kind' => 'unknown'], 'automock' => true, 'invocations' => $invocations, 'members' => [],
+        ], 'tests/test_repo.py');
+        $findings = [...(new TautologyRule())->findings(CaseFixtures::graph([$case, $spy]))];
+
+        return array_map(static fn(TestFinding $finding): string => $finding->subRule . ' ' . $finding->confidence->value, $findings);
+    }
+
+    public function testPythonCallMatcherOnAnUnconfiguredSpyWarns(): void
+    {
+        $spy = CaseFixtures::operand('mock-call', ['double' => 'tests/test_repo.py#double:11:11', 'unconfigured_spy' => true]);
+        foreach (['assert_called_once_with', 'assert_called', 'assert_has_calls', 'assert_not_called', 'assert_awaited_with'] as $api) {
+            assertSame([$api, ['unconfigured_spy warning']], [$api, self::python([CaseFixtures::assertion($api, [$spy])])]);
+        }
+        // `toHaveBeenCalled` is no Python matcher, a test that runs production may reach the spy, and a spy called in the file was reached.
+        assertSame(['mock_only warning'], self::python([CaseFixtures::assertion('toHaveBeenCalled', [$spy])]));
+        assertSame([], self::python([CaseFixtures::assertion('assert_called_once_with', [$spy])], 1));
+        assertSame(['mock_only warning'], self::python([CaseFixtures::assertion('assert_called_once_with', [$spy])], 0, 1));
+    }
+
+    public function testAPythonSelfComparisonUnderEqualityNeedsTwoLiterals(): void
+    {
+        // Ruling P20: under `==` a value need not equal itself (NaN, an `__eq__` under test); by identity a name read twice is one value.
+        $name = CaseFixtures::operand('unknown', ['text' => 'x']);
+        $literal = CaseFixtures::operand('literal', ['text' => '5']);
+        assertSame([], self::python([CaseFixtures::assertion('assert ==', [$name, $name])]));
+        assertSame([], self::python([CaseFixtures::assertion('assertEqual', [$name, $name])]));
+        assertSame(['self_comparison definite'], self::python([CaseFixtures::assertion('assert is', [$name, $name])]));
+        assertSame(['self_comparison definite'], self::python([CaseFixtures::assertion('assertIs', [$name, $name])]));
+        assertSame(['self_comparison definite'], self::python([CaseFixtures::assertion('assert ==', [$literal, $literal])]));
+        // Outside Python the text alone decides, as before.
+        assertSame(['self_comparison'], self::subRules(self::judge(CaseFixtures::testCase([CaseFixtures::assertion('toBe', [$name, $name])]))));
+    }
+
+    public function testPythonAssertionsOfOneValueAreNotConstant(): void
+    {
+        $five = CaseFixtures::operand('literal', ['text' => '5']);
+        $class = CaseFixtures::operand('literal', ['text' => 'int']);
+        assertSame([], self::python([CaseFixtures::assertion('assertIsInstance', [$five, $class])]));
+        assertSame([], self::python([CaseFixtures::assertion('assertNotIsInstance', [$five, $class])]));
+        assertSame(['constant definite'], self::python([CaseFixtures::assertion('assertIn', [$five, $class])]));
+    }
+
     public function testIdNamesTheCategory(): void
     {
         assertSame('test.fidelity.tautology.v1', (new TautologyRule())->id());

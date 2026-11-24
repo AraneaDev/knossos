@@ -190,7 +190,10 @@ A Python parameter may carry `kind`, `positional_only` (before a `/`) or
 function or method carries `"decorated": true` when it has a decorator outside
 `staticmethod`, `classmethod`, `abstractmethod`, `override`, `final`,
 `functools.cache` and `functools.lru_cache`: a decorator may change the
-signature, so a reader must not judge a call against it. `"overloaded": true`
+signature, so a reader must not judge a call against it. It is set too when the
+def's module or class body binds its name again (`f = wrap(f)`, a `def` in
+another branch, a fallback import, a function's `global f`, a method's
+`self.m = …`), which may leave the name holding another signature. `"overloaded": true`
 is also set on a Python def that `@overload` stubs precede. A Python method
 carries `visibility`: `protected` for `_x`, `private` for `__x` where it is not
 a dunder, omitted otherwise.

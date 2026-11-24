@@ -24,6 +24,13 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
  * test that runs production may reach a double through it, so neither
  * `unconfigured_spy` nor `zero_reach` speaks there, and neither does
  * `zero_reach` for a double of a package, which code outside the project may reach.
+ *
+ * In Python the call matchers are the `Mock` assertions (`assert_called_with`,
+ * `assert_has_calls`, their `await` forms…), and `assertIsInstance` states a
+ * property of one value. Under `==` and the orderings a value need not equal
+ * itself (NaN, an `__eq__` under test), so a Python self-comparison is definite
+ * there only when both operands are literals; `is` and `assertIs` compare by
+ * identity, where a name read twice is the same value (Ruling P20).
  */
 final readonly class TautologyRule implements TestFidelityRule
 {
@@ -31,6 +38,18 @@ final readonly class TautologyRule implements TestFidelityRule
 
     /** Matchers that state a property of one value, so two constants under them are not a tautology: Vitest's and Jest's, PHPUnit's and Pest's. */
     private const CONSTANT_APIS = ['toBeNull', 'toBeUndefined', 'toBeTruthy', 'toBeFalsy', 'toBeInstanceOf', 'toHaveLength', 'assertNull', 'assertInstanceOf', 'assertCount', 'toHaveCount'];
+
+    /** Python's `unittest` assertions that state a property of one value. */
+    private const PYTHON_CONSTANT_APIS = ['assertIsInstance', 'assertNotIsInstance', 'assertIsNone', 'assertIsNotNone', 'assertTrue', 'assertFalse', 'assert'];
+
+    /** The `Mock` API's assertions on the calls a Python double received. */
+    private const PYTHON_CALL_MATCHERS = [
+        'assert_called', 'assert_called_once', 'assert_called_with', 'assert_called_once_with', 'assert_any_call', 'assert_has_calls', 'assert_not_called',
+        'assert_awaited', 'assert_awaited_once', 'assert_awaited_with', 'assert_awaited_once_with', 'assert_any_await', 'assert_has_awaits', 'assert_not_awaited',
+    ];
+
+    /** The Python assertions that compare by identity. */
+    private const PYTHON_IDENTITY_APIS = ['assert is', 'assertIs'];
 
     /** Mockery's spy assertions, which hold a call against a spy as `toHaveBeenCalled*` does. */
     private const SPY_ASSERTIONS = ['shouldHaveReceived', 'shouldNotHaveReceived'];
@@ -63,7 +82,7 @@ final readonly class TautologyRule implements TestFidelityRule
                         $asserted[$operand->double] = true;
                     }
                 }
-                $finding = self::judge($assertion, $case, $node, $doubles);
+                $finding = self::judge($assertion, $case, $node, $doubles, TestFidelityGraph::isPython($node));
                 if ($finding !== null) {
                     yield $finding;
                 }
@@ -82,11 +101,11 @@ final readonly class TautologyRule implements TestFidelityRule
      *
      * @param array<string, TestDouble> $doubles by canonical name
      */
-    private static function judge(Assertion $assertion, TestCaseFact $case, NodeFact $node, array $doubles): ?TestFinding
+    private static function judge(Assertion $assertion, TestCaseFact $case, NodeFact $node, array $doubles, bool $python): ?TestFinding
     {
         [$left, $right] = $assertion->operands + [null, null];
-        $verdict = self::compared($assertion, $left, $right)
-            ?? self::unconfiguredSpy($assertion, $case, $doubles)
+        $verdict = self::compared($assertion, $left, $right, $python)
+            ?? self::unconfiguredSpy($assertion, $case, $doubles, $python)
             ?? self::mockOnly($assertion, $case);
         if ($verdict === null) {
             return null;
@@ -103,23 +122,33 @@ final readonly class TautologyRule implements TestFidelityRule
      *
      * @return array{string, FindingConfidence, string, array<string, string>}|null
      */
-    private static function compared(Assertion $assertion, ?Operand $left, ?Operand $right): ?array
+    private static function compared(Assertion $assertion, ?Operand $left, ?Operand $right, bool $python): ?array
     {
         if ($left === null || $right === null) {
             return null;
         }
-        if (!$assertion->negated && $left->text !== null && $left->text === $right->text) {
+        if (!$assertion->negated && $left->text !== null && $left->text === $right->text && (!$python || self::isPythonSelfSame($assertion, $left, $right))) {
             return ['self_comparison', FindingConfidence::Definite, DriftText::clean($left->text) . ' is compared with itself; the assertion cannot fail', []];
         }
         $echoed = $assertion->negated ? null : (self::echo($left, $right) ?? self::echo($right, $left));
         if ($echoed !== null) {
             return ['mock_echo', FindingConfidence::Definite, 'the assertion compares the stubbed value ' . DriftText::clean($echoed) . ' with itself; it cannot fail', []];
         }
-        if ($left->source === 'literal' && $right->source === 'literal' && !in_array($assertion->api, self::CONSTANT_APIS, true)) {
+        if ($left->source === 'literal' && $right->source === 'literal' && !in_array($assertion->api, $python ? self::PYTHON_CONSTANT_APIS : self::CONSTANT_APIS, true)) {
             return ['constant', FindingConfidence::Definite, sprintf('%s is compared with %s, both constants; the assertion cannot fail', DriftText::clean($left->text ?? 'a literal'), DriftText::clean($right->text ?? 'a literal')), []];
         }
 
         return null;
+    }
+
+    /**
+     * Whether a Python comparison of two operands of the same text cannot
+     * fail: by identity, or between two literals, which no `__eq__` of the
+     * test's and no NaN can make unequal (Ruling P20).
+     */
+    private static function isPythonSelfSame(Assertion $assertion, Operand $left, Operand $right): bool
+    {
+        return in_array($assertion->api, self::PYTHON_IDENTITY_APIS, true) || ($left->source === 'literal' && $right->source === 'literal');
     }
 
     /** The value a stub was pinned to, when the other operand is that same literal. */
@@ -135,14 +164,14 @@ final readonly class TautologyRule implements TestFidelityRule
      * @param array<string, TestDouble> $doubles
      * @return array{string, FindingConfidence, string, array<string, string>}|null
      */
-    private static function unconfiguredSpy(Assertion $assertion, TestCaseFact $case, array $doubles): ?array
+    private static function unconfiguredSpy(Assertion $assertion, TestCaseFact $case, array $doubles, bool $python): ?array
     {
         $operand = $assertion->operands[0] ?? null;
         if ($operand === null || !$operand->unconfiguredSpy || $operand->double === null) {
             return null;
         }
         $spy = $doubles[$operand->double] ?? null;
-        if ($spy === null || $spy->invocations !== 0 || $case->productionCalls !== 0 || !self::isCallMatcher($assertion->api)) {
+        if ($spy === null || $spy->invocations !== 0 || $case->productionCalls !== 0 || !($python ? in_array($assertion->api, self::PYTHON_CALL_MATCHERS, true) : self::isCallMatcher($assertion->api))) {
             return null;
         }
 

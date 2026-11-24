@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\TestFidelity\Rules;
 
+use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\Rules\GhostMemberRule;
@@ -287,5 +288,95 @@ final class GhostMemberRuleTest extends KnossosTestCase
     public function testATypeScriptMemberMatchesOnlyInItsOwnCase(): void
     {
         assertCount(1, self::judge(DriftFixtures::graph([DriftFixtures::method('total')], [DriftFixtures::stub('Total')])));
+    }
+
+    /**
+     * The ghosts on a Python double of `app.repo.Repo` (methods `run`), stubbing `$stubbed`, the class extending `$bases`.
+     *
+     * @param list<string> $stubbed
+     * @param list<string> $bases references the class's `extends` edges name
+     * @param list<NodeFact> $extra
+     * @param array<string, mixed>|null $classAttributes
+     * @return list<string> each ghost's sub-rule, confidence and stubbed name
+     */
+    private static function python(array $stubbed, array $bases = [], array $extra = [], ?array $classAttributes = null, string $kind = 'class'): array
+    {
+        $owner = PythonFixtures::node($kind, $kind === 'module' ? 'app.repo' : 'app.repo.Repo');
+        $graph = PythonFixtures::graph(
+            [['run', []]],
+            array_map(static fn(string $name): array => PythonFixtures::stub($name), $stubbed),
+            ownerAttributes: $classAttributes,
+            extra: $extra,
+            extraEdges: array_map(static fn(string $base): \Knossos\Scanner\Protocol\EdgeFact => PythonFixtures::edge('extends', $owner, $base), $bases),
+            kind: $kind,
+        );
+
+        return array_map(static fn($finding): string => $finding->subRule . ' ' . $finding->confidence->value . ' ' . $finding->attributes['member'], self::judge($graph));
+    }
+
+    public function testPythonDunderIsNeverAGhost(): void
+    {
+        // Ruling P3: no worker lists a dunder, and the runtime or `MagicMock` answers one; a class and a module alike.
+        assertSame(['missing_member definite rnu'], self::python(['__enter__', '__call__', 'rnu']));
+        assertSame(['missing_export definite rnu'], self::python(['__version__', '__getattr__', 'rnu'], kind: 'module'));
+        // A name that only starts with two underscores is no dunder.
+        assertSame(['missing_member definite __rnu'], self::python(['__rnu']));
+    }
+
+    public function testADunderIsJudgedOutsidePython(): void
+    {
+        // The skip is Python's alone: a TypeScript or PHP name spelled `__x__` keeps its ghost.
+        $typescript = DriftFixtures::graph([DriftFixtures::method('save')], [DriftFixtures::stub('__init__')]);
+        $php = DriftFixtures::phpGraph([['save', []]], [DriftFixtures::stub('__init__')]);
+
+        assertSame(['missing_member'], array_map(static fn($finding): string => $finding->subRule, self::judge($typescript)));
+        assertSame(['missing_member'], array_map(static fn($finding): string => $finding->subRule, self::judge($php)));
+    }
+
+    public function testPythonAbcBaseKeepsTheListComplete(): void
+    {
+        // Ruling P8: `from abc import ABC` and `abc.ABC` name the same base, and so do typing's two spellings.
+        foreach (['py:external_symbol:abc.ABC', 'py:class:abc.ABC', 'py:external_symbol:typing.Protocol', 'py:class:typing.Protocol', 'py:external_symbol:typing.Generic'] as $base) {
+            assertSame([$base, ['missing_member definite rnu']], [$base, self::python(['rnu'], [$base])]);
+        }
+        // What `ABCMeta` gives the class is no ghost; the protocol flags only a Protocol has.
+        assertSame([], self::python(['register', '_abc_impl'], ['py:class:abc.ABC']));
+        assertSame([], self::python(['_is_protocol'], ['py:external_symbol:typing.Protocol']));
+        assertSame(['missing_member definite _is_runtime_protocol'], self::python(['_is_runtime_protocol'], ['py:external_symbol:abc.ABC']));
+    }
+
+    public function testPythonExternalAncestorsAreUnseen(): void
+    {
+        // Carried item (a): every other base outside the project may give names the scan cannot see.
+        $cases = [
+            'py:external_symbol:enum.Enum' => ['name', 'value', '_value_'],
+            'py:class:enum.Enum' => ['name'],
+            'py:external_symbol:typing.NamedTuple' => ['_replace', '_asdict'],
+            'py:external_symbol:typing.TypedDict' => ['keys'],
+            'py:external_symbol:typing_extensions.Protocol' => ['rnu'],
+            'py:class:app.repo.Missing' => ['rnu'],
+        ];
+        foreach ($cases as $base => $stubbed) {
+            assertSame([$base, []], [$base, self::python($stubbed, [$base])]);
+        }
+        // Behind a known base, an unseen one still opens the list.
+        assertSame([], self::python(['name'], ['py:class:abc.ABC', 'py:external_symbol:enum.Enum']));
+    }
+
+    public function testPythonOpenParentIsSilent(): void
+    {
+        // Carried item (b): an ancestor open by a metaclass, `__init_subclass__` or a dynamic base opens its subclasses, however closed.
+        $base = PythonFixtures::node('class', 'app.repo.Base', ['member_names' => ['helper'], 'member_names_open' => true]);
+        assertSame([], self::python(['rnu'], ['py:class:app.repo.Base'], [$base]));
+
+        $grand = PythonFixtures::node('class', 'app.repo.Grand', ['member_names' => [], 'member_names_open' => true]);
+        $middle = PythonFixtures::node('class', 'app.repo.Middle', ['member_names' => ['helper']]);
+        $edges = [PythonFixtures::edge('extends', $middle, 'py:class:app.repo.Grand')];
+        $graph = PythonFixtures::graph([['run', []]], [PythonFixtures::stub('rnu')], extra: [$grand, $middle], extraEdges: [PythonFixtures::edge('extends', PythonFixtures::node('class', 'app.repo.Repo'), 'py:class:app.repo.Middle'), ...$edges]);
+        assertSame([], self::judge($graph));
+
+        // A closed parent keeps the list complete, and its names count as the child's.
+        $closed = PythonFixtures::node('class', 'app.repo.Base', ['member_names' => ['helper']]);
+        assertSame(['missing_member definite rnu'], self::python(['helper', 'rnu'], ['py:class:app.repo.Base'], [$closed]));
     }
 }
