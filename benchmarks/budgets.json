@@ -32,6 +32,9 @@
     },
     "test_fidelity_rescan_one_file_php": {
       "incremental_scan_seconds": 2
+    },
+    "test_fidelity_rescan_one_file_python": {
+      "incremental_scan_seconds": 4
     }
   }
 }

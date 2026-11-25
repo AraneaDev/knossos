@@ -48,7 +48,7 @@ use PHPUnit\Framework\Attributes\Group;
  * `signature` for a callable.
  *
  * Disagreements, where Knossos deliberately differs, and the gaps (cases a
- * tool reports that Knossos has no rule for yet: items 9, 10, 11 and 12):
+ * tool reports that Knossos has no rule for yet: items 9 to 13):
  *
  * 1. `momus-drift` `drift_test.py:12` and `nemesis-experiments/module-drift`
  *    `test_mailer.py:10`: Nemesis reports definite drift, Momus warns (or,
@@ -103,10 +103,10 @@ use PHPUnit\Framework\Attributes\Group;
  * 12. A gap (Ruling P10): an unspec'd `Mock()` pinned and never reached:
  *    Momus reports TAUT-005; an unspec'd double records no members
  *    (Decision 2), so Knossos is silent. The golden's stub is spec'd.
- * 13. Momus's MOCK-001 (over-mocking, at line 1 of `test_patch_imports.py`,
- *    `test_patch_missing.py`, both `momus-src-layout` tests, and the
- *    `module-drift`, `patch-multiple` and `side-effect` tests) is an
- *    on-request check, not a scan one.
+ * 13. A gap: Momus's MOCK-001 (over-mocking, at line 1 of
+ *    `test_patch_imports.py`, `test_patch_missing.py`, both
+ *    `momus-src-layout` tests, and the `module-drift`, `patch-multiple` and
+ *    `side-effect` tests) is an on-request check in Knossos, not a scan one.
  *
  * Every definite in these lists is one a tool gives too: the tautology
  * golden's three agree with Momus's errors there (TAUT-001 to TAUT-003),
@@ -282,11 +282,14 @@ final class PythonAcceptanceTest extends KnossosTestCase
     /**
      * Renaming a patched method in the production class makes the patch's
      * member a ghost, and renaming it back clears it; the test file is never
-     * edited, and every other finding stays as it was.
+     * edited, and every other finding stays as it was. A third file, which
+     * neither imports, is reused as it was.
      */
     public function testARenameInTheTargetMakesAndClearsAGhost(): void
     {
         [$pdo, $service, $root] = $this->scanned('nemesis');
+        file_put_contents($root . '/src/clock.py', "def now() -> int:\n    return 0\n");
+        assertSame(1, $service->scan($root)->data['parsed_files']);
         $before = self::findings($pdo);
         $production = $root . '/src/services.py';
         $test = (string) file_get_contents($root . '/tests/test_auth.py');
@@ -295,8 +298,8 @@ final class PythonAcceptanceTest extends KnossosTestCase
         file_put_contents($production, str_replace('def login(', 'def sign_in(', $original));
         $renamed = $service->scan($root);
 
-        // The edited file and the test that reads it to resolve its patch targets are parsed again, as in TypeScript.
-        assertSame([2, 0], [$renamed->data['parsed_files'], $renamed->data['unchanged_files']]);
+        // The edited file and the test that reads it to resolve its patch targets are parsed again, as in TypeScript; the unrelated file is not.
+        assertSame([2, 1], [$renamed->data['parsed_files'], $renamed->data['unchanged_files']]);
         assertSame(self::sorted([...$before, 'GHOST_MEMBER/missing_member/definite@tests/test_auth.py:15']), self::findings($pdo));
 
         file_put_contents($production, $original);

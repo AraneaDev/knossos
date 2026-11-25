@@ -1308,6 +1308,7 @@ php	tests/phpunit/TestFidelity/PhpHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/PhpTypeFitTest.php
 php	tests/phpunit/TestFidelity/PythonAcceptanceTest.php
 php	tests/phpunit/TestFidelity/PythonHealthyIdiomsTest.php
+php	tests/phpunit/TestFidelity/PythonSelfScanTest.php
 php	tests/phpunit/TestFidelity/PythonTypeFitTest.php
 php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
