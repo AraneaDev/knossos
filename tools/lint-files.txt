@@ -1187,6 +1187,7 @@ php	tests/phpunit/Scanner/ReturnedReceiverTest.php
 php	tests/phpunit/Scanner/RouteAttributesAgreementTest.php
 php	tests/phpunit/Scanner/RustModuleIdentityTest.php
 php	tests/phpunit/Scanner/RustReadAttributionTest.php
+php	tests/phpunit/Scanner/RustTestFactsSchemaTest.php
 php	tests/phpunit/Scanner/RustWorkerTest.php
 php	tests/phpunit/Scanner/ScannerClientTest.php
 php	tests/phpunit/Scanner/ScannerSdkTest.php
@@ -1320,6 +1321,7 @@ php	tests/phpunit/TestFidelity/Rules/PythonFixtures.php
 php	tests/phpunit/TestFidelity/Rules/ReturnDriftRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/TautologyRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/VisibilityBreachRuleTest.php
+php	tests/phpunit/TestFidelity/RustHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/ScansTypeScript.php
 php	tests/phpunit/TestFidelity/SnapshotTestFindingsTest.php
 php	tests/phpunit/TestFidelity/StaleCategoriesTest.php

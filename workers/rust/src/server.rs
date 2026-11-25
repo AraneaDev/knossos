@@ -13,6 +13,7 @@ use crate::layout::Layout;
 use crate::params::ScanRequest;
 use crate::protocol::{Contribution, Manifest};
 use crate::reads::FileReads;
+use crate::test_facts::{self, TestInput};
 use crate::visit::{Declarations, ModuleGates};
 
 /// Serialized bytes one `scan/input_hashes` notification carries at most, well
@@ -182,16 +183,17 @@ fn walk_requested(
                 content_hash,
             } => {
                 let module = layout.module_of(&relative);
-                let (contribution, placed) = walk_one(
-                    &relative,
-                    &module,
-                    &parsed,
-                    content_hash,
-                    &request.frameworks,
-                    &declarations,
-                    &test_modules,
+                let shared = Shared {
+                    frameworks: &request.frameworks,
+                    declarations: &declarations,
+                    test_modules: &test_modules,
                     layout,
-                );
+                    read: &*input_hashes,
+                    // A file nothing loads compiles in no test run.
+                    skip_test_facts: orphans.contains_key(&relative),
+                };
+                let (contribution, placed) =
+                    walk_one(&relative, &module, &parsed, content_hash, &shared);
                 let lookups = declarations.take_lookups();
                 let mut keys = reads.of_file(&relative, &module, &lookups, &placed, input_hashes);
                 // A file nothing loads is placed by a `#[path]` added near
@@ -249,19 +251,40 @@ fn emit_contributions(
     }))
 }
 
+/// What every file's walk in one request reads besides the file itself.
+struct Shared<'a> {
+    /// Frameworks the request asked to enrich.
+    frameworks: &'a [String],
+    /// The scan-wide declaration index.
+    declarations: &'a Declarations,
+    /// Every out-of-line `#[cfg(..)] mod name;` any file declared.
+    test_modules: &'a ModuleGates,
+    /// Where the project's crates are.
+    layout: &'a Layout,
+    /// Every file read so far, with its hash.
+    read: &'a BTreeMap<String, Option<String>>,
+    /// Whether the file's test facts are left unread: decided per file in
+    /// [`walk_requested`], for an orphan.
+    skip_test_facts: bool,
+}
+
 /// Walk one parsed file into its contribution, with the files its `mod`
-/// declarations load (see [`crate::visit::walk`]).
-#[allow(clippy::too_many_arguments)]
+/// declarations load (see [`crate::visit::walk`]), and read its test facts
+/// when it holds test code (see [`crate::test_facts`]).
 fn walk_one(
     relative: &str,
     module: &str,
     parsed: &syn::File,
     content_hash: String,
-    frameworks: &[String],
-    declarations: &Declarations,
-    test_modules: &ModuleGates,
-    layout: &Layout,
+    shared: &Shared<'_>,
 ) -> (Contribution, BTreeSet<String>) {
+    let Shared {
+        frameworks,
+        declarations,
+        test_modules,
+        layout,
+        ..
+    } = *shared;
     let display = module.rsplit("::").next().unwrap_or(module).to_owned();
     let mut facts = Facts::new(relative);
     facts.set_content_hash(content_hash);
@@ -280,7 +303,7 @@ fn walk_one(
     facts.exit_support_scope(file_support);
     facts.exit_cfg_scope(file_gate);
     facts.exit_test_scope_if(file_is_test);
-    let placed = crate::visit::walk(
+    let (placed, scope) = crate::visit::walk(
         &mut facts,
         module,
         parsed,
@@ -289,6 +312,20 @@ fn walk_one(
         test_modules,
         layout,
     );
+    if !shared.skip_test_facts && test_facts::holds_test_code(&facts, relative, layout) {
+        let outcome = test_facts::collect_guarded(&TestInput {
+            relative,
+            module,
+            file: parsed,
+            declarations,
+            layout,
+            test_modules,
+            scope: &scope,
+            read: shared.read,
+            facts: &facts,
+        });
+        test_facts::settle(outcome, &mut facts);
+    }
     // A target a manifest declares is entered by Cargo, whether or not
     // it has a `fn main` the walk saw (`#![no_main]`, a harness).
     if layout.targets.contains(relative) {

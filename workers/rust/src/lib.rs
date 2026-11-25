@@ -19,4 +19,5 @@ mod reads;
 pub mod resolve;
 pub mod server;
 pub mod source_hash;
+mod test_facts;
 pub mod visit;

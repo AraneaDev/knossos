@@ -117,8 +117,11 @@ final class DriftFixtures
         ]);
     }
 
-    /** A double with no `doubles` edge, replacing a module by specifier. */
-    /** @param array<string, mixed> $doubleAttributes overrides of the double's attributes */
+    /**
+     * A double with no `doubles` edge, replacing a module by specifier.
+     *
+     * @param array<string, mixed> $doubleAttributes overrides of the double's attributes
+     */
     public static function moduleGraph(string $specifier, array $doubleAttributes = []): TestFidelityGraph
     {
         $double = self::node('test_double', 'tests/a.test.ts#double:2:1', 'vi.mock', [

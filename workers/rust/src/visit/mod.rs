@@ -31,6 +31,7 @@ mod paths;
 mod placement;
 mod receivers;
 mod routes;
+mod scope;
 mod signatures;
 mod state;
 mod types;
@@ -38,7 +39,8 @@ mod uses;
 
 use calls::{is_foreign_export, is_wasm_bindgen};
 pub use cfg::include_sites;
-use cfg::{cfg_predicate, is_cfg_test, is_cfg_test_support, is_test_attribute, item_attrs};
+pub(crate) use cfg::is_test_attribute;
+use cfg::{cfg_predicate, is_cfg_test, is_cfg_test_support, item_attrs};
 pub use cfg::{
     collect_test_modules, is_test_module_path, is_test_support_module_path, ModuleGates,
 };
@@ -50,10 +52,12 @@ pub use declarations::{
 use labels::{path_label, type_label};
 use placement::mod_child;
 pub use placement::mod_declarations;
+pub(crate) use scope::FileScope;
 use state::Walk;
 
 /// Walk every item in a parsed file, attributing each to `module`, and
-/// return the files its `mod` declarations load (see [`mod_child`]).
+/// return the files its `mod` declarations load (see [`mod_child`]) with the
+/// names the file brought into scope (see [`FileScope`]).
 pub fn walk(
     facts: &mut Facts,
     module: &str,
@@ -62,7 +66,7 @@ pub fn walk(
     declarations: &Declarations,
     test_modules: &ModuleGates,
     layout: &Layout,
-) -> BTreeSet<String> {
+) -> (BTreeSet<String>, FileScope) {
     // A file that IS an out-of-line test module is test code in its entirety,
     // and so is anything nested below it, so the scope opens around the whole
     // walk rather than around a single item.
@@ -83,13 +87,14 @@ pub fn walk(
     walker.walk_items(module, "module", &file.items);
     walker.flush_routes();
     let placed = std::mem::take(&mut walker.placed);
+    let scope = walker.take_scope();
     facts.exit_support_scope(file_support);
     facts.exit_cfg_scope(file_gate);
     if file_is_test {
         facts.exit_test_scope();
     }
 
-    placed
+    (placed, scope)
 }
 
 /// What one file tells the declaration index beyond the paths it declares:

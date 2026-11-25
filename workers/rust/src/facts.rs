@@ -311,6 +311,24 @@ impl Facts {
             .push((canonical.to_owned(), key.to_owned(), value));
     }
 
+    /// The nodes emitted so far, in declaration order.
+    #[must_use]
+    pub fn nodes(&self) -> &[Node] {
+        &self.nodes
+    }
+
+    /// The edges from `source` so far, with each deferred one [`Facts::finish`]
+    /// would keep now (its target declared here), in the order recorded.
+    pub fn edges_from<'f>(&'f self, source: &'f str) -> impl Iterator<Item = &'f Edge> {
+        let pending = self.pending_edges.iter().filter(|edge| {
+            self.declared.contains(&edge.target) || self.aliases.contains(&edge.target)
+        });
+        self.edges
+            .iter()
+            .chain(pending)
+            .filter(move |edge| edge.source == source)
+    }
+
     /// Whether a node reference was declared in this contribution.
     #[must_use]
     pub fn declares(&self, id: &str) -> bool {

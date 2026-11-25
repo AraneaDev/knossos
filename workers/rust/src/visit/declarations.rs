@@ -148,6 +148,17 @@ impl Declarations {
         self.counts.get(name)
     }
 
+    /// Whether some file declares `name`, without remembering the question.
+    ///
+    /// Only for a reader of the walk's own edges (`crate::test_facts`): the
+    /// walk asked about each target it emitted, so the files that could
+    /// declare it are already among the file's reads, and asking again here
+    /// must not change them.
+    #[must_use]
+    pub fn declares_quietly(&self, name: &str) -> bool {
+        self.counts.contains_key(name)
+    }
+
     /// Count one file's declarations, of which the ones in `gated` (see
     /// [`indexed_item_paths`](super::indexed_item_paths)), or all of them when the file itself is
     /// (`file_gated`), compile only under a `cfg`. A name every declaring
