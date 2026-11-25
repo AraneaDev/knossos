@@ -87,6 +87,35 @@ fn a_panic_in_test_facts_keeps_the_file_facts() {
         .any(|node| node.local_id == "rust:test_case:src/lib.rs#test:5"));
 }
 
+/// What the walked file itself brings in unfreezes a standard name even
+/// when the scan-wide index knows nothing of it: a `use` binding it, and a
+/// crate opened to another crate's macros.
+#[test]
+fn the_walked_files_own_imports_unfreeze_a_name_without_the_index() {
+    let first_operand = |source: &str| {
+        let contribution = serde_json::to_value(scanned(source, collect)).unwrap();
+        contribution["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["kind"] == "test_case")
+            .unwrap()["attributes"]["assertions"][0]["operands"][0]["source"]
+            .clone()
+    };
+    let case =
+        "const LIMIT: u32 = 10;\n#[test]\nfn t() {\n    dbg!();\n    assert_eq!(LIMIT, 20);\n}\n";
+
+    assert_eq!("literal", first_operand(case));
+    assert_eq!(
+        "unknown",
+        first_operand(&format!("use extmac::dbg;\n{case}"))
+    );
+    assert_eq!(
+        "unknown",
+        first_operand(&format!("#[macro_use]\nextern crate extmac;\n{case}"))
+    );
+}
+
 /// A panic whose payload is not a string still names a cause.
 #[test]
 fn a_panic_with_any_payload_is_reported() {

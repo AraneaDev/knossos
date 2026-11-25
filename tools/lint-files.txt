@@ -1322,6 +1322,7 @@ php	tests/phpunit/TestFidelity/Rules/ReturnDriftRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/TautologyRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/VisibilityBreachRuleTest.php
 php	tests/phpunit/TestFidelity/RustHealthyIdiomsTest.php
+php	tests/phpunit/TestFidelity/RustMacroShadowIncrementalTest.php
 php	tests/phpunit/TestFidelity/ScansTypeScript.php
 php	tests/phpunit/TestFidelity/SnapshotTestFindingsTest.php
 php	tests/phpunit/TestFidelity/StaleCategoriesTest.php

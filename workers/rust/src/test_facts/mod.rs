@@ -32,8 +32,8 @@ mod tests;
 use assertions::{assertion, AssertionShape};
 use cases::{test_functions, TestFunction};
 use locals::{FileConsts, LocalLiterals};
-pub(crate) use macros::macro_rules_names;
 use macros::Frozen;
+pub(crate) use macros::MacroShadows;
 use operands::OperandReader;
 use output::CaseFact;
 pub(crate) use output::TestFacts;
@@ -117,7 +117,7 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
         .gate_of_file(input.relative, input.module)
         .is_some()
         || is_test_module_path(input.module, input.test_modules);
-    let frozen = Frozen::of(&input.file.items, input.declarations);
+    let frozen = Frozen::of(&input.file.items, input.module, input.declarations);
     let consts = FileConsts::of(&input.file.items, input.module, gated, frozen);
     let cases = test_functions(&input.file.items, input.module)
         .iter()

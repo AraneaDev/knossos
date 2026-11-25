@@ -57,8 +57,22 @@ pub struct Declarations {
     globs: BTreeMap<String, Vec<(String, bool)>>,
     /// The names of `exports` only a private `use` binds.
     private_exports: BTreeSet<String>,
-    /// The name of every `macro_rules!` any file defines.
-    macro_rules: BTreeSet<String>,
+    /// What may shadow a standard macro in each crate, by the crate's
+    /// first module segment; see [`Declarations::may_shadow_macro`].
+    macro_shadows: BTreeMap<String, MacroShadows>,
+}
+
+/// What the files of one crate bring in that may shadow a standard macro.
+#[derive(Debug, Default)]
+struct MacroShadows {
+    /// The module of every file of the crate.
+    modules: BTreeSet<String>,
+    /// Every `macro_rules!` name, and every leaf or rename of a `use`, any
+    /// file of the crate defines or binds.
+    names: BTreeSet<String>,
+    /// Whether some file opens the crate to another crate's macros by any
+    /// name (`#[macro_use] extern crate`, a glob from outside the crate).
+    opens_all: bool,
 }
 
 /// The modules each module of one file imports every name of with a glob
@@ -150,16 +164,31 @@ impl Declarations {
         self.counts.get(name)
     }
 
-    /// Add the `macro_rules!` names one file defines.
-    pub fn add_macro_rules(&mut self, names: &BTreeSet<String>) {
-        self.macro_rules.extend(names.iter().cloned());
+    /// Add what one file, placed in `module`, may shadow a standard macro
+    /// with: the `macro_rules!` names it defines and the names its `use`
+    /// items bind (`names`), and whether it opens its crate to another
+    /// crate's macros by any name (`opens_all`).
+    pub fn add_macro_shadows(&mut self, module: &str, names: &BTreeSet<String>, opens_all: bool) {
+        let shadows = self.macro_shadows.entry(crate_of(module)).or_default();
+        shadows.modules.insert(module.to_owned());
+        shadows.names.extend(names.iter().cloned());
+        shadows.opens_all |= opens_all;
     }
 
-    /// Whether some file defines a `macro_rules!` called `name`, which
-    /// shadows a standard macro of that name where it is in scope.
-    #[must_use]
-    pub fn defines_macro_rules(&self, name: &str) -> bool {
-        self.macro_rules.contains(name)
+    /// Whether the macro `name`, written bare in `module`, may be other than
+    /// the standard one: some file of the crate defines a `macro_rules!` of
+    /// that name, binds it with a `use`, or opens the crate to another
+    /// crate's macros. Any file of the crate may start to, so the module of
+    /// every one is remembered as a lookup, and its files are read.
+    pub fn may_shadow_macro(&self, module: &str, name: &str) -> bool {
+        let Some(shadows) = self.macro_shadows.get(&crate_of(module)) else {
+            return false;
+        };
+        let mut lookups = self.lookups.borrow_mut();
+        for file_module in &shadows.modules {
+            lookups.insert(format!("{file_module}::{name}!"));
+        }
+        shadows.opens_all || shadows.names.contains(name)
     }
 
     /// Whether some file declares `name`, without remembering the question.
@@ -429,4 +458,9 @@ impl Declarations {
     pub fn take_lookups(&self) -> BTreeSet<String> {
         std::mem::take(&mut *self.lookups.borrow_mut())
     }
+}
+
+/// The crate `module` is in, as its first segment names it.
+fn crate_of(module: &str) -> String {
+    module.split("::").next().unwrap_or(module).to_owned()
 }
