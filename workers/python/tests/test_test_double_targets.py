@@ -394,3 +394,30 @@ def test_it():
     with patch("plain.kw"), patch("plain.kept"):
         pass
 """
+
+
+ATTRIBUTE_OF_A_PROJECT_CLASS = """\
+from unittest.mock import Mock, patch
+import os
+import shop
+from shop import Status
+
+
+def test_it():
+    member = Mock(spec=Status.NEW)
+    member.value
+    dotted = Mock(spec=shop.Status.NEW)
+    dotted.value
+    with patch.object(Status.NEW, "value"), patch.object(os.path, "exists"):
+        pass
+"""
+
+
+def test_an_attribute_of_a_project_class_names_no_external_symbol(project, scan_collect) -> None:
+    # Final review M6: `Status.NEW` is a value the project declares, not a symbol outside it.
+    shop = {"shop.py": "import enum\n\n\nclass Status(enum.Enum):\n    NEW = 1\n"}
+    found = scan_test(project, scan_collect, ATTRIBUTE_OF_A_PROJECT_CLASS, shop)
+
+    assert [found[at][1] for at in ("8:14", "10:14", "12:10")] == [None] * 3
+    # An attribute of a module outside the project stays external.
+    assert found["12:45"][1] == "py:external_symbol:os.path"

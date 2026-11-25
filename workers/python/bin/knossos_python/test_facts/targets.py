@@ -117,13 +117,19 @@ class TargetResolver:
             return None
         symbol = resolved.symbol
         if symbol is None:
-            return Owner("external", resolved.qualified)
+            # Under a project module (`Status.NEW` of a project enum) it is no symbol outside the project: unknown.
+            return None if self._in_project(resolved.qualified) else Owner("external", resolved.qualified)
         if symbol.startswith("py:module:"):
             name = symbol.removeprefix("py:module:")
             return Owner("module", name, name)
         if symbol.startswith("py:class:"):
             return Owner("class", symbol.removeprefix("py:class:"))
         return None
+
+    def _in_project(self, qualified: str) -> bool:
+        """Whether a dotted name lies under a project module: some shorter prefix of it is one."""
+        parts = qualified.split(".")
+        return any(self.index.layout.module_file(".".join(parts[:end])) is not None for end in range(1, len(parts)))
 
     def attribute(self, owner: Owner, member: str) -> Located:
         """``member`` of ``owner``; a module's member is judged in the module that declares it."""
