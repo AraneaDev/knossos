@@ -146,7 +146,7 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
             $byLanguage = $service->auditTests($projectId)->data['summary']['by_language'];
 
             assertSame(['definite' => 0, 'warning' => 0], $byLanguage['php'], 'The PHP worker emits test facts; this project has no PHP findings.');
-            assertSame('no test facts', $byLanguage['python']);
+            assertSame(['definite' => 0, 'warning' => 0], $byLanguage['python'], 'The Python worker emits test facts; this project has no Python findings.');
             assertSame('no test facts', $byLanguage['rust']);
             assertSame(['definite', 'warning'], array_keys($byLanguage['typescript']));
             self::assertGreaterThan(0, $byLanguage['typescript']['definite']);
