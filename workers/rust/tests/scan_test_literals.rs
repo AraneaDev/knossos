@@ -192,10 +192,10 @@ fn unseen_writes_make_a_local_unknown() {
         ),
         ("unsafe_block", "let x = 5;\n        unsafe { write(&x); }"),
         ("macro_handed", "let x = 5;\n        rebind!(x);"),
-        ("macro_nested", "let x = 5;\n        rebind!({ x });"),
+        ("macro_nested", "let x = 5;\n        let _ = rebind!({ x });"),
         (
             "unsafe_in_macro",
-            "let x = 5;\n        wrap!(unsafe { touch() });",
+            "let x = 5;\n        let _ = wrap!(unsafe { touch() });",
         ),
         (
             "macro_in_assertion",
@@ -445,14 +445,73 @@ fn a_constant_declared_twice_holds_no_one_literal() {
 }
 
 #[test]
-fn a_module_macro_handed_the_name_hides_the_glob_constant() {
-    let lib = "const LIMIT: u32 = 10;\nconst OTHER: u32 = 4;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    define_limit!(LIMIT);\n    macro_rules! read_other {\n        () => { OTHER };\n    }\n    #[test]\n    fn defined() {\n        assert_eq!(LIMIT, 10);\n    }\n    #[test]\n    fn untouched() {\n        assert_eq!(OTHER, 4);\n    }\n}\n";
-    let found = first_operands("literals-module-macro", &[("src/lib.rs", lib)]);
+fn an_item_position_macro_hides_every_constant_of_its_scope() {
+    // `macro_rules!` items are unhygienic: `define_twenty!()` declares
+    // `LIMIT` where it is invoked, handed the name or not.
+    let lib = "const LIMIT: u32 = 10;\nconst OTHER: u32 = 4;\nmacro_rules! define_twenty {\n    () => {\n        const LIMIT: u32 = 20;\n    };\n}\n#[cfg(test)]\nmod tests {\n    use super::*;\n    define_limit!(LIMIT);\n    #[test]\n    fn handed() {\n        assert_eq!(LIMIT, 10);\n    }\n    #[test]\n    fn beside() {\n        assert_eq!(OTHER, 4);\n    }\n}\n#[cfg(test)]\nmod module_macro {\n    use super::*;\n    define_twenty!();\n    #[test]\n    fn unhanded() {\n        assert_eq!(LIMIT, 20);\n    }\n}\n#[cfg(test)]\nmod body_macro {\n    use super::*;\n    macro_rules! read_other {\n        () => { OTHER };\n    }\n    #[test]\n    fn unhanded() {\n        define_twenty!();\n        assert_eq!(LIMIT, 20);\n    }\n    #[test]\n    fn local() {\n        let x = 5;\n        define_twenty!();\n        assert_eq!(x, 5);\n    }\n    #[test]\n    fn itemless() {\n        let x = 5;\n        println!(\"{}\", 1);\n        dbg!(2);\n        assert_eq!(x, 5);\n    }\n    #[test]\n    fn untouched() {\n        assert_eq!(OTHER, 4);\n    }\n}\n";
+    let found = first_operands("literals-item-macros", &[("src/lib.rs", lib)]);
 
     assert_eq!(
         vec![
-            ("tests::defined".to_owned(), unknown()),
-            ("tests::untouched".to_owned(), literal("4")),
+            ("body_macro::itemless".to_owned(), literal("5")),
+            ("body_macro::local".to_owned(), unknown()),
+            ("body_macro::unhanded".to_owned(), unknown()),
+            ("body_macro::untouched".to_owned(), literal("4")),
+            ("module_macro::unhanded".to_owned(), unknown()),
+            ("tests::beside".to_owned(), unknown()),
+            ("tests::handed".to_owned(), unknown()),
+        ],
+        found
+    );
+}
+
+#[test]
+fn a_cfg_alternative_import_holds_no_literal() {
+    let lib = "pub mod limits;\n#[cfg(not(test))]\nconst CAP: u32 = 1;\n#[cfg(test)]\nuse crate::limits::LIMIT as CAP;\nconst PLAIN: u32 = 3;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn cfg_alt_use() {\n        assert_eq!(CAP, 20);\n    }\n    #[test]\n    fn plain() {\n        assert_eq!(PLAIN, 3);\n    }\n}\npub mod alt2 {\n    #[cfg(not(test))]\n    const SIZE: u32 = 1;\n    #[cfg(test)]\n    use crate::limits::LIMIT as SIZE;\n    #[cfg(not(test))]\n    const DEPTH: u32 = 1;\n    #[cfg(test)]\n    use crate::limits::*;\n    #[cfg(test)]\n    use LIMIT as DEPTH;\n    #[cfg(test)]\n    mod tests {\n        use super::*;\n        #[test]\n        fn cfg_alt_use_in_module() {\n            assert_eq!(SIZE, 20);\n        }\n        #[test]\n        fn cfg_alt_glob_rename() {\n            assert_eq!(DEPTH, 20);\n        }\n    }\n}\n";
+    let found = first_operands(
+        "literals-cfg-use",
+        &[
+            ("src/lib.rs", lib),
+            ("src/limits.rs", "pub const LIMIT: u32 = 20;\n"),
+        ],
+    );
+
+    assert_eq!(
+        vec![
+            ("alt2::tests::cfg_alt_glob_rename".to_owned(), unknown()),
+            ("alt2::tests::cfg_alt_use_in_module".to_owned(), unknown()),
+            ("tests::cfg_alt_use".to_owned(), unknown()),
+            ("tests::plain".to_owned(), literal("3")),
+        ],
+        found
+    );
+}
+
+#[test]
+fn an_import_beside_an_ungated_constant_of_its_name_holds_no_literal() {
+    // Rust refuses the pair in a test build; the scan reads it as written.
+    let lib = "pub mod limits;\nconst CAP: u32 = 1;\n#[cfg(test)]\nuse crate::limits::LIMIT as CAP;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn capped() {\n        assert_eq!(CAP, 20);\n    }\n}\n";
+    let found = first_operands(
+        "literals-ungated-import",
+        &[
+            ("src/lib.rs", lib),
+            ("src/limits.rs", "pub const LIMIT: u32 = 20;\n"),
+        ],
+    );
+
+    assert_eq!(vec![("tests::capped".to_owned(), unknown())], found);
+}
+
+#[test]
+fn an_ungated_import_beside_no_constant_is_followed() {
+    // `PLAIN` is imported, not declared: the import is followed, as before.
+    let lib = "mod inner {\n    pub const PLAIN: u32 = 3;\n    #[cfg(test)]\n    pub static GATED: u32 = 4;\n}\nuse inner::PLAIN;\nuse inner::GATED;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn imported() {\n        assert_eq!(PLAIN, 3);\n    }\n    #[test]\n    fn gated_static() {\n        assert_eq!(GATED, 4);\n    }\n}\n";
+    let found = first_operands("literals-import", &[("src/lib.rs", lib)]);
+
+    assert_eq!(
+        vec![
+            ("tests::gated_static".to_owned(), unknown()),
+            ("tests::imported".to_owned(), literal("3")),
         ],
         found
     );

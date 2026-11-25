@@ -23,13 +23,32 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use syn::visit::Visit;
 
-use super::assertions::{arguments, is_assertion_macro};
+use super::assertions::{arguments, is_assertion_macro, macro_name};
 use super::literals::literal_text;
 use crate::resolve::ident_name;
 use crate::visit::FileScope;
 
 /// How many glob and import hops a constant's name is followed through.
 const MAX_HOPS: usize = 8;
+
+/// The standard macros invoked in statement position that expand to no
+/// item, beside the assertion macros: any other macro invoked where an item
+/// may stand (`define_limit!();`) may declare any name, unhygienically.
+const ITEMLESS_MACROS: [&str; 13] = [
+    "println",
+    "print",
+    "eprintln",
+    "eprint",
+    "panic",
+    "todo",
+    "unimplemented",
+    "unreachable",
+    "dbg",
+    "write",
+    "writeln",
+    "format",
+    "drop",
+];
 
 /// The value-namespace items of one file, by canonical path, and the
 /// literal text of each `const` and non-`mut` `static` whose initializer is
@@ -44,9 +63,12 @@ pub(super) struct FileConsts {
     /// The paths declared more than once (`cfg` alternatives), which hold
     /// no one literal.
     repeated: BTreeSet<String>,
-    /// The paths a module's item macro is handed the name of
-    /// (`define_limit!(LIMIT);`), which it may declare as anything.
-    macro_named: BTreeSet<String>,
+    /// Every name a module-level `use` binds there, by path: beside a
+    /// `const` of that name, a `cfg` alternative of it.
+    imported: BTreeSet<String>,
+    /// The modules that invoke a macro in item position
+    /// (`define_limit!();`), which may declare any name there.
+    macro_modules: BTreeSet<String>,
 }
 
 impl FileConsts {
@@ -62,19 +84,32 @@ impl FileConsts {
     fn collect(&mut self, items: &[syn::Item], container: &str) {
         for item in items {
             let (name, literal) = match item {
-                syn::Item::Const(node) => (&node.ident, literal_text(&node.expr)),
-                syn::Item::Static(node) => (
+                // A gated constant has another value in some other build.
+                syn::Item::Const(node) => (
                     &node.ident,
-                    matches!(node.mutability, syn::StaticMutability::None)
+                    (!is_gated(&node.attrs))
                         .then(|| literal_text(&node.expr))
                         .flatten(),
                 ),
+                syn::Item::Static(node) => (
+                    &node.ident,
+                    (matches!(node.mutability, syn::StaticMutability::None)
+                        && !is_gated(&node.attrs))
+                    .then(|| literal_text(&node.expr))
+                    .flatten(),
+                ),
                 syn::Item::Fn(node) => (&node.sig.ident, None),
+                syn::Item::Use(node) => {
+                    let mut names = BTreeSet::new();
+                    use_names(&node.tree, &mut names, &mut false);
+                    self.imported
+                        .extend(names.iter().map(|name| format!("{container}::{name}")));
+                    continue;
+                }
                 syn::Item::Macro(node) if node.ident.is_none() => {
-                    let mut named = BTreeSet::new();
-                    identifiers(node.mac.tokens.clone(), &mut named);
-                    self.macro_named
-                        .extend(named.iter().map(|name| format!("{container}::{name}")));
+                    if declares_items(&node.mac) {
+                        self.macro_modules.insert(container.to_owned());
+                    }
                     continue;
                 }
                 syn::Item::Mod(node) => {
@@ -109,7 +144,10 @@ impl FileConsts {
             return None;
         }
         let own = format!("{module}::{name}");
-        if self.macro_named.contains(&own) || self.repeated.contains(&own) {
+        if self.macro_modules.contains(module)
+            || self.repeated.contains(&own)
+            || (self.values.contains(&own) && self.imported.contains(&own))
+        {
             return None;
         }
         if self.values.contains(&own) {
@@ -151,8 +189,9 @@ pub(super) struct LocalLiterals<'c> {
     /// `const`, `static`, `fn`…), which shadows a local or a constant of
     /// the same name for the rest of its block.
     items: BTreeSet<String>,
-    /// Whether the body glob-imports (`use m::*;`), which may bring in any
-    /// name.
+    /// Whether the body glob-imports (`use m::*;`) or invokes a macro where
+    /// an item may stand (`define_limit!();`), either of which may bring in
+    /// any name.
     glob: bool,
     /// Whether `unsafe` appears anywhere in the function.
     unsafe_code: bool,
@@ -274,6 +313,11 @@ impl Visit<'_> for Names {
         syn::visit::visit_item(self, node);
     }
 
+    fn visit_stmt_macro(&mut self, node: &syn::StmtMacro) {
+        self.glob |= declares_items(&node.mac);
+        syn::visit::visit_stmt_macro(self, node);
+    }
+
     fn visit_expr_unsafe(&mut self, node: &syn::ExprUnsafe) {
         self.unsafe_code = true;
         syn::visit::visit_expr_unsafe(self, node);
@@ -298,6 +342,20 @@ impl Visit<'_> for Names {
         identifiers(node.tokens.clone(), &mut self.in_macros);
         self.unsafe_code |= self.in_macros.contains("unsafe");
     }
+}
+
+/// Whether a macro invoked where an item may stand may declare one: any
+/// but an assertion and the standard macros that expand to none.
+fn declares_items(mac: &syn::Macro) -> bool {
+    !is_assertion_macro(mac) && !ITEMLESS_MACROS.contains(&macro_name(mac).as_str())
+}
+
+/// Whether an item carries a `cfg` or `cfg_attr` attribute: some build
+/// compiles another declaration in its place.
+fn is_gated(attrs: &[syn::Attribute]) -> bool {
+    attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
 }
 
 /// The names an item declares or imports into its block, with `glob` set

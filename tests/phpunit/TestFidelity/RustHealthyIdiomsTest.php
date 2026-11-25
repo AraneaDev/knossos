@@ -31,7 +31,9 @@ use PHPUnit\Framework\Attributes\Group;
  * `const` and a literal with production, and holds what shadows a same-file
  * `const` out of a pattern's sight (review C1 and I1): a block-level `use … as`
  * and a block-level `const` of production's value, and a `const` whose
- * `#[cfg(test)]` alternative is production's.
+ * `#[cfg(test)]` alternative is production's, as a `const` or as a `use`
+ * (re-review I1); and a same-crate `macro_rules!` invoked in the test body,
+ * not handed the name, whose expansion declares it (fix round 2).
  *
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and

@@ -19,6 +19,20 @@ const BATCH: u32 = 1;
 #[cfg(test)]
 const BATCH: u32 = limits::MAX;
 
+/// A cap the tests import from production instead.
+#[cfg(not(test))]
+const CAP: u32 = 1;
+#[cfg(test)]
+use limits::MAX as CAP;
+
+/// Declares the production limit where it is invoked: `macro_rules!` items
+/// are unhygienic, so it shadows the file's own constant.
+macro_rules! production_limit {
+    () => {
+        const LOCAL_LIMIT: u32 = crate::limits::MAX;
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -43,6 +57,17 @@ mod tests {
     #[test]
     fn a_cfg_alternative_constant() {
         assert_eq!(BATCH, 10);
+    }
+
+    #[test]
+    fn a_cfg_alternative_import() {
+        assert_eq!(CAP, 10);
+    }
+
+    #[test]
+    fn a_macro_declares_the_name_unhanded() {
+        production_limit!();
+        assert_eq!(LOCAL_LIMIT, 10);
     }
 
     #[test]
