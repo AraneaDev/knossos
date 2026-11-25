@@ -67,6 +67,18 @@ use PHPUnit\Framework\Attributes\Group;
  * twin, a plain base whose subclass's mismatch stays definite.
  * `tests/test_allowed.py` holds the decorators and metaclasses that rewrite
  * nothing: `dataclass`, `total_ordering`, `abc.ABC`, `enum.unique`.
+ *
+ * `src/probes/` and the `tests/test_probe_*.py` files hold the final review's
+ * probes, each passing under real pytest: a member Python's lookup answers
+ * with another binding than a breadth-first walk finds (a diamond, a
+ * divergent MRO, a base outside the project first, a class-body or `self.`
+ * shadow; Ruling P24), a def rebound on `self` through a tuple target or a
+ * literal `setattr` (I2), a class written through a loop, registry, alias,
+ * display or comprehension (Ruling P23), every binding form a module and a
+ * class body has, and pins mutated or reconfigured after they are set.
+ * `tests/test_probe_planted.py` holds their twins: an arity mismatch under one
+ * base, one beside other `self` writes, and a ghost on a class only annotations
+ * and an instance name.
  */
 #[Group('test-fidelity')]
 #[Group('python-scanner')]
@@ -101,12 +113,16 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
             'class openers.Generated', 'class openers.Guarded', 'class openers.Installed', 'class openers.Lazy',
             'class openers.Meta', 'class openers.Patched', 'class openers.Registered', 'class openers.Settings',
             'class openers.TwoWays', 'class openers.WithMeta',
+            // Each written through a same-file alias, a loop, a `setattr` or a helper (Ruling P23), or late (`Late.handle = …`).
+            'class probes.aliases.Aliased', 'class probes.aliases.Comprehended', 'class probes.aliases.Installed',
+            'class probes.aliases.LoopA', 'class probes.aliases.LoopB', 'class probes.aliases.Paired',
+            'class probes.aliases.Registered', 'class probes.aliases.Viewish', 'class probes.lookup.Late',
             // A class a decorator rewrites, and a module a `globals()` write reaches (review I2).
             'class rewriting.Store',
             // A metaclass keyword, a `type` base and an `__init_subclass__` each open the list.
             'class samemod.Base', 'class samemod.Wrapping', 'class subhook.Hooked', 'class wrapmeta.Base', 'class wrapmeta.Wrapping',
-            // The frame-write idioms' own module, which `exec` and `globals()` there may write.
-            'module dynamic_module', 'module rewriting', 'module tests.test_frames',
+            // The frame-write idioms' own module, which `exec` and `globals()` there may write; a package, always open.
+            'module dynamic_module', 'module probes', 'module rewriting', 'module tests.test_frames',
         ], $open);
     }
 
@@ -146,8 +162,12 @@ final class PythonHealthyIdiomsTest extends KnossosTestCase
             // Genuine, each the planted twin of the healthy idiom beside it (Task 5).
             'ARITY_MISMATCH/call_arity/definite@tests/test_planted.py:100',
             'ARITY_MISMATCH/call_arity/definite@tests/test_planted.py:37',
+            // The final review's probes' twins: one base, other self writes, a class no alias holds.
+            'ARITY_MISMATCH/call_arity/definite@tests/test_probe_planted.py:12',
+            'ARITY_MISMATCH/call_arity/definite@tests/test_probe_planted.py:20',
             'GHOST_MEMBER/missing_member/definite@tests/test_planted.py:7',
             'GHOST_MEMBER/missing_member/definite@tests/test_planted.py:92',
+            'GHOST_MEMBER/missing_member/definite@tests/test_probe_planted.py:27',
             'RETURN_DRIFT/return_type/warning@tests/test_planted.py:84',
             'TAUTOLOGY/constant/definite@tests/test_planted.py:65',
             'TAUTOLOGY/mock_echo/definite@tests/test_planted.py:53',
