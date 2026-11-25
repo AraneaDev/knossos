@@ -332,6 +332,15 @@ final class TestFidelityGraphTest extends KnossosTestCase
         assertFalse($graph->isExternal($graph->doubles()[0]));
     }
 
+    public function testIsRust(): void
+    {
+        $rust = new NodeFact('rust:class:src/lib.rs#Store', 'class', 'src/lib.rs#Store', 'Store', Origin::Ast, Confidence::Certain, new Evidence('src/lib.rs', 1, 1));
+
+        assertTrue(TestFidelityGraph::isRust($rust));
+        assertFalse(TestFidelityGraph::isRust(PythonFixtures::node('class', 'app.repo.Repo')));
+        assertFalse(TestFidelityGraph::isPython($rust));
+    }
+
     public function testKnownPythonBasesAreSeenAndAddTheirMetaclassNames(): void
     {
         $abstract = PythonFixtures::node('class', 'app.shapes.Shape', ['member_names' => ['area']]);

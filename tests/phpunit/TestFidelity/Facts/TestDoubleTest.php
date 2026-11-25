@@ -147,6 +147,37 @@ final class TestDoubleTest extends KnossosTestCase
         assertSame(['unittest' => 'unittest', 'pytest' => 'pytest'], $apis);
     }
 
+    public function testReadsRustFrameworksAndApis(): void
+    {
+        $attributes = self::attributes(['framework' => 'mockall', 'pattern' => 'mockall::automock']);
+        $attributes['members'][0]['api'] = 'expect';
+        $fake = self::attributes(['framework' => 'hand-written', 'pattern' => 'impl']);
+        $fake['members'][0]['api'] = 'impl';
+
+        $double = TestDouble::fromNode(self::node('test_double', $attributes));
+        $other = TestDouble::fromNode(self::node('test_double', $fake));
+
+        assertSame(['mockall', 'mockall::automock', 'expect'], [$double?->framework, $double?->pattern, $double?->members[0]->api]);
+        assertSame(['hand-written', 'impl'], [$other?->framework, $other?->members[0]->api]);
+        foreach (['expect', 'context', 'when', 'mock', 'mock_fn', 'given', 'impl'] as $api) {
+            $attributes['members'][0]['api'] = $api;
+            assertSame($api, TestDouble::fromNode(self::node('test_double', $attributes))?->members[0]->api);
+        }
+        foreach (['faux', 'mry', 'mockers', 'mockiato', 'mocktopus', 'mock_derive', 'galvanic'] as $framework) {
+            assertSame($framework, TestDouble::fromNode(self::node('test_double', self::attributes(['framework' => $framework])))?->framework);
+        }
+    }
+
+    public function testReadsCompileChecked(): void
+    {
+        $read = static fn(array $overrides): ?bool => TestDouble::fromNode(self::node('test_double', self::attributes($overrides)))?->compileChecked;
+
+        assertSame(true, $read(['compile_checked' => true]));
+        assertSame(false, $read([]));
+        assertSame(false, $read(['compile_checked' => 'yes']));
+        assertSame(false, $read(['compile_checked' => 1]));
+    }
+
     public function testReadsMatcherKeywords(): void
     {
         $attributes = self::attributes();

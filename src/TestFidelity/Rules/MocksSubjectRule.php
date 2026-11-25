@@ -24,6 +24,11 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
  * a double defined in one, nor a double whose target or subject is one, is
  * reported. Always a warning: a test may mean to check its own wiring.
  *
+ * A Rust double is never judged (Decision 10). A mock type of Rust
+ * (`MockRepo`) is its own struct, not a patch of the module that declares the
+ * trait, so a test that mocks a collaborator's trait and runs the code under
+ * test is the ordinary case, and a name that clashes is a compile error.
+ *
  * In PHP the unit is the class: a double of a whole class (`createMock`,
  * `Mockery::mock`) replaces the subject when the file that declares the class
  * is among the subjects of a test the double answers to. Python is judged the
@@ -49,7 +54,7 @@ final readonly class MocksSubjectRule implements TestFidelityRule
             $target = $graph->target($double);
             // A PHP or Python double names its unit by the file that declares it.
             $byFile = $target !== null && (TestFidelityGraph::isPhp($target) || TestFidelityGraph::isPython($target));
-            if ($target === null || !in_array($double->target['kind'], self::kinds($target), true) || isset($double->target['member']) || $graph->isExternal($double)
+            if ($target === null || TestFidelityGraph::isRust($target) || !in_array($double->target['kind'], self::kinds($target), true) || isset($double->target['member']) || $graph->isExternal($double)
                 || (TestFidelityGraph::isPython($target) && $double->testCase === null)) {
                 continue;
             }

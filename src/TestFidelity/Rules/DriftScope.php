@@ -11,6 +11,10 @@ use Knossos\TestFidelity\TestFidelityGraph;
  * target is a module, class, interface or (PHP's) trait the scan holds
  * inside the project.
  *
+ * A double the language's compiler checks (`compile_checked`, Rust's) yields
+ * nothing: a mismatch it could show would not build, so every drift rule is
+ * silent on it.
+ *
  * Where a double replaces something else (a global, an unknown, a function, a
  * package) there is no member list to compare against, so nothing is yielded.
  */
@@ -33,7 +37,7 @@ final class DriftScope
     {
         foreach ($graph->doubles() as $double) {
             $target = $graph->target($double);
-            if ($target === null || $graph->isExternal($double) || !in_array($target->kind, self::OWNER_KINDS, true)) {
+            if ($target === null || $graph->isExternal($double) || !in_array($target->kind, self::OWNER_KINDS, true) || $double->compileChecked) {
                 continue;
             }
             $node = $graph->nodeOf($double);

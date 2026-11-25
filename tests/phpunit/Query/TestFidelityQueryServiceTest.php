@@ -138,6 +138,23 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
         }
     }
 
+    public function testAnImportedRustLabelIsCountedAsRust(): void
+    {
+        // An imported bundle labels Rust nodes `rs` (PortableGraphImporter); they must not open a language of their own.
+        [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
+        try {
+            $pdo->exec("UPDATE nodes SET language = 'rs'");
+            $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
+
+            $byLanguage = $service->auditTests($projectId)->data['summary']['by_language'];
+
+            assertSame(['php', 'python', 'rust', 'typescript'], array_keys($byLanguage));
+            assertSame('no test facts', $byLanguage['rust']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
     public function testReportsLanguagesWithoutTestFacts(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');

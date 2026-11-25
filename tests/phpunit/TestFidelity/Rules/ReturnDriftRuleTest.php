@@ -38,6 +38,15 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertSame(9, $findings[0]->evidence->startLine);
     }
 
+    public function testACompileCheckedDoubleIsNeverJudged(): void
+    {
+        $methods = [DriftFixtures::method('total', ['signature' => ['params' => [], 'returns' => 'number']])];
+        $members = [DriftFixtures::stub('total', null, [['api' => 'mockReturnValue', 'line' => 9, 'once' => false, 'assignable' => false, 'typed' => true]])];
+
+        assertCount(1, [...(new ReturnDriftRule())->findings(DriftFixtures::graph($methods, $members))], 'the control');
+        assertSame([], [...(new ReturnDriftRule())->findings(DriftFixtures::graph($methods, $members, doubleAttributes: ['compile_checked' => true]))]);
+    }
+
     public function testAssignableUnknownOrTrueIsSilent(): void
     {
         assertSame([], self::judge('unknown', true));

@@ -25,7 +25,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
     private const PACKAGED_LANGUAGES = ['php' => true, 'python' => true, 'rust' => false, 'typescript' => true];
 
     /** The language a node's local-id prefix names, where it differs from the language's name here. */
-    private const LANGUAGE_OF_PREFIX = ['py' => 'python', 'ts' => 'typescript'];
+    private const LANGUAGE_OF_PREFIX = ['py' => 'python', 'rs' => 'rust', 'ts' => 'typescript'];
 
     /** A page of the project's test-fidelity findings, ordered by file, line, category, rule and id. */
     public function auditTests(

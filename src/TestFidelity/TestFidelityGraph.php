@@ -254,6 +254,12 @@ final readonly class TestFidelityGraph
         return str_starts_with($node->localId, 'py:');
     }
 
+    /** Whether a node came from the Rust worker. */
+    public static function isRust(NodeFact $node): bool
+    {
+        return str_starts_with($node->localId, 'rust:');
+    }
+
     /** The Python class the scan holds under a qualified name (`app.models.Invoice`), or null when it holds none. */
     public function pythonClass(string $qualifiedName): ?NodeFact
     {

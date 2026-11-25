@@ -293,7 +293,8 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
 
 - `test_double`, named `<file>#double:<line>:<col>`: a mock, spy, stub or fake.
   `framework` (`vitest`, `jest`, `phpunit`, `mockery`, `pest`, `prophecy`, `unittest`,
-  `pytest-mock` or `pytest`), `pattern` (how it was made, such as
+  `pytest-mock`, `pytest`, and Rust's `mockall`, `faux`, `mry`, `mockers`,
+  `mockiato`, `mocktopus`, `mock_derive`, `galvanic` or `hand-written`), `pattern` (how it was made, such as
   `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`; a Python worker
   writes `<module>.<callable>`, such as `unittest.mock.patch.object` or
   `pytest_mock.mocker.patch`), `target`
@@ -311,7 +312,11 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `patch.multiple`, `patch.dict`, `spy` and `setattr` (the name the patch form
   or `monkeypatch.setattr` replaces), `attribute` (a name read through a
   spec'd handle) and `assigned` (`m.x = v`, `configure_mock` or a constructor
-  keyword, recorded only under `spec_set`), or `unknown`), `params` is the signature shape
+  keyword, recorded only under `spec_set`), Rust's `expect` (mockall's and
+  mockiato's `expect_<m>()`, mockers' `expect`), `context` (mockall's
+  `MockS::<m>_context()`), `when` (faux), `mock` (mry's `mock_<m>`), `mock_fn`
+  (mocktopus), `given` (galvanic) and `impl` (a hand-written fake's method), or
+  `unknown`), `params` is the signature shape
   above and each `returns` entry is `{api, line, once, assignable, typed}`
   (`assignable` is `true`, `false` or `"unknown"`). A member may also carry
   `called_with`, the argument-list assertions on it, each
@@ -322,12 +327,14 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   keywords cannot be bound), and a `returns` entry may carry `type`, the
   pinned value's own type as the worker names it. A `test_double` may carry
   `allows_protected` (`true` when the framework lets the double stub protected
-  members, as Mockery's `shouldAllowMockingProtectedMethods()` does), and
+  members, as Mockery's `shouldAllowMockingProtectedMethods()` does),
+  `compile_checked` (`true` on a Rust double: a reader must not judge drift on
+  it, the language's compiler rejects any mismatch), and
   `also_implements`, the further classes and interfaces the double is made to
   be, fully qualified (Mockery's `mock(A::class, B::class)`), or
   `also_implements_open: true` when the worker could not name them all. A
-  reader drops a malformed `called_with` entry, `type` or `allows_protected`
-  and keeps the double; a malformed `also_implements` leaves what the double
+  reader drops a malformed `called_with` entry, `type`, `allows_protected` or
+  `compile_checked` (read as false) and keeps the double; a malformed `also_implements` leaves what the double
   implements unknown.
 - `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
   `subjects` (canonical names of the production modules those calls land in),

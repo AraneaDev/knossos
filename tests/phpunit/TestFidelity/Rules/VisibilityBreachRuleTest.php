@@ -29,6 +29,14 @@ final class VisibilityBreachRuleTest extends KnossosTestCase
         assertSame(['member' => 'hash', 'visibility' => 'private'], $findings[0]->attributes);
     }
 
+    public function testACompileCheckedDoubleIsNeverJudged(): void
+    {
+        $methods = [DriftFixtures::method('hash', ['visibility' => 'private'])];
+
+        assertCount(1, [...(new VisibilityBreachRule())->findings(DriftFixtures::graph($methods, [DriftFixtures::stub('hash')]))], 'the control');
+        assertSame([], [...(new VisibilityBreachRule())->findings(DriftFixtures::graph($methods, [DriftFixtures::stub('hash')], doubleAttributes: ['compile_checked' => true]))]);
+    }
+
     public function testProtectedIsAWarningAndPublicIsNotReported(): void
     {
         $graph = DriftFixtures::graph(

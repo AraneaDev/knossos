@@ -65,7 +65,7 @@ final readonly class GhostMemberRule extends DriftRule
             $specifier = $double->target['specifier'] ?? '';
             // A specifier with a loader query (`./w.ts?worker`, `./x.js?raw`) names no node; a double with an edge was resolved, to a node the scan may merely not hold (an excluded path).
             $path = explode('#', $specifier)[0];
-            if ($double->target['kind'] !== 'module' || $specifier === '' || str_contains($specifier, '?') || $graph->hasTarget($double) || $graph->isExternal($double) || preg_match(self::ASSET_EXTENSIONS, $path) === 1) {
+            if ($double->compileChecked || $double->target['kind'] !== 'module' || $specifier === '' || str_contains($specifier, '?') || $graph->hasTarget($double) || $graph->isExternal($double) || preg_match(self::ASSET_EXTENSIONS, $path) === 1) {
                 continue;
             }
             $finding = self::moduleFinding($graph->nodeOf($double), $specifier);

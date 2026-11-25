@@ -72,6 +72,15 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertSame(7, $findings[0]->evidence->startLine);
     }
 
+    public function testACompileCheckedDoubleIsNeverJudged(): void
+    {
+        $methods = [DriftFixtures::method('find', ['signature' => ['params' => [['name' => 'id', 'type' => 'string']]]])];
+        $members = [DriftFixtures::stub('find', [['name' => 'id', 'type' => 'string'], ['name' => 'extra', 'type' => 'number']], [], [self::matcher(3)])];
+
+        assertCount(1, [...(new ArityMismatchRule())->findings(DriftFixtures::graph($methods, $members))], 'the control');
+        assertSame([], [...(new ArityMismatchRule())->findings(DriftFixtures::graph($methods, $members, doubleAttributes: ['compile_checked' => true]))]);
+    }
+
     public function testTooFewIsDefinite(): void
     {
         $findings = self::judgeCalls(['params' => [['name' => 'id'], ['name' => 'patch'], ['name' => 'deep', 'optional' => true]]], [self::matcher(1)]);

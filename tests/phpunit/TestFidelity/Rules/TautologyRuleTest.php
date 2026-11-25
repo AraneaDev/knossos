@@ -385,6 +385,41 @@ final class TautologyRuleTest extends KnossosTestCase
         assertSame(['constant definite'], self::python([CaseFixtures::assertion('assertIn', [$five, $class])]));
     }
 
+    /**
+     * The sub-rule and confidence of each finding on one Rust test case of `$assertions`.
+     *
+     * @param list<array<string, mixed>> $assertions
+     * @return list<string>
+     */
+    private static function rust(array $assertions): array
+    {
+        $case = DriftFixtures::rustNode('test_case', 'tests/repo.rs#test:10', ['name' => 'saves', 'production_calls' => 1, 'subjects' => [], 'assertions' => $assertions]);
+
+        return array_map(static fn(TestFinding $finding): string => $finding->subRule . ' ' . $finding->confidence->value, [...(new TautologyRule())->findings(CaseFixtures::graph([$case]))]);
+    }
+
+    public function testRustSelfComparisonNeedsTwoLiterals(): void
+    {
+        // PartialEq need not be reflexive, so a name compared with itself proves nothing; two literals are one value.
+        $name = CaseFixtures::operand('unknown', ['text' => 'x']);
+        $literal = CaseFixtures::operand('literal', ['text' => '1']);
+        foreach (['assert_eq', 'assert_ne', 'assert'] as $api) {
+            assertSame([], self::rust([CaseFixtures::assertion($api, [$name, $name])]), $api);
+        }
+        assertSame(['self_comparison definite'], self::rust([CaseFixtures::assertion('assert_eq', [$literal, $literal])]));
+        // Outside Rust the text alone decides, as before.
+        assertSame(['self_comparison'], self::subRules(self::judge(CaseFixtures::testCase([CaseFixtures::assertion('assert_eq', [$name, $name])]))));
+    }
+
+    public function testRustOneValueAssertionsAreNotConstant(): void
+    {
+        // A regression pin: a one-operand assertion is never compared, so it is never a constant.
+        $one = CaseFixtures::operand('literal', ['text' => 'true']);
+        foreach (['assert', 'debug_assert', 'assert_matches', 'matches'] as $api) {
+            assertSame([], self::rust([CaseFixtures::assertion($api, [$one])]), $api);
+        }
+    }
+
     public function testIdNamesTheCategory(): void
     {
         assertSame('test.fidelity.tautology.v1', (new TautologyRule())->id());
