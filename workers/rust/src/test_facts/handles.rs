@@ -81,6 +81,20 @@ pub(super) struct Handles {
     /// Whether a macro stands where an item may in the function, which may
     /// configure any handle out of sight.
     pub(super) opaque: bool,
+    /// The double each member of a fake handle belongs to, when the fake
+    /// has more than one trait impl, by handle and member.
+    pub(super) member_doubles: BTreeMap<(String, String), usize>,
+    /// The unit fakes whose own name is a handle (`FakeClock.now()`): no
+    /// local binds it.
+    pub(super) unit_handles: BTreeSet<String>,
+    /// Each handle that configures a double without being it (mockers'
+    /// `handle` of `let (mock, handle) = …`), to the double and the name
+    /// of the local the double is bound to.
+    pub(super) config_of: BTreeMap<String, (usize, Option<String>)>,
+    /// The members a static mock of the function configures (mry's
+    /// `Cat::mock_meow(…)`): which configuration answers a handle's call of
+    /// one is not told.
+    pub(super) static_members: BTreeSet<String>,
 }
 
 impl Handles {
@@ -110,7 +124,18 @@ impl Handles {
             syn::Expr::Try(attempt) => self.root_double(&attempt.expr),
             syn::Expr::Paren(paren) => self.root_double(&paren.expr),
             syn::Expr::Reference(reference) => self.root_double(&reference.expr),
-            syn::Expr::Path(path) => self.double_of(&handle_name(path)?),
+            syn::Expr::Path(path) => match self.made.get(&start(path)) {
+                Some(index) => self.doubles.get(*index).map(String::as_str),
+                None => {
+                    let name = handle_name(path)?;
+                    self.double_of(&name).or_else(|| {
+                        let (index, _) = self.config_of.get(&name)?;
+                        self.doubles.get(*index).map(String::as_str)
+                    })
+                }
+            },
+            syn::Expr::Macro(mac) => self.made_at(start(&mac.mac.path)),
+            syn::Expr::Struct(literal) => self.made_at(start(&literal.path)),
             syn::Expr::Call(call) => {
                 let at = start(&call.func);
                 let index = self
@@ -123,6 +148,14 @@ impl Handles {
             }
             _ => None,
         }
+    }
+
+    /// The double the construct starting at `at` makes.
+    fn made_at(&self, at: (usize, usize)) -> Option<&str> {
+        self.made
+            .get(&at)
+            .and_then(|index| self.doubles.get(*index))
+            .map(String::as_str)
     }
 
     /// The double a fully qualified call takes as its receiver
@@ -153,7 +186,11 @@ impl Handles {
         if let syn::Expr::MethodCall(call) = direct {
             if let Some(name) = receiver_handle(&call.receiver) {
                 let member = crate::resolve::ident_name(&call.method);
-                let double = self.double_of(&name)?.to_owned();
+                let double = match self.member_doubles.get(&(name.clone(), member.clone())) {
+                    Some(index) => self.doubles.get(*index)?,
+                    None => self.double_of(&name)?,
+                }
+                .to_owned();
                 if self.chains.contains_key(&(name.clone(), member.clone())) {
                     let value = self.value(&name, &member, start(&call.method));
                     return Some(MockOperand::Config { double, value });
@@ -176,10 +213,18 @@ impl Handles {
     /// The literal `handle.member(…)`, called at `at`, returns for certain,
     /// as Decision 9 shows it.
     fn value(&self, handle: &str, member: &str, at: (usize, usize)) -> Option<String> {
+        // A unit fake's own name is bound by no local; any other handle by
+        // exactly one.
+        let bound_once = if self.unit_handles.contains(handle) {
+            None
+        } else {
+            Some(1)
+        };
         if self.unsafe_code
             || self.opaque
             || self.defeated.contains(handle)
-            || self.bindings.get(handle).copied() != Some(1)
+            || self.static_members.contains(member)
+            || self.bindings.get(handle).copied() != bound_once
         {
             return None;
         }

@@ -8,6 +8,8 @@ use std::io::Cursor;
 use knossos_rust_worker::server::run;
 use serde_json::Value;
 
+pub mod frameworks;
+
 /// Write `files` (raw bytes) into a fresh temporary root and run a scan
 /// request with `params` merged over the base (`root`, `files`), returning
 /// contributions. The byte-oriented base every other fixture helper here

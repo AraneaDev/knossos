@@ -4,8 +4,8 @@
 //!
 //! Every Rust double is checked by the compiler against what it stands in
 //! for, so each carries `compile_checked: true` and no drift rule judges it
-//! (Decision 1). Its target is `{kind: "class"}` and never states a
-//! `specifier`.
+//! (Decision 1). Its target is `{kind: "class"}`, `{kind: "global"}` for a
+//! mocked function, and never states a `specifier`.
 
 use std::collections::BTreeMap;
 
@@ -31,7 +31,8 @@ pub(super) struct Member {
     pub(super) name: String,
     /// The line it is first configured on.
     pub(super) line: usize,
-    /// How it is configured: `expect` or `context`.
+    /// How it is configured: `expect`, `context`, `when`, `mock`,
+    /// `mock_fn`, `method`, `given` or `impl`.
     pub(super) api: &'static str,
     /// The values it is pinned to.
     pub(super) returns: Vec<Pin>,
@@ -46,10 +47,14 @@ pub(super) struct DoubleFact {
     pub(super) mock: String,
     /// The construct, where the evidence starts and ends.
     pub(super) span: proc_macro2::Span,
+    /// The framework it is made with (Decision 2).
+    pub(super) framework: &'static str,
     /// The generator's pattern.
     pub(super) pattern: &'static str,
     /// What the mock stands in for: its node kind and canonical path.
     pub(super) target: Option<(&'static str, String)>,
+    /// The wire target's kind: `class`, or `global` for a mocked function.
+    pub(super) target_kind: &'static str,
     /// The members the function configures, in order.
     pub(super) members: Vec<Member>,
     /// The calls on the double and the hand-ons of it.
@@ -101,9 +106,9 @@ impl DoubleFact {
             })
             .collect();
         let mut attributes = BTreeMap::from([
-            ("framework".to_owned(), json!("mockall")),
+            ("framework".to_owned(), json!(self.framework)),
             ("pattern".to_owned(), json!(self.pattern)),
-            ("target".to_owned(), json!({"kind": "class"})),
+            ("target".to_owned(), json!({"kind": self.target_kind})),
             ("automock".to_owned(), json!(false)),
             ("compile_checked".to_owned(), json!(true)),
             ("invocations".to_owned(), json!(self.invocations)),

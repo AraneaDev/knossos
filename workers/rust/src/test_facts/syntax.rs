@@ -1,24 +1,11 @@
-//! The syntax the mockall pass reads off a body: chains, the literal a
+//! The syntax the function pass reads off a body: chains, the literal a
 //! value verb returns, and the names a body declares or reads.
 
 use syn::visit::Visit;
 
-use super::handles::{handle_name, receiver_handle};
+use super::handles::handle_name;
 use super::literals::literal_text;
 use crate::resolve::ident_name;
-
-/// The innermost method call of a chain `expr` is, when its receiver is a
-/// plain name: `h.expect_m()` of `h.expect_m().returning(…)`.
-pub(super) fn innermost_call(expr: &syn::Expr) -> Option<&syn::ExprMethodCall> {
-    let syn::Expr::MethodCall(outer) = strip_parens(expr) else {
-        return None;
-    };
-    let mut call = outer;
-    while let syn::Expr::MethodCall(inner) = strip_parens(&call.receiver) {
-        call = inner;
-    }
-    receiver_handle(&call.receiver).map(|_| call)
-}
 
 /// `expr` without the parentheses around it.
 pub(super) fn strip_parens(expr: &syn::Expr) -> &syn::Expr {

@@ -4,6 +4,8 @@ pub mod clock;
 pub mod counter;
 pub mod limits;
 pub mod standins;
+pub mod store;
+pub mod thermometer;
 pub mod version;
 
 /// Macros kept outside `src/`, one named like `std::todo!`.

@@ -62,6 +62,7 @@ pub(super) fn of_case(
     let mut body = Body {
         nested: Vec::new(),
         method_calls: Vec::new(),
+        on_doubles: BTreeSet::new(),
         mocks,
     };
     body.visit_signature(signature);
@@ -85,6 +86,11 @@ pub(super) fn of_case(
             .next()
             .unwrap_or(canonical)
             .to_owned();
+        // A call on a double the walk typed as what it stands in for (a
+        // faux or mry mock is a value of the real struct) runs the double.
+        if kind != "method_of_return" && body.on_doubles.contains(&(line, name.clone())) {
+            continue;
+        }
         named.insert((line, name.clone()));
         let landed = if kind == "method_of_return" {
             canonical.rsplit_once("::").map(|(callee, _)| callee)
@@ -172,6 +178,8 @@ struct Body<'m> {
     nested: Vec<(usize, usize)>,
     /// Each method call outside them, by the line of its method name.
     method_calls: Vec<(usize, String)>,
+    /// Each method call rooted at a double, by the line of its method name.
+    on_doubles: BTreeSet<(usize, String)>,
     /// The case's doubles: a call rooted at one, and the calls inside a
     /// configuration chain, are no production.
     mocks: &'m Handles,
@@ -194,7 +202,9 @@ impl Visit<'_> for Body<'_> {
 
     fn visit_expr_method_call(&mut self, node: &syn::ExprMethodCall) {
         if self.mocks.root_double(&node.receiver).is_some() {
-            if !self.mocks.configures(node.method.span().start().line) {
+            let line = node.method.span().start().line;
+            self.on_doubles.insert((line, ident_name(&node.method)));
+            if !self.mocks.configures(line) {
                 for argument in &node.args {
                     self.visit_expr(argument);
                 }

@@ -21,6 +21,8 @@ use crate::visit::{is_test_module_path, Declarations, FileScope, ModuleGates};
 mod assertions;
 mod cases;
 mod doubles;
+mod fakes;
+mod frameworks;
 mod generated;
 mod handles;
 mod literals;
@@ -29,6 +31,7 @@ mod macros;
 mod mockall;
 mod operands;
 mod output;
+mod pass;
 mod production;
 mod syntax;
 #[cfg(test)]
@@ -36,16 +39,17 @@ mod tests;
 
 use assertions::{assertion, AssertionShape};
 use cases::{helpers, test_functions, TestFunction};
+use frameworks::FrameworkContext;
 use generated::MockResolver;
 use locals::{FileConsts, LocalLiterals};
 use macros::Frozen;
 pub(crate) use macros::{
     compiled_elsewhere, loads_unseen_file, macro_modules, macro_package, MacroShadows,
 };
-use mockall::{mockall_doubles, MockallPass, Site};
 use operands::OperandReader;
 use output::CaseFact;
 pub(crate) use output::TestFacts;
+use pass::{function_doubles, FunctionDoubles, Site};
 
 /// The scope attributes a case takes from its function's node.
 const SCOPE_ATTRIBUTES: [&str; 3] = ["test", "test_support", "cfg"];
@@ -142,7 +146,16 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
         layout: input.layout,
         relative: input.relative,
     };
+    let context = FrameworkContext::of(input.module, &input.file.items, input.scope, input.facts);
+    let mut fakes = fakes::fakes(input, &consts.frozen);
     let mut doubles = Vec::new();
+    let mut fake_invocations: BTreeMap<String, usize> = BTreeMap::new();
+    let mut settle = |pass: &mut FunctionDoubles| {
+        doubles.append(&mut pass.doubles);
+        for (fake, count) in &pass.fake_invocations {
+            *fake_invocations.entry(fake.clone()).or_default() += count;
+        }
+    };
     let cases = test_functions(&input.file.items, input.module)
         .iter()
         .map(|case| {
@@ -151,11 +164,13 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
                 container: &case.container,
                 test_case: Some(case_name(input, case)),
                 frozen: &consts.frozen,
+                frameworks: &context,
+                fakes: &fakes,
             };
             let function = case.function;
-            let mut pass = mockall_doubles(&function.sig, &function.block, &site, &resolver);
+            let mut pass = function_doubles(&function.sig, &function.block, &site, &resolver);
             let fact = case_fact(input, &consts, case, &pass);
-            doubles.append(&mut pass.doubles);
+            settle(&mut pass);
             fact
         })
         .collect();
@@ -166,10 +181,24 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
             container: &helper.container,
             test_case: None,
             frozen: &consts.frozen,
+            frameworks: &context,
+            fakes: &fakes,
         };
-        let mut pass = mockall_doubles(helper.signature, helper.block, &site, &resolver);
-        doubles.append(&mut pass.doubles);
+        let mut pass = function_doubles(helper.signature, helper.block, &site, &resolver);
+        settle(&mut pass);
     }
+    for fake in &mut fakes {
+        let invocations = fake_invocations.get(&fake.canonical).copied().unwrap_or(0);
+        for implemented in &mut fake.impls {
+            implemented.fact.invocations = invocations;
+        }
+    }
+    doubles.extend(
+        fakes
+            .into_iter()
+            .flat_map(|fake| fake.impls)
+            .map(|implemented| implemented.fact),
+    );
 
     TestFacts { cases, doubles }
 }
@@ -185,7 +214,7 @@ fn case_fact(
     input: &TestInput<'_>,
     consts: &FileConsts<'_>,
     case: &TestFunction<'_>,
-    mocks: &MockallPass,
+    mocks: &FunctionDoubles,
 ) -> CaseFact {
     let function = case.function;
     let path = format!("{}::{}", case.container, ident_name(&function.sig.ident));

@@ -8,6 +8,7 @@ publish = false
 members = ["glob-macros", "core-module", "path-beyond", "shadow-assert", "gated", "pretty"]
 
 [dev-dependencies]
+faux = "0.1"
 mockall = "0.13"
 mockito = "1"
 proptest = "1"

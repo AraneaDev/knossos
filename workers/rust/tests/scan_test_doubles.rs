@@ -96,9 +96,10 @@ fn a_mock_without_a_generator_is_no_double() {
     let momus = scan_repository_fixture("test-fidelity/rust/momus-drift");
     let drift = scan_repository_fixture("test-fidelity/rust/nemesis-experiments/automock-drift");
 
-    assert!(doubles(&momus)
-        .keys()
-        .all(|canonical| canonical.starts_with("generic_test.rs#")));
+    // mocktopus's mock of a function is its own (`scan_mock_frameworks`).
+    assert!(doubles(&momus).keys().all(|canonical| {
+        canonical.starts_with("generic_test.rs#") || canonical.starts_with("mocktopus_test.rs#")
+    }));
     assert!(doubles(&drift).is_empty());
 }
 

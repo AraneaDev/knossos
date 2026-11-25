@@ -63,6 +63,11 @@ use PHPUnit\Framework\Attributes\Group;
  * `pretty` compares through `pretty_assertions`, still read as assertions
  * (re-review 1 ruling), with a planted `constant` beside its healthy twin.
  *
+ * `src/thermometer.rs` fakes a trait by hand (Task 4): a fake handed to
+ * production and a stateful fake, beside a planted `mock_echo` (definite) of
+ * the fixed fake's literal. `src/store.rs` mocks a struct with faux: a closure
+ * `then` and a `then_return` mock handed to production.
+ *
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and
  * `assert_eq!(1, 1)` (`self_comparison`).
@@ -99,6 +104,8 @@ final class RustHealthyIdiomsTest extends KnossosTestCase
             'TAUTOLOGY/constant/definite@pretty/src/lib.rs:23',
             'TAUTOLOGY/constant/definite@tests/planted.rs:8',
             'TAUTOLOGY/mock_echo/definite@src/clock.rs:160',
+            // A hand-written fake's pinned value compared with itself.
+            'TAUTOLOGY/mock_echo/definite@src/thermometer.rs:57',
             'TAUTOLOGY/mock_only/warning@src/clock.rs:174',
             // A `.times(0)` with no production run: asserted, so no
             // zero_reach (R5-7), and only a double is asserted.
