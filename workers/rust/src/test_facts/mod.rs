@@ -33,6 +33,7 @@ mod operands;
 mod output;
 mod pass;
 mod production;
+mod rivals;
 mod syntax;
 #[cfg(test)]
 mod tests;

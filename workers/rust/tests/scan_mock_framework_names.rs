@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 fn framework_values_need_every_condition() {
     let config = "    faux::when!(mock.get).then_return(10);\n";
     let assert = "    assert_eq!(mock.get(), 10);\n";
-    let variants: [(&str, String); 12] = [
+    let variants: [(&str, String); 16] = [
         (
             "two configurations",
             format!("{config}    faux::when!(mock.get).then_return(11);\n"),
@@ -59,6 +59,24 @@ fn framework_values_need_every_condition() {
             "then beside then_return",
             "    faux::when!(mock.get).then_return(10).then(|_| 10);\n".to_owned(),
         ),
+        // A clone may share the mock's stubs, and be configured by `&mut`
+        // under another name.
+        (
+            "a clone through UFCS",
+            format!("    let mut other = Foo::clone(&mock);\n    faux::when!(other.get).then(|_| 11);\n{config}"),
+        ),
+        (
+            "a clone through Clone::clone",
+            format!("    let other = Clone::clone(&mock);\n    let _ = other;\n{config}"),
+        ),
+        (
+            "a clone of a borrow",
+            format!("    let other = (&mock).clone();\n    let _ = other;\n{config}"),
+        ),
+        (
+            "a clone through a bound reference",
+            format!("    let r = &mock;\n    let other = r.clone();\n    let _ = other;\n{config}"),
+        ),
     ];
     for (index, (why, body)) in variants.iter().enumerate() {
         let body = if *why == "a configuration after the call" {
@@ -77,6 +95,31 @@ fn framework_values_need_every_condition() {
         json!("10"),
         faux_value("framework-defeats-control", &format!("{config}{assert}"))
     );
+    // The clone twin: cloning something else, a separate mock, and a call
+    // that is no clone handed a borrow of the mock leave it.
+    let apart = format!(
+        "    let name = String::new().clone();\n    let other = Foo::faux();\n    let _ = Clone::clone(&name);\n    let _ = std::convert::identity(&mock);\n    \
+         let _ = (other, name);\n{config}{assert}"
+    );
+    assert_eq!(
+        json!("10"),
+        faux_value("framework-defeats-clone-twin", &apart)
+    );
+}
+
+#[test]
+fn a_clone_of_a_mry_mock_hides_its_value() {
+    // The reviewer's `mry_ufcs_clone`.
+    let source = "#[mry::mry]\n#[derive(Default, Clone, PartialEq)]\npub struct Cat {\n    name: String,\n}\n\
+        #[mry::mry]\nimpl Cat {\n    pub fn meow(&self, count: usize) -> usize {\n        count\n    }\n}\n\
+        #[test]\nfn t() {\n    let mut cat = mry::new!(Cat { name: String::new() });\n    \
+        let mut c2 = Cat::clone(&cat);\n    c2.mock_meow(mry::Any).returns_with(|c| c);\n    \
+        cat.mock_meow(mry::Any).returns(42);\n    assert_eq!(cat.meow(42), 42);\n}\n";
+    let contributions = scan("mry-ufcs-clone", source);
+
+    let operand = &operands(&contributions, 13)[0][0];
+    assert_eq!("mock-config", operand["source"]);
+    assert_eq!(Value::Null, operand["value"]);
 }
 
 #[test]

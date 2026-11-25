@@ -27,6 +27,7 @@ use syn::visit::Visit;
 use super::doubles::{DoubleFact, Member, Pin};
 use super::literals::literal_text;
 use super::macros::Frozen;
+use super::rivals::Rivals;
 use super::syntax::identifiers;
 use super::TestInput;
 use crate::resolve::ident_name;
@@ -91,6 +92,7 @@ pub(super) fn fakes(input: &TestInput<'_>, frozen: &Frozen<'_>) -> Vec<Fake> {
         opens_all: false,
         named: BTreeSet::new(),
         frozen,
+        rivals: Rivals::of(input),
     };
     shapes.visit_file(input.file);
     let test_file = super::production::under_cargo_tests(input.relative, input.layout);
@@ -129,6 +131,8 @@ struct Shapes<'f> {
     named: BTreeSet<String>,
     /// Which macros are the standard ones.
     frozen: &'f Frozen<'f>,
+    /// What else may answer a call on a fake.
+    rivals: Rivals,
 }
 
 impl Visit<'_> for Shapes<'_> {
@@ -411,13 +415,17 @@ fn fake_impl(
         let member_name = ident_name(&function.sig.ident);
         let shared = shapes.impls.iter().any(|shape| {
             shape.at != here
-                && shape.owner.as_deref().is_none_or(|owner| owner == name)
+                && shape
+                    .owner
+                    .as_deref()
+                    .is_none_or(|owner| owner == name || shapes.rivals.may_be_the_fake(owner))
                 && shape
                     .functions
                     .iter()
                     .any(|(other, _)| *other == member_name)
         });
-        let literal = (pins && function.attrs.is_empty() && !shared)
+        let rival = shapes.rivals.rival(&target, &member_name);
+        let literal = (pins && function.attrs.is_empty() && !shared && !rival)
             .then(|| body_literal(&function.block))
             .flatten();
         let line = function.sig.fn_token.span.start().line;

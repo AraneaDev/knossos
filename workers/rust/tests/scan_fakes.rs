@@ -14,7 +14,7 @@ const LIB: &str = "pub trait Clock {\n    fn now(&self) -> u64;\n}\n\
     pub fn elapsed(clock: &dyn Clock) -> u64 {\n    clock.now()\n}\n#[cfg(test)]\nmod tests;\n";
 
 /// The fake every case starts from: `impl` on line 3, `now` on line 4.
-const FAKE: &str = "use crate::*;\nstruct FakeClock;\nimpl Clock for FakeClock {\n    \
+const FAKE: &str = "use crate::Clock;\nstruct FakeClock;\nimpl Clock for FakeClock {\n    \
     fn now(&self) -> u64 {\n        42\n    }\n}\n";
 
 /// The fake's double.
@@ -46,8 +46,9 @@ fn first_operand(contributions: &[Value], line: usize) -> Value {
 
 #[test]
 fn a_fake_records_its_impl_members_and_edge() {
-    let tests =
-        format!("{FAKE}#[test]\nfn uses() {{\n    assert_eq!(elapsed(&FakeClock), 42);\n}}\n");
+    let tests = format!(
+        "{FAKE}#[test]\nfn uses() {{\n    assert_eq!(crate::elapsed(&FakeClock), 42);\n}}\n"
+    );
     let contributions = scan("fake-members", &[("src/tests.rs", &tests)]);
     let attributes = &doubles(&contributions)[DOUBLE]["attributes"];
 
@@ -82,7 +83,7 @@ fn a_fake_echo_is_mock_config() {
     let tests = format!(
         "{FAKE}#[test]\nfn direct() {{\n    assert_eq!(FakeClock.now(), 42);\n}}\n\
          #[test]\nfn bound() {{\n    let clock = FakeClock;\n    assert_eq!(clock.now(), 42);\n}}\n\
-         #[test]\nfn moved() {{\n    let clock = FakeClock;\n    let _ = elapsed(&clock);\n    \
+         #[test]\nfn moved() {{\n    let clock = FakeClock;\n    let _ = crate::elapsed(&clock);\n    \
          drop(clock);\n    assert_eq!(clock.now(), 42);\n}}\n"
     );
     let contributions = scan("fake-echo", &[("src/tests.rs", &tests)]);
@@ -112,7 +113,7 @@ type Variant<'a> = (&'a str, String, Vec<(&'a str, &'a str)>);
 
 #[test]
 fn fake_pins_need_every_condition() {
-    let variants: [Variant<'_>; 15] = [
+    let variants: [Variant<'_>; 23] = [
         (
             "a pub fake",
             FAKE.replace("struct FakeClock", "pub(crate) struct FakeClock"),
@@ -168,6 +169,58 @@ fn fake_pins_need_every_condition() {
                  impl Later for <FakeClock as Proj>::Out {{\n    fn now(&self) -> u64 {{\n        7\n    }}\n}}\n"
             ),
             vec![],
+        ),
+        (
+            "an inherent now through a type alias",
+            format!("{FAKE}type F = FakeClock;\nimpl F {{\n    fn now(&self) -> u64 {{\n        7\n    }}\n}}\n"),
+            vec![],
+        ),
+        (
+            "an inherent now through a use rename",
+            format!(
+                "{FAKE}use self::FakeClock as G;\nimpl G {{\n    fn now(&self) -> u64 {{\n        7\n    }}\n}}\n"
+            ),
+            vec![],
+        ),
+        (
+            "an alias named like another type",
+            format!(
+                "{FAKE}fn helper() {{\n    struct F;\n}}\ntype F = FakeClock;\n\
+                 impl F {{\n    fn now(&self) -> u64 {{\n        7\n    }}\n}}\n"
+            ),
+            vec![],
+        ),
+        (
+            "a rename named like another type",
+            format!(
+                "{FAKE}fn helper() {{\n    struct G;\n}}\nuse self::FakeClock as G;\n\
+                 impl G {{\n    fn now(&self) -> u64 {{\n        7\n    }}\n}}\n"
+            ),
+            vec![],
+        ),
+        (
+            "an import inside a body",
+            format!("{FAKE}fn helper() {{\n    use crate::ext::Take;\n}}\n"),
+            vec![],
+        ),
+        (
+            "a same-file trait declaring the member's name",
+            format!("{FAKE}trait Take {{\n    fn now(self) -> u64;\n}}\n"),
+            vec![],
+        ),
+        (
+            "an import of another file's trait",
+            format!("{FAKE}use crate::ext::Take;\n"),
+            vec![(
+                "src/ext.rs",
+                "pub trait Take {\n    fn now(self) -> u64;\n}\nimpl<T: crate::Clock> Take for T {\n    \
+                 fn now(self) -> u64 {\n        43\n    }\n}\n",
+            )],
+        ),
+        (
+            "a glob from another file",
+            format!("{FAKE}use crate::ext::*;\n"),
+            vec![("src/ext.rs", "pub fn unrelated() {}\n")],
         ),
         (
             "a cfg alternative type alias",
@@ -229,12 +282,16 @@ fn fake_pins_need_every_condition() {
 fn a_fake_with_every_condition_pins() {
     // The control of `fake_pins_need_every_condition`: inert attributes,
     // `return 42;`, and other types' impls and macros leave the pin.
-    let fake = "use crate::*;\n#[derive(Clone, Default)]\n#[allow(dead_code)]\nstruct FakeClock;\n\
+    let fake =
+        "use crate::Clock;\n#[derive(Clone, Default)]\n#[allow(dead_code)]\nstruct FakeClock;\n\
         impl Clock for FakeClock {\n    fn now(&self) -> u64 {\n        return 42;\n    }\n}\n\
         struct Other;\nimpl Other {\n    fn now(&self) -> u64 {\n        7\n    }\n}\n\
-        macro_rules! unrelated {\n    () => {};\n}\n";
+        macro_rules! unrelated {\n    () => {};\n}\n\
+        enum Mood {}\nimpl Mood {\n    fn now(&self) -> u64 {\n        7\n    }\n}\n\
+        union Bits {\n    a: u8,\n}\nimpl Bits {\n    fn now(&self) -> u64 {\n        7\n    }\n}\n\
+        use std::fmt::Debug;\nuse std::collections::*;\n";
     let tests = format!(
-        "{fake}#[test]\nfn echo() {{\n    let clock = FakeClock::default();\n    \
+        "{fake}#[test]\nfn echo() {{\n    use std::cell::Cell;\n    let clock = FakeClock::default();\n    \
          assert_eq!(clock.now(), 42);\n}}\n"
     );
     let contributions = scan("fake-control", &[("src/tests.rs", &tests)]);
@@ -243,7 +300,7 @@ fn a_fake_with_every_condition_pins() {
     assert_eq!("impl", attributes["members"][0]["returns"][0]["api"]);
     assert_eq!(
         json!({"source": "mock-config", "double": "src/tests.rs#double:5:1", "value": "42"}),
-        first_operand(&contributions, 20)
+        first_operand(&contributions, 36)
     );
 }
 
@@ -305,7 +362,7 @@ fn default_makes_a_handle_when_the_file_gives_the_fake_one() {
 fn each_trait_impl_is_its_own_double() {
     let lib = format!("{LIB}pub trait Named {{\n    fn name(&self) -> &'static str;\n}}\n");
     let tests = format!(
-        "{FAKE}impl Named for FakeClock {{\n    fn name(&self) -> &'static str {{\n        \"fake\"\n    }}\n}}\n\
+        "{FAKE}use crate::Named;\nimpl Named for FakeClock {{\n    fn name(&self) -> &'static str {{\n        \"fake\"\n    }}\n}}\n\
          #[test]\nfn echo() {{\n    assert_eq!(FakeClock.name(), \"fake\");\n}}\n"
     );
     let contributions = scan_fixture_with(
@@ -325,16 +382,17 @@ fn each_trait_impl_is_its_own_double() {
                 "rust:interface:crate::Clock".to_owned()
             ),
             (
-                "rust:test_double:src/tests.rs#double:8:1".to_owned(),
+                "rust:test_double:src/tests.rs#double:9:1".to_owned(),
                 "rust:interface:crate::Named".to_owned()
             ),
         ],
         edges_of(&contributions, "doubles")
     );
-    // The member's own impl answers, and both doubles share the handles.
+    // The member's own impl answers, and both doubles share the handles;
+    // `Clock`, imported from another file, may declare a `name` of its own.
     assert_eq!(
-        json!({"source": "mock-config", "double": "src/tests.rs#double:8:1", "value": "\"fake\""}),
-        first_operand(&contributions, 14)
+        json!({"source": "mock-config", "double": "src/tests.rs#double:9:1"}),
+        first_operand(&contributions, 15)
     );
     assert_eq!(
         1,
@@ -387,9 +445,9 @@ fn a_fake_is_a_handle_only_in_its_own_module_and_unhidden() {
 
 #[test]
 fn an_inline_module_and_an_enum_hold_fakes() {
-    let tests = "mod inner {\n    use crate::*;\n    enum Fixed {\n        Noon,\n    }\n    \
+    let tests = "mod inner {\n    use crate::Clock;\n    enum Fixed {\n        Noon,\n    }\n    \
         impl Clock for Fixed {\n        fn now(&self) -> u64 {\n            12\n        }\n    }\n    \
-        #[test]\n    fn t() {\n        assert_eq!(elapsed(&Fixed::Noon), 12);\n    }\n}\n";
+        #[test]\n    fn t() {\n        assert_eq!(crate::elapsed(&Fixed::Noon), 12);\n    }\n}\n";
     let contributions = scan("fake-inline", &[("src/tests.rs", tests)]);
 
     let attributes = &doubles(&contributions)["src/tests.rs#double:6:5"]["attributes"];
