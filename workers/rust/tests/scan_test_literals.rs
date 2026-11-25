@@ -164,6 +164,15 @@ fn a_single_immutable_binding_is_literal() {
 fn unseen_writes_make_a_local_unknown() {
     let writes = [
         ("mutable", "let mut x = 5;\n        x += 1;"),
+        ("inner_use", "let x = 5;\n        {\n            use crate::limits::LIMIT as x;\n            assert_eq!(x, 5);\n        }"),
+        ("inner_const", "let x = 5;\n        {\n            const x: u32 = crate::limits::LIMIT;\n            assert_eq!(x, 5);\n        }"),
+        ("inner_static", "let x = 5;\n        {\n            static x: u32 = 5;\n            assert_eq!(x, 5);\n        }"),
+        ("inner_struct", "let x = 5;\n        struct x;"),
+        ("inner_fn", "let x = 5;\n        fn x() {}"),
+        ("grouped_use", "let x = 5;\n        use crate::limits::{LIMIT, LIMIT as x};"),
+        ("body_glob", "let x = 5;\n        use crate::limits::*;"),
+        ("foreign_fn", "let x = 5;\n        extern \"C\" { fn x(); }"),
+        ("foreign_static", "let x = 5;\n        extern \"C\" { static x: u32; }"),
         ("shadowed", "let x = 5;\n        let x = 5;"),
         ("nested_block", "let x = 5;\n        { let x = 6; }"),
         (
@@ -265,6 +274,10 @@ fn same_file_constants_are_literal() {
             ("undeclared", "assert_eq!(NOWHERE, 4);"),
             ("shadowed", "let check = |LIMIT: u32| LIMIT;\n        assert_eq!(LIMIT, 10);"),
             ("own_module", "const LOCAL: u32 = 2;\n        assert_eq!(LOCAL, 2);"),
+            ("block_use", "use crate::other::FAR as LIMIT;\n        assert_eq!(LIMIT, 3);"),
+            ("block_const", "const LIMIT: u32 = crate::other::FAR;\n        assert_eq!(LIMIT, 3);"),
+            ("body_macro", "define_limit!(LIMIT);\n        assert_eq!(LIMIT, 3);"),
+            ("body_glob", "use crate::other::*;\n        assert_eq!(LIMIT, 10);"),
         ])
         + "use crate::other::FAR;\n";
     let found = first_operands(
@@ -277,6 +290,10 @@ fn same_file_constants_are_literal() {
 
     assert_eq!(
         vec![
+            ("tests::block_const".to_owned(), unknown()),
+            ("tests::block_use".to_owned(), unknown()),
+            ("tests::body_glob".to_owned(), unknown()),
+            ("tests::body_macro".to_owned(), unknown()),
             ("tests::computed".to_owned(), unknown()),
             ("tests::function".to_owned(), unknown()),
             ("tests::imported".to_owned(), literal("4")),
@@ -405,4 +422,46 @@ fn what_is_read_off_production_is_production() {
         .collect();
     expected.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(expected, found);
+}
+
+#[test]
+fn a_constant_declared_twice_holds_no_one_literal() {
+    let lib = "#[cfg(not(test))]\nconst BATCH: u32 = 1;\n#[cfg(test)]\nconst BATCH: u32 = crate::other::FAR;\n#[cfg(test)]\nconst RETRIES: u32 = 1;\n#[cfg(not(test))]\nconst RETRIES: u32 = 5;\nconst ONCE: u32 = 7;\n".to_owned()
+        + &tests_module(&[
+            ("batch", "assert_eq!(BATCH, 3);"),
+            ("retries", "assert_eq!(RETRIES, 1);"),
+            ("once", "assert_eq!(ONCE, 7);"),
+        ]);
+    let found = first_operands("literals-repeated", &[("src/lib.rs", &lib)]);
+
+    assert_eq!(
+        vec![
+            ("tests::batch".to_owned(), unknown()),
+            ("tests::once".to_owned(), literal("7")),
+            ("tests::retries".to_owned(), unknown()),
+        ],
+        found
+    );
+}
+
+#[test]
+fn a_module_macro_handed_the_name_hides_the_glob_constant() {
+    let lib = "const LIMIT: u32 = 10;\nconst OTHER: u32 = 4;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    define_limit!(LIMIT);\n    macro_rules! read_other {\n        () => { OTHER };\n    }\n    #[test]\n    fn defined() {\n        assert_eq!(LIMIT, 10);\n    }\n    #[test]\n    fn untouched() {\n        assert_eq!(OTHER, 4);\n    }\n}\n";
+    let found = first_operands("literals-module-macro", &[("src/lib.rs", lib)]);
+
+    assert_eq!(
+        vec![
+            ("tests::defined".to_owned(), unknown()),
+            ("tests::untouched".to_owned(), literal("4")),
+        ],
+        found
+    );
+}
+
+#[test]
+fn two_globs_that_disagree_leave_the_name_unknown() {
+    let lib = "const LIMIT: u32 = 10;\nmod inner {\n    pub(crate) const LIMIT: u32 = 99;\n}\n#[cfg(test)]\nmod tests {\n    use super::*;\n    use super::inner::*;\n    #[test]\n    fn ambiguous() {\n        assert_eq!(LIMIT, 99);\n    }\n}\n";
+    let found = first_operands("literals-two-globs", &[("src/lib.rs", lib)]);
+
+    assert_eq!(vec![("tests::ambiguous".to_owned(), unknown())], found);
 }

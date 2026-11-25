@@ -28,7 +28,10 @@ use PHPUnit\Framework\Attributes\Group;
  * `assert!(true)` (the R10 analog), `assert_eq!(1 + 1, 2)`, a test inside
  * `proptest! {}`, an `rstest` `#[case]` parameter compared with a literal,
  * and a `let` after the assertion. `src/lib.rs` compares a same-file
- * `const` and a literal with production.
+ * `const` and a literal with production, and holds what shadows a same-file
+ * `const` out of a pattern's sight (review C1 and I1): a block-level `use … as`
+ * and a block-level `const` of production's value, and a `const` whose
+ * `#[cfg(test)]` alternative is production's.
  *
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and

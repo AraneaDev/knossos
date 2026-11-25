@@ -41,6 +41,12 @@ pub(super) struct FileConsts {
     /// Every `const`, `static` and `fn` path the file declares: a name its
     /// module declares is that item, literal or not.
     values: BTreeSet<String>,
+    /// The paths declared more than once (`cfg` alternatives), which hold
+    /// no one literal.
+    repeated: BTreeSet<String>,
+    /// The paths a module's item macro is handed the name of
+    /// (`define_limit!(LIMIT);`), which it may declare as anything.
+    macro_named: BTreeSet<String>,
 }
 
 impl FileConsts {
@@ -64,6 +70,13 @@ impl FileConsts {
                         .flatten(),
                 ),
                 syn::Item::Fn(node) => (&node.sig.ident, None),
+                syn::Item::Macro(node) if node.ident.is_none() => {
+                    let mut named = BTreeSet::new();
+                    identifiers(node.mac.tokens.clone(), &mut named);
+                    self.macro_named
+                        .extend(named.iter().map(|name| format!("{container}::{name}")));
+                    continue;
+                }
                 syn::Item::Mod(node) => {
                     if let Some((_, inner)) = &node.content {
                         self.collect(inner, &format!("{container}::{}", ident_name(&node.ident)));
@@ -76,7 +89,9 @@ impl FileConsts {
             if let Some(text) = literal {
                 self.literals.insert(path.clone(), text);
             }
-            self.values.insert(path);
+            if !self.values.insert(path.clone()) {
+                self.repeated.insert(path);
+            }
         }
     }
 
@@ -94,6 +109,9 @@ impl FileConsts {
             return None;
         }
         let own = format!("{module}::{name}");
+        if self.macro_named.contains(&own) || self.repeated.contains(&own) {
+            return None;
+        }
         if self.values.contains(&own) {
             return self.literals.get(&own).map(String::as_str);
         }
@@ -104,11 +122,17 @@ impl FileConsts {
             let (parent, last) = imported.as_deref()?.rsplit_once("::")?;
             return self.resolve_in(parent, last, scope, hops + 1);
         }
-        scope
+        // Two globs that bring in the name apart make it ambiguous.
+        let provided: BTreeSet<&str> = scope
             .globs
             .iter()
             .filter(|(importer, _)| importer == module)
-            .find_map(|(_, source)| self.resolve_in(source, name, scope, hops + 1))
+            .filter_map(|(_, source)| self.resolve_in(source, name, scope, hops + 1))
+            .collect();
+        match provided.into_iter().collect::<Vec<_>>().as_slice() {
+            [one] => Some(one),
+            _ => None,
+        }
     }
 }
 
@@ -123,6 +147,13 @@ pub(super) struct LocalLiterals<'c> {
     bindings: BTreeMap<String, usize>,
     /// Every identifier handed to a macro other than an assertion.
     in_macros: BTreeSet<String>,
+    /// Every name an item in the body declares or imports (`use`,
+    /// `const`, `static`, `fn`…), which shadows a local or a constant of
+    /// the same name for the rest of its block.
+    items: BTreeSet<String>,
+    /// Whether the body glob-imports (`use m::*;`), which may bring in any
+    /// name.
+    glob: bool,
     /// Whether `unsafe` appears anywhere in the function.
     unsafe_code: bool,
     /// The file's constants.
@@ -145,6 +176,8 @@ impl<'c> LocalLiterals<'c> {
         let mut names = Names {
             bindings: BTreeMap::new(),
             in_macros: BTreeSet::new(),
+            items: BTreeSet::new(),
+            glob: false,
             unsafe_code: false,
         };
         names.visit_signature(signature);
@@ -159,6 +192,8 @@ impl<'c> LocalLiterals<'c> {
             top,
             bindings: names.bindings,
             in_macros: names.in_macros,
+            items: names.items,
+            glob: names.glob,
             unsafe_code: names.unsafe_code,
             consts,
             module: module.to_owned(),
@@ -169,12 +204,16 @@ impl<'c> LocalLiterals<'c> {
     /// The literal `name` holds where it is read, at `(line, column)`, or
     /// `None` when it may hold anything else.
     pub(super) fn text(&self, name: &str, at: (usize, usize)) -> Option<&str> {
+        // An item, a glob or a macro in the body may declare the name, out
+        // of the reach of the pattern count: whatever it names is unknown.
+        if self.glob || self.items.contains(name) || self.in_macros.contains(name) {
+            return None;
+        }
         match self.bindings.get(name).copied().unwrap_or(0) {
             0 => self.consts.resolve(&self.module, name, self.scope),
             1 => {
                 let (bound, text) = self.top.get(name)?;
-                (*bound < at && !self.unsafe_code && !self.in_macros.contains(name))
-                    .then_some(text.as_str())
+                (*bound < at && !self.unsafe_code).then_some(text.as_str())
             }
             _ => None,
         }
@@ -216,6 +255,10 @@ struct Names {
     bindings: BTreeMap<String, usize>,
     /// See [`LocalLiterals::in_macros`].
     in_macros: BTreeSet<String>,
+    /// See [`LocalLiterals::items`].
+    items: BTreeSet<String>,
+    /// See [`LocalLiterals::glob`].
+    glob: bool,
     /// See [`LocalLiterals::unsafe_code`].
     unsafe_code: bool,
 }
@@ -224,6 +267,11 @@ impl Visit<'_> for Names {
     fn visit_pat_ident(&mut self, node: &syn::PatIdent) {
         *self.bindings.entry(ident_name(&node.ident)).or_insert(0) += 1;
         syn::visit::visit_pat_ident(self, node);
+    }
+
+    fn visit_item(&mut self, node: &syn::Item) {
+        declared_names(node, &mut self.items, &mut self.glob);
+        syn::visit::visit_item(self, node);
     }
 
     fn visit_expr_unsafe(&mut self, node: &syn::ExprUnsafe) {
@@ -249,6 +297,51 @@ impl Visit<'_> for Names {
         }
         identifiers(node.tokens.clone(), &mut self.in_macros);
         self.unsafe_code |= self.in_macros.contains("unsafe");
+    }
+}
+
+/// The names an item declares or imports into its block, with `glob` set
+/// for a glob import.
+fn declared_names(item: &syn::Item, out: &mut BTreeSet<String>, glob: &mut bool) {
+    // Only what can stand where a value is read: a unit or tuple struct is
+    // one, an enum, a trait or a module never is.
+    let ident = match item {
+        syn::Item::Const(node) => &node.ident,
+        syn::Item::Static(node) => &node.ident,
+        syn::Item::Fn(node) => &node.sig.ident,
+        syn::Item::Struct(node) => &node.ident,
+        syn::Item::Use(node) => return use_names(&node.tree, out, glob),
+        syn::Item::ForeignMod(node) => {
+            for foreign in &node.items {
+                match foreign {
+                    syn::ForeignItem::Fn(function) => out.insert(ident_name(&function.sig.ident)),
+                    syn::ForeignItem::Static(value) => out.insert(ident_name(&value.ident)),
+                    _ => false,
+                };
+            }
+            return;
+        }
+        _ => return,
+    };
+    out.insert(ident_name(ident));
+}
+
+/// The names one `use` tree binds, with `glob` set for a glob.
+fn use_names(tree: &syn::UseTree, out: &mut BTreeSet<String>, glob: &mut bool) {
+    match tree {
+        syn::UseTree::Path(path) => use_names(&path.tree, out, glob),
+        syn::UseTree::Name(name) => {
+            out.insert(ident_name(&name.ident));
+        }
+        syn::UseTree::Rename(rename) => {
+            out.insert(ident_name(&rename.rename));
+        }
+        syn::UseTree::Glob(_) => *glob = true,
+        syn::UseTree::Group(group) => {
+            for inner in &group.items {
+                use_names(inner, out, glob);
+            }
+        }
     }
 }
 
