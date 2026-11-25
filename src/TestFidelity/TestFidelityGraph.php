@@ -43,8 +43,10 @@ final readonly class TestFidelityGraph
 
     /**
      * The Python bases outside the project that add no member a double may
-     * stub but these (their metaclass's own, as `dir()` shows them on 3.14,
-     * the one version checked, with the pure-Python `_py_abc` caches added),
+     * stub but these (their metaclass's own on 3.14, the one version
+     * checked, with the pure-Python `_py_abc` caches added; a lookup on the
+     * class reaches them, so `patch.object(C, "register")` replaces one,
+     * though `dir(C)` and a `spec=C` list none),
      * so a class inheriting from one keeps a complete name list:
      * `abc.ABC`, `typing.Protocol` and `typing.Generic`, by qualified name.
      * Every other base outside the project (`enum.Enum`, `typing.NamedTuple`,
@@ -335,7 +337,9 @@ final readonly class TestFidelityGraph
      *
      * Walks `uses_trait`, `extends` and `implements` edges breadth first, so
      * the nearest declaration wins, and visits each type once, so a cyclic
-     * hierarchy (which a malformed contribution can carry) terminates.
+     * hierarchy (which a malformed contribution can carry) terminates. That
+     * is not Python's lookup order: `answersCertainly()` says whether the
+     * node found is the one Python answers with.
      */
     public function member(NodeFact $owner, string $name): ?NodeFact
     {
@@ -350,6 +354,40 @@ final readonly class TestFidelityGraph
         }
 
         return null;
+    }
+
+    /**
+     * Whether `$member`, the node `member()` found on `$owner`, is for certain
+     * the one a lookup of its name answers with (Ruling P24). Always for a
+     * TypeScript or PHP owner. For a Python one, Python's lookup (the C3 MRO,
+     * a class-body or `self.` binding) decides, which a breadth-first walk
+     * does not model, so only when no other type of the lineage lists the
+     * name in `member_names` and the def is the owner's own or the owner has
+     * no unseen ancestor, which may come first in the MRO.
+     */
+    public function answersCertainly(NodeFact $owner, NodeFact $member): bool
+    {
+        if (!self::isPython($owner)) {
+            return true;
+        }
+        $declarer = null;
+        foreach ($this->lineage($owner) as $type) {
+            if ($declarer === null && in_array($member->localId, $this->children[$type->localId] ?? [], true)) {
+                $declarer = $type;
+            } elseif (self::listsMember($type, $member->displayName)) {
+                return false;
+            }
+        }
+
+        return $declarer !== null && ($declarer->localId === $owner->localId || !$this->hasUnseenAncestor($owner));
+    }
+
+    /** Whether a type's `member_names` list holds `$name`. */
+    private static function listsMember(NodeFact $type, string $name): bool
+    {
+        $names = $type->attributes['member_names'] ?? null;
+
+        return is_array($names) && in_array($name, $names, true);
     }
 
     /**

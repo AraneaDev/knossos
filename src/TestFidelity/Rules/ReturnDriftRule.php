@@ -39,7 +39,8 @@ use Knossos\TestFidelity\TestFinding;
  * `new=` value replaces the member itself rather than pinning what it returns,
  * so it is not judged; a decorated member has no signature to judge against,
  * nor has a member of a class whose lineage may rewrite its methods (Ruling
- * P21; a base outside the project is not taken to, residual G4-12).
+ * P21; a base outside the project is not taken to, residual G4-12), nor a
+ * def another binding may answer the name before (Ruling P24).
  */
 final readonly class ReturnDriftRule extends DriftRule
 {
@@ -59,7 +60,7 @@ final readonly class ReturnDriftRule extends DriftRule
     {
         // A missing, truncated or overloaded signature says nothing reliable about the return type.
         $signature = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
-        if ($signature === null || $pair->member === null || (TestFidelityGraph::isPython($pair->target) && $graph->hasRewritableLineage($pair->target))) {
+        if ($signature === null || $pair->member === null || (TestFidelityGraph::isPython($pair->target) && $graph->hasRewritableLineage($pair->target)) || !$graph->answersCertainly($pair->target, $pair->member)) {
             return null;
         }
         [$pinned, $typed] = self::worst(self::refused($pair->stub->returns, $signature->returns, $pair, $graph));

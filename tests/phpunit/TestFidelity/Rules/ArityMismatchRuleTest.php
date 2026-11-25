@@ -299,6 +299,61 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertCount(1, self::findings($typescript));
     }
 
+    public function testPythonArityIsJudgedOnlyAgainstTheDefThatCertainlyAnswers(): void
+    {
+        // Ruling P24 (final review I1): Python's lookup, not a breadth-first walk, decides which def answers the name.
+        $judge = static function (array $ownNames, array $parents, array $bases, array $own = []): array {
+            $owner = PythonFixtures::node('class', 'app.repo.Repo');
+            $edges = array_map(static fn(string $base): \Knossos\Scanner\Protocol\EdgeFact => PythonFixtures::edge('extends', $owner, $base), $parents);
+            $extra = [];
+            foreach ($bases as [$base, $names, $params, $baseParents]) {
+                $node = PythonFixtures::node('class', 'app.repo.' . $base, ['member_names' => $names]);
+                $extra[] = $node;
+                if ($params !== null) {
+                    $method = PythonFixtures::method($node, 'run', PythonFixtures::signature($params));
+                    $extra[] = $method;
+                    $edges[] = PythonFixtures::edge('contains', $node, $method->localId);
+                }
+                foreach ($baseParents as $parent) {
+                    $edges[] = PythonFixtures::edge('extends', $node, $parent);
+                }
+            }
+            $graph = PythonFixtures::graph($own, [PythonFixtures::stub('run', [], [PythonFixtures::matcher(1)])], ownerAttributes: ['member_names' => $ownNames], extra: $extra, extraEdges: $edges);
+
+            return self::messages(self::findings($graph));
+        };
+        $one = [['name' => 'x']];
+        $two = [['name' => 'x'], ['name' => 'y']];
+
+        // `class Repo(B, C)`, `B(A)`: Python's MRO takes A's `run(x)`; breadth first takes C's `run(x, y)`.
+        assertSame([], $judge(['run'], ['py:class:app.repo.B', 'py:class:app.repo.C'], [['B', ['run'], null, ['py:class:app.repo.A']], ['C', ['run'], $two, []], ['A', ['run'], $one, []]]));
+        // `class Repo(logging.Handler, Base)`: the base outside the project comes first in the MRO.
+        assertSame([], $judge([], ['py:external_symbol:logging.Handler', 'py:class:app.repo.Base'], [['Base', ['run'], $two, []]]));        // `class Repo(Base): run = _impl`, or `self.run = …`: the class's own binding shadows the inherited def.
+        assertSame([], $judge(['run'], ['py:class:app.repo.Base'], [['Base', ['run'], $two, []]]));
+        // A subclass that leaves the name to its one base is judged against that def.
+        assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge([], ['py:class:app.repo.Base'], [['Base', ['run'], $two, []]]));
+        assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge([], ['py:class:app.repo.B'], [['B', [], null, ['py:class:app.repo.Base']], ['Base', ['run'], $two, []]]));
+        // A def on the class itself answers first, whatever its bases.
+        assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge(['run'], ['py:external_symbol:logging.Handler', 'py:class:app.repo.Base'], [['Base', ['other'], null, []]], [['run', PythonFixtures::signature($two)]]));
+    }
+
+    public function testTypeScriptArityIgnoresWhoElseListsTheName(): void
+    {
+        // P24 is Python's: a TypeScript subclass that lists the name, under an unseen base, keeps the inherited signature judged.
+        $base = DriftFixtures::node('class', 'src/UserService.ts#Base', 'Base', ['member_names' => ['find']]);
+        $find = DriftFixtures::node('method', 'src/UserService.ts#Base::find', 'find', ['signature' => ['params' => [['name' => 'id']]]]);
+        $class = DriftFixtures::node('class', 'src/UserService.ts#UserService', 'UserService');
+        $graph = DriftFixtures::graph(
+            [],
+            [DriftFixtures::stub('find', null, [], [self::matcher(2)])],
+            extra: [$base, $find],
+            extraEdges: [DriftFixtures::edge('contains', $base, $find->localId), DriftFixtures::edge('extends', $class, 'ts:external_symbol:lib.Thing'), DriftFixtures::edge('extends', $class, $base->localId)],
+            targetAttributes: ['member_names' => ['find']],
+        );
+
+        assertCount(1, self::findings($graph));
+    }
+
     public function testPythonUntypedSideEffectLambdaIsAWarning(): void
     {
         $member = PythonFixtures::stub('open', params: [['name' => 'a'], ['name' => 'b'], ['name' => 'c']]);

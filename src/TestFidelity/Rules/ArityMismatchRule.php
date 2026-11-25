@@ -35,7 +35,11 @@ use Knossos\TestFidelity\TestFinding;
  * for a Python class whose lineage carries `methods_rewritable` (a project
  * metaclass, an `__init_subclass__`, a class decorator or call that may
  * replace its methods; Ruling P21). Residual (G4-12): a base outside the
- * project is never taken to rewrite, though its metaclass may.
+ * project is never taken to rewrite, though its metaclass may. Silent, too,
+ * where Python's lookup may answer the name with another binding than the
+ * def found (Ruling P24, `TestFidelityGraph::answersCertainly()`): another
+ * class of the lineage lists the name, or the def is inherited past a base
+ * outside the project.
  */
 final readonly class ArityMismatchRule extends DriftRule
 {
@@ -45,8 +49,12 @@ final readonly class ArityMismatchRule extends DriftRule
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
     {
         $declared = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
-        // Ruling P21: a Python class whose lineage may rewrite its methods states no signature a call must meet.
+        // Ruling P21: a Python class whose lineage may rewrite its methods states no signature a call must meet;
+        // Ruling P24: nor does a def another binding of the lineage, or a base outside the project, may come before.
         if (TestFidelityGraph::isPython($pair->target) && $graph->hasRewritableLineage($pair->target)) {
+            return null;
+        }
+        if ($pair->member !== null && !$graph->answersCertainly($pair->target, $pair->member)) {
             return null;
         }
 

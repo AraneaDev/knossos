@@ -229,6 +229,24 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertCount(1, [...(new ReturnDriftRule())->findings($typescript)]);
     }
 
+    public function testAPythonPinIsJudgedOnlyAgainstTheDefThatCertainlyAnswers(): void
+    {
+        // Ruling P24: `class Repo(Base): total = _other` shadows Base's `total() -> int`; a subclass that does not keeps it judged.
+        $judge = static function (array $ownNames): array {
+            $owner = PythonFixtures::node('class', 'app.repo.Repo');
+            $base = PythonFixtures::node('class', 'app.repo.Base', ['member_names' => ['total']]);
+            $total = PythonFixtures::method($base, 'total', PythonFixtures::signature([], 'int'));
+            $graph = PythonFixtures::graph([], [PythonFixtures::stub('total', [PythonFixtures::pin('str')])], ownerAttributes: ['member_names' => $ownNames], extra: [$base, $total], extraEdges: [
+                PythonFixtures::edge('extends', $owner, $base->localId), PythonFixtures::edge('contains', $base, $total->localId),
+            ]);
+
+            return array_map(static fn(\Knossos\TestFidelity\TestFinding $finding): string => $finding->message, [...(new ReturnDriftRule())->findings($graph)]);
+        };
+
+        assertSame([], $judge(['total']));
+        assertSame(['total returns int; the double pins a value it does not admit (return_value)'], $judge([]));
+    }
+
     public function testPythonDecoratedMemberIsSilent(): void
     {
         assertSame([], self::python([PythonFixtures::pin('str')], 'int', ['decorated' => true]));
