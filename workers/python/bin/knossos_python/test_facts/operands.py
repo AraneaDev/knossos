@@ -86,6 +86,9 @@ class OperandReader:
             wire["text"] = text
         if found.value is not None:
             wire["value"] = found.value
+        elif found.source == "literal" and isinstance(operand, ast.Name):
+            # A local followed to its one literal: `text` is the name as spelled, `value` the literal it holds.
+            wire["value"] = found.text
         if found.double is not None:
             wire["double"] = found.double
             if found.unconfigured_spy:
@@ -210,8 +213,9 @@ def _derived(base: Source) -> Source:
 
 
 def _text(operand: ast.expr, found: Source, identity: bool) -> str | None:
+    """The operand's own spelling where evaluating it again gives the same value (final review M5)."""
+    if isinstance(operand, ast.Name) and (identity or found.source == "literal"):
+        return operand.id
     if not identity:
         return found.text if found.source == "literal" else None
-    if isinstance(operand, ast.Name):
-        return operand.id
     return found.text if found.source == "literal" and is_constant(operand) else None

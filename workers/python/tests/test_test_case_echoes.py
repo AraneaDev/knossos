@@ -25,7 +25,7 @@ def test_it():
         ],
         [
             {"source": "mock-config", "value": "'x'", "double": "tests/test_it.py#double:12:13"},
-            {"source": "literal", "text": "'x'"},
+            {"source": "literal", "text": "expected", "value": "'x'"},
         ],
     ]
 

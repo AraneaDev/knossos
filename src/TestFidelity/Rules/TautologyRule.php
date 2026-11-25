@@ -151,10 +151,10 @@ final readonly class TautologyRule implements TestFidelityRule
         return in_array($assertion->api, self::PYTHON_IDENTITY_APIS, true) || ($left->source === 'literal' && $right->source === 'literal');
     }
 
-    /** The value a stub was pinned to, when the other operand is that same literal. */
+    /** The value a stub was pinned to, when the other operand is that same literal, written or held by a local (its `value`). */
     private static function echo(Operand $stubbed, Operand $literal): ?string
     {
-        return $stubbed->source === 'mock-config' && $stubbed->value !== null && $literal->source === 'literal' && $literal->text === $stubbed->value ? $stubbed->value : null;
+        return $stubbed->source === 'mock-config' && $stubbed->value !== null && $literal->source === 'literal' && ($literal->value ?? $literal->text) === $stubbed->value ? $stubbed->value : null;
     }
 
     /**

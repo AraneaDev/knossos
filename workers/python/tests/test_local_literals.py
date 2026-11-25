@@ -75,14 +75,15 @@ def test_it():
 """
     assertions = scan_cases(project, scan_collect, source)["test_it"]["assertions"]
 
+    # Final review M5: `text` is the operand's own spelling, as the protocol says; `value` is the literal it holds.
     assert [assertion["operands"] for assertion in assertions] == [
-        [{"source": "literal", "text": "5"}, {"source": "literal", "text": "5"}],
+        [{"source": "literal", "text": "expected", "value": "5"}, {"source": "literal", "text": "5"}],
         [
-            {"source": "literal", "text": "(1, -2.5, 'a', None)"},
+            {"source": "literal", "text": "pair", "value": "(1, -2.5, 'a', None)"},
             {"source": "literal", "text": "(1, -2.5, 'a', None)"},
         ],
-        [{"source": "literal", "text": "'x'"}, {"source": "literal", "text": "'x'"}],
-        [{"source": "literal", "text": "5"}, {"source": "literal", "text": "5"}],
+        [{"source": "literal", "text": "inside", "value": "'x'"}, {"source": "literal", "text": "'x'"}],
+        [{"source": "literal", "text": "expected", "value": "5"}, {"source": "literal", "text": "5"}],
     ]
 
 

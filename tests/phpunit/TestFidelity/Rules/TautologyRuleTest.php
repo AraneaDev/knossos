@@ -362,6 +362,20 @@ final class TautologyRuleTest extends KnossosTestCase
         assertSame(['self_comparison'], self::subRules(self::judge(CaseFixtures::testCase([CaseFixtures::assertion('toBe', [$name, $name])]))));
     }
 
+    public function testAPythonLocalHeldLiteralIsAConstantByItsSpellingAndEchoesByItsValue(): void
+    {
+        // Final review M5: `x = 5; assert x == 5` compares two constants, as PHP's `$x = 5; assertSame(5, $x)` does; the local's `value` is the literal it holds.
+        $local = CaseFixtures::operand('literal', ['text' => 'x', 'value' => '5']);
+        $other = CaseFixtures::operand('literal', ['text' => 'y', 'value' => '5']);
+        $literal = CaseFixtures::operand('literal', ['text' => '5']);
+        $pinned = CaseFixtures::operand('mock-config', ['value' => '5', 'double' => 'tests/test_repo.py#double:11:11']);
+        assertSame(['constant definite'], self::python([CaseFixtures::assertion('assert ==', [$local, $literal])]));
+        assertSame(['constant definite'], self::python([CaseFixtures::assertion('assert ==', [$local, $other])]));
+        assertSame(['self_comparison definite'], self::python([CaseFixtures::assertion('assert ==', [$local, $local])]));
+        assertSame(['mock_echo definite'], self::python([CaseFixtures::assertion('assert ==', [$pinned, $local])]));
+        assertSame(['mock_echo definite'], self::python([CaseFixtures::assertion('assert ==', [$local, $pinned])]));
+    }
+
     public function testPythonAssertionsOfOneValueAreNotConstant(): void
     {
         $five = CaseFixtures::operand('literal', ['text' => '5']);

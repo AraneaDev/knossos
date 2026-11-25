@@ -205,7 +205,8 @@ def test_it(x):
         [None, None],
         [None, None],
         ["self_named", "self_named"],
-        ["5", "5"],
+        # Final review M5: a local followed to a literal is spelled as written under `==` too.
+        ["self_named", "self_named"],
     ]
 
 
