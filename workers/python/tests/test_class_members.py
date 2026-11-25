@@ -142,6 +142,22 @@ OPENERS = {
     ),
     # Review M1: a bare call in the class body may write the class through its frame.
     "class body call": "from zope.interface import implements\n\n\nclass C:\n    implements(object)\n    a = 1\n",
+    # Final review I3 (Ruling P23): a class whose name escapes into a binding, a display, a loop or a return.
+    "alias binding": "class C:\n    a = 1\n\n\nAlias = C\nAlias.b = 2\n",
+    "annotated alias": "class C:\n    a = 1\n\n\nAlias: type = C\n",
+    "walrus alias": "class C:\n    a = 1\n\n\nif (Alias := C):\n    pass\n",
+    "conditional alias": "import sys\n\n\nclass C:\n    a = 1\n\n\nAlias = C if sys.argv else None\n",
+    "tuple display": "class C:\n    a = 1\n\n\nPAIR = (C, 1)\nPAIR[0].b = 2\n",
+    "dict display": "class C:\n    a = 1\n\n\nREGISTRY = {'c': C}\nREGISTRY['c'].b = 2\n",
+    "set display": "class C:\n    a = 1\n\n\nKINDS = {C}\n",
+    "loop alias": "class C:\n    a = 1\n\n\nclass D:\n    pass\n\n\nfor k in (C, D):\n    k.b = 1\n",
+    "loop over a name": "class C:\n    a = 1\n\n\nfor k in C, :\n    k.b = 1\n",
+    "comprehension": "class C:\n    a = 1\n\n\n[k for k in [C]][0].b = 3\n",
+    "comprehension element": "class C:\n    a = 1\n\n\nALL = [C for _ in range(1)]\n",
+    "returned": "class C:\n    a = 1\n\n\ndef pick():\n    return C\n",
+    "lambda body": "class C:\n    a = 1\n\n\npick = lambda: C\n",
+    "yielded": "class C:\n    a = 1\n\n\ndef each():\n    yield C\n",
+    "dict display in a call": "import registry\n\n\nclass C:\n    a = 1\n\n\nregistry.add({'c': C})\n",
 }
 
 
@@ -190,6 +206,14 @@ CLOSED = {
         "class C:\n    a = 1\n\n\ndef check(x):\n    return isinstance(x, C) or issubclass(type(x), C) or repr(C)\n"
     ),
     "a call in the class body that binds a name": "import attr\n\n\nclass C:\n    a = attr.ib()\n",
+    # Ruling P23 opens a class only where its name escapes: an annotation, an instance and a read do not.
+    "annotations": (
+        "from typing import Callable\n\n\nclass C:\n    a = 1\n\n\n"
+        "def f(x: tuple[C, int], y: dict[str, C]) -> Callable[[C], C]:\n    return x\n\n\nT = tuple[C, int]\n"
+    ),
+    "an instance stored": "class C:\n    a = 1\n\n\nINSTANCE = C()\nITEMS = [C(), C.a]\n",
+    "an isinstance tuple": "class C:\n    a = 1\n\n\ndef check(x):\n    return isinstance(x, (C, int))\n",
+    "an except tuple": "class C:\n    a = 1\n\n\ntry:\n    pass\nexcept (C, OSError):\n    pass\n",
 }
 
 

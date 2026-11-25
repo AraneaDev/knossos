@@ -87,22 +87,14 @@ def visibility(name: str) -> dict[str, Any]:
 
 
 def assigned_self_attributes(node: ast.ClassDef) -> frozenset[str]:
-    """The `self.<name>` attributes the methods of `node` assign, in any form of assignment."""
-    names: set[str] = set()
-    for item in node.body:
-        if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for statement in ast.walk(item):
-            if isinstance(statement, ast.Assign):
-                targets = statement.targets
-            elif isinstance(statement, (ast.AnnAssign, ast.AugAssign)):
-                targets = [statement.target]
-            else:
-                continue
-            for target in targets:
-                if isinstance(target, ast.Attribute) and dotted(target.value) == "self":
-                    names.add(target.attr)
-    return frozenset(names)
+    """The attributes the methods of ``node`` write on their receiver or class, in any form :class:`_ClassScan` reads.
+
+    ``self.x = v``, ``self.x, self.y = …``, ``with … as self.x``, ``for
+    self.x in …`` and a literal ``setattr(self, "x", v)`` alike: one
+    definition of a name a class writes on ``self``, shared with
+    ``member_names``.
+    """
+    return frozenset(_ClassScan(node).written)
 
 
 def scope_nodes(statements: Iterable[ast.AST]) -> Iterator[ast.AST]:
@@ -298,6 +290,7 @@ class _ClassScan:
         self.node = node
         body = list(scope_nodes(node.body))
         self.names, _ = scope_bindings(body)
+        self.written: set[str] = set()
         self.opened = bool(self.names & OPENING_HOOKS)
         for item in body:
             self.body_node(item)
@@ -336,9 +329,10 @@ class _ClassScan:
         for child in ast.walk(item):
             if isinstance(child, ast.Attribute) and isinstance(child.ctx, ast.Store):
                 if isinstance(child.value, ast.Name) and child.value.id in receivers:
-                    self.names.add(child.attr)
+                    self.written.add(child.attr)
             elif isinstance(child, ast.Call):
                 self.setattr_call(child, receivers)
+        self.names |= self.written
 
     def setattr_call(self, call: ast.Call, receivers: set[str]) -> None:
         """``setattr(self, name, v)`` and ``__setattr__(...)``: a literal name is a member, any other opens."""
@@ -358,7 +352,7 @@ class _ClassScan:
         if name is None:
             self.opened = True
         else:
-            self.names.add(name)
+            self.written.add(name)
 
 
 class ClassMembers:
@@ -480,13 +474,16 @@ class ClassMembers:
         return resolved is not None and resolved.split(":", 2)[-1] in CLOSED_DECORATORS
 
     def written_names(self) -> set[str]:
-        """Names the module writes an attribute on, hands to a call, or binds other than by ``class``.
+        """Names the module writes an attribute on, hands on, or binds other than by ``class``.
 
         A class written (``C.x = v``, ``setattr(C, ...)``) or handed to a call
         that may write it (``install(C)``; :data:`READ_ONLY_CALLS` only read)
         may gain any member, and one rebound (``C = register(C)``, ``from x
         import C`` in a ``try``, a ``def C``) may not be the class its body
-        declares.
+        declares. So may one whose name escapes into another holder (Ruling
+        P23): bound to another name, put in a display, looped over or
+        returned (:func:`_holders`), where a write through that holder
+        (``Alias.x = 1``, ``for k in (C, D): k.x = 1``) reaches it.
         """
         if self._written is None:
             written: set[str] = set()
@@ -500,9 +497,44 @@ class ClassMembers:
                     for argument in arguments:
                         spelled = argument.value if isinstance(argument, ast.Starred) else argument
                         written.add(dotted(spelled) or "")
-                        written |= {dotted(each) or "" for each in getattr(spelled, "elts", [])}
+                        written |= set(_escaping(spelled))
+                written |= {name for held in _holders(node) for name in _escaping(held)}
             self._written = written
         return self._written
+
+
+def _holders(node: ast.AST) -> list[ast.expr]:
+    """The expressions whose value a node stores, loops over or hands back: where a class's name escapes."""
+    if isinstance(
+        node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr, ast.Return, ast.Yield, ast.YieldFrom)
+    ):
+        return [node.value] if node.value is not None else []
+    if isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
+        return [node.iter]
+    if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+        return [node.elt]
+    if isinstance(node, ast.DictComp):
+        return [node.key, node.value]
+    return [node.body] if isinstance(node, ast.Lambda) else []
+
+
+def _escaping(value: ast.expr | None) -> Iterator[str]:
+    """The names a held value is, or holds in a display: ``C``, ``(C, 1)``, ``{"c": C}``, ``A if x else B``."""
+    pending: list[ast.expr | None] = [value]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, ast.Name):
+            yield node.id
+        elif isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+            pending.extend(node.elts)
+        elif isinstance(node, ast.Dict):
+            pending.extend([*node.keys, *node.values])
+        elif isinstance(node, (ast.Starred, ast.NamedExpr)):
+            pending.append(node.value)
+        elif isinstance(node, ast.IfExp):
+            pending.extend([node.body, node.orelse])
+        elif isinstance(node, ast.BoolOp):
+            pending.extend(node.values)
 
 
 def merge_member_names(attributes: dict[str, Any], found: dict[str, Any]) -> None:

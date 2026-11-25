@@ -273,8 +273,17 @@ class C:
 
     def __init__(self):
         self.shadowed = len
+        # Final review I2: a tuple target and a literal `setattr` rebind as `self.x = …` does.
+        self.paired, self.other = len, len
+        setattr(self, "set_by_name", len)
 
     def kept(self, a):
+        return a
+
+    def paired(self, a):
+        return a
+
+    def set_by_name(self, a):
         return a
 """
 
@@ -286,7 +295,9 @@ def test_a_def_its_scope_binds_again_counts_as_decorated(project, scan_collect) 
 
     decorated = sorted(name for name, values in attributes.items() if values.get("decorated") is True)
     assert decorated == [
+        "api.C::paired",
         "api.C::partial",
+        "api.C::set_by_name",
         "api.C::shadowed",
         "api.branched",
         "api.imported",
