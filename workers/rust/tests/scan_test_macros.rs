@@ -342,3 +342,149 @@ fn a_frozen_answer_reads_every_file_of_its_package() {
         .iter()
         .any(|file| reads_of(&shadowed, "src/lib.rs").contains(file)));
 }
+
+#[test]
+fn a_macro_outside_the_standard_prelude_is_never_frozen() {
+    // rr5 I7: a glob may import a macro under a name the standard prelude
+    // does not give (no E0659), so such a name poisons the whole body.
+    let lib = "#[allow(unused_imports)]\nuse extmac::m_prop_assert_eq::*;\npub const LIMIT: u32 = 10;\n"
+        .to_owned()
+        // rr5 glob2021/test_assert_matches and test_prop_assert.
+        + &case_module("test_assert_matches", "use extmac::m_assert_matches::*;", "assert_eq!(LIMIT, 20);\n        assert_matches!(true);")
+        + &case_module("test_prop_assert", "use extmac::m_prop_assert::*;", "assert_eq!(LIMIT, 20);\n        prop_assert!(true);")
+        // rr5 glob2021/root_prop_assert_eq.
+        + &case_module("root_prop_assert_eq", "", "assert_eq!(LIMIT, 20);\n        prop_assert_eq!(true);")
+        + &case_module("prop_assert_ne", "", "assert_eq!(LIMIT, 20);\n        prop_assert_ne!(1, 2);")
+        + &case_module("debug_assert_matches", "", "assert_eq!(LIMIT, 20);\n        debug_assert_matches!(1, 1);")
+        + &case_module("drop", "", "assert_eq!(LIMIT, 20);\n        drop!(LIMIT);")
+        // The prelude's names: a glob cannot shadow them (E0659).
+        + &case_module(
+            "prelude",
+            "use extmac::m_dbg::*;",
+            "assert_eq!(LIMIT, 20);\n        assert!(true);\n        assert_ne!(1, 2);\n        debug_assert!(true);\n        debug_assert_eq!(1, 1);\n        debug_assert_ne!(1, 2);\n        dbg!();\n        print!(\"\");\n        eprint!(\"\");\n        eprintln!(\"\");\n        unimplemented!();",
+        );
+    let found = first_operands("macros-prelude", &[("src/lib.rs", &lib)]);
+
+    assert_eq!(
+        vec![
+            ("debug_assert_matches::case".to_owned(), unknown()),
+            ("drop::case".to_owned(), unknown()),
+            ("prelude::case".to_owned(), literal("10")),
+            ("prop_assert_ne::case".to_owned(), unknown()),
+            ("root_prop_assert_eq::case".to_owned(), unknown()),
+            ("test_assert_matches::case".to_owned(), unknown()),
+            ("test_prop_assert::case".to_owned(), unknown()),
+        ],
+        found
+    );
+}
+
+#[test]
+fn a_module_named_like_a_standard_crate_freezes_none() {
+    // rr5 std/mod_core_glob and mod_std_glob: `core::todo!` through a local
+    // `mod core` is no glob import, so E0659 does not hold.
+    let cases = |module: &str| {
+        let lib = "pub const LIMIT: u32 = 10;\nmod other;\n".to_owned()
+            + &case_module(
+                "local_core",
+                "",
+                "core::todo!();\n        assert_eq!(LIMIT, 20);",
+            )
+            + &case_module("plain", "", "println!();\n        assert_eq!(LIMIT, 20);");
+        let other = format!("pub fn other() {{}}\n{module}\n");
+        first_operands(
+            "macros-standard-module",
+            &[("src/lib.rs", &lib), ("src/other.rs", &other)],
+        )
+    };
+    let none = vec![
+        ("local_core::case".to_owned(), unknown()),
+        ("plain::case".to_owned(), unknown()),
+    ];
+
+    assert_eq!(
+        none,
+        cases("pub mod core {\n    pub use extmac::m_todo::*;\n}")
+    );
+    assert_eq!(
+        none,
+        cases("pub mod std {\n    pub use extmac::m_todo::*;\n}")
+    );
+    assert_eq!(none, cases("mod inner {\n    mod alloc {}\n}"));
+    assert_eq!(
+        vec![
+            ("local_core::case".to_owned(), literal("10")),
+            ("plain::case".to_owned(), literal("10")),
+        ],
+        cases("mod corelike {}\nmod standard {}")
+    );
+}
+
+#[test]
+fn a_path_the_scan_does_not_hold_freezes_none() {
+    // rr5 ws/m_path_project: a `#[path]` leaving the project root, whose
+    // file the scan never sees.
+    let cases = |path: &str| {
+        let lib = format!(
+            "#[macro_use]\n#[path = \"{path}\"]\nmod outside;\npub const LIMIT: u32 = 10;\n"
+        ) + &case_module("tests", "", "dbg!();\n        assert_eq!(LIMIT, 20);");
+        first_operands(
+            "macros-path-outside",
+            &[
+                ("src/lib.rs", &lib),
+                ("macros/m.rs", "pub fn nothing() {}\n"),
+            ],
+        )
+    };
+    let tests = |operand: Value| vec![("tests::case".to_owned(), operand)];
+
+    assert_eq!(tests(unknown()), cases("../../outside/m.rs"));
+    assert_eq!(tests(unknown()), cases("/abs/m.rs"));
+    // Inside the root, but no file the scan holds.
+    assert_eq!(tests(unknown()), cases("../gen/m.rs"));
+    // A file the scan holds keeps the name frozen.
+    assert_eq!(tests(literal("10")), cases("../macros/m.rs"));
+}
+
+#[test]
+fn a_frozen_answer_reads_a_path_file_outside_the_module_tree() {
+    // rr5 I6: `macros/todo.rs` is in no module's files, so it is read by
+    // its own path (rr5/inc/keying2 src/lib.rs, rr5/inc/keying tests/it.rs).
+    let keying2 =
+        "#[macro_use]\n#[path = \"../macros/todo.rs\"]\nmod outside;\npub const LIMIT: u32 = 10;\n"
+            .to_owned()
+            + &case_module("tests", "", "todo!();\n        assert_eq!(LIMIT, 20);");
+    let it = "#[macro_use]\n#[path = \"../macros/todo.rs\"]\nmod outside;\nconst LIMIT: u32 = 10;\n#[test]\nfn placed_outside_src_and_tests() {\n    todo!();\n    assert_eq!(LIMIT, 20);\n}\n";
+    let contributions = scan_fixture_with(
+        "macros-path-reads",
+        &[
+            ("Cargo.toml", "[package]\nname = \"probe\"\n"),
+            ("src/lib.rs", &keying2),
+            ("tests/it.rs", it),
+            ("macros/todo.rs", "pub fn nothing() {}\n"),
+        ],
+        &serde_json::json!({ "config_files": ["Cargo.toml"] }),
+    );
+
+    assert!(reads_of(&contributions, "src/lib.rs").contains(&"macros/todo.rs".to_owned()));
+    assert!(reads_of(&contributions, "tests/it.rs").contains(&"macros/todo.rs".to_owned()));
+    // rr5/ws m_path_out: a file no manifest owns, loaded by a member.
+    let member =
+        "#[macro_use]\n#[path = \"../../shared/m.rs\"]\nmod outside;\npub const LIMIT: u32 = 10;\n"
+            .to_owned()
+            + &case_module("tests", "", "dbg!();\n        assert_eq!(LIMIT, 20);");
+    let workspace = scan_fixture_with(
+        "macros-path-reads-workspace",
+        &[
+            ("Cargo.toml", "[workspace]\nmembers = [\"m_path_out\"]\n"),
+            (
+                "m_path_out/Cargo.toml",
+                "[package]\nname = \"m_path_out\"\n",
+            ),
+            ("m_path_out/src/lib.rs", &member),
+            ("shared/m.rs", "pub fn nothing() {}\n"),
+        ],
+        &serde_json::json!({ "config_files": ["Cargo.toml", "m_path_out/Cargo.toml"] }),
+    );
+    assert!(reads_of(&workspace, "m_path_out/src/lib.rs").contains(&"shared/m.rs".to_owned()));
+}

@@ -30,6 +30,9 @@ pub struct Declarations {
     gated_only: BTreeSet<String>,
     /// Every name asked about since the last [`Declarations::take_lookups`].
     lookups: RefCell<BTreeSet<String>>,
+    /// Every file an answer depended on since the last
+    /// [`Declarations::take_file_reads`], by its path rather than a module.
+    file_reads: RefCell<BTreeSet<String>>,
     /// Each `mod name;` whose module is not the path it is declared at
     /// (`#[path]`, a binary root's children), by that declared path; `None`
     /// when two declarations send one path to two modules. See
@@ -75,6 +78,9 @@ struct MacroShadows {
     /// The module of every file of the package, and every module a `mod`
     /// declaration of one names, whether or not its file exists.
     modules: BTreeSet<String>,
+    /// Every file of the package, wherever it sits: one a `#[path]` places
+    /// outside the module tree is in no module's files.
+    files: BTreeSet<String>,
     /// Every `macro_rules!` name, and every leaf or rename of a `use`, any
     /// file of the package defines or binds.
     names: BTreeSet<String>,
@@ -188,6 +194,7 @@ impl Declarations {
     ) {
         self.macro_keys.insert(relative.to_owned(), key.to_owned());
         let shadows = self.macro_shadows.entry(key.to_owned()).or_default();
+        shadows.files.insert(relative.to_owned());
         shadows.modules.extend(modules.iter().cloned());
         shadows.names.extend(names.iter().cloned());
         shadows.opens_all |= opens_all;
@@ -201,7 +208,10 @@ impl Declarations {
     ///
     /// Any of those files may start to, so when the answer is no, the
     /// module of every one is remembered as a lookup, and its files are
-    /// read. A yes is not: when it goes stale, the name only stays unknown.
+    /// read, and so is every one of those files by its own path (see
+    /// [`Declarations::take_file_reads`]), since a `#[path]` may place it
+    /// where no module's files are. A yes is not: when it goes stale, the
+    /// name only stays unknown.
     pub fn may_shadow_macro(&self, relative: &str, name: &str) -> bool {
         let key = self
             .macro_keys
@@ -221,8 +231,21 @@ impl Declarations {
             for module in asked.iter().flat_map(|shadows| &shadows.modules) {
                 lookups.insert(format!("{module}::{name}!"));
             }
+            let mut files = self.file_reads.borrow_mut();
+            files.extend(
+                asked
+                    .iter()
+                    .flat_map(|shadows| shadows.files.iter().cloned()),
+            );
         }
         shadowed
+    }
+
+    /// Every file an answer depended on since the last call, by its path,
+    /// leaving the set empty: the files [`Declarations::take_lookups`]
+    /// cannot name through a module.
+    pub fn take_file_reads(&self) -> BTreeSet<String> {
+        std::mem::take(&mut *self.file_reads.borrow_mut())
     }
 
     /// Whether some file declares `name`, without remembering the question.

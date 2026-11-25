@@ -85,8 +85,19 @@ impl<'a> FileReads<'a> {
         for module in modules {
             keys.extend(self.of_module(module).iter().cloned());
         }
-        keys.remove(relative);
-        for key in &keys {
+        self.of_paths(relative, keys, input_hashes)
+    }
+
+    /// `paths`, the files `relative` read by their own paths, without
+    /// `relative` itself. Every path returned is in `input_hashes`.
+    pub(crate) fn of_paths(
+        &self,
+        relative: &str,
+        mut paths: BTreeSet<String>,
+        input_hashes: &mut BTreeMap<String, Option<String>>,
+    ) -> BTreeSet<String> {
+        paths.remove(relative);
+        for key in &paths {
             if !input_hashes.contains_key(key) {
                 let value = read_safely(self.root, key, self.max_file_bytes)
                     .ok()
@@ -95,7 +106,7 @@ impl<'a> FileReads<'a> {
             }
         }
 
-        keys
+        paths
     }
 
     /// Every path a file placed in `module` could have.

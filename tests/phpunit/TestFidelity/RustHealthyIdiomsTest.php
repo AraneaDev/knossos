@@ -39,7 +39,11 @@ use PHPUnit\Framework\Attributes\Group;
  * (fix round 3). `tests/external_macros.rs` imports another crate's macro
  * under the name `todo`, and it declares the name (fix round 4). `src/lib.rs`
  * loads `macros/limit_todo.rs` by `#[path]` from outside `src/`, whose
- * `macro_rules! todo` declares the name (fix round 5).
+ * `macro_rules! todo` declares the name (fix round 5). Three member packages
+ * each give a macro that may declare the name (re-review 5): `glob-macros`
+ * glob-imports another crate's macro as `prop_assert`, outside the standard
+ * prelude; `core-module` names one through a local `mod core`; `path-beyond`
+ * loads a file by `#[path]` from outside the project.
  *
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and

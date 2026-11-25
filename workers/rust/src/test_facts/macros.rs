@@ -1,28 +1,38 @@
 //! Which macros invoked where an item may stand are known to declare none.
 //!
-//! Only a frozen list is: the assertion macros and a few standard ones
-//! (`println!`, `dbg!`…), each only when the path is the bare name or
-//! `std::`/`core::` and nothing in the package may put another macro under
-//! that name: no `macro_rules!` of it (which would shadow it,
+//! Only a frozen list is: the macros the standard library's prelude gives
+//! (`assert_eq!`, `println!`, `dbg!`…), each only when the path is the bare
+//! name or `std::`/`core::` and nothing in the package may put another
+//! macro under that name: no `macro_rules!` of it (which would shadow it,
 //! unhygienically), no `use` binding it (another crate's macro, or a
 //! renamed one), no `#[macro_use] extern crate`, which may bring in any
-//! name, and no `extern crate … as std|core|alloc`, which makes another
-//! crate's macros the "standard" ones. A glob `use` cannot: `rustc` rejects
-//! a glob-imported macro under a name the standard prelude also gives
-//! (E0659). Any other macro may declare any name where it is invoked, so it
-//! leaves the scope's literals unknown.
+//! name, no `extern crate … as std|core|alloc` and no `mod std|core|alloc`,
+//! which make another crate's macros the "standard" ones, and no `#[path]`
+//! loading a file the scan does not hold. A glob `use` cannot: `rustc`
+//! rejects a glob-imported macro under a name the standard prelude also
+//! gives (E0659). That protects the prelude's names only, so an assertion
+//! macro outside it (`prop_assert!`, `assert_matches!`) is never frozen. Any
+//! macro not frozen may declare any name where it is invoked, so it leaves
+//! the scope's literals unknown.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use syn::visit::Visit;
 
-use super::assertions::{is_assertion_macro, macro_name};
+use super::assertions::macro_name;
 use crate::layout::{Layout, ModDeclaration};
 use crate::resolve::ident_name;
 use crate::visit::{Declarations, ANY_PACKAGE};
 
-/// The standard macros, beside the assertions, that expand to no item.
-const ITEMLESS_MACROS: [&str; 13] = [
+/// The macros the standard prelude gives that expand to no item: a glob
+/// cannot import another macro under one of these names (E0659).
+const STANDARD_MACROS: [&str; 18] = [
+    "assert",
+    "assert_eq",
+    "assert_ne",
+    "debug_assert",
+    "debug_assert_eq",
+    "debug_assert_ne",
     "println",
     "print",
     "eprintln",
@@ -35,14 +45,13 @@ const ITEMLESS_MACROS: [&str; 13] = [
     "write",
     "writeln",
     "format",
-    "drop",
 ];
 
 /// The crates a frozen macro may be named through.
 const STANDARD_CRATES: [&str; 2] = ["std", "core"];
 
-/// The names an `extern crate … as` may take to stand in for a standard
-/// crate.
+/// The names an `extern crate … as` or a `mod` may take to stand in for a
+/// standard crate.
 const STANDARD_NAMES: [&str; 3] = ["std", "core", "alloc"];
 
 /// What one file brings in that may put another macro under a standard
@@ -53,8 +62,8 @@ pub(crate) struct MacroShadows {
     /// binds (its leaf, or its rename), at any depth.
     pub(crate) names: BTreeSet<String>,
     /// Whether the file opens its crate to another crate's macros by any
-    /// name: a `#[macro_use] extern crate`, or an `extern crate` renamed to
-    /// one of [`STANDARD_NAMES`].
+    /// name: a `#[macro_use] extern crate`, or an `extern crate` or a `mod`
+    /// named one of [`STANDARD_NAMES`].
     pub(crate) opens_all: bool,
 }
 
@@ -110,6 +119,13 @@ impl Visit<'_> for MacroShadows {
             self.names.insert(ident_name(ident));
         }
         syn::visit::visit_item_macro(self, node);
+    }
+
+    fn visit_item_mod(&mut self, node: &syn::ItemMod) {
+        // `mod core { pub use other::*; }` makes `core::todo!` another
+        // crate's: a path-qualified macro is no glob import.
+        self.opens_all |= STANDARD_NAMES.contains(&ident_name(&node.ident).as_str());
+        syn::visit::visit_item_mod(self, node);
     }
 
     fn visit_item_use(&mut self, node: &syn::ItemUse) {
@@ -171,7 +187,7 @@ impl<'d> Frozen<'d> {
                 .is_some_and(|head| STANDARD_CRATES.iter().any(|krate| head.ident == krate)),
             _ => false,
         };
-        let frozen = (is_assertion_macro(mac) || ITEMLESS_MACROS.contains(&name.as_str()))
+        let frozen = STANDARD_MACROS.contains(&name.as_str())
             && standard_path
             && !self.own.shadow(&name)
             && !self.declarations.may_shadow_macro(self.relative, &name);
@@ -244,4 +260,23 @@ pub(crate) fn macro_modules(module: &str, mods: &[ModDeclaration]) -> BTreeSet<S
         modules.insert(path.join("::"));
     }
     modules
+}
+
+/// Whether one of `declared`, the bodiless `mod` declarations of the file
+/// `relative`, has a `#[path]` to a file the scan does not hold (`known`):
+/// outside the project root, or anywhere else it does not read. What that
+/// file brings in is unseen, so it may put another macro under any name.
+pub(crate) fn loads_unseen_file(
+    layout: &Layout,
+    relative: &str,
+    declared: &[ModDeclaration],
+    known: &BTreeMap<String, Vec<ModDeclaration>>,
+) -> bool {
+    declared.iter().any(|declaration| {
+        declaration.path.as_deref().is_some_and(|path| {
+            layout
+                .child_file(relative, &declaration.inline, &declaration.name, Some(path))
+                .is_none_or(|file| !known.contains_key(&file))
+        })
+    })
 }

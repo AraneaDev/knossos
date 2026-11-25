@@ -196,6 +196,8 @@ fn walk_requested(
                     walk_one(&relative, &module, &parsed, content_hash, &shared);
                 let lookups = declarations.take_lookups();
                 let mut keys = reads.of_file(&relative, &module, &lookups, &placed, input_hashes);
+                let files = declarations.take_file_reads();
+                keys.extend(reads.of_paths(&relative, files, input_hashes));
                 // A file nothing loads is placed by a `#[path]` added near
                 // it, which nothing else it read would reach.
                 keys.extend(orphans.get(&relative).into_iter().flatten().cloned());

@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[workspace]
+members = ["glob-macros", "core-module", "path-beyond"]
+
 [dev-dependencies]
 proptest = "1"
 rstest = "0.18"

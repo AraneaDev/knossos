@@ -338,13 +338,14 @@ pub(crate) fn index_project(
         // may define a macro once it does.
         let shadows = index.as_ref().map(|index| index.macro_shadows.clone());
         let shadows = shadows.unwrap_or_default();
-        let mods = mods.get(relative).map_or(&[][..], Vec::as_slice);
+        let declared = mods.get(relative).map_or(&[][..], Vec::as_slice);
         declarations.add_macro_shadows(
             relative,
             &crate::test_facts::macro_package(&placed, relative, &elsewhere),
-            &crate::test_facts::macro_modules(module, mods),
+            &crate::test_facts::macro_modules(module, declared),
             &shadows.names,
-            shadows.opens_all,
+            shadows.opens_all
+                || crate::test_facts::loads_unseen_file(&placed, relative, declared, &mods),
         );
     }
     // Only what this request indexed is kept, so the memo follows the

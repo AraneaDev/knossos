@@ -33,7 +33,9 @@ use assertions::{assertion, AssertionShape};
 use cases::{test_functions, TestFunction};
 use locals::{FileConsts, LocalLiterals};
 use macros::Frozen;
-pub(crate) use macros::{compiled_elsewhere, macro_modules, macro_package, MacroShadows};
+pub(crate) use macros::{
+    compiled_elsewhere, loads_unseen_file, macro_modules, macro_package, MacroShadows,
+};
 use operands::OperandReader;
 use output::CaseFact;
 pub(crate) use output::TestFacts;
