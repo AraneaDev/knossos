@@ -148,6 +148,16 @@ impl<'p> Pass<'p> {
                 return None;
             };
             let (mock, generated) = self.resolve(&ty.path)?;
+            // `<MockS as Default>::default()` is the trait's: a fresh mock.
+            // Any other spelling of a `new`/`default` the mocked type
+            // declares itself is its mocked static method.
+            let through_default =
+                qself.position > 0 && path.path.segments[qself.position - 1].ident == "Default";
+            if generated.contexts_only
+                || (generated.mocked_constructors.contains(&last) && !through_default)
+            {
+                return Some(MockCall::Static(mock, last));
+            }
             return Some(MockCall::Constructor(mock, generated));
         }
         let mut prefix = path.path.clone();

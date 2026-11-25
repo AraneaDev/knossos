@@ -59,7 +59,9 @@ use PHPUnit\Framework\Attributes\Group;
  * `macro_rules! assert_eq`) and `gated` (a `cfg_attr(test, automock)` mock
  * named from `tests/`), hold each false definite the Task 3 review found, as
  * the healthy test it is: a `macro_rules!` in the body that configures the
- * mock, and a mocked `new` whose context builds the mock.
+ * mock, and a mocked `new` whose context builds the mock. The member
+ * `pretty` compares through `pretty_assertions`, still read as assertions
+ * (re-review 1 ruling), with a planted `constant` beside its healthy twin.
  *
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and
@@ -93,6 +95,8 @@ final class RustHealthyIdiomsTest extends KnossosTestCase
         assertSame(true, $cases > 20);
         assertSame([
             // Genuine, each the planted twin of the healthy idiom beside it.
+            // `pretty_assertions`' `assert_ne` compares as std's does.
+            'TAUTOLOGY/constant/definite@pretty/src/lib.rs:23',
             'TAUTOLOGY/constant/definite@tests/planted.rs:8',
             'TAUTOLOGY/mock_echo/definite@src/clock.rs:160',
             'TAUTOLOGY/mock_only/warning@src/clock.rs:174',

@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [workspace]
-members = ["glob-macros", "core-module", "path-beyond", "shadow-assert", "gated"]
+members = ["glob-macros", "core-module", "path-beyond", "shadow-assert", "gated", "pretty"]
 
 [dev-dependencies]
 mockall = "0.13"

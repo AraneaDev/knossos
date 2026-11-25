@@ -495,3 +495,40 @@ fn a_frozen_answer_reads_a_path_file_outside_the_module_tree() {
     );
     assert!(reads_of(&workspace, "m_path_out/src/lib.rs").contains(&"shared/m.rs".to_owned()));
 }
+
+#[test]
+fn pretty_assertions_compare_as_the_standard_macros_do() {
+    // Ruling (Task 3 re-review 1): `pretty_assertions`' `assert_eq` and
+    // `assert_ne`, under their own names, keep those names frozen, so the
+    // assertions are read. Any other binding of the name still opens it.
+    let cases = |uses: &str| {
+        let lib = format!("pub const LIMIT: u32 = 10;\n{uses}\n")
+            + &case_module(
+                "tests",
+                "",
+                "assert_eq!(LIMIT, 20);\n        assert_ne!(LIMIT, 20);",
+            );
+        first_operands("macros-pretty", &[("src/lib.rs", &lib)])
+    };
+    let read = vec![("tests::case".to_owned(), literal("10"))];
+
+    assert_eq!(read, cases("use pretty_assertions::assert_eq;"));
+    assert_eq!(
+        read,
+        cases("use ::pretty_assertions::{assert_eq, assert_ne};")
+    );
+    assert_eq!(
+        read,
+        cases("use pretty_assertions::assert_eq as assert_eq;")
+    );
+    // Another crate's, or another name's: not the standard comparison. The
+    // `assert_eq!` is then no assertion, and as a statement it may declare
+    // `LIMIT`, so the `assert_ne!` left reads it as unknown.
+    let open = vec![("tests::case".to_owned(), unknown())];
+    assert_eq!(
+        open,
+        cases("use pretty_assertions::assert_ne as assert_eq;")
+    );
+    assert_eq!(open, cases("use other_assertions::assert_eq;"));
+    assert_eq!(open, cases("use pretty_assertions::nested::assert_eq;"));
+}

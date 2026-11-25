@@ -234,3 +234,21 @@ fn a_declared_name_beats_a_glob_in_the_file_and_through_the_index() {
     );
     assert_eq!(1, doubles(&control).len());
 }
+
+#[test]
+fn a_qualified_mocked_constructor_makes_no_fresh_mock() {
+    // t3r1/a :149, :156 and :170: every spelling of a mocked `new` or
+    // `default` is the mocked static method; only the `Default` trait's
+    // `default` builds a fresh mock.
+    let tests = "#[mockall::automock]\npub trait Maker {\n    fn new() -> Self;\n}\n\
+        #[mockall::automock]\npub trait Defaulted {\n    fn default() -> Self;\n}\n\
+        #[test]\nfn spelled() {\n    let _a = <MockMaker as Maker>::new();\n    let _b = <MockMaker>::new();\n    \
+        let _c = <MockDefaulted as Defaulted>::default();\n    let _d = <MockDefaulted>::default();\n    \
+        let _e = <MockDefaulted as Default>::default();\n}\n";
+    let contributions = crate_of("shadows-qualified-new", &[("tests/qualified.rs", tests)]);
+
+    assert_eq!(
+        vec!["tests/qualified.rs#double:15:14".to_owned()],
+        doubles(&contributions)
+    );
+}

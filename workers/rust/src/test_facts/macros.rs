@@ -47,6 +47,10 @@ const STANDARD_MACROS: [&str; 18] = [
     "format",
 ];
 
+/// The macros of `pretty_assertions` that compare as the standard ones of
+/// their names do, with a different message.
+const PRETTY_ASSERTIONS: [&str; 2] = ["assert_eq", "assert_ne"];
+
 /// The crates a frozen macro may be named through.
 const STANDARD_CRATES: [&str; 2] = ["std", "core"];
 
@@ -94,12 +98,15 @@ impl MacroShadows {
                 let name = ident_name(&node.ident);
                 if name == "self" {
                     self.names.extend(prefix.last().cloned());
-                } else {
+                } else if !is_same_comparison(prefix, &name, &name) {
                     self.names.insert(name);
                 }
             }
             syn::UseTree::Rename(node) => {
-                self.names.insert(ident_name(&node.rename));
+                let rename = ident_name(&node.rename);
+                if !is_same_comparison(prefix, &ident_name(&node.ident), &rename) {
+                    self.names.insert(rename);
+                }
             }
             // A glob-imported macro under a standard name is ambiguous
             // (E0659), so it shadows nothing that compiles.
@@ -111,6 +118,14 @@ impl MacroShadows {
             }
         }
     }
+}
+
+/// Whether `use PREFIX::LEAF as BOUND` brings in a comparison macro that
+/// compares as the standard one of the same name: `pretty_assertions`'s
+/// `assert_eq` and `assert_ne`, under their own names. Such a `use`
+/// leaves the name frozen.
+fn is_same_comparison(prefix: &[String], leaf: &str, bound: &str) -> bool {
+    prefix == ["pretty_assertions"] && leaf == bound && PRETTY_ASSERTIONS.contains(&leaf)
 }
 
 impl Visit<'_> for MacroShadows {
