@@ -57,21 +57,29 @@ pub struct Declarations {
     globs: BTreeMap<String, Vec<(String, bool)>>,
     /// The names of `exports` only a private `use` binds.
     private_exports: BTreeSet<String>,
-    /// What may shadow a standard macro in each crate, by the crate's
-    /// first module segment; see [`Declarations::may_shadow_macro`].
+    /// What may shadow a standard macro in each package, by its key (see
+    /// [`Declarations::add_macro_shadows`]); see
+    /// [`Declarations::may_shadow_macro`].
     macro_shadows: BTreeMap<String, MacroShadows>,
+    /// The package key of every file added to `macro_shadows`.
+    macro_keys: BTreeMap<String, String>,
 }
 
-/// What the files of one crate bring in that may shadow a standard macro.
+/// The package key of a file no package can be shown to own: what it
+/// brings in may reach any package, and any package's may reach it.
+pub const ANY_PACKAGE: &str = "*";
+
+/// What the files of one package bring in that may shadow a standard macro.
 #[derive(Debug, Default)]
 struct MacroShadows {
-    /// The module of every file of the crate.
+    /// The module of every file of the package, and every module a `mod`
+    /// declaration of one names, whether or not its file exists.
     modules: BTreeSet<String>,
     /// Every `macro_rules!` name, and every leaf or rename of a `use`, any
-    /// file of the crate defines or binds.
+    /// file of the package defines or binds.
     names: BTreeSet<String>,
-    /// Whether some file opens the crate to another crate's macros by any
-    /// name (`#[macro_use] extern crate`, a glob from outside the crate).
+    /// Whether some file opens the package to another crate's macros by any
+    /// name (`#[macro_use] extern crate`, `extern crate … as core`).
     opens_all: bool,
 }
 
@@ -164,31 +172,57 @@ impl Declarations {
         self.counts.get(name)
     }
 
-    /// Add what one file, placed in `module`, may shadow a standard macro
-    /// with: the `macro_rules!` names it defines and the names its `use`
-    /// items bind (`names`), and whether it opens its crate to another
-    /// crate's macros by any name (`opens_all`).
-    pub fn add_macro_shadows(&mut self, module: &str, names: &BTreeSet<String>, opens_all: bool) {
-        let shadows = self.macro_shadows.entry(crate_of(module)).or_default();
-        shadows.modules.insert(module.to_owned());
+    /// Add what the file `relative` may shadow a standard macro with to the
+    /// package `key` (the owning manifest's directory, or [`ANY_PACKAGE`]):
+    /// `modules`, its own module and those its `mod` declarations name, the
+    /// `macro_rules!` names it defines and the names its `use` items bind
+    /// (`names`), and whether it opens the package to another crate's
+    /// macros by any name (`opens_all`).
+    pub fn add_macro_shadows(
+        &mut self,
+        relative: &str,
+        key: &str,
+        modules: &BTreeSet<String>,
+        names: &BTreeSet<String>,
+        opens_all: bool,
+    ) {
+        self.macro_keys.insert(relative.to_owned(), key.to_owned());
+        let shadows = self.macro_shadows.entry(key.to_owned()).or_default();
+        shadows.modules.extend(modules.iter().cloned());
         shadows.names.extend(names.iter().cloned());
         shadows.opens_all |= opens_all;
     }
 
-    /// Whether the macro `name`, written bare in `module`, may be other than
-    /// the standard one: some file of the crate defines a `macro_rules!` of
-    /// that name, binds it with a `use`, or opens the crate to another
-    /// crate's macros. Any file of the crate may start to, so the module of
-    /// every one is remembered as a lookup, and its files are read.
-    pub fn may_shadow_macro(&self, module: &str, name: &str) -> bool {
-        let Some(shadows) = self.macro_shadows.get(&crate_of(module)) else {
-            return false;
-        };
-        let mut lookups = self.lookups.borrow_mut();
-        for file_module in &shadows.modules {
-            lookups.insert(format!("{file_module}::{name}!"));
+    /// Whether the macro `name`, written bare in the file `relative`, may be
+    /// other than the standard one: some file of its package, or one no
+    /// package owns, defines a `macro_rules!` of that name, binds it with a
+    /// `use`, or opens the package to another crate's macros. A file no
+    /// package owns asks every package.
+    ///
+    /// Any of those files may start to, so when the answer is no, the
+    /// module of every one is remembered as a lookup, and its files are
+    /// read. A yes is not: when it goes stale, the name only stays unknown.
+    pub fn may_shadow_macro(&self, relative: &str, name: &str) -> bool {
+        let key = self
+            .macro_keys
+            .get(relative)
+            .map_or(ANY_PACKAGE, String::as_str);
+        let asked: Vec<&MacroShadows> = self
+            .macro_shadows
+            .iter()
+            .filter(|(other, _)| key == ANY_PACKAGE || *other == key || *other == ANY_PACKAGE)
+            .map(|(_, shadows)| shadows)
+            .collect();
+        let shadowed = asked
+            .iter()
+            .any(|shadows| shadows.opens_all || shadows.names.contains(name));
+        if !shadowed {
+            let mut lookups = self.lookups.borrow_mut();
+            for module in asked.iter().flat_map(|shadows| &shadows.modules) {
+                lookups.insert(format!("{module}::{name}!"));
+            }
         }
-        shadows.opens_all || shadows.names.contains(name)
+        shadowed
     }
 
     /// Whether some file declares `name`, without remembering the question.
@@ -458,9 +492,4 @@ impl Declarations {
     pub fn take_lookups(&self) -> BTreeSet<String> {
         std::mem::take(&mut *self.lookups.borrow_mut())
     }
-}
-
-/// The crate `module` is in, as its first segment names it.
-fn crate_of(module: &str) -> String {
-    module.split("::").next().unwrap_or(module).to_owned()
 }

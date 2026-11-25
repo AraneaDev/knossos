@@ -328,14 +328,24 @@ pub(crate) fn index_project(
         }
     }
     let mut declarations = Declarations::new();
+    let elsewhere = crate::test_facts::compiled_elsewhere(&placed, &mods, included.keys());
     for (relative, module, index) in &indexed {
         if let Some(index) = index {
             let file_gated = test_modules.gate_of_file(relative, module).is_some();
-            declarations.absorb(index, module, file_gated);
-        } else {
-            // Still a file of its crate, which may define a macro once it parses.
-            declarations.add_macro_shadows(module, &BTreeSet::new(), false);
+            declarations.absorb(index, file_gated);
         }
+        // A file that does not parse is still one of its package's, which
+        // may define a macro once it does.
+        let shadows = index.as_ref().map(|index| index.macro_shadows.clone());
+        let shadows = shadows.unwrap_or_default();
+        let mods = mods.get(relative).map_or(&[][..], Vec::as_slice);
+        declarations.add_macro_shadows(
+            relative,
+            &crate::test_facts::macro_package(&placed, relative, &elsewhere),
+            &crate::test_facts::macro_modules(module, mods),
+            &shadows.names,
+            shadows.opens_all,
+        );
     }
     // Only what this request indexed is kept, so the memo follows the
     // project rather than every version of it this process has seen.
@@ -500,7 +510,7 @@ impl Declarations {
     /// Adds what one file declares, renames, exports, and aliases, and its
     /// struct fields; `file_gated` when a `cfg` on the `mod` declaration
     /// that loads the file gates all of it.
-    fn absorb(&mut self, index: &FileIndex, module: &str, file_gated: bool) {
+    fn absorb(&mut self, index: &FileIndex, file_gated: bool) {
         self.add_gated_file(&index.declarations, &index.gated, file_gated);
         self.add_renames(&index.renames);
         self.add_exports(&index.exports);
@@ -510,8 +520,6 @@ impl Declarations {
         self.add_export_alternatives(&index.export_alternatives);
         self.add_globs(&index.globs);
         self.add_private_exports(&index.private_exports);
-        let shadows = &index.macro_shadows;
-        self.add_macro_shadows(module, &shadows.names, shadows.opens_all);
     }
 }
 

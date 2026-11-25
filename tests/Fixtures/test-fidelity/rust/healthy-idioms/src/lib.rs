@@ -4,6 +4,11 @@ pub mod counter;
 pub mod limits;
 pub mod version;
 
+/// Macros kept outside `src/`, one named like `std::todo!`.
+#[macro_use]
+#[path = "../macros/limit_todo.rs"]
+mod outside;
+
 /// The sum of two numbers.
 pub fn add(a: u32, b: u32) -> u32 {
     a + b
@@ -99,6 +104,12 @@ mod tests {
     #[test]
     fn a_project_macro_named_like_a_standard_one() {
         dbg!();
+        assert_eq!(LOCAL_LIMIT, 10);
+    }
+
+    #[test]
+    fn a_path_file_macro_named_like_a_standard_one() {
+        todo!();
         assert_eq!(LOCAL_LIMIT, 10);
     }
 

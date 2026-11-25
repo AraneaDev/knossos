@@ -37,7 +37,9 @@ use PHPUnit\Framework\Attributes\Group;
  * declared once per build, the test one re-exporting production's value, and
  * a project `macro_rules!` named like `std::dbg!` that declares the name
  * (fix round 3). `tests/external_macros.rs` imports another crate's macro
- * under the name `todo`, and it declares the name (fix round 4).
+ * under the name `todo`, and it declares the name (fix round 4). `src/lib.rs`
+ * loads `macros/limit_todo.rs` by `#[path]` from outside `src/`, whose
+ * `macro_rules! todo` declares the name (fix round 5).
  *
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and

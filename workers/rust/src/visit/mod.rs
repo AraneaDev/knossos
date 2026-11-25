@@ -47,7 +47,7 @@ pub use cfg::{
 pub use declaration_paths::{declaration_paths, declared_renames, indexed_item_paths};
 pub use declarations::{
     Declarations, ExportAlternatives, ExportedNames, FieldType, FunctionReturns, GlobImports,
-    StructFields, TypeAliases,
+    StructFields, TypeAliases, ANY_PACKAGE,
 };
 use labels::{path_label, type_label};
 use placement::mod_child;

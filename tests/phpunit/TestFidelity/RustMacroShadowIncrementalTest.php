@@ -15,10 +15,11 @@ use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Whether `dbg!();` in a Rust test may declare the name the assertion reads
- * depends on every file of the crate: one that starts to define a
- * `macro_rules! dbg` shadows the standard one. The test file reads them all,
- * so an incremental scan after that edit drops the finding a fresh scan does
- * not give (re-review 3, I4).
+ * depends on every file of the package: one that starts to define a
+ * `macro_rules! dbg` shadows the standard one. While the answer is that it
+ * declares nothing, the test file reads them all, and every module a `mod`
+ * declaration names, so an incremental scan after that edit drops the
+ * finding a fresh scan does not give (re-review 3, I4).
  */
 #[Group('test-fidelity')]
 final class RustMacroShadowIncrementalTest extends KnossosTestCase
@@ -48,6 +49,21 @@ final class RustMacroShadowIncrementalTest extends KnossosTestCase
     public function testAMacroAddedInAnotherFileReachesTheCachedTest(): void
     {
         file_put_contents($this->root . '/src/macros.rs', "pub fn nothing() {}\n");
+        $this->assertTheEditReachesTheCachedTest();
+    }
+
+    /**
+     * `mod macros;` is declared but its file is missing at the first scan
+     * (re-review 4, deferred note 1): creating it reaches the test too.
+     */
+    public function testAMacroInAFileCreatedLaterReachesTheCachedTest(): void
+    {
+        $this->assertTheEditReachesTheCachedTest();
+    }
+
+    /** Scan, write the shadowing `macros.rs`, and compare an incremental scan with a fresh one. */
+    private function assertTheEditReachesTheCachedTest(): void
+    {
         $pdo = $this->freshTestDatabase();
         $service = new ProjectScanService($pdo, self::repositoryRoot(), [$this->root]);
         $service->scan($this->root);
