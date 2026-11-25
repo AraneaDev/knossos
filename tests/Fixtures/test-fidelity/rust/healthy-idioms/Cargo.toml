@@ -8,6 +8,8 @@ publish = false
 members = ["glob-macros", "core-module", "path-beyond"]
 
 [dev-dependencies]
+mockall = "0.13"
+mockito = "1"
 proptest = "1"
 rstest = "0.18"
 tokio = { version = "1", features = ["macros", "rt"] }

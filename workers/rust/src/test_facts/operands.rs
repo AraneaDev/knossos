@@ -3,6 +3,9 @@
 //!
 //! - `literal`: a literal, or a name that holds one for certain
 //!   ([`LocalLiterals`]), with that literal's text;
+//! - `mock-config`: a configured member called on a double, with the
+//!   literal it is pinned to when Decision 9 shows it (`value`);
+//! - `mock-call`: any other call rooted at a double;
 //! - `production`: a call the walk resolved to a project declaration outside
 //!   test code, and what is read off its result;
 //! - `parameter`: a parameter of the case (`rstest`, `test_case`,
@@ -18,6 +21,7 @@ use std::collections::BTreeSet;
 use serde_json::{json, Value};
 use syn::spanned::Spanned;
 
+use super::handles::{Handles, MockOperand};
 use super::literals::literal_text;
 use super::locals::LocalLiterals;
 use super::production::Reach;
@@ -48,11 +52,27 @@ pub(super) struct OperandReader<'r> {
     pub(super) parameters: BTreeSet<String>,
     /// The production calls the case makes.
     pub(super) production: &'r Reach,
+    /// The case's doubles.
+    pub(super) mocks: &'r Handles,
 }
 
 impl OperandReader<'_> {
     /// The wire form of `operand`.
     pub(super) fn wire(&self, operand: &syn::Expr) -> Value {
+        match self.mocks.operand(operand) {
+            Some(MockOperand::Config {
+                double,
+                value: Some(value),
+            }) => return json!({"source": "mock-config", "double": double, "value": value}),
+            Some(MockOperand::Config {
+                double,
+                value: None,
+            }) => return json!({"source": "mock-config", "double": double}),
+            Some(MockOperand::Call { double }) => {
+                return json!({"source": "mock-call", "double": double})
+            }
+            None => {}
+        }
         match self.source(operand, 0) {
             Source::Literal(text) => json!({"source": "literal", "text": text}),
             Source::Production => json!({"source": "production"}),

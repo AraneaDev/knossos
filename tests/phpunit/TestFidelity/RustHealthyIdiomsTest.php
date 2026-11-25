@@ -45,6 +45,16 @@ use PHPUnit\Framework\Attributes\Group;
  * prelude; `core-module` names one through a local `mod core`; `path-beyond`
  * loads a file by `#[path]` from outside the project.
  *
+ * `src/clock.rs` mocks a trait with mockall (Task 3): an `expect_*` with
+ * `.with(eq(1))`, `.times(1)` and a computed `returning`, a mock handed to
+ * production, two expectations on one member, a static context, a mock behind
+ * `Arc<Mutex<_>>`, an async member awaited under `#[tokio::test]`, a
+ * `#[should_panic]` test with an uninvoked pinned mock, drift the compiler
+ * rejects (a ghost `expect_gone()`, a wrong `.with` count, a wrong
+ * `return_const` type), and a mockito server mock with no `assert()`. Its
+ * `planted` module sets a `mock_echo` (definite), a `mock_only` and a
+ * `zero_reach` (warnings) each beside a twin that runs production.
+ *
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and
  * `assert_eq!(1, 1)` (`self_comparison`).
@@ -78,7 +88,10 @@ final class RustHealthyIdiomsTest extends KnossosTestCase
         assertSame([
             // Genuine, each the planted twin of the healthy idiom beside it.
             'TAUTOLOGY/constant/definite@tests/planted.rs:8',
+            'TAUTOLOGY/mock_echo/definite@src/clock.rs:160',
+            'TAUTOLOGY/mock_only/warning@src/clock.rs:174',
             'TAUTOLOGY/self_comparison/definite@tests/planted.rs:18',
+            'TAUTOLOGY/zero_reach/warning@src/clock.rs:186',
         ], $findings);
     }
 

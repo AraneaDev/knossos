@@ -23,6 +23,7 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 
 use super::assertions::arguments;
+use super::handles::Handles;
 use super::TestInput;
 use crate::layout::Layout;
 use crate::resolve::ident_name;
@@ -55,17 +56,21 @@ impl Reach {
 pub(super) fn of_case(
     input: &TestInput<'_>,
     function: &str,
-    signature: &syn::Signature,
-    block: &syn::Block,
+    (signature, block): (&syn::Signature, &syn::Block),
+    mocks: &Handles,
 ) -> Reach {
-    let mut body = Body::default();
+    let mut body = Body {
+        nested: Vec::new(),
+        method_calls: Vec::new(),
+        mocks,
+    };
     body.visit_signature(signature);
     body.visit_block(block);
     let mut reach = Reach::default();
     let mut named: BTreeSet<(usize, String)> = BTreeSet::new();
     for edge in input.facts.edges_from(function) {
         let line = edge.evidence.start_line;
-        if edge.kind != "calls" || body.nested(line) {
+        if edge.kind != "calls" || body.nested(line) || mocks.configures(line) {
             continue;
         }
         let Some((kind, canonical)) = edge
@@ -162,15 +167,17 @@ pub(crate) fn under_cargo_tests(relative: &str, layout: &Layout) -> bool {
 }
 
 /// What one body holds that [`of_case`] reads off its syntax.
-#[derive(Default)]
-struct Body {
+struct Body<'m> {
     /// The lines of each item nested in the body, whose calls are its own.
     nested: Vec<(usize, usize)>,
     /// Each method call outside them, by the line of its method name.
     method_calls: Vec<(usize, String)>,
+    /// The case's doubles: a call rooted at one, and the calls inside a
+    /// configuration chain, are no production.
+    mocks: &'m Handles,
 }
 
-impl Body {
+impl Body<'_> {
     /// Whether `line` lies inside an item nested in the body.
     fn nested(&self, line: usize) -> bool {
         self.nested
@@ -179,13 +186,22 @@ impl Body {
     }
 }
 
-impl Visit<'_> for Body {
+impl Visit<'_> for Body<'_> {
     fn visit_item(&mut self, node: &syn::Item) {
         let span = node.span();
         self.nested.push((span.start().line, span.end().line));
     }
 
     fn visit_expr_method_call(&mut self, node: &syn::ExprMethodCall) {
+        if self.mocks.root_double(&node.receiver).is_some() {
+            if !self.mocks.configures(node.method.span().start().line) {
+                for argument in &node.args {
+                    self.visit_expr(argument);
+                }
+                self.visit_expr(&node.receiver);
+            }
+            return;
+        }
         self.method_calls
             .push((node.method.span().start().line, ident_name(&node.method)));
         syn::visit::visit_expr_method_call(self, node);

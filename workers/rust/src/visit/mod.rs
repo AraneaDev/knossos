@@ -21,6 +21,7 @@ mod cfg;
 mod declaration_paths;
 mod declarations;
 mod fields;
+mod generated;
 mod globs;
 mod impls;
 mod item_types;
@@ -39,16 +40,17 @@ mod uses;
 
 use calls::{is_foreign_export, is_wasm_bindgen};
 pub use cfg::include_sites;
-pub(crate) use cfg::is_test_attribute;
-use cfg::{cfg_predicate, is_cfg_test, is_cfg_test_support, item_attrs};
+use cfg::{cfg_predicate, is_cfg_test_support, item_attrs};
 pub use cfg::{
     collect_test_modules, is_test_module_path, is_test_support_module_path, ModuleGates,
 };
+pub(crate) use cfg::{is_cfg_test, is_test_attribute};
 pub use declaration_paths::{declaration_paths, declared_renames, indexed_item_paths};
 pub use declarations::{
     Declarations, ExportAlternatives, ExportedNames, FieldType, FunctionReturns, GlobImports,
     StructFields, TypeAliases, ANY_PACKAGE,
 };
+pub use generated::{generated_mocks, GeneratedMock, AUTOMOCK, MOCK_MACRO};
 use labels::{path_label, type_label};
 use placement::mod_child;
 pub use placement::mod_declarations;
@@ -138,6 +140,8 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
         &mut impl_methods,
         &mut gated_impl_methods,
     );
+    let mut generated_mocks = BTreeMap::new();
+    walker.collect_generated_mocks(module, items, false, &mut generated_mocks);
     let mut globs = GlobImports::new();
     for (container, source) in std::mem::take(&mut walker.globs) {
         let private = walker
@@ -162,6 +166,7 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
         aliases,
         export_alternatives: alternatives,
         globs,
+        generated_mocks,
     }
 }
 
@@ -191,6 +196,8 @@ pub struct IndexFacts {
     pub export_alternatives: ExportAlternatives,
     /// See [`GlobImports`].
     pub globs: GlobImports,
+    /// The mocks the file generates, see [`GeneratedMock`].
+    pub generated_mocks: BTreeMap<String, GeneratedMock>,
 }
 
 impl<'a> Walk<'a> {

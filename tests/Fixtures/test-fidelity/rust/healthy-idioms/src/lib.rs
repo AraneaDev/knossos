@@ -1,5 +1,6 @@
 //! Production code the healthy test idioms exercise.
 
+pub mod clock;
 pub mod counter;
 pub mod limits;
 pub mod standins;

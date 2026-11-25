@@ -19,6 +19,10 @@ pub struct FileScope {
     /// scope, as `(importing module, source module)` pairs in the order
     /// written (see `Walk::globs`).
     pub(crate) globs: Vec<(String, String)>,
+    /// The module `crate::` names in the file: the crate root's, or the
+    /// file's own for a target root (`tests/it.rs`), see
+    /// `Walk::crate_module`.
+    pub(crate) crate_module: String,
 }
 
 impl Walk<'_> {
@@ -27,6 +31,7 @@ impl Walk<'_> {
         FileScope {
             module_aliases: std::mem::take(&mut self.module_aliases),
             globs: std::mem::take(&mut self.globs),
+            crate_module: self.crate_module.clone(),
         }
     }
 }

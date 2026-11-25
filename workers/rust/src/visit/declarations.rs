@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::declaration_paths::merge_rename;
+use super::GeneratedMock;
 
 /// Canonical name of every top-level and inline-module declaration of the
 /// project's Rust files, mapped to how many files declared it. The crate-wide
@@ -66,6 +67,10 @@ pub struct Declarations {
     macro_shadows: BTreeMap<String, MacroShadows>,
     /// The package key of every file added to `macro_shadows`.
     macro_keys: BTreeMap<String, String>,
+    /// Every mock a generator makes, by its canonical path; `None` for a
+    /// path two files generate apart. Apart from `counts`: a generated
+    /// name is no declaration (see [`Declarations::generated_mock`]).
+    generated: BTreeMap<String, Option<GeneratedMock>>,
 }
 
 /// The package key of a file no package can be shown to own: what it
@@ -246,6 +251,26 @@ impl Declarations {
     /// cannot name through a module.
     pub fn take_file_reads(&self) -> BTreeSet<String> {
         std::mem::take(&mut *self.file_reads.borrow_mut())
+    }
+
+    /// Record one file's generated mocks (see [`GeneratedMock`]); a path
+    /// two files generate apart is no one mock.
+    pub fn add_generated_mocks(&mut self, mocks: &BTreeMap<String, GeneratedMock>) {
+        for (path, mock) in mocks {
+            let merged = match self.generated.get(path) {
+                Some(known) if known.as_ref() != Some(mock) => None,
+                _ => Some(mock.clone()),
+            };
+            self.generated.insert(path.clone(), merged);
+        }
+    }
+
+    /// The mock a generator makes at `path`, remembering that `path` was
+    /// asked about: the generating file sits in a module above it, so an
+    /// edit there (removing `#[automock]`) reaches the asking file.
+    pub fn generated_mock(&self, path: &str) -> Option<&GeneratedMock> {
+        self.lookups.borrow_mut().insert(path.to_owned());
+        self.generated.get(path)?.as_ref()
     }
 
     /// Whether some file declares `name`, without remembering the question.

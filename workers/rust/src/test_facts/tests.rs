@@ -135,3 +135,45 @@ fn a_panic_with_any_payload_is_reported() {
     assert!(message(formatted).ends_with(": formatted"));
     assert!(message(opaque).ends_with(": a panic"));
 }
+
+#[test]
+fn a_generated_mock_found_through_the_index_is_a_read() {
+    // The walk itself often reads the generating file (through the `use`
+    // that names the mock), so the lookup is pinned here, where nothing
+    // else asks about the path.
+    let mut declarations = Declarations::new();
+    let mock = crate::visit::GeneratedMock {
+        target: Some("crate::clock::Clock".to_owned()),
+        target_kind: "interface",
+        pattern: crate::visit::AUTOMOCK,
+        test_gated: false,
+        contexts_only: false,
+    };
+    declarations.add_generated_mocks(&BTreeMap::from([(
+        "crate::clock::MockClock".to_owned(),
+        mock,
+    )]));
+    let own = BTreeMap::new();
+    let scope = crate::visit::FileScope {
+        crate_module: "crate".to_owned(),
+        ..Default::default()
+    };
+    let gates = ModuleGates::new();
+    let layout = Layout::default();
+    let resolver = super::generated::MockResolver {
+        own: &own,
+        scope: &scope,
+        declarations: &declarations,
+        test_modules: &gates,
+        layout: &layout,
+    };
+    let path: syn::Path = syn::parse_str("crate::clock::MockClock").expect("parses");
+    let other: syn::Path = syn::parse_str("crate::clock::Helper").expect("parses");
+
+    assert!(resolver.resolve("crate::service", &path).is_some());
+    assert!(resolver.resolve("crate::service", &other).is_none());
+    // Only the mock-named path was asked about (R5-4).
+    let lookups = declarations.take_lookups();
+    assert!(lookups.contains("crate::clock::MockClock"), "{lookups:?}");
+    assert!(!lookups.iter().any(|lookup| lookup.contains("Helper")));
+}

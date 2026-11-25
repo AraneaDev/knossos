@@ -20,9 +20,13 @@ use crate::visit::{is_test_module_path, Declarations, FileScope, ModuleGates};
 
 mod assertions;
 mod cases;
+mod doubles;
+mod generated;
+mod handles;
 mod literals;
 mod locals;
 mod macros;
+mod mockall;
 mod operands;
 mod output;
 mod production;
@@ -30,12 +34,14 @@ mod production;
 mod tests;
 
 use assertions::{assertion, AssertionShape};
-use cases::{test_functions, TestFunction};
+use cases::{helpers, test_functions, TestFunction};
+use generated::MockResolver;
 use locals::{FileConsts, LocalLiterals};
 use macros::Frozen;
 pub(crate) use macros::{
     compiled_elsewhere, loads_unseen_file, macro_modules, macro_package, MacroShadows,
 };
+use mockall::{mockall_doubles, MockallPass, Site};
 use operands::OperandReader;
 use output::CaseFact;
 pub(crate) use output::TestFacts;
@@ -121,20 +127,71 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
         || is_test_module_path(input.module, input.test_modules);
     let frozen = Frozen::of(&input.file.items, input.relative, input.declarations);
     let consts = FileConsts::of(&input.file.items, input.module, gated, frozen);
+    let own = crate::visit::generated_mocks(
+        input.relative,
+        input.module,
+        &input.file.items,
+        input.layout,
+    );
+    let resolver = MockResolver {
+        own: &own,
+        scope: input.scope,
+        declarations: input.declarations,
+        test_modules: input.test_modules,
+        layout: input.layout,
+    };
+    let mut doubles = Vec::new();
     let cases = test_functions(&input.file.items, input.module)
         .iter()
-        .map(|case| case_fact(input, &consts, case))
+        .map(|case| {
+            let site = Site {
+                relative: input.relative,
+                container: &case.container,
+                test_case: Some(case_name(input, case)),
+            };
+            let function = case.function;
+            let mut pass = mockall_doubles(&function.sig, &function.block, &site, &resolver);
+            let fact = case_fact(input, &consts, case, &pass);
+            doubles.append(&mut pass.doubles);
+            fact
+        })
         .collect();
+    let test_file = gated || production::under_cargo_tests(input.relative, input.layout);
+    for helper in helpers(&input.file.items, input.module, test_file) {
+        let site = Site {
+            relative: input.relative,
+            container: &helper.container,
+            test_case: None,
+        };
+        let mut pass = mockall_doubles(helper.signature, helper.block, &site, &resolver);
+        doubles.append(&mut pass.doubles);
+    }
 
-    TestFacts { cases }
+    TestFacts { cases, doubles }
+}
+
+/// A case's canonical name: `<file>#test:<line of its fn token>`.
+fn case_name(input: &TestInput<'_>, case: &TestFunction<'_>) -> String {
+    let line = case.function.sig.fn_token.span.start().line;
+    format!("{}#test:{line}", input.relative)
 }
 
 /// The `test_case` node of one test function.
-fn case_fact(input: &TestInput<'_>, consts: &FileConsts<'_>, case: &TestFunction<'_>) -> CaseFact {
+fn case_fact(
+    input: &TestInput<'_>,
+    consts: &FileConsts<'_>,
+    case: &TestFunction<'_>,
+    mocks: &MockallPass,
+) -> CaseFact {
     let function = case.function;
     let path = format!("{}::{}", case.container, ident_name(&function.sig.ident));
     let function_ref = reference("function", &path);
-    let reach = production::of_case(input, &function_ref, &function.sig, &function.block);
+    let reach = production::of_case(
+        input,
+        &function_ref,
+        (&function.sig, &function.block),
+        &mocks.handles,
+    );
     let locals = LocalLiterals::of(
         &function.sig,
         &function.block,
@@ -146,14 +203,22 @@ fn case_fact(input: &TestInput<'_>, consts: &FileConsts<'_>, case: &TestFunction
         locals: &locals,
         parameters: parameters(&function.sig),
         production: &reach,
+        mocks: &mocks.handles,
     };
     let mut found = Found::default();
     found.visit_block(&function.block);
-    let assertions: Vec<Value> = found
+    let mut lined: Vec<(usize, Value)> = found
         .assertions
         .iter()
-        .map(|shape| wire(shape, &reader))
+        .map(|shape| (assertion_line(shape.mac), wire(shape, &reader)))
+        .chain(mocks.times.iter().map(|(line, double)| {
+            let operand = serde_json::json!({"source": "mock-call", "double": double});
+            let times = serde_json::json!({"api": "times", "line": line, "operands": [operand]});
+            (*line, times)
+        }))
         .collect();
+    lined.sort_by_key(|(line, _)| *line);
+    let assertions: Vec<Value> = lined.into_iter().map(|(_, assertion)| assertion).collect();
 
     let mut attributes: BTreeMap<String, Value> = input
         .facts
@@ -181,7 +246,7 @@ fn case_fact(input: &TestInput<'_>, consts: &FileConsts<'_>, case: &TestFunction
     let start = function.sig.fn_token.span;
 
     CaseFact {
-        canonical: format!("{}#test:{}", input.relative, start.start().line),
+        canonical: case_name(input, case),
         display: case.name.clone(),
         start,
         end: function.block.brace_token.span.close(),

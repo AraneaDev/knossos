@@ -21,6 +21,10 @@ use crate::reads::{read_safely, record_read};
 use crate::source_hash::sha256_hex;
 use crate::visit::{Declarations, ModuleGates};
 
+mod neighbours;
+
+use neighbours::{included_files, orphan_neighbours};
+
 /// What one file gives the declaration index.
 #[derive(Clone, Debug)]
 struct FileIndex {
@@ -56,6 +60,8 @@ struct FileIndex {
     private_exports: BTreeSet<String>,
     /// What the file may shadow a standard macro with, indexed or not.
     macro_shadows: crate::test_facts::MacroShadows,
+    /// The mocks the file generates, see [`crate::visit::GeneratedMock`].
+    generated_mocks: BTreeMap<String, crate::visit::GeneratedMock>,
 }
 
 impl FileIndex {
@@ -77,6 +83,7 @@ impl FileIndex {
             aliases,
             export_alternatives,
             globs,
+            generated_mocks,
         } = if indexed {
             crate::visit::index_facts(relative, module, items, layout)
         } else {
@@ -106,6 +113,7 @@ impl FileIndex {
             globs,
             private_exports,
             macro_shadows: crate::test_facts::MacroShadows::of(items),
+            generated_mocks,
         }
     }
 }
@@ -361,88 +369,6 @@ pub(crate) fn index_project(
     }
 }
 
-/// Each project file an `include!("path")` of another file pulls in, with
-/// the files that include it and whether every one of them does so only for
-/// the tests (under `#[cfg(test)]`). The path is relative to the including
-/// file's directory.
-fn included_files(
-    pending: &[Pending],
-    mods: &BTreeMap<String, Vec<ModDeclaration>>,
-) -> BTreeMap<String, (Vec<String>, bool)> {
-    let mut included: BTreeMap<String, (Vec<String>, bool)> = BTreeMap::new();
-    for entry in pending {
-        let directory = entry.relative.rsplit_once('/').map_or("", |(dir, _)| dir);
-        for (written, test) in &entry.includes {
-            if written.starts_with('/') || written.contains('\\') {
-                continue;
-            }
-            let mut segments: Vec<&str> = directory.split('/').filter(|s| !s.is_empty()).collect();
-            let mut escaped = false;
-            for part in written.split('/') {
-                match part {
-                    "" | "." => {}
-                    ".." => escaped |= segments.pop().is_none(),
-                    part => segments.push(part),
-                }
-            }
-            let target = segments.join("/");
-            if escaped || target == entry.relative || !mods.contains_key(&target) {
-                continue;
-            }
-            let (includers, all_test) = included.entry(target).or_insert((Vec::new(), true));
-            includers.push(entry.relative.clone());
-            *all_test &= *test;
-        }
-    }
-
-    included
-}
-
-/// Each project file no `mod` declaration loads (and no crate root), with
-/// the project's other files in its own directory and the one above it: the
-/// files a `#[path]` declaration that loads it is most likely written in,
-/// since such a path is relative to the declaring file's directory. An edit
-/// to one of them may place the file in a module, so the file reads them.
-fn orphan_neighbours(
-    layout: &Layout,
-    mods: &BTreeMap<String, Vec<ModDeclaration>>,
-) -> BTreeMap<String, Vec<String>> {
-    let mut loaded = BTreeSet::new();
-    for (file, list) in mods {
-        for declaration in list {
-            if let Some(child) = layout.child_file(
-                file,
-                &declaration.inline,
-                &declaration.name,
-                declaration.path.as_deref(),
-            ) {
-                loaded.insert(child);
-            }
-        }
-    }
-    let directory = |file: &str| file.rsplit_once('/').map_or("", |(dir, _)| dir).to_owned();
-    let mut orphans = BTreeMap::new();
-    for file in mods.keys() {
-        if loaded.contains(file) || layout.is_crate_root(file) {
-            continue;
-        }
-        let own = directory(file);
-        let parent = directory(&own);
-        let neighbours: Vec<String> = mods
-            .keys()
-            .filter(|other| *other != file)
-            .filter(|other| {
-                let theirs = directory(other);
-                theirs == own || (!own.is_empty() && theirs == parent)
-            })
-            .cloned()
-            .collect();
-        orphans.insert(file.clone(), neighbours);
-    }
-
-    orphans
-}
-
 /// An unrequested file read and hashed, with its `mod` declarations and its
 /// index entries in the module its path gives it: from the memo when this
 /// worker has seen those bytes, else parsed here. A refused read leaves
@@ -521,6 +447,7 @@ impl Declarations {
         self.add_export_alternatives(&index.export_alternatives);
         self.add_globs(&index.globs);
         self.add_private_exports(&index.private_exports);
+        self.add_generated_mocks(&index.generated_mocks);
     }
 }
 
