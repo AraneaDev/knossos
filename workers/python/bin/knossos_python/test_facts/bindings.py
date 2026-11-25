@@ -17,7 +17,7 @@ import ast
 from dataclasses import dataclass
 
 from ..fixtures import fixture_name
-from .conftests import conftest_double
+from .conftests import Derive, conftest_double
 from .factories import PATCH_KINDS, arguments_of, is_mock_name
 from .file_index import FUNCTIONS, Binding, TestFileIndex
 from .frozen_names import MOCKER_FIXTURES, PYTEST_BUILTIN_FIXTURES, SETUP_METHODS
@@ -56,10 +56,13 @@ class Value:
 class Bindings:
     """Follow expressions of one test file to the doubles they hold."""
 
-    def __init__(self, files: TestFileIndex, names: NameResolver, records: dict[int, DoubleRecord]) -> None:
+    def __init__(
+        self, files: TestFileIndex, names: NameResolver, records: dict[int, DoubleRecord], conftests: Derive
+    ) -> None:
         self.files = files
         self.names = names
         self.records = records
+        self.conftests = conftests
         self.injected: dict[int, Handle] = {}
         self.fixtures: dict[tuple[int, str], Handle | None] = {}
         self._setups: dict[int, dict[str, Value | None]] = {}
@@ -255,7 +258,7 @@ class Bindings:
         owners = self._fixture_owners(binding)
         if not owners or any(self._declares(owner, binding.name) for owner in owners):
             return None
-        return conftest_double(self.names.index, self.names.relative, binding.name)
+        return conftest_double(self.names.index, self.names.relative, binding.name, self.conftests)
 
     def _fixture_owners(self, binding: Binding) -> list[int]:
         """Where a fixture for parameter ``binding`` may be declared, nearest first; none if no fixture fills it."""

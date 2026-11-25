@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from ..fixtures import fixture_name
 from ..module_index import ProjectModuleIndex
 from .bindings import Bindings, parametrized
+from .conftests import conftest_autouse, conftest_fixture
 from .file_index import FUNCTIONS, Scope, TestFileIndex
 from .frozen_names import BUILTINS, MOCKER_FIXTURES, PYTEST_BUILTIN_FIXTURES, SETUP_METHODS
 from .imports import NameResolver
@@ -238,9 +239,8 @@ class ProductionCalls:
     def autouse(self, klass: ast.ClassDef | None) -> list[str]:
         """The fixtures that apply themselves to a test of ``klass`` (None: of the module): the file's, conftests'."""
         names = [name for name, function in self._local_fixtures(klass).items() if is_autouse(function)]
-        from .conftests import conftest_autouse
-
-        return [*names, *(name for name in conftest_autouse(self.index, self.names.relative) if name not in names)]
+        found = conftest_autouse(self.index, self.names.relative, self.bindings.conftests)
+        return [*names, *(name for name in found if name not in names)]
 
     def fixture(self, name: str, klass: ast.ClassDef | None) -> Reach:
         """What the fixture ``name`` runs for a test of ``klass``: its nearest definition's calls, and its fixtures'."""
@@ -249,9 +249,7 @@ class ProductionCalls:
             return self.local_fixture(local)
         if name in MOCKER_FIXTURES or name in PYTEST_BUILTIN_FIXTURES:
             return Reach()
-        from .conftests import conftest_fixture
-
-        found = conftest_fixture(self.index, self.names.relative, name)
+        found = conftest_fixture(self.index, self.names.relative, name, self.bindings.conftests)
         reach = Reach(1) if found is None else Reach(found.calls, set(found.subjects))
         loaded = self.index.path_loaded_fixtures(self.names.relative).get(name)
         if loaded is not None:

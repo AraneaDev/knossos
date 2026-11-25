@@ -132,7 +132,7 @@ def _bindings(root: Path, relative: str, source: str) -> tuple[Any, ast.Module]:
     tree = ast.parse(source)
     files = package.file_index.TestFileIndex(tree)
     names = package.imports.NameResolver(index, files, relative, index.layout.module_for(relative))
-    return package.doubles.TestDoubles(files, names).bindings, tree
+    return package.doubles.TestDoubles(files, names, package.doubles.read_conftest).bindings, tree
 
 
 def _parameter(tree: ast.Module, function: str, name: str) -> Any:
@@ -321,7 +321,8 @@ def _records(root: Path, source: str) -> dict[int, Any]:
     index = ProjectModuleIndex(root, 2_000_000)
     files = package.file_index.TestFileIndex(ast.parse(source))
     names = package.imports.NameResolver(index, files, "tests/test_it.py", "tests.test_it")
-    return {record.node.lineno: record for record in package.doubles.TestDoubles(files, names).doubles()}
+    doubles = package.doubles.TestDoubles(files, names, package.doubles.read_conftest)
+    return {record.node.lineno: record for record in doubles.doubles()}
 
 
 def test_a_pin_through_a_held_handle_is_marked_held(project) -> None:

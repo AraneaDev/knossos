@@ -14,12 +14,17 @@ from __future__ import annotations
 
 import ast
 
+from ..fixtures import fixture_name
+from ..module_index import ProjectModuleIndex
 from .bindings import Bindings
 from .configuration import Configuration
+from .conftests import ConftestFixture, Derive
 from .factories import Arguments, Construct, arguments_of, construct_of, is_given, is_true, literal_string
 from .file_index import TestFileIndex
 from .frozen_names import BUILTINS, MOCK_CLASSES, is_dunder
 from .imports import NameResolver
+from .paths import is_test_path
+from .production_calls import ProductionCalls, is_autouse
 from .records import DoubleRecord
 from .targets import Located, Owner, TargetResolver
 
@@ -27,7 +32,7 @@ from .targets import Located, Owner, TargetResolver
 class TestDoubles:
     """Read every double of one test file."""
 
-    def __init__(self, files: TestFileIndex, names: NameResolver) -> None:
+    def __init__(self, files: TestFileIndex, names: NameResolver, conftests: Derive) -> None:
         self.files = files
         self.names = names
         self.targets = TargetResolver(names, files)
@@ -40,7 +45,7 @@ class TestDoubles:
                 record = self._make(call, construct)
                 if record is not None:
                     self.records[id(call)] = record
-        self.bindings = Bindings(files, names, self.records)
+        self.bindings = Bindings(files, names, self.records, conftests)
         self.configuration.bindings = self.bindings
         for record in self.records.values():
             replacement = self._new.get(id(record))
@@ -221,3 +226,27 @@ class TestDoubles:
 
 def _api(kind: str) -> str:
     return {"spy": "spy", "setattr": "setattr"}.get(kind, kind)
+
+
+def read_conftest(index: ProjectModuleIndex, relative: str, tree: ast.Module) -> dict[str, ConftestFixture]:
+    """Each fixture of the conftest at ``relative``, by name: the double it hands over, and what it runs.
+
+    Handed down to :mod:`.conftests` through :class:`TestDoubles` and
+    :class:`Bindings`, whose readers are the ones a conftest is read with.
+    """
+    files = TestFileIndex(tree)
+    names = NameResolver(index, files, relative, index.layout.module_for(relative))
+    doubles = TestDoubles(files, names, read_conftest)
+    production = ProductionCalls(files, doubles.names, doubles.bindings, doubles.records)
+    fixtures: dict[str, ConftestFixture] = {}
+    for function in files.functions:
+        name = fixture_name(function)
+        if name is None or files.scope_of(function) is not files.module_scope:
+            continue
+        handle = doubles.bindings.fixture(id(tree), name)
+        # A root conftest is no test module, so the core holds no node for its doubles.
+        named = handle is not None and is_test_path(relative)
+        double = handle.record.canonical(relative) if handle is not None and named else ""
+        reach = production.local_fixture(function)
+        fixtures[name] = ConftestFixture(double, reach.calls, tuple(sorted(reach.subjects)), is_autouse(function))
+    return fixtures

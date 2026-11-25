@@ -8,20 +8,23 @@ What a fixture runs of the code under test counts for every test that
 requests it, and an ``autouse`` fixture for every test below it. Each
 conftest is read once per request, and what reading it cost is named by
 every file that asks, as the index does for a module's declarations.
+
+What a conftest's fixtures are is read by the caller's ``derive``
+(:func:`.doubles.read_conftest`), handed down rather than imported, since
+reading a conftest's doubles and calls needs the very readers that ask here.
 """
 
 from __future__ import annotations
 
 import ast
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from weakref import WeakKeyDictionary
 
-from ..fixtures import fixture_name
 from ..module_index import ProjectModuleIndex
 from ..safe_io import read_bounded, walk_path
-from .paths import is_test_path
 
 
 @dataclass(frozen=True)
@@ -34,32 +37,35 @@ class ConftestFixture:
     autouse: bool
 
 
+Derive = Callable[[ProjectModuleIndex, str, ast.Module], dict[str, ConftestFixture]]
+"""Each fixture of a parsed conftest, by name, given the index and the conftest's project-relative path."""
+
 _READ: WeakKeyDictionary[ProjectModuleIndex, dict[str, tuple[dict[str, ConftestFixture], set[str]]]] = (
     WeakKeyDictionary()
 )
 
 
-def conftest_double(index: ProjectModuleIndex, relative: str, name: str) -> str | None:
+def conftest_double(index: ProjectModuleIndex, relative: str, name: str, derive: Derive) -> str | None:
     """The canonical name of the double the nearest conftest over ``relative`` delivers as fixture ``name``."""
-    found = conftest_fixture(index, relative, name)
+    found = conftest_fixture(index, relative, name, derive)
     return None if found is None else found.double or None
 
 
-def conftest_fixture(index: ProjectModuleIndex, relative: str, name: str) -> ConftestFixture | None:
+def conftest_fixture(index: ProjectModuleIndex, relative: str, name: str, derive: Derive) -> ConftestFixture | None:
     """The fixture ``name`` of the nearest conftest over ``relative`` that declares one."""
     for conftest in _conftests(relative):
-        fixtures = _fixtures(index, conftest)
+        fixtures = _fixtures(index, conftest, derive)
         if name in fixtures:
             return fixtures[name]
     return None
 
 
-def conftest_autouse(index: ProjectModuleIndex, relative: str) -> list[str]:
+def conftest_autouse(index: ProjectModuleIndex, relative: str, derive: Derive) -> list[str]:
     """The names of the ``autouse`` fixtures the conftests over ``relative`` apply, nearest first."""
     names: list[str] = []
     seen: set[str] = set()
     for conftest in _conftests(relative):
-        for name, fixture in _fixtures(index, conftest).items():
+        for name, fixture in _fixtures(index, conftest, derive).items():
             if name not in seen and fixture.autouse:
                 names.append(name)
             seen.add(name)
@@ -72,47 +78,21 @@ def _conftests(relative: str) -> list[str]:
     return [conftest for conftest in folders if conftest != relative]
 
 
-def _fixtures(index: ProjectModuleIndex, relative: str) -> dict[str, ConftestFixture]:
+def _fixtures(index: ProjectModuleIndex, relative: str, derive: Derive) -> dict[str, ConftestFixture]:
     """Each fixture of the conftest at ``relative``, by name."""
     read = _READ.setdefault(index, {})
     cached = read.get(relative)
     if cached is None:
         index.open_scope()
         try:
-            fixtures = _derive(index, relative)
+            tree = _parse(index, relative)
+            fixtures = {} if tree is None else derive(index, relative, tree)
         finally:
             keys = index.close_scope()
         cached = (fixtures, keys)
         read[relative] = cached
     index._note(cached[1])
     return cached[0]
-
-
-def _derive(index: ProjectModuleIndex, relative: str) -> dict[str, ConftestFixture]:
-    tree = _parse(index, relative)
-    if tree is None:
-        return {}
-    # Imported here: the doubles and calls of a file are read with this module's help.
-    from .doubles import TestDoubles
-    from .file_index import TestFileIndex
-    from .imports import NameResolver
-    from .production_calls import ProductionCalls, is_autouse
-
-    files = TestFileIndex(tree)
-    doubles = TestDoubles(files, NameResolver(index, files, relative, index.layout.module_for(relative)))
-    production = ProductionCalls(files, doubles.names, doubles.bindings, doubles.records)
-    fixtures: dict[str, ConftestFixture] = {}
-    for function in files.functions:
-        name = fixture_name(function)
-        if name is None or files.scope_of(function) is not files.module_scope:
-            continue
-        handle = doubles.bindings.fixture(id(tree), name)
-        # A root conftest is no test module, so the core holds no node for its doubles.
-        named = handle is not None and is_test_path(relative)
-        double = handle.record.canonical(relative) if handle is not None and named else ""
-        reach = production.local_fixture(function)
-        fixtures[name] = ConftestFixture(double, reach.calls, tuple(sorted(reach.subjects)), is_autouse(function))
-    return fixtures
 
 
 def _parse(index: ProjectModuleIndex, relative: str) -> ast.Module | None:

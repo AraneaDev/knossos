@@ -15,7 +15,7 @@ from typing import Any
 from ..ast_helpers import evidence, ref
 from ..module_index import ProjectModuleIndex
 from .cases import TestCases
-from .doubles import TestDoubles
+from .doubles import TestDoubles, read_conftest
 from .file_index import TestFileIndex
 from .imports import NameResolver
 from .paths import is_test_path
@@ -31,7 +31,7 @@ def read_doubles(relative: str, tree: ast.Module, index: ProjectModuleIndex, mod
     """
     module = module or index.layout.module_for(relative)
     files = TestFileIndex(tree)
-    return TestDoubles(files, NameResolver(index, files, relative, module))
+    return TestDoubles(files, NameResolver(index, files, relative, module), read_conftest)
 
 
 def test_facts(
