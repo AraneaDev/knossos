@@ -12,9 +12,10 @@ declare(strict_types=1);
  * again; PHP (`test_fidelity_rescan_one_file_php`) reuses them and judges
  * their doubles against the changed class. Python
  * (`test_fidelity_rescan_one_file_python`) reads all five again too, as each
- * test file reads the class's module to resolve what it patches. Prints the production file's
- * path, relative to OUTPUT, the files each rescan parses, the edit to append
- * (a format taking the round), and a SHA-256 digest of the corpus as JSON.
+ * test file reads the class's module to resolve what it patches. Prints the
+ * production file's path, relative to OUTPUT, the files each rescan parses,
+ * the edit to append (a format taking the round), and a SHA-256 digest of the
+ * corpus as JSON.
  */
 
 require_once __DIR__ . '/lib/cli-arguments.php';

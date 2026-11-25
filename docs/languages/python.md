@@ -162,11 +162,19 @@ describes the join.
 
 ## Test doubles
 
-In a test file (one under `tests/` or `test/` outside a source root, or named
-`test_*.py` or `*_test.py`, as the core's test-module rule reads a path), the
-worker reports each mock, patch and spy as a `test_double` fact, which the
-test-fidelity rules hold against the class, function or module it stands in
-for. It reads, without importing any of them:
+In a test file, the worker reports each mock, patch and spy as a `test_double`
+fact. A test file is one the core's test-module rule takes for test code by its
+path:
+
+- one under `tests/`, `test/`, `spec/`, `e2e/` or `fixtures/` outside a source
+  root (`src/`, `lib/`, `app/` or `source/`);
+- one under `__tests__/`, `__test__/`, `__fixtures__/` or `__mocks__/` at any
+  depth, or under `src/test/` or `database/factories/`;
+- one named `test_*.py`, `*_test.py`, `*.test.py`, `*.spec.py` or, in
+  PascalCase, `*Test.py`.
+
+The test-fidelity rules hold each double against the class, function or module
+it stands in for. The worker reads these, without importing any of them:
 
 - `unittest.mock`, or its `mock` backport, under any alias: the `Mock` family
   (`Mock`, `MagicMock`, `AsyncMock`, `NonCallableMock`,
@@ -212,9 +220,10 @@ no spec records no members, since it answers every name. Its pins are
 exception; the literal a lambda or local function returns), a
 `**{"m.return_value": v}` keyword dict, `configure_mock`, a `new=` value and
 the value `monkeypatch.setattr` sets. A pin's type is read from the value only:
-a literal, a builtin constructor, or a project class's constructor
-(`class:<name>`); any other value is `unknown`. Its call matchers are
-`assert_called_with`, `assert_called_once_with`, `assert_any_call`, their
+a literal, a builtin constructor, a project class's constructor
+(`class:<name>`), or a `lambda` (`callable`); any other value is `unknown`.
+Its call matchers are `assert_called_with`, `assert_called_once_with`,
+`assert_any_call`, their
 `await` forms, and each `call(...)` that `assert_has_calls` or
 `assert_has_awaits` lists, with the keyword names they pass. A `*` or `**`
 argument leaves the count open. A `side_effect` callable, when the double is
@@ -311,12 +320,21 @@ The lists a ghost is judged against come from the worker's `member_names` and
 A dunder is never judged. A base outside the project leaves the list open,
 except `abc.ABC`, `typing.Protocol` and `typing.Generic`, which add only their
 metaclass's names, and an open ancestor leaves every subclass open. A package's
-exports are always open. A call matcher and a `side_effect` are not judged
-against a def that is decorated or rebound in its own module or class body.
-Neither they nor a pin are judged on a class whose lineage carries
-`methods_rewritable` (a metaclass, an `__init_subclass__`, a class decorator
-or call that may rewrite its methods). A pin is judged against a declared return annotation only, built-in types,
-`typing`'s aliases, `Optional`, `Union`, `|` and `Annotated`; a project class,
+exports are always open. A class whose name its own file stores in another
+binding, a list, tuple, set or dict, a `for` loop or a comprehension, or
+returns (`Alias = C`, `REGISTRY = {"c": C}`, `for k in (C, D): k.x = 1`) may
+be written through that holder, so its list is open too (Ruling P23). A call
+matcher and a `side_effect` are not judged against a def that is decorated or
+rebound in its own module or class body, `self.m = …`, `self.m, self.n = …`
+and `setattr(self, "m", …)` among them. Neither they nor a pin are judged on a
+class whose lineage carries `methods_rewritable` (a metaclass, an
+`__init_subclass__`, a class decorator or call that may rewrite its methods),
+nor against a def Python's lookup may not reach first (Ruling P24): one whose
+name another class of the lineage also lists (a subclass's `save = impl`, a
+second base's def an MRO may put first), or one inherited by a class with a
+base outside the project, which may come first in the MRO. A pin is judged
+against a declared return annotation only, built-in types, `typing`'s aliases,
+`Optional`, `Union`, `|` and `Annotated`; a project class,
 a `Protocol`, a `TypeVar`, `Literal`, `Callable` or any other annotation is
 not judged, and a `new=` value replaces the member rather than pinning what it
 returns. A double answers to every test of its file, since a Python double
@@ -353,9 +371,22 @@ These are accepted, and each costs a missed finding or a false one, as stated:
   rule that a test replaces its own subject never speaks for Python.
 - **A member list opened for nothing** (G4-04). A class handed to a call the
   worker does not know to be read-only (a registry, `codecs.CodecInfo`, a
-  helper) opens its list, so ghosts on it are missed. In the standard library
-  this opens about a third of the classes; in typical application code, very
-  few.
+  helper) opens its list, so ghosts on it are missed. Measured before Ruling
+  P23, this opened 892 of the standard library's 2,644 classes (484 of them
+  handed to `codecs.CodecInfo`) and 1 of Knossos's own 30. A class a same-file
+  alias holds (Ruling P23) adds up to 179 more in the standard library, and
+  none in Knossos.
+- **Instance writes outside the class** (G4-02). A name written on an instance
+  through an alias of `self` (`me = self; me.save = …`), on an instance from
+  outside (`C().extra = 1`), or by a module through an import of itself
+  (`import m; m.x = 1` inside `m`) is not listed. A double of that name reads
+  as a definite ghost, and a def it rebinds keeps its arity judged.
+- **Class writes the worker does not follow** (G4-05). A write to a nested
+  class (`O.I.x = 1`), a class held as a parameter default
+  (`def f(k=C): k.x = 1`), a call named like a read-only builtin but bound to
+  something else, `builtins.exec`, and a frame hack whose result is assigned
+  leave the list closed: a double of the name written reads as a definite
+  ghost.
 
 Not read at all: a `@property` patched without `PropertyMock`; a
 constructor's arguments asserted through the class double

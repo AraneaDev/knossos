@@ -120,10 +120,10 @@ the base of Python test facts, where the Python worker reported none, it
 measured 0.717s there and 0.809s with them, each figure a median of three runs
 of five rounds, with the worker compiled from source on every run as a fresh
 checkout does (the worker starts with `-B`, so it writes no bytecode). That is
-113% of base. Where the worker's bytecode was already cached, it measured
-0.789s, 110%. The difference is the worker's start: compiling the test-facts
-modules adds about 70ms, while scanning the six files in the worker takes less
-time than at base.
+112.8% of base, which was accepted against the 110% the plan held it to
+(Ruling P22; gap G4-16). The difference is the worker's start: compiling the
+test-facts modules adds about 70ms, while scanning the six files in the worker
+takes less time than at base.
 
 Timing and RSS values vary with hardware, load, filesystem, and cold runtime
 caches. Compare trends from equivalent pinned runners. Tightening a budget

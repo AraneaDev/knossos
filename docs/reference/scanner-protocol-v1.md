@@ -227,7 +227,9 @@ a metaclass, a decorator other than `dataclass` or `final`, a base that gives no
 name the module binds more than once, a non-literal `setattr`, a write to
 `__dict__` or `vars()`, a class body with a `for`, `while`, `with`, `match`,
 `exec`, `locals()` or a bare call, a module write to the class, the class
-handed to a call other than a read-only builtin such as `isinstance`, a
+handed to a call other than a read-only builtin such as `isinstance`, its
+name stored in another binding, a display, a `for` iterable or a
+comprehension, or returned (`Alias = C`, `REGISTRY = {"c": C}`), a
 rebinding of its name, or module-level `exec`, `eval`, `globals()` or
 `vars()`). Type parameters (`class C[T]`) keep it closed. Inherited names come
 from the class's `extends` edges: a reader takes a name as absent only when
@@ -237,8 +239,8 @@ external or open ancestor leaves it unknown. A Python class also carries
 subclass's may not keep the signature their def writes: a metaclass other than
 `type`, `abc.ABCMeta` or `enum.EnumMeta`, an `__init_subclass__`, a class
 decorator other than `dataclass`, `final`, `total_ordering`,
-`runtime_checkable` or `enum.unique`, the class written or handed to a call in
-its module, or a module that runs dynamic code. A reader carries it down the
+`runtime_checkable` or `enum.unique`, the class written, handed to a call or
+held by another name in its module, or a module that runs dynamic code. A reader carries it down the
 class's `extends` edges, as it does an open list; a base outside the project
 is not taken to rewrite. `exports` lists every top-level
 binding in both branches of an `if` or `try` and the names a `global`
@@ -337,7 +339,8 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `text` is the operand's own source text, left out when evaluating it again
   could give another value: when any part of it is a call, a `new` or a tagged
   template. `value` is, for a stubbed operand, the source text of the value the
-  stub was configured to return.
+  stub was configured to return, and for a `literal` local the worker follows to
+  the one literal it holds, that literal's source text.
 - `doubles` edge: from a `test_double` to the production class, interface,
   function, method or module it replaces, with the confidence the worker has in
   that link. A `contains` edge ties a module to its doubles and test cases.

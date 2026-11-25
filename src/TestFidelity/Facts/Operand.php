@@ -13,7 +13,7 @@ final readonly class Operand
 
     /**
      * @param ?string $text the operand's own source text, absent when evaluating it again could give another value
-     * @param ?string $value for a stubbed operand, the source text of the value the stub was configured to return
+     * @param ?string $value for a stubbed operand, the source text of the value the stub was configured to return; for a literal local, the literal it holds
      */
     public function __construct(
         public string $source,
