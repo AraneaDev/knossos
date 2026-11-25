@@ -78,6 +78,9 @@ pub(super) struct Handles {
     pub(super) config_lines: Vec<(usize, usize)>,
     /// Whether `unsafe` appears anywhere in the function.
     pub(super) unsafe_code: bool,
+    /// Whether a macro stands where an item may in the function, which may
+    /// configure any handle out of sight.
+    pub(super) opaque: bool,
 }
 
 impl Handles {
@@ -174,6 +177,7 @@ impl Handles {
     /// as Decision 9 shows it.
     fn value(&self, handle: &str, member: &str, at: (usize, usize)) -> Option<String> {
         if self.unsafe_code
+            || self.opaque
             || self.defeated.contains(handle)
             || self.bindings.get(handle).copied() != Some(1)
         {

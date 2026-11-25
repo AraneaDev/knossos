@@ -17,11 +17,14 @@
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 
-use super::assertions::{arguments, is_assertion_macro};
+use super::assertions::arguments;
 use super::doubles::{DoubleFact, Pin};
 use super::generated::MockResolver;
 use super::handles::{handle_name, receiver_handle, start, Chain, Handles};
-use super::literals::literal_text;
+use super::macros::Frozen;
+use super::syntax::{
+    identifiers, innermost_call, returned_literal, strip_parens, BodyNames, Named,
+};
 use crate::resolve::ident_name;
 use crate::visit::GeneratedMock;
 
@@ -57,6 +60,8 @@ pub(super) struct Site<'s> {
     pub(super) container: &'s str,
     /// The case's canonical name, none for a helper.
     pub(super) test_case: Option<String>,
+    /// Which macros are the standard ones.
+    pub(super) frozen: &'s Frozen<'s>,
 }
 
 /// The mockall doubles of one function, with its signature and body.
@@ -76,12 +81,15 @@ pub(super) fn mockall_doubles(
         .filter_map(innermost_call)
         .map(|call| start(&call.method))
         .collect();
+    let mut hidden = BodyNames::default();
+    hidden.visit_block(block);
     let mut pass = Pass {
         site,
         resolver,
         found: MockallPass::default(),
         top_level,
         statics: Vec::new(),
+        hidden: hidden.0,
     };
     pass.visit_signature(signature);
     pass.visit_block(block);
@@ -100,6 +108,9 @@ struct Pass<'p> {
     top_level: std::collections::BTreeSet<(usize, usize)>,
     /// Each static call on a mock: where it starts, the mock and the member.
     statics: Vec<((usize, usize), String, String)>,
+    /// Every name an item or `use` in the body declares: it hides a
+    /// generated mock of that name (a local `struct MockClock`).
+    hidden: std::collections::BTreeSet<String>,
 }
 
 /// What a path call is to a mock type.
@@ -113,6 +124,15 @@ enum MockCall<'m> {
 }
 
 impl<'p> Pass<'p> {
+    /// The mock `path` names, unless the body declares its first name.
+    fn resolve(&self, path: &syn::Path) -> Option<(String, &'p GeneratedMock)> {
+        let head = ident_name(&path.segments.first()?.ident);
+        if path.leading_colon.is_none() && self.hidden.contains(&head) {
+            return None;
+        }
+        self.resolver.resolve(self.site.container, path)
+    }
+
     /// What the call `func` is to a mock type, if anything.
     fn classify(&self, func: &syn::Expr) -> Option<MockCall<'p>> {
         let syn::Expr::Path(path) = func else {
@@ -127,7 +147,7 @@ impl<'p> Pass<'p> {
             let syn::Type::Path(ty) = qself.ty.as_ref() else {
                 return None;
             };
-            let (mock, generated) = self.resolver.resolve(self.site.container, &ty.path)?;
+            let (mock, generated) = self.resolve(&ty.path)?;
             return Some(MockCall::Constructor(mock, generated));
         }
         let mut prefix = path.path.clone();
@@ -136,12 +156,17 @@ impl<'p> Pass<'p> {
         if prefix.segments.is_empty() {
             return None;
         }
-        let (mock, generated) = self.resolver.resolve(self.site.container, &prefix)?;
+        let (mock, generated) = self.resolve(&prefix)?;
         if let Some(member) = last.strip_suffix("_context") {
             return Some(MockCall::Context(mock, generated, member.to_owned()));
         }
         match last.as_str() {
-            "new" | "default" if !generated.contexts_only => {
+            // A `new` the mocked type declares itself is mocked as a
+            // static method: it returns what its context's expectation
+            // does, never a fresh mock.
+            "new" | "default"
+                if !generated.contexts_only && !generated.mocked_constructors.contains(&last) =>
+            {
                 Some(MockCall::Constructor(mock, generated))
             }
             _ => Some(MockCall::Static(mock, last)),
@@ -219,7 +244,7 @@ impl<'p> Pass<'p> {
         if written != ["Default", "default"] || !call.args.is_empty() {
             return None;
         }
-        let (mock, generated) = self.resolver.resolve(self.site.container, &ty.path)?;
+        let (mock, generated) = self.resolve(&ty.path)?;
         Some(self.make(init, &mock, generated))
     }
 
@@ -325,8 +350,17 @@ impl<'p> Pass<'p> {
 }
 
 impl<'ast> Visit<'ast> for Pass<'_> {
-    fn visit_item(&mut self, _: &'ast syn::Item) {
-        // A nested item is a function of its own.
+    fn visit_item(&mut self, node: &'ast syn::Item) {
+        // A nested item is a function of its own; but a macro defined or
+        // invoked where an item stands (`macro_rules! setup`) may name
+        // any handle of the function, hygiene notwithstanding.
+        self.found.handles.opaque |= matches!(node, syn::Item::Macro(_));
+    }
+
+    fn visit_stmt_macro(&mut self, node: &'ast syn::StmtMacro) {
+        // An unknown macro where an item may stand may expand to anything.
+        self.found.handles.opaque |= self.site.frozen.declares_items(&node.mac);
+        syn::visit::visit_stmt_macro(self, node);
     }
 
     fn visit_local(&mut self, node: &'ast syn::Local) {
@@ -464,7 +498,7 @@ impl<'ast> Visit<'ast> for Pass<'_> {
     }
 
     fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        if is_assertion_macro(node) {
+        if self.site.frozen.is_assertion(node) {
             if let Some(arguments) = arguments(node) {
                 for argument in &arguments {
                     self.visit_expr(argument);
@@ -481,70 +515,6 @@ impl<'ast> Visit<'ast> for Pass<'_> {
             .collect();
         for name in handed {
             self.hand_on(&name, true);
-        }
-    }
-}
-
-/// The innermost method call of a chain `expr` is, when its receiver is a
-/// plain name: `h.expect_m()` of `h.expect_m().returning(…)`.
-fn innermost_call(expr: &syn::Expr) -> Option<&syn::ExprMethodCall> {
-    let syn::Expr::MethodCall(outer) = strip_parens(expr) else {
-        return None;
-    };
-    let mut call = outer;
-    while let syn::Expr::MethodCall(inner) = strip_parens(&call.receiver) {
-        call = inner;
-    }
-    receiver_handle(&call.receiver).map(|_| call)
-}
-
-/// `expr` without the parentheses around it.
-fn strip_parens(expr: &syn::Expr) -> &syn::Expr {
-    match expr {
-        syn::Expr::Paren(paren) => strip_parens(&paren.expr),
-        other => other,
-    }
-}
-
-/// The literal a value verb's argument returns: `LIT`, `|…| LIT`,
-/// `|…| { LIT }` or `move || LIT`.
-fn returned_literal(argument: &syn::Expr) -> Option<String> {
-    let body = match argument {
-        syn::Expr::Closure(closure) => closure.body.as_ref(),
-        other => return literal_text(other),
-    };
-    match body {
-        syn::Expr::Block(block) => match block.block.stmts.as_slice() {
-            [syn::Stmt::Expr(expr, None)] => literal_text(expr),
-            _ => None,
-        },
-        other => literal_text(other),
-    }
-}
-
-/// Every plain name an expression reads, macro arguments included.
-#[derive(Default)]
-struct Named(std::collections::BTreeSet<String>);
-
-impl Visit<'_> for Named {
-    fn visit_expr_path(&mut self, node: &syn::ExprPath) {
-        self.0.extend(handle_name(node));
-    }
-
-    fn visit_macro(&mut self, node: &syn::Macro) {
-        identifiers(node.tokens.clone(), &mut self.0);
-    }
-}
-
-/// Every identifier in `tokens`, at any depth.
-fn identifiers(tokens: proc_macro2::TokenStream, out: &mut std::collections::BTreeSet<String>) {
-    for token in tokens {
-        match token {
-            proc_macro2::TokenTree::Ident(ident) => {
-                out.insert(ident_name(&ident));
-            }
-            proc_macro2::TokenTree::Group(group) => identifiers(group.stream(), out),
-            _ => {}
         }
     }
 }

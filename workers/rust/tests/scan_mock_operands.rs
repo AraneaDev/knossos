@@ -131,11 +131,21 @@ fn each_defeat_drops_the_value() {
         ),
         (
             "a macro handed the handle in a group",
-            format!("{pinned}    configure!({{ clock }});"),
+            format!("{pinned}    let _ = configure!({{ clock }});"),
         ),
         (
             "unsafe inside a macro",
             format!("{pinned}    wrap!(unsafe {{ touch() }});"),
+        ),
+        // Task 3 review I1 (t3/holes :39): a macro defined in the body sees
+        // the local handle, and may add an expectation consulted first.
+        (
+            "a macro_rules! in the body",
+            format!("{pinned}    macro_rules! setup {{\n        () => {{\n            touch();\n        }};\n    }}"),
+        ),
+        (
+            "an unknown macro where an item may stand",
+            format!("{pinned}    setup!();"),
         ),
         (
             "an unconfigured member",
@@ -229,4 +239,39 @@ fn every_root_of_a_chain_is_its_double() {
     // A receiver in parentheses is the handle all the same.
     let body = "    clock.expect_now().return_const(5u64);\n    assert_eq!((clock).now(), 5);";
     assert_eq!(config(Some("5")), echoed(body));
+}
+
+#[test]
+fn a_shadowed_assertion_macro_is_no_assertion() {
+    // Task 3 review I2 (t3/shadowassert :30 and :35): a project
+    // `macro_rules! assert_eq` may assert anything, production included.
+    let source = format!(
+        "{HEADER}#[cfg(test)]\nmod tests {{\n    use super::*;\n    macro_rules! assert_eq {{\n        ($a:expr, $b:expr) => {{\n            ::std::assert_eq!($a, $b)\n        }};\n    }}\n    \
+         #[test]\n    fn shadowed_assertion() {{\n        let mut clock = MockClock::new();\n        clock.expect_now().return_const(42u64);\n        assert_eq!(clock.now(), 42);\n    }}\n    \
+         #[test]\n    fn shadowed_literal() {{\n        assert_eq!(5, 5);\n        debug_assert_eq!(5, 5);\n    }}\n}}\n"
+    );
+    let contributions = scan_fixture_with(
+        "mock-operands-shadowed-assertion",
+        &[
+            ("Cargo.toml", "[package]\nname = \"probe\"\n"),
+            ("src/lib.rs", &source),
+        ],
+        &json!({ "config_files": ["Cargo.toml"] }),
+    );
+    let cases = nodes_of(&contributions, "test_case");
+    let apis = |case: &Value| -> Vec<Value> {
+        case["attributes"]["assertions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|assertion| assertion["api"].clone())
+            .collect()
+    };
+
+    assert!(apis(&cases["src/lib.rs#test:15"]).is_empty());
+    // `debug_assert_eq` is still the standard one.
+    assert_eq!(
+        vec![json!("debug_assert_eq")],
+        apis(&cases["src/lib.rs#test:21"])
+    );
 }

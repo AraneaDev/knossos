@@ -169,12 +169,13 @@ mod tests {
         ("assert !=", 2, true),
         ("assert", 1, false),
         ("matches", 1, false),
-        ("assert_matches", 1, false),
+        // `assert_matches!` and `prop_assert!` are outside the standard
+        // prelude, so a glob may bring in another macro under either name:
+        // neither is read as an assertion (Task 3 review, I2).
         ("debug_assert_eq", 2, false),
         ("assert", 1, false),
         ("assert <", 2, false),
         ("assert <=", 2, false),
-        ("prop_assert >", 2, false),
         ("debug_assert >=", 2, false),
         ("assert_eq", 2, false),
     ];
@@ -191,7 +192,7 @@ mod tests {
         .iter()
         .map(|assertion| assertion["line"].as_u64().unwrap())
         .collect();
-    assert_eq!((5..=18).collect::<Vec<u64>>(), lines);
+    assert_eq!(vec![5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18], lines);
 }
 
 #[test]

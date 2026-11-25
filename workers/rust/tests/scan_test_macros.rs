@@ -10,6 +10,13 @@ mod common;
 use common::*;
 use serde_json::Value;
 
+/// What a case's first operand is when no assertion is read at all: a
+/// package open to every other macro name leaves `assert_eq!` itself
+/// unknown, so it is an ordinary macro (Task 3 review, I2).
+fn no_assertion() -> Value {
+    Value::Null
+}
+
 /// A case of `body` in its own `#[cfg(test)]` module `name`, with `uses`
 /// written above it.
 fn case_module(name: &str, uses: &str, body: &str) -> String {
@@ -99,9 +106,9 @@ fn a_package_open_to_another_crates_macros_freezes_none() {
         )
     };
     let none = vec![
-        ("extern_macro_use::case".to_owned(), unknown()),
-        ("renamed_core::case".to_owned(), unknown()),
-        ("tests::case".to_owned(), unknown()),
+        ("extern_macro_use::case".to_owned(), no_assertion()),
+        ("renamed_core::case".to_owned(), no_assertion()),
+        ("tests::case".to_owned(), no_assertion()),
     ];
 
     assert_eq!(
@@ -398,8 +405,8 @@ fn a_module_named_like_a_standard_crate_freezes_none() {
         )
     };
     let none = vec![
-        ("local_core::case".to_owned(), unknown()),
-        ("plain::case".to_owned(), unknown()),
+        ("local_core::case".to_owned(), no_assertion()),
+        ("plain::case".to_owned(), no_assertion()),
     ];
 
     assert_eq!(
@@ -438,10 +445,10 @@ fn a_path_the_scan_does_not_hold_freezes_none() {
     };
     let tests = |operand: Value| vec![("tests::case".to_owned(), operand)];
 
-    assert_eq!(tests(unknown()), cases("../../outside/m.rs"));
-    assert_eq!(tests(unknown()), cases("/abs/m.rs"));
+    assert_eq!(tests(no_assertion()), cases("../../outside/m.rs"));
+    assert_eq!(tests(no_assertion()), cases("/abs/m.rs"));
     // Inside the root, but no file the scan holds.
-    assert_eq!(tests(unknown()), cases("../gen/m.rs"));
+    assert_eq!(tests(no_assertion()), cases("../gen/m.rs"));
     // A file the scan holds keeps the name frozen.
     assert_eq!(tests(literal("10")), cases("../macros/m.rs"));
 }

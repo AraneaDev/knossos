@@ -55,6 +55,12 @@ use PHPUnit\Framework\Attributes\Group;
  * `planted` module sets a `mock_echo` (definite), a `mock_only` and a
  * `zero_reach` (warnings) each beside a twin that runs production.
  *
+ * Its `reviewed` module, and the members `shadow-assert` (a project
+ * `macro_rules! assert_eq`) and `gated` (a `cfg_attr(test, automock)` mock
+ * named from `tests/`), hold each false definite the Task 3 review found, as
+ * the healthy test it is: a `macro_rules!` in the body that configures the
+ * mock, and a mocked `new` whose context builds the mock.
+ *
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and
  * `assert_eq!(1, 1)` (`self_comparison`).
@@ -90,6 +96,9 @@ final class RustHealthyIdiomsTest extends KnossosTestCase
             'TAUTOLOGY/constant/definite@tests/planted.rs:8',
             'TAUTOLOGY/mock_echo/definite@src/clock.rs:160',
             'TAUTOLOGY/mock_only/warning@src/clock.rs:174',
+            // A `.times(0)` with no production run: asserted, so no
+            // zero_reach (R5-7), and only a double is asserted.
+            'TAUTOLOGY/mock_only/warning@src/clock.rs:244',
             'TAUTOLOGY/self_comparison/definite@tests/planted.rs:18',
             'TAUTOLOGY/zero_reach/warning@src/clock.rs:186',
         ], $findings);

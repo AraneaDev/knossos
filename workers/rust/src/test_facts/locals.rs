@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use syn::visit::Visit;
 
-use super::assertions::{arguments, is_assertion_macro};
+use super::assertions::arguments;
 use super::literals::literal_text;
 use super::macros::Frozen;
 use crate::resolve::ident_name;
@@ -339,7 +339,7 @@ impl Visit<'_> for Names<'_> {
     fn visit_macro(&mut self, node: &syn::Macro) {
         // An assertion is read as the expressions it takes, which bind
         // nothing out of sight; any other macro may expand to anything.
-        if is_assertion_macro(node) {
+        if self.frozen.is_assertion(node) {
             if let Some(arguments) = arguments(node) {
                 for argument in &arguments {
                     self.visit_expr(argument);

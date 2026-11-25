@@ -194,3 +194,53 @@ mod planted {
         elapsed(&clock, 0);
     }
 }
+
+/// A factory whose own `new` mockall mocks as a static method.
+#[cfg_attr(test, mockall::automock)]
+pub trait Factory {
+    /// A new factory.
+    fn new() -> Self;
+    /// Its size.
+    fn size(&self) -> u32;
+}
+
+/// Each case a reviewer found a false definite in (Task 3 review), as the
+/// healthy test it is.
+#[cfg(test)]
+mod reviewed {
+    use super::*;
+
+    #[test]
+    fn a_body_macro_configures_the_mock() {
+        let mut clock = MockClock::new();
+        macro_rules! setup {
+            () => {
+                clock.expect_now().returning(|| 2 + 3);
+            };
+        }
+        setup!();
+        clock.expect_now().return_const(5u64);
+        assert_eq!(clock.now(), 5);
+    }
+
+    #[test]
+    fn a_mocked_new_returns_a_configured_mock() {
+        let context = MockFactory::new_context();
+        context.expect().returning(|| {
+            let mut made = MockFactory::default();
+            made.expect_size().returning(|| 2 + 2);
+            made
+        });
+        let mut factory = MockFactory::new();
+        factory.expect_size().return_const(4u32);
+        assert_eq!(factory.size(), 4);
+    }
+
+    // R5-7: `.times` asserts the double, so it is never zero-reach. With
+    // no production run, the `times` assertion is `mock_only` (a warning).
+    #[test]
+    fn a_times_pinned_mock_never_called() {
+        let mut clock = MockClock::new();
+        clock.expect_now().times(0).return_const(1u64);
+    }
+}

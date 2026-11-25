@@ -30,6 +30,7 @@ mod mockall;
 mod operands;
 mod output;
 mod production;
+mod syntax;
 #[cfg(test)]
 mod tests;
 
@@ -139,6 +140,7 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
         declarations: input.declarations,
         test_modules: input.test_modules,
         layout: input.layout,
+        relative: input.relative,
     };
     let mut doubles = Vec::new();
     let cases = test_functions(&input.file.items, input.module)
@@ -148,6 +150,7 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
                 relative: input.relative,
                 container: &case.container,
                 test_case: Some(case_name(input, case)),
+                frozen: &consts.frozen,
             };
             let function = case.function;
             let mut pass = mockall_doubles(&function.sig, &function.block, &site, &resolver);
@@ -162,6 +165,7 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
             relative: input.relative,
             container: &helper.container,
             test_case: None,
+            frozen: &consts.frozen,
         };
         let mut pass = mockall_doubles(helper.signature, helper.block, &site, &resolver);
         doubles.append(&mut pass.doubles);
@@ -205,7 +209,10 @@ fn case_fact(
         production: &reach,
         mocks: &mocks.handles,
     };
-    let mut found = Found::default();
+    let mut found = Found {
+        assertions: Vec::new(),
+        frozen: &consts.frozen,
+    };
     found.visit_block(&function.block);
     let mut lined: Vec<(usize, Value)> = found
         .assertions
@@ -297,15 +304,20 @@ fn assertion_line(mac: &syn::Macro) -> usize {
 }
 
 /// The assertions of one body, in source order, closures and nested
-/// functions included.
-#[derive(Default)]
-struct Found<'m> {
+/// functions included: each a standard assertion macro's, never one a
+/// project macro shadows.
+struct Found<'m, 'f> {
     /// Each assertion found.
     assertions: Vec<AssertionShape<'m>>,
+    /// Which macros are the standard ones.
+    frozen: &'f Frozen<'f>,
 }
 
-impl<'m> Visit<'m> for Found<'m> {
+impl<'m> Visit<'m> for Found<'m, '_> {
     fn visit_macro(&mut self, node: &'m syn::Macro) {
+        if !self.frozen.is_assertion(node) {
+            return;
+        }
         if let Some(shape) = assertion(node) {
             self.assertions.push(shape);
         }

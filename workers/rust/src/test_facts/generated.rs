@@ -31,6 +31,8 @@ pub(super) struct MockResolver<'a> {
     pub(super) test_modules: &'a ModuleGates,
     /// Where the project's crates are.
     pub(super) layout: &'a Layout,
+    /// The walked file's project-relative path.
+    pub(super) relative: &'a str,
 }
 
 impl<'a> MockResolver<'a> {
@@ -66,8 +68,9 @@ impl<'a> MockResolver<'a> {
             self.find(container, &names)?
         };
         let gated = mock.test_gated || is_test_module_path(parent(&canonical), self.test_modules);
-        // A test-only generator exists in its own crate's test build alone.
-        if gated && !own && crate_of(&canonical) != crate_of(container) {
+        // A test-only generator exists in its own crate's test build alone:
+        // a `tests/` target is another crate than its package's library.
+        if gated && !own && self.crate_key(&mock.file) != self.crate_key(self.relative) {
             return None;
         }
         Some((canonical, mock))
@@ -120,6 +123,11 @@ impl<'a> MockResolver<'a> {
         if let Some(mock) = self.own.get(&own) {
             return Some((own, mock, true));
         }
+        // A name the module declares itself (a hand-written `MockClock`)
+        // is that item, whatever a glob brings in.
+        if self.scope.declared.contains(&own) || self.declarations.get(&own).is_some() {
+            return None;
+        }
         if let Some(imported) = self
             .scope
             .module_aliases
@@ -159,8 +167,27 @@ fn parent(path: &str) -> &str {
     path.rsplit_once("::").map_or(path, |(parent, _)| parent)
 }
 
-/// The crate a module path sits in, by its first segment: `crate`, a
-/// workspace member's name, or a test target's (`tests`).
-fn crate_of(path: &str) -> &str {
-    path.split("::").next().unwrap_or(path)
+impl MockResolver<'_> {
+    /// The crate `relative` is compiled in, as far as a test gate is
+    /// concerned: its Cargo package (the deepest manifest above it) and
+    /// which of its targets: `tests`, `benches`, `examples` (each file
+    /// there, helpers included, gets `cfg(test)` in its own test build),
+    /// `src/bin`, or the library.
+    fn crate_key<'f>(&self, relative: &'f str) -> (&'f str, &'f str) {
+        let package = self
+            .layout
+            .packages
+            .iter()
+            .map(|(directory, _)| directory.as_str())
+            .filter(|directory| relative.starts_with(directory))
+            .max_by_key(|directory| directory.len())
+            .unwrap_or("");
+        let inner = &relative[package.len()..];
+        let target = match inner.split('/').collect::<Vec<_>>().as_slice() {
+            ["tests" | "benches" | "examples", ..] => inner.split('/').next().unwrap_or(""),
+            ["src", "bin", ..] | ["src", "main.rs"] | ["build.rs"] => "bin",
+            _ => "lib",
+        };
+        (&relative[..package.len()], target)
+    }
 }

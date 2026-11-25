@@ -271,19 +271,14 @@ fn same_file_constants_are_literal() {
 fn assertion_macros_are_not_handed_the_names_they_compare() {
     let lib = tests_module(&[
         ("boolean", "let x = 5;\n        assert!(x == 5);"),
-        // In expression position: as a statement, a macro outside the
-        // standard prelude may declare items (rr5 I7).
-        (
-            "matcher",
-            "let x = 5;\n        let _ = assert_matches!(x, 5);",
-        ),
+        ("pair", "let x = 5;\n        debug_assert_eq!(x, 5);"),
     ]);
     let found = first_operands("literals-assertion-macros", &[("src/lib.rs", &lib)]);
 
     assert_eq!(
         vec![
             ("tests::boolean".to_owned(), literal("5")),
-            ("tests::matcher".to_owned(), literal("5")),
+            ("tests::pair".to_owned(), literal("5")),
         ],
         found
     );

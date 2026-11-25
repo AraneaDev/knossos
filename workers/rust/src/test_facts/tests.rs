@@ -110,8 +110,10 @@ fn the_walked_files_own_imports_unfreeze_a_name_without_the_index() {
         "unknown",
         first_operand(&format!("use extmac::dbg;\n{case}"))
     );
+    // Every name is open to the other crate, `assert_eq` too: no
+    // assertion is read at all.
     assert_eq!(
-        "unknown",
+        serde_json::Value::Null,
         first_operand(&format!("#[macro_use]\nextern crate extmac;\n{case}"))
     );
 }
@@ -146,8 +148,7 @@ fn a_generated_mock_found_through_the_index_is_a_read() {
         target: Some("crate::clock::Clock".to_owned()),
         target_kind: "interface",
         pattern: crate::visit::AUTOMOCK,
-        test_gated: false,
-        contexts_only: false,
+        ..Default::default()
     };
     declarations.add_generated_mocks(&BTreeMap::from([(
         "crate::clock::MockClock".to_owned(),
@@ -166,6 +167,7 @@ fn a_generated_mock_found_through_the_index_is_a_read() {
         declarations: &declarations,
         test_modules: &gates,
         layout: &layout,
+        relative: "src/service.rs",
     };
     let path: syn::Path = syn::parse_str("crate::clock::MockClock").expect("parses");
     let other: syn::Path = syn::parse_str("crate::clock::Helper").expect("parses");

@@ -45,6 +45,14 @@ pub struct GeneratedMock {
     /// Whether the mock is an `#[automock] mod`'s, whose functions give
     /// static contexts only.
     pub contexts_only: bool,
+    /// The associated functions the mocked type declares among `new` and
+    /// `default`: mockall mocks such a function as a static method, so
+    /// `MockS::new()` returns whatever its context's expectation does and
+    /// makes no fresh mock.
+    pub mocked_constructors: Vec<String>,
+    /// The project-relative path of the generating file, whose crate a
+    /// test gate keeps the mock to.
+    pub file: String,
 }
 
 /// The mocks the items of the file `relative`, placed in `module`,
@@ -90,6 +98,13 @@ impl Walk<'_> {
                             pattern: AUTOMOCK,
                             test_gated: gated || test_gated || is_cfg_test(&node.attrs),
                             contexts_only: false,
+                            mocked_constructors: constructors(node.items.iter().filter_map(
+                                |item| match item {
+                                    syn::TraitItem::Fn(function) => Some(&function.sig.ident),
+                                    _ => None,
+                                },
+                            )),
+                            file: self.relative.clone(),
                         };
                         out.insert(format!("{container}::Mock{name}"), mock);
                     }
@@ -110,6 +125,13 @@ impl Walk<'_> {
                         pattern: AUTOMOCK,
                         test_gated: gated || test_gated || is_cfg_test(&node.attrs),
                         contexts_only: false,
+                        mocked_constructors: constructors(node.items.iter().filter_map(|item| {
+                            match item {
+                                syn::ImplItem::Fn(function) => Some(&function.sig.ident),
+                                _ => None,
+                            }
+                        })),
+                        file: self.relative.clone(),
                     };
                     out.insert(
                         format!("{container}::Mock{}", ident_name(&last.ident)),
@@ -126,6 +148,8 @@ impl Walk<'_> {
                             pattern: AUTOMOCK,
                             test_gated: inner_gated || test_gated,
                             contexts_only: true,
+                            mocked_constructors: Vec::new(),
+                            file: self.relative.clone(),
                         };
                         out.insert(format!("{container}::mock_{name}"), mock);
                     }
@@ -152,12 +176,44 @@ impl Walk<'_> {
                         pattern: MOCK_MACRO,
                         test_gated: gated || is_cfg_test(&node.attrs),
                         contexts_only: false,
+                        mocked_constructors: shape.constructors,
+                        file: self.relative.clone(),
                     };
                     out.insert(format!("{container}::Mock{}", shape.name), mock);
                 }
                 _ => {}
             }
         }
+    }
+}
+
+/// Which of `new` and `default` are among the associated functions
+/// `names`, in that order.
+fn constructors<'i>(names: impl Iterator<Item = &'i syn::Ident>) -> Vec<String> {
+    let names: Vec<String> = names.map(ident_name).collect();
+    known_constructors(&names)
+}
+
+/// Which of `new` and `default` are among `names`, in that order.
+fn known_constructors(names: &[String]) -> Vec<String> {
+    ["new", "default"]
+        .into_iter()
+        .filter(|name| names.iter().any(|declared| declared == name))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Every name a `fn` declares at any depth of `tokens` (a `mock!` body).
+fn declared_fns(tokens: proc_macro2::TokenStream, names: &mut Vec<String>) {
+    let mut after_fn = false;
+    for tree in tokens {
+        let is_fn = matches!(&tree, TokenTree::Ident(ident) if ident == "fn");
+        match tree {
+            TokenTree::Group(group) => declared_fns(group.stream(), names),
+            TokenTree::Ident(ident) if after_fn => names.push(ident_name(&ident)),
+            _ => {}
+        }
+        after_fn = is_fn;
     }
 }
 
@@ -233,6 +289,9 @@ struct MockMacro {
     name: String,
     /// The trait of each `impl … for` section, as written.
     traits: Vec<syn::Path>,
+    /// Which of `new` and `default` the body declares (see
+    /// [`GeneratedMock::mocked_constructors`]).
+    constructors: Vec<String>,
 }
 
 impl MockMacro {
@@ -240,6 +299,8 @@ impl MockMacro {
     /// its generics and body, then any `impl` sections. `None` when no name
     /// comes first.
     fn of(tokens: proc_macro2::TokenStream) -> Option<Self> {
+        let mut fns = Vec::new();
+        declared_fns(tokens.clone(), &mut fns);
         let trees: Vec<TokenTree> = tokens.into_iter().collect();
         let mut at = 0;
         let mut name = None;
@@ -283,7 +344,11 @@ impl MockMacro {
             }
             at += 1;
         }
-        Some(Self { name, traits })
+        Some(Self {
+            name,
+            traits,
+            constructors: known_constructors(&fns),
+        })
     }
 }
 

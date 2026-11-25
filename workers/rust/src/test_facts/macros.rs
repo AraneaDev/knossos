@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use syn::visit::Visit;
 
-use super::assertions::macro_name;
+use super::assertions::{is_assertion_macro, macro_name};
 use crate::layout::{Layout, ModDeclaration};
 use crate::resolve::ident_name;
 use crate::visit::{Declarations, ANY_PACKAGE};
@@ -173,6 +173,14 @@ impl<'d> Frozen<'d> {
             relative,
             declarations,
         }
+    }
+
+    /// Whether `mac` is an assertion the worker reads: an assertion
+    /// macro's name, still the standard one. A project macro under that
+    /// name (`macro_rules! assert_eq`) may assert anything, so it is an
+    /// ordinary macro.
+    pub(super) fn is_assertion(&self, mac: &syn::Macro) -> bool {
+        is_assertion_macro(mac) && !self.declares_items(mac)
     }
 
     /// Whether `mac`, invoked where an item may stand, may declare one.

@@ -23,6 +23,10 @@ pub struct FileScope {
     /// file's own for a target root (`tests/it.rs`), see
     /// `Walk::crate_module`.
     pub(crate) crate_module: String,
+    /// Every path the file declares an item at (see
+    /// `crate::visit::declaration_paths`): a name a module declares
+    /// itself beats one a glob brings in.
+    pub(crate) declared: std::collections::BTreeSet<String>,
 }
 
 impl Walk<'_> {
@@ -32,6 +36,7 @@ impl Walk<'_> {
             module_aliases: std::mem::take(&mut self.module_aliases),
             globs: std::mem::take(&mut self.globs),
             crate_module: self.crate_module.clone(),
+            declared: self.own_declarations.clone(),
         }
     }
 }
