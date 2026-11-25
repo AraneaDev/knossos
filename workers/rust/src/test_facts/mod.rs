@@ -16,12 +16,13 @@ use syn::visit::Visit;
 use crate::facts::{reference, Facts};
 use crate::layout::Layout;
 use crate::resolve::ident_name;
-use crate::visit::{Declarations, FileScope, ModuleGates};
+use crate::visit::{is_test_module_path, Declarations, FileScope, ModuleGates};
 
 mod assertions;
 mod cases;
 mod literals;
 mod locals;
+mod macros;
 mod operands;
 mod output;
 mod production;
@@ -31,6 +32,8 @@ mod tests;
 use assertions::{assertion, AssertionShape};
 use cases::{test_functions, TestFunction};
 use locals::{FileConsts, LocalLiterals};
+pub(crate) use macros::macro_rules_names;
+use macros::Frozen;
 use operands::OperandReader;
 use output::CaseFact;
 pub(crate) use output::TestFacts;
@@ -108,7 +111,14 @@ pub(crate) fn settle(outcome: Result<TestFacts, String>, facts: &mut Facts) {
 
 /// The test facts of one file.
 pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
-    let consts = FileConsts::of(&input.file.items, input.module);
+    // A `cfg` on the declaration that loads the file gates all of it.
+    let gated = input
+        .test_modules
+        .gate_of_file(input.relative, input.module)
+        .is_some()
+        || is_test_module_path(input.module, input.test_modules);
+    let frozen = Frozen::of(&input.file.items, input.declarations);
+    let consts = FileConsts::of(&input.file.items, input.module, gated, frozen);
     let cases = test_functions(&input.file.items, input.module)
         .iter()
         .map(|case| case_fact(input, &consts, case))
@@ -118,7 +128,7 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
 }
 
 /// The `test_case` node of one test function.
-fn case_fact(input: &TestInput<'_>, consts: &FileConsts, case: &TestFunction<'_>) -> CaseFact {
+fn case_fact(input: &TestInput<'_>, consts: &FileConsts<'_>, case: &TestFunction<'_>) -> CaseFact {
     let function = case.function;
     let path = format!("{}::{}", case.container, ident_name(&function.sig.ident));
     let function_ref = reference("function", &path);

@@ -33,7 +33,10 @@ use PHPUnit\Framework\Attributes\Group;
  * and a block-level `const` of production's value, and a `const` whose
  * `#[cfg(test)]` alternative is production's, as a `const` or as a `use`
  * (re-review I1); and a same-crate `macro_rules!` invoked in the test body,
- * not handed the name, whose expansion declares it (fix round 2).
+ * not handed the name, whose expansion declares it (fix round 2); a module
+ * declared once per build, the test one re-exporting production's value, and
+ * a project `macro_rules!` named like `std::dbg!` that declares the name
+ * (fix round 3).
  *
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and

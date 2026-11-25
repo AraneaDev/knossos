@@ -57,6 +57,8 @@ pub struct Declarations {
     globs: BTreeMap<String, Vec<(String, bool)>>,
     /// The names of `exports` only a private `use` binds.
     private_exports: BTreeSet<String>,
+    /// The name of every `macro_rules!` any file defines.
+    macro_rules: BTreeSet<String>,
 }
 
 /// The modules each module of one file imports every name of with a glob
@@ -146,6 +148,18 @@ impl Declarations {
     pub fn get(&self, name: &str) -> Option<&usize> {
         self.lookups.borrow_mut().insert(name.to_owned());
         self.counts.get(name)
+    }
+
+    /// Add the `macro_rules!` names one file defines.
+    pub fn add_macro_rules(&mut self, names: &BTreeSet<String>) {
+        self.macro_rules.extend(names.iter().cloned());
+    }
+
+    /// Whether some file defines a `macro_rules!` called `name`, which
+    /// shadows a standard macro of that name where it is in scope.
+    #[must_use]
+    pub fn defines_macro_rules(&self, name: &str) -> bool {
+        self.macro_rules.contains(name)
     }
 
     /// Whether some file declares `name`, without remembering the question.

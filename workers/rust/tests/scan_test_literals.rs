@@ -1,54 +1,12 @@
 //! Scanning tests of the `literal` operands of a test's assertions: the
 //! literal set and its normalised text, the locals bound once to a literal,
-//! the writes that leave a local unknown, and the file's constants.
+//! the writes that leave a local unknown, and what is read off production.
+//! The file's constants are in `scan_test_constants.rs`.
 
 mod common;
 
 use common::*;
 use serde_json::{json, Value};
-
-/// Scan `src/lib.rs` (and any other `files`) beside a manifest, returning
-/// the first operand of every case's first assertion, by case name.
-fn first_operands(name: &str, files: &[(&str, &str)]) -> Vec<(String, Value)> {
-    let mut all = vec![("Cargo.toml", "[package]\nname = \"probe\"\n")];
-    all.extend_from_slice(files);
-    let contributions = scan_fixture_with(name, &all, &json!({"config_files": ["Cargo.toml"]}));
-    let mut found: Vec<(String, Value)> = contributions
-        .iter()
-        .flat_map(|contribution| contribution["nodes"].as_array().unwrap().clone())
-        .filter(|node| node["kind"] == "test_case")
-        .map(|node| {
-            (
-                node["attributes"]["name"].as_str().unwrap().to_owned(),
-                node["attributes"]["assertions"][0]["operands"][0].clone(),
-            )
-        })
-        .collect();
-    found.sort_by(|a, b| a.0.cmp(&b.0));
-    found
-}
-
-/// A `mod tests` holding one case per `(name, body)`.
-fn tests_module(cases: &[(&str, &str)]) -> String {
-    let mut source = String::from("#[cfg(test)]\nmod tests {\n    use super::*;\n");
-    for (name, body) in cases {
-        source.push_str(&format!(
-            "    #[test]\n    fn {name}() {{\n        {body}\n    }}\n"
-        ));
-    }
-    source.push_str("}\n");
-    source
-}
-
-/// The literal operand with this text.
-fn literal(text: &str) -> Value {
-    json!({"source": "literal", "text": text})
-}
-
-/// The operand whose source is unknown.
-fn unknown() -> Value {
-    json!({"source": "unknown"})
-}
 
 #[test]
 fn literal_text_is_normalised() {
@@ -310,14 +268,6 @@ fn same_file_constants_are_literal() {
 }
 
 #[test]
-fn a_constant_in_the_case_module_wins_over_a_glob() {
-    let lib = "const LIMIT: u32 = 10;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    const LIMIT: u32 = 20;\n    #[test]\n    fn own() {\n        assert_eq!(LIMIT, 20);\n    }\n}\n";
-    let found = first_operands("literals-own-module", &[("src/lib.rs", lib)]);
-
-    assert_eq!(vec![("tests::own".to_owned(), literal("20"))], found);
-}
-
-#[test]
 fn assertion_macros_are_not_handed_the_names_they_compare() {
     let lib = tests_module(&[
         ("boolean", "let x = 5;\n        assert!(x == 5);"),
@@ -331,56 +281,6 @@ fn assertion_macros_are_not_handed_the_names_they_compare() {
             ("tests::matcher".to_owned(), literal("5")),
         ],
         found
-    );
-}
-
-#[test]
-fn a_function_of_the_case_module_hides_a_glob_constant() {
-    let lib = "const LIMIT: u32 = 10;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[allow(non_snake_case)]\n    fn LIMIT() -> u32 { 10 }\n    #[test]\n    fn hidden() {\n        assert_eq!(LIMIT, 10);\n    }\n}\n";
-    let found = first_operands("literals-hidden", &[("src/lib.rs", lib)]);
-
-    assert_eq!(vec![("tests::hidden".to_owned(), unknown())], found);
-}
-
-/// `depth` inline modules `m0`…, each glob-importing the next, the last
-/// declaring `C`, with a case in `m0` comparing `C`.
-fn glob_chain(depth: usize) -> String {
-    let mut source = String::new();
-    for level in 0..depth {
-        source.push_str(&format!(
-            "mod m{level} {{\n    use super::m{}::*;\n",
-            level + 1
-        ));
-        if level == 0 {
-            source.push_str("    #[test]\n    fn chained() {\n        assert_eq!(C, 1);\n    }\n");
-        }
-        source.push_str("}\n");
-    }
-    source.push_str(&format!("mod m{depth} {{\n    pub const C: u32 = 1;\n}}\n"));
-    source
-}
-
-#[test]
-fn a_constant_is_followed_through_at_most_eight_imports() {
-    let eight = first_operands("literals-chain-eight", &[("src/lib.rs", &glob_chain(8))]);
-    let nine = first_operands("literals-chain-nine", &[("src/lib.rs", &glob_chain(9))]);
-
-    assert_eq!(vec![("m0::chained".to_owned(), literal("1"))], eight);
-    assert_eq!(vec![("m0::chained".to_owned(), unknown())], nine);
-}
-
-#[test]
-fn import_cycles_end_unknown() {
-    let globs = "mod a {\n    pub use super::b::*;\n    #[test]\n    fn cycled() {\n        assert_eq!(C, 1);\n    }\n}\nmod b {\n    pub use super::a::*;\n}\n";
-    let aliases = "mod a {\n    pub use super::b::C;\n}\nmod b {\n    pub use super::a::C;\n}\n#[cfg(test)]\nmod tests {\n    use super::a::C;\n    #[test]\n    fn aliased() {\n        assert_eq!(C, 1);\n    }\n}\n";
-
-    assert_eq!(
-        vec![("a::cycled".to_owned(), unknown())],
-        first_operands("literals-glob-cycle", &[("src/lib.rs", globs)])
-    );
-    assert_eq!(
-        vec![("tests::aliased".to_owned(), unknown())],
-        first_operands("literals-alias-cycle", &[("src/lib.rs", aliases)])
     );
 }
 
@@ -422,105 +322,4 @@ fn what_is_read_off_production_is_production() {
         .collect();
     expected.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(expected, found);
-}
-
-#[test]
-fn a_constant_declared_twice_holds_no_one_literal() {
-    let lib = "#[cfg(not(test))]\nconst BATCH: u32 = 1;\n#[cfg(test)]\nconst BATCH: u32 = crate::other::FAR;\n#[cfg(test)]\nconst RETRIES: u32 = 1;\n#[cfg(not(test))]\nconst RETRIES: u32 = 5;\nconst ONCE: u32 = 7;\n".to_owned()
-        + &tests_module(&[
-            ("batch", "assert_eq!(BATCH, 3);"),
-            ("retries", "assert_eq!(RETRIES, 1);"),
-            ("once", "assert_eq!(ONCE, 7);"),
-        ]);
-    let found = first_operands("literals-repeated", &[("src/lib.rs", &lib)]);
-
-    assert_eq!(
-        vec![
-            ("tests::batch".to_owned(), unknown()),
-            ("tests::once".to_owned(), literal("7")),
-            ("tests::retries".to_owned(), unknown()),
-        ],
-        found
-    );
-}
-
-#[test]
-fn an_item_position_macro_hides_every_constant_of_its_scope() {
-    // `macro_rules!` items are unhygienic: `define_twenty!()` declares
-    // `LIMIT` where it is invoked, handed the name or not.
-    let lib = "const LIMIT: u32 = 10;\nconst OTHER: u32 = 4;\nmacro_rules! define_twenty {\n    () => {\n        const LIMIT: u32 = 20;\n    };\n}\n#[cfg(test)]\nmod tests {\n    use super::*;\n    define_limit!(LIMIT);\n    #[test]\n    fn handed() {\n        assert_eq!(LIMIT, 10);\n    }\n    #[test]\n    fn beside() {\n        assert_eq!(OTHER, 4);\n    }\n}\n#[cfg(test)]\nmod module_macro {\n    use super::*;\n    define_twenty!();\n    #[test]\n    fn unhanded() {\n        assert_eq!(LIMIT, 20);\n    }\n}\n#[cfg(test)]\nmod body_macro {\n    use super::*;\n    macro_rules! read_other {\n        () => { OTHER };\n    }\n    #[test]\n    fn unhanded() {\n        define_twenty!();\n        assert_eq!(LIMIT, 20);\n    }\n    #[test]\n    fn local() {\n        let x = 5;\n        define_twenty!();\n        assert_eq!(x, 5);\n    }\n    #[test]\n    fn itemless() {\n        let x = 5;\n        println!(\"{}\", 1);\n        dbg!(2);\n        assert_eq!(x, 5);\n    }\n    #[test]\n    fn untouched() {\n        assert_eq!(OTHER, 4);\n    }\n}\n";
-    let found = first_operands("literals-item-macros", &[("src/lib.rs", lib)]);
-
-    assert_eq!(
-        vec![
-            ("body_macro::itemless".to_owned(), literal("5")),
-            ("body_macro::local".to_owned(), unknown()),
-            ("body_macro::unhanded".to_owned(), unknown()),
-            ("body_macro::untouched".to_owned(), literal("4")),
-            ("module_macro::unhanded".to_owned(), unknown()),
-            ("tests::beside".to_owned(), unknown()),
-            ("tests::handed".to_owned(), unknown()),
-        ],
-        found
-    );
-}
-
-#[test]
-fn a_cfg_alternative_import_holds_no_literal() {
-    let lib = "pub mod limits;\n#[cfg(not(test))]\nconst CAP: u32 = 1;\n#[cfg(test)]\nuse crate::limits::LIMIT as CAP;\nconst PLAIN: u32 = 3;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn cfg_alt_use() {\n        assert_eq!(CAP, 20);\n    }\n    #[test]\n    fn plain() {\n        assert_eq!(PLAIN, 3);\n    }\n}\npub mod alt2 {\n    #[cfg(not(test))]\n    const SIZE: u32 = 1;\n    #[cfg(test)]\n    use crate::limits::LIMIT as SIZE;\n    #[cfg(not(test))]\n    const DEPTH: u32 = 1;\n    #[cfg(test)]\n    use crate::limits::*;\n    #[cfg(test)]\n    use LIMIT as DEPTH;\n    #[cfg(test)]\n    mod tests {\n        use super::*;\n        #[test]\n        fn cfg_alt_use_in_module() {\n            assert_eq!(SIZE, 20);\n        }\n        #[test]\n        fn cfg_alt_glob_rename() {\n            assert_eq!(DEPTH, 20);\n        }\n    }\n}\n";
-    let found = first_operands(
-        "literals-cfg-use",
-        &[
-            ("src/lib.rs", lib),
-            ("src/limits.rs", "pub const LIMIT: u32 = 20;\n"),
-        ],
-    );
-
-    assert_eq!(
-        vec![
-            ("alt2::tests::cfg_alt_glob_rename".to_owned(), unknown()),
-            ("alt2::tests::cfg_alt_use_in_module".to_owned(), unknown()),
-            ("tests::cfg_alt_use".to_owned(), unknown()),
-            ("tests::plain".to_owned(), literal("3")),
-        ],
-        found
-    );
-}
-
-#[test]
-fn an_import_beside_an_ungated_constant_of_its_name_holds_no_literal() {
-    // Rust refuses the pair in a test build; the scan reads it as written.
-    let lib = "pub mod limits;\nconst CAP: u32 = 1;\n#[cfg(test)]\nuse crate::limits::LIMIT as CAP;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn capped() {\n        assert_eq!(CAP, 20);\n    }\n}\n";
-    let found = first_operands(
-        "literals-ungated-import",
-        &[
-            ("src/lib.rs", lib),
-            ("src/limits.rs", "pub const LIMIT: u32 = 20;\n"),
-        ],
-    );
-
-    assert_eq!(vec![("tests::capped".to_owned(), unknown())], found);
-}
-
-#[test]
-fn an_ungated_import_beside_no_constant_is_followed() {
-    // `PLAIN` is imported, not declared: the import is followed, as before.
-    let lib = "mod inner {\n    pub const PLAIN: u32 = 3;\n    #[cfg(test)]\n    pub static GATED: u32 = 4;\n}\nuse inner::PLAIN;\nuse inner::GATED;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn imported() {\n        assert_eq!(PLAIN, 3);\n    }\n    #[test]\n    fn gated_static() {\n        assert_eq!(GATED, 4);\n    }\n}\n";
-    let found = first_operands("literals-import", &[("src/lib.rs", lib)]);
-
-    assert_eq!(
-        vec![
-            ("tests::gated_static".to_owned(), unknown()),
-            ("tests::imported".to_owned(), literal("3")),
-        ],
-        found
-    );
-}
-
-#[test]
-fn two_globs_that_disagree_leave_the_name_unknown() {
-    let lib = "const LIMIT: u32 = 10;\nmod inner {\n    pub(crate) const LIMIT: u32 = 99;\n}\n#[cfg(test)]\nmod tests {\n    use super::*;\n    use super::inner::*;\n    #[test]\n    fn ambiguous() {\n        assert_eq!(LIMIT, 99);\n    }\n}\n";
-    let found = first_operands("literals-two-globs", &[("src/lib.rs", lib)]);
-
-    assert_eq!(vec![("tests::ambiguous".to_owned(), unknown())], found);
 }

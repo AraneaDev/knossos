@@ -269,3 +269,50 @@ pub fn method_targets(contributions: &[Value], source: &str) -> Vec<String> {
         .filter(|target| target.starts_with("rust:method:"))
         .collect()
 }
+
+/// Scan `src/lib.rs` (and any other `files`) beside a manifest, returning
+/// the first operand of every case's first assertion, by case name.
+pub fn first_operands(name: &str, files: &[(&str, &str)]) -> Vec<(String, Value)> {
+    let mut all = vec![("Cargo.toml", "[package]\nname = \"probe\"\n")];
+    all.extend_from_slice(files);
+    let contributions = scan_fixture_with(
+        name,
+        &all,
+        &serde_json::json!({"config_files": ["Cargo.toml"]}),
+    );
+    let mut found: Vec<(String, Value)> = contributions
+        .iter()
+        .flat_map(|contribution| contribution["nodes"].as_array().unwrap().clone())
+        .filter(|node| node["kind"] == "test_case")
+        .map(|node| {
+            (
+                node["attributes"]["name"].as_str().unwrap().to_owned(),
+                node["attributes"]["assertions"][0]["operands"][0].clone(),
+            )
+        })
+        .collect();
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+/// A `mod tests` holding one case per `(name, body)`.
+pub fn tests_module(cases: &[(&str, &str)]) -> String {
+    let mut source = String::from("#[cfg(test)]\nmod tests {\n    use super::*;\n");
+    for (name, body) in cases {
+        source.push_str(&format!(
+            "    #[test]\n    fn {name}() {{\n        {body}\n    }}\n"
+        ));
+    }
+    source.push_str("}\n");
+    source
+}
+
+/// The literal operand with this text.
+pub fn literal(text: &str) -> Value {
+    serde_json::json!({"source": "literal", "text": text})
+}
+
+/// The operand whose source is unknown.
+pub fn unknown() -> Value {
+    serde_json::json!({"source": "unknown"})
+}

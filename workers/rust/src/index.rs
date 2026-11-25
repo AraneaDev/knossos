@@ -54,6 +54,8 @@ struct FileIndex {
     globs: crate::visit::GlobImports,
     /// The names only a private `use` of the file binds.
     private_exports: BTreeSet<String>,
+    /// The name of every `macro_rules!` the file defines, indexed or not.
+    macro_rules: BTreeSet<String>,
 }
 
 impl FileIndex {
@@ -103,6 +105,7 @@ impl FileIndex {
             export_alternatives,
             globs,
             private_exports,
+            macro_rules: crate::test_facts::macro_rules_names(items),
         }
     }
 }
@@ -504,6 +507,7 @@ impl Declarations {
         self.add_export_alternatives(&index.export_alternatives);
         self.add_globs(&index.globs);
         self.add_private_exports(&index.private_exports);
+        self.add_macro_rules(&index.macro_rules);
     }
 }
 

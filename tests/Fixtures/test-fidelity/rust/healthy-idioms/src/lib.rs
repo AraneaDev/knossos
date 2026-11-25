@@ -33,8 +33,29 @@ macro_rules! production_limit {
     };
 }
 
+/// Widths the tests take from production instead, a module per build.
+#[cfg(not(test))]
+mod widths {
+    /// The width outside the tests.
+    pub const WIDTH: u32 = 1;
+}
+/// Widths the tests take from production instead, a module per build.
+#[cfg(test)]
+mod widths {
+    pub use crate::limits::MAX as WIDTH;
+}
+
+/// A project macro named like `std::dbg!` that declares the production
+/// limit where it is invoked.
+macro_rules! dbg {
+    () => {
+        const LOCAL_LIMIT: u32 = crate::limits::MAX;
+    };
+}
+
 #[cfg(test)]
 mod tests {
+    use super::widths::WIDTH;
     use super::*;
 
     #[test]
@@ -67,6 +88,17 @@ mod tests {
     #[test]
     fn a_macro_declares_the_name_unhanded() {
         production_limit!();
+        assert_eq!(LOCAL_LIMIT, 10);
+    }
+
+    #[test]
+    fn a_module_per_build() {
+        assert_eq!(WIDTH, 10);
+    }
+
+    #[test]
+    fn a_project_macro_named_like_a_standard_one() {
+        dbg!();
         assert_eq!(LOCAL_LIMIT, 10);
     }
 
