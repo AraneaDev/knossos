@@ -365,3 +365,35 @@ def test_visibility_by_name(project, scan_collect) -> None:
     assert "visibility" not in methods["m.C::__eq__"]
     assert "visibility" not in methods["m.C::pub"]
     assert "visibility" not in _nodes(contribution, "function")["m._h"]
+
+
+REWRITABLE = {
+    "a project metaclass": (
+        "class Wrapping(type):\n    pass\n\n\nclass C(metaclass=Wrapping):\n    def m(self):\n        pass\n"
+    ),
+    "an __init_subclass__": "class C:\n    def __init_subclass__(cls, **kwargs):\n        pass\n",
+    "an __init_subclass__ assigned": (
+        "def hook(cls):\n    pass\n\n\nclass C:\n    __init_subclass__ = classmethod(hook)\n"
+    ),
+    "a class decorator": "def inject(cls):\n    return cls\n\n\n@inject\nclass C:\n    pass\n",
+    "a call handed the class": "class C:\n    pass\n\n\ninstall(C)\n",
+}
+
+PLAIN = {
+    "no hook": "class C:\n    def m(self):\n        pass\n",
+    "type": "class C(metaclass=type):\n    pass\n",
+    "ABCMeta": "import abc\n\n\nclass C(metaclass=abc.ABCMeta):\n    pass\n",
+    "a dataclass": "from dataclasses import dataclass\n\n\n@dataclass\nclass C:\n    x: int = 0\n",
+    "an external base": "from enum import Enum\n\n\nclass C(Enum):\n    A = 1\n",
+}
+
+
+@pytest.mark.parametrize("source", REWRITABLE.values(), ids=REWRITABLE.keys())
+def test_a_class_that_may_rewrite_methods_says_so(project, scan_collect, source: str) -> None:
+    # Ruling P21: the class's own methods, or a subclass's, may not keep the signature their def writes.
+    assert _class(project, scan_collect, source).get("methods_rewritable") is True
+
+
+@pytest.mark.parametrize("source", PLAIN.values(), ids=PLAIN.keys())
+def test_a_plain_class_says_nothing_of_rewriting(project, scan_collect, source: str) -> None:
+    assert "methods_rewritable" not in _class(project, scan_collect, source)

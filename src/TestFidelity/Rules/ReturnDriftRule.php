@@ -37,7 +37,9 @@ use Knossos\TestFidelity\TestFinding;
  * mock returns what it is given, so nothing breaks for certain: a refused
  * Python pin is always a warning (the user's decision, against spec §2). A
  * `new=` value replaces the member itself rather than pinning what it returns,
- * so it is not judged; a decorated member has no signature to judge against.
+ * so it is not judged; a decorated member has no signature to judge against,
+ * nor has a member of a class whose lineage may rewrite its methods (Ruling
+ * P21; a base outside the project is not taken to, residual G4-12).
  */
 final readonly class ReturnDriftRule extends DriftRule
 {
@@ -57,7 +59,7 @@ final readonly class ReturnDriftRule extends DriftRule
     {
         // A missing, truncated or overloaded signature says nothing reliable about the return type.
         $signature = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
-        if ($signature === null || $pair->member === null) {
+        if ($signature === null || $pair->member === null || (TestFidelityGraph::isPython($pair->target) && $graph->hasRewritableLineage($pair->target))) {
             return null;
         }
         [$pinned, $typed] = self::worst(self::refused($pair->stub->returns, $signature->returns, $pair, $graph));

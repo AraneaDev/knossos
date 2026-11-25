@@ -373,3 +373,24 @@ def test_an_import_the_importer_binds_again_stays_with_the_importer(project, sca
     assert [targets[key] for key in ("5:10", "5:30", "5:52")] == ["py:module:rebind"] * 3
     # An import its module never binds again is judged where it is declared.
     assert targets["5:74"] == "py:module:arity"
+
+
+def test_an_import_fallback_does_not_count_as_binding_the_name_again(project, scan_collect) -> None:
+    # `try: from arity import kw` / `except ImportError: kw = None` binds the import whenever it succeeds.
+    plain = "from arity import kept\n\ntry:\n    from arity import kw\n"
+    plain += "except ImportError:\n    kw = None\n    kept = len\n"
+    found = scan_test(project, scan_collect, FALLBACK_PATCHES, {**REBOUND_IMPORTS, "plain.py": plain})
+
+    assert found["5:10"][1] == "py:module:arity"
+    # A name the handler binds that its `try` does not import is bound again.
+    assert found["5:29"][1] == "py:module:plain"
+
+
+FALLBACK_PATCHES = """\
+from unittest.mock import patch
+
+
+def test_it():
+    with patch("plain.kw"), patch("plain.kept"):
+        pass
+"""

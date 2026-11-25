@@ -195,11 +195,12 @@ final class ReturnDriftRuleTest extends KnossosTestCase
      *
      * @param list<array<string, mixed>> $pins
      * @param array<string, mixed> $attributes further attributes of the member node
+     * @param array<string, mixed>|null $classAttributes the class's attributes; by default its complete name list
      * @return list<string>
      */
-    private static function python(array $pins, ?string $returns = 'int', array $attributes = []): array
+    private static function python(array $pins, ?string $returns = 'int', array $attributes = [], ?array $classAttributes = null): array
     {
-        $graph = PythonFixtures::graph([['total', PythonFixtures::signature([], $returns) + $attributes]], [PythonFixtures::stub('total', $pins)]);
+        $graph = PythonFixtures::graph([['total', PythonFixtures::signature([], $returns) + $attributes]], [PythonFixtures::stub('total', $pins)], ownerAttributes: $classAttributes);
 
         return array_map(static fn($finding): string => $finding->confidence->value . ' ' . $finding->message, [...(new ReturnDriftRule())->findings($graph)]);
     }
@@ -213,6 +214,19 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertSame([], self::python([PythonFixtures::pin('unknown')]));
         assertSame([], self::python([PythonFixtures::pin('str')], 'Iterator[int]'));
         assertSame([], self::python([PythonFixtures::pin('str')], null));
+    }
+
+    public function testPythonMemberOfARewritableClassIsSilent(): void
+    {
+        // Ruling P21: the method may not return what its annotation says once something has rewritten it.
+        assertSame([], self::python([PythonFixtures::pin('str')], 'int', [], ['member_names' => ['total'], 'methods_rewritable' => true]));
+        // The flag is Python's alone.
+        $typescript = DriftFixtures::graph(
+            [DriftFixtures::method('total', ['signature' => ['params' => [], 'returns' => 'number']])],
+            [DriftFixtures::stub('total', null, [['api' => 'mockReturnValue', 'line' => 9, 'once' => false, 'assignable' => false, 'typed' => true]])],
+            targetAttributes: ['member_names' => ['total'], 'methods_rewritable' => true],
+        );
+        assertCount(1, [...(new ReturnDriftRule())->findings($typescript)]);
     }
 
     public function testPythonDecoratedMemberIsSilent(): void

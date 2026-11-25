@@ -186,12 +186,39 @@ def rebinding_names(tree: ast.Module) -> frozenset[str]:
     """The names a module binds at its top level other than by an import, or any scope declares ``global``.
 
     A name it imports and then binds again (``kw = partial(kw, 1)``) is no
-    longer the import's.
+    longer the import's. An ``except`` fallback for an import its ``try``
+    makes (:func:`_import_fallbacks`) does not count.
     """
     imports = (ast.Import, ast.ImportFrom)
-    bound = {name for node in scope_nodes(tree.body) if not isinstance(node, imports) for name in _bound_names(node)}
+    fallbacks = _import_fallbacks(tree)
+    bound = {
+        name
+        for node in scope_nodes(tree.body)
+        if not isinstance(node, imports)
+        for name in _bound_names(node)
+        if (id(node), name) not in fallbacks
+    }
     declared = {name for node in ast.walk(tree) if isinstance(node, ast.Global) for name in node.names}
     return frozenset(bound | declared)
+
+
+def _import_fallbacks(tree: ast.Module) -> set[tuple[int, str]]:
+    """The bindings of an ``except`` handler that stand in for a name its ``try`` imports, by node and name.
+
+    ``try: from .impl import X`` / ``except ImportError: X = None`` binds the
+    import whenever it succeeds, so the fallback is no binding that replaces it.
+    """
+    tries = (ast.Try, ast.TryStar)
+    imports = (ast.Import, ast.ImportFrom)
+    found: set[tuple[int, str]] = set()
+    for statement in scope_nodes(tree.body):
+        if not isinstance(statement, tries):
+            continue
+        imported = {name for item in statement.body if isinstance(item, imports) for name in _bound_names(item)}
+        for handler in statement.handlers:
+            for node in scope_nodes(handler.body):
+                found.update((id(node), name) for name in _bound_names(node) if name in imported)
+    return found
 
 
 def _bound_names(node: ast.AST) -> list[str]:
@@ -383,7 +410,10 @@ class ClassMembers:
         """What a decorator or a metaclass names, as its import resolves, without the reference's kind."""
         name = dotted(expression.func if isinstance(expression, ast.Call) else expression)
         resolved = self.resolve(name) if name else None
-        return None if resolved is None else resolved.split(":", 2)[-1]
+        if resolved is None:
+            # The builtin `type`, unless the module binds that name itself.
+            return "type" if name == "type" and "type" not in self.bindings() else None
+        return resolved.split(":", 2)[-1]
 
     def attributes(self, node: ast.ClassDef, unseen_base: bool) -> dict[str, Any]:
         """``member_names`` for ``node``, with ``member_names_open`` when a name may come from elsewhere.
@@ -396,9 +426,22 @@ class ClassMembers:
         opened = scan.opened or unseen_base or bool(node.keywords) or self.dynamic
         opened = opened or not all(self.closed_decorator(decorator) for decorator in node.decorator_list)
         opened = opened or node.name in self.written_names()
-        return {"member_names": sorted(name for name in names if not is_dunder(name))} | (
-            {"member_names_open": True} if opened else {}
+        return (
+            {"member_names": sorted(name for name in names if not is_dunder(name))}
+            | ({"member_names_open": True} if opened else {})
+            | ({"methods_rewritable": True} if self.methods_rewritable(node) else {})
         )
+
+    def methods_rewritable(self, node: ast.ClassDef) -> bool:
+        """Whether the class's methods, or a subclass's, may not keep the signature their ``def`` writes (Ruling P21).
+
+        So it is for a class something may rewrite (:meth:`rewritable`), in a
+        module that runs dynamic code, or with an ``__init_subclass__``, which
+        runs on every subclass and may replace its methods. A metaclass applies
+        to subclasses too, so a reader carries the flag down the lineage.
+        """
+        hooked = "__init_subclass__" in {name for item in scope_nodes(node.body) for name in _bound_names(item)}
+        return hooked or self.dynamic or self.rewritable(node)
 
     def unseen_base(self, base: ast.expr, resolved: bool) -> bool:
         """Whether a base may give the class names this scan cannot see.
@@ -466,8 +509,10 @@ def merge_member_names(attributes: dict[str, Any], found: dict[str, Any]) -> Non
     """Fold a class's names into the attributes of a node that may already hold another declaration's.
 
     Two classes of one name (``if``/``else`` branches, a function-local class)
-    share a node, so it offers the names of either, open if either is.
+    share a node, so it offers the names of either, open if either is, and
+    rewritable if either is.
     """
     attributes["member_names"] = sorted({*attributes.get("member_names", []), *found["member_names"]})
-    if attributes.get("member_names_open") or found.get("member_names_open"):
-        attributes["member_names_open"] = True
+    for flag in ("member_names_open", "methods_rewritable"):
+        if attributes.get(flag) or found.get(flag):
+            attributes[flag] = True

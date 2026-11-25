@@ -91,3 +91,12 @@ def test_a_planted_ghost_on_an_abstract_base_class():
 
     with mock.patch.object(Shape, "areaa"):
         pass
+
+
+def test_a_planted_arity_mismatch_under_a_plain_base():
+    # Beside `test_meta.py`'s metaclass and `__init_subclass__` bases, which may rewrite `save`.
+    from plainbase import Plain
+
+    with mock.patch.object(Plain, "save") as save:
+        Plain().save("s", 1)
+        save.assert_called_with(1)

@@ -417,6 +417,25 @@ final readonly class TestFidelityGraph
     }
 
     /**
+     * Whether something may have rewritten the methods `$owner` declares or
+     * inherits (Ruling P21): it or an ancestor the scan holds carries
+     * `methods_rewritable` (a project metaclass, an `__init_subclass__`, a
+     * class decorator or call that may replace methods). A base outside the
+     * project is not taken to rewrite: a residual (G4-12), since its metaclass
+     * or hook cannot be read.
+     */
+    public function hasRewritableLineage(NodeFact $owner): bool
+    {
+        foreach ($this->lineage($owner) as $type) {
+            if (($type->attributes['methods_rewritable'] ?? false) === true) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The references reachable from `$owner` through inheritance edges, itself
      * first and nearest first (breadth first, each once, so a cyclic
      * hierarchy terminates), and whether one of them is unseen or external.

@@ -232,7 +232,15 @@ rebinding of its name, or module-level `exec`, `eval`, `globals()` or
 `vars()`). Type parameters (`class C[T]`) keep it closed. Inherited names come
 from the class's `extends` edges: a reader takes a name as absent only when
 every ancestor is in the scan with a list that is complete and not open, so an
-external or open ancestor leaves it unknown. `exports` lists every top-level
+external or open ancestor leaves it unknown. A Python class also carries
+`"methods_rewritable": true`, only when true, where its methods or a
+subclass's may not keep the signature their def writes: a metaclass other than
+`type`, `abc.ABCMeta` or `enum.EnumMeta`, an `__init_subclass__`, a class
+decorator other than `dataclass`, `final`, `total_ordering`,
+`runtime_checkable` or `enum.unique`, the class written or handed to a call in
+its module, or a module that runs dynamic code. A reader carries it down the
+class's `extends` edges, as it does an open list; a base outside the project
+is not taken to rewrite. `exports` lists every top-level
 binding in both branches of an `if` or `try` and the names a `global`
 declaration hands the module; `exports_open` is set for `import *`, a module
 `__getattr__`, `globals()`, `exec`, `eval`, `sys.modules`, and on every

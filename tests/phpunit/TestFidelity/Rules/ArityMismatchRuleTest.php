@@ -268,6 +268,37 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertSame(['definite open has no parameter user; the matcher passes it by name'], self::messages(self::python([PythonFixtures::matcher(2), PythonFixtures::matcher(2, ['user', 'token'])])));
     }
 
+    public function testPythonMethodsARewritableLineageMayReplaceAreSilent(): void
+    {
+        // Ruling P21: a project metaclass or `__init_subclass__` on the class or an ancestor may rewrite its methods.
+        $judge = static function (array $baseAttributes, string $base = 'py:class:app.repo.Base', array $own = []): array {
+            $owner = PythonFixtures::node('class', 'app.repo.Repo');
+            $parent = PythonFixtures::node('class', 'app.repo.Base', ['member_names' => [], ...$baseAttributes]);
+            $graph = PythonFixtures::graph(
+                [['open', PythonFixtures::signature([['name' => 'username'], ['name' => 'token']])]],
+                [PythonFixtures::stub('open', [PythonFixtures::pin('int')], [PythonFixtures::matcher(1)])],
+                ownerAttributes: ['member_names' => ['open'], ...$own],
+                extra: [$parent],
+                extraEdges: [PythonFixtures::edge('extends', $owner, $base)],
+            );
+
+            return self::messages(self::findings($graph));
+        };
+
+        assertSame([], $judge(['methods_rewritable' => true]));
+        assertSame([], $judge([], own: ['methods_rewritable' => true]));
+        // A plain base, or one outside the project (G4-12), leaves the binding judged.
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], $judge([]));
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], $judge([], 'py:external_symbol:enum.Enum'));
+        // The flag is Python's alone: another worker's class keeps its matchers judged.
+        $typescript = DriftFixtures::graph(
+            [DriftFixtures::method('find', ['signature' => ['params' => [['name' => 'id']]]])],
+            [DriftFixtures::stub('find', null, [], [self::matcher(2)])],
+            targetAttributes: ['member_names' => ['find'], 'methods_rewritable' => true],
+        );
+        assertCount(1, self::findings($typescript));
+    }
+
     public function testPythonUntypedSideEffectLambdaIsAWarning(): void
     {
         $member = PythonFixtures::stub('open', params: [['name' => 'a'], ['name' => 'b'], ['name' => 'c']]);

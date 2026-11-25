@@ -30,7 +30,12 @@ use Knossos\TestFidelity\TestFinding;
  * reads as one argument too many. So is a rebind from another file
  * (`Repo.save = wrap(Repo.save)` in another module), which no worker sees: the
  * def's signature is then judged for a name that holds another (the residual
- * GHOST_MEMBER records for cross-file writes).
+ * GHOST_MEMBER records for cross-file writes), and so is a package rebinding a
+ * submodule's function (`m.f = partial(m.f, 1)` in `pkg/__init__.py`). Silent
+ * for a Python class whose lineage carries `methods_rewritable` (a project
+ * metaclass, an `__init_subclass__`, a class decorator or call that may
+ * replace its methods; Ruling P21). Residual (G4-12): a base outside the
+ * project is never taken to rewrite, though its metaclass may.
  */
 final readonly class ArityMismatchRule extends DriftRule
 {
@@ -40,6 +45,10 @@ final readonly class ArityMismatchRule extends DriftRule
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
     {
         $declared = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
+        // Ruling P21: a Python class whose lineage may rewrite its methods states no signature a call must meet.
+        if (TestFidelityGraph::isPython($pair->target) && $graph->hasRewritableLineage($pair->target)) {
+            return null;
+        }
 
         return $declared === null ? null : $this->signature($pair, $declared) ?? $this->calls($pair, $declared);
     }
