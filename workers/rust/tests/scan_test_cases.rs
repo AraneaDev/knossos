@@ -355,6 +355,29 @@ fn non_test_files_and_orphans_give_no_test_facts() {
 }
 
 #[test]
+fn a_module_in_its_own_mod_rs_is_no_orphan() {
+    // `mod net;` loads `src/net/mod.rs` as much as `src/net.rs` (phrourion's
+    // `src/tui/mod.rs`), and so does `mod http;` there.
+    let lib = "pub mod net;\n";
+    let net = "pub mod http;\n#[test]\nfn kept() {}\n";
+    let http = "#[test]\nfn deeper() {}\n";
+    let contributions = scan_crate(
+        "cases-mod-rs",
+        &[
+            ("src/lib.rs", lib),
+            ("src/net/mod.rs", net),
+            ("src/net/http/mod.rs", http),
+        ],
+    );
+
+    let names: Vec<Value> = cases(&contributions)
+        .into_iter()
+        .map(|node| node["attributes"]["name"].clone())
+        .collect();
+    assert_eq!(vec![json!("deeper"), json!("kept")], names);
+}
+
+#[test]
 fn output_is_stable_across_runs() {
     // The repository the worker sits in, or the one a copy of the worker
     // was taken from (`cargo mutants` builds a copy of this crate alone).

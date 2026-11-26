@@ -61,6 +61,13 @@ pub(super) fn orphan_neighbours(
                 &declaration.name,
                 declaration.path.as_deref(),
             ) {
+                // Without `#[path]`, `mod name;` loads `name.rs` or, as
+                // much, `name/mod.rs`.
+                if declaration.path.is_none() {
+                    if let Some(stem) = child.strip_suffix(".rs") {
+                        loaded.insert(format!("{stem}/mod.rs"));
+                    }
+                }
                 loaded.insert(child);
             }
         }
