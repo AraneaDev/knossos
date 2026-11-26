@@ -1,0 +1,571 @@
+{
+  "tool": "nemesis",
+  "commit": "bf9be2704abf37502f07f12a9e629cc1ea55c3fe",
+  "version": "0.4.1",
+  "suite": "PhpAcceptanceTest",
+  "runs": [
+    {
+      "fixture": "momus",
+      "trees": {
+        "php/momus": ""
+      },
+      "fixture_sha256": "66a04b9991568c4adf9ad9e247e6bd6c9eecc588917343dab5fb280c968058a9",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 12,
+          "doubles_inspected": 27,
+          "violations_count": 14,
+          "doubles_checked": 22,
+          "doubles_unresolved": 5,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0,
+          "diagnostics": [
+            {
+              "file": "tests/BrokenTest.php",
+              "language": "php",
+              "stage": "parse",
+              "line": 1,
+              "message": "Parsed with errors; everything outside the error was still read.",
+              "degraded": true,
+              "fatal": false
+            }
+          ],
+          "degraded_files": 1
+        },
+        "violations": [
+          {
+            "file": "tests/AbstractMockTest.php",
+            "line": 13,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\AbstractGateway::staleProcess",
+            "message": "Method 'staleProcess' does not exist on 'App\\AbstractGateway'."
+          },
+          {
+            "file": "tests/BrokenTest.php",
+            "line": 10,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\InvoiceRepository::findById",
+            "message": "Stub returns 'int' but App\\InvoiceRepository::findById returns 'Invoice'."
+          },
+          {
+            "file": "tests/DocblockTest.php",
+            "line": 14,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\DocblockService::findById",
+            "message": "Stub returns 'string' but App\\DocblockService::findById declares no return type, so the contract cannot be verified."
+          },
+          {
+            "file": "tests/DocblockTest.php",
+            "line": 21,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\DocblockService::fetchIds",
+            "message": "Stub returns 'string' but App\\DocblockService::fetchIds declares no return type, so the contract cannot be verified."
+          },
+          {
+            "file": "tests/DocblockTest.php",
+            "line": 28,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\DocblockService::findById",
+            "message": "Stub returns 'Invoice' but App\\DocblockService::findById declares no return type, so the contract cannot be verified."
+          },
+          {
+            "file": "tests/DocblockTest.php",
+            "line": 29,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\DocblockService::fetchIds",
+            "message": "Stub returns 'array' but App\\DocblockService::fetchIds declares no return type, so the contract cannot be verified."
+          },
+          {
+            "file": "tests/DocblockTest.php",
+            "line": 30,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\DocblockService::tag",
+            "message": "Stub returns 'null' but App\\DocblockService::tag declares no return type, so the contract cannot be verified."
+          },
+          {
+            "file": "tests/Drift003Test.php",
+            "line": 14,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\InvoiceRepository::save",
+            "message": "Stub returns 'int' but App\\InvoiceRepository::save returns 'void'."
+          },
+          {
+            "file": "tests/Drift003Test.php",
+            "line": 21,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\InvoiceRepository::findById",
+            "message": "Stub returns 'string' but App\\InvoiceRepository::findById returns 'Invoice'."
+          },
+          {
+            "file": "tests/Drift003Test.php",
+            "line": 28,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\OptionsRepository::fetchAll",
+            "message": "Stub returns 'string' but App\\OptionsRepository::fetchAll returns 'array'."
+          },
+          {
+            "file": "tests/MockeryPestTest.php",
+            "line": 13,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "Mockery",
+            "target": "App\\InvoiceRepository::fetchAll",
+            "message": "Method 'fetchAll' does not exist on 'App\\InvoiceRepository'."
+          },
+          {
+            "file": "tests/MockeryPestTest.php",
+            "line": 42,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "Pest/Mockery",
+            "target": "App\\InvoiceRepository::fetchAll",
+            "message": "Method 'fetchAll' does not exist on 'App\\InvoiceRepository'."
+          },
+          {
+            "file": "tests/PartialMockTest.php",
+            "line": 13,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\InvoiceRepository::findById",
+            "message": "Stub returns 'null' but App\\InvoiceRepository::findById returns 'Invoice'."
+          },
+          {
+            "file": "tests/PartialMockTest.php",
+            "line": 19,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\InvoiceRepository::save",
+            "message": "Stub returns 'bool' but App\\InvoiceRepository::save returns 'void'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis",
+      "trees": {
+        "php/nemesis": ""
+      },
+      "fixture_sha256": "1c108a373c194ff2a1637221ac754368c030066d87f2f31820dbba0402dcf4d2",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 4,
+          "violations_count": 3,
+          "doubles_checked": 4,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/BillingServiceTest.php",
+            "line": 14,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\Contracts\\PaymentGateway::chargeWithToken",
+            "message": "Method 'chargeWithToken' does not exist on 'App\\Contracts\\PaymentGateway'. Did you mean 'chargeToken'?",
+            "suggestion": "chargeToken"
+          },
+          {
+            "file": "tests/BillingServiceTest.php",
+            "line": 21,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\Contracts\\PaymentGateway::chargeToken",
+            "message": "Stub passes 3 argument(s) but 'App\\Contracts\\PaymentGateway::chargeToken' accepts at most 2."
+          },
+          {
+            "file": "tests/BillingServiceTest.php",
+            "line": 28,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "App\\Contracts\\PaymentGateway::chargeToken",
+            "message": "Stub returns 'string' but App\\Contracts\\PaymentGateway::chargeToken returns 'int'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-magic",
+      "trees": {
+        "php/nemesis-magic": ""
+      },
+      "fixture_sha256": "f2762be4c76405f6353beab33298cb2891895e352ef3fe8655725f1791cb372a",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 0,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/callback",
+      "trees": {
+        "php/nemesis-experiments/callback": ""
+      },
+      "fixture_sha256": "91b08f34f836603a445ab4d50b23a84c12be28832a4a8b4236ac3a0c65a3dbb9",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 1,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/CourierTest.php",
+            "line": 15,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\Callback\\Courier::send",
+            "message": "Replacement function declares 2 parameter(s) but 'Experiments\\Callback\\Courier::send' passes at most 1."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/final",
+      "trees": {
+        "php/nemesis-experiments/final": ""
+      },
+      "fixture_sha256": "3c691c3b6383a707d69f46e2d4d98b8405e5106f2ce663a62a97a3a4ab77db48",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 4,
+          "violations_count": 5,
+          "doubles_checked": 4,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/SealedTest.php",
+            "line": 14,
+            "type": "VISIBILITY_BREACH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\Finality\\Sealed",
+            "message": "'Experiments\\Finality\\Sealed' is final, so it cannot be doubled; this mock fails when the test runs."
+          },
+          {
+            "file": "tests/SealedTest.php",
+            "line": 17,
+            "type": "VISIBILITY_BREACH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\Finality\\Partly::locked",
+            "message": "Method 'locked' is final on 'Experiments\\Finality\\Partly', so a double cannot override it."
+          },
+          {
+            "file": "tests/SealedTest.php",
+            "line": 18,
+            "type": "VISIBILITY_BREACH",
+            "confidence": "warning",
+            "evidence": "heuristic",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\Finality\\Partly::build",
+            "message": "Method 'build' is static on 'Experiments\\Finality\\Partly', so an instance double does not intercept it."
+          },
+          {
+            "file": "tests/SealedTest.php",
+            "line": 20,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\Finality\\Partly::__construct",
+            "message": "Stub returns 'null' but Experiments\\Finality\\Partly::__construct declares no return type, so the contract cannot be verified."
+          },
+          {
+            "file": "tests/SealedTest.php",
+            "line": 20,
+            "type": "VISIBILITY_BREACH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\Finality\\Partly::__construct",
+            "message": "'__construct' cannot be stubbed on a double of 'Experiments\\Finality\\Partly'; the framework never routes through it."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/fluent",
+      "trees": {
+        "php/nemesis-experiments/fluent": ""
+      },
+      "fixture_sha256": "25074ed4ae2c6f8ce1d9cfabdfbc3b7f0812542b77f5efba324c419f9289ad53",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 2,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/QueryTest.php",
+            "line": 15,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\Fluent\\Query::where",
+            "message": "Stub returns the double itself but Experiments\\Fluent\\Query::where returns 'void', so the method is not fluent."
+          },
+          {
+            "file": "tests/QueryTest.php",
+            "line": 17,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\Fluent\\Query::direction",
+            "message": "Stub returns 'Order::Random' but 'Experiments\\Fluent\\Order' has no member 'Random'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/mockery",
+      "trees": {
+        "php/nemesis-experiments/mockery": ""
+      },
+      "fixture_sha256": "df3d2c5d979b037499e55c962d2dd4846772fa1158610dcdff19ddfb71334c0d",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 1,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/NotifierTest.php",
+            "line": 14,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "Mockery",
+            "target": "Experiments\\Mockery\\Notifier::notify",
+            "message": "Stub passes 2 argument(s) but 'Experiments\\Mockery\\Notifier::notify' accepts at most 1."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/partial-mock",
+      "trees": {
+        "php/nemesis-experiments/partial-mock": ""
+      },
+      "fixture_sha256": "d7119c99e14fe11fee102afb0d81af3840eb9748adcfbe2ac16ac02b93efd02e",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 4,
+          "violations_count": 4,
+          "doubles_checked": 4,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/LedgerTest.php",
+            "line": 15,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\PartialMock\\Ledger::reconcile",
+            "message": "Method 'reconcile' does not exist on 'Experiments\\PartialMock\\Ledger'."
+          },
+          {
+            "file": "tests/LedgerTest.php",
+            "line": 18,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "Mockery",
+            "target": "Experiments\\PartialMock\\Ledger::reconcile",
+            "message": "Method 'reconcile' does not exist on 'Experiments\\PartialMock\\Ledger'."
+          },
+          {
+            "file": "tests/LedgerTest.php",
+            "line": 23,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\PartialMock\\Ledger::balance",
+            "message": "Stub returns 'string' but Experiments\\PartialMock\\Ledger::balance returns 'int'."
+          },
+          {
+            "file": "tests/LedgerTest.php",
+            "line": 24,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\PartialMock\\Ledger::reconcile",
+            "message": "Method 'reconcile' does not exist on 'Experiments\\PartialMock\\Ledger'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/pest",
+      "trees": {
+        "php/nemesis-experiments/pest": ""
+      },
+      "fixture_sha256": "c57990a77487957bce004e967a0654a90c0734c958126791903a967bfa13c8e8",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 1,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/FeatureFlagTest.php",
+            "line": 7,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "Pest/Mockery",
+            "target": "Experiments\\Pest\\FeatureFlag::isEnabled",
+            "message": "Method 'isEnabled' does not exist on 'Experiments\\Pest\\FeatureFlag'. Did you mean 'enabled'?",
+            "suggestion": "enabled"
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/phpunit-stub",
+      "trees": {
+        "php/nemesis-experiments/phpunit-stub": ""
+      },
+      "fixture_sha256": "3803dd63301f3c206e871a7b6a22170b4e77efdf60e81020a259d816324d7cf2",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 2,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/InvoiceGatewayTest.php",
+            "line": 13,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\PhpUnit\\InvoiceGateway::issueLegacy",
+            "message": "Method 'issueLegacy' does not exist on 'Experiments\\PhpUnit\\InvoiceGateway'."
+          },
+          {
+            "file": "tests/InvoiceGatewayTest.php",
+            "line": 14,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\PhpUnit\\InvoiceGateway::issue",
+            "message": "Stub returns 'string' but Experiments\\PhpUnit\\InvoiceGateway::issue returns 'int'."
+          }
+        ]
+      }
+    }
+  ]
+}

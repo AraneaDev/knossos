@@ -1,0 +1,250 @@
+{
+  "tool": "nemesis",
+  "commit": "bf9be2704abf37502f07f12a9e629cc1ea55c3fe",
+  "version": "0.4.1",
+  "suite": "OnRequestAcceptanceTest",
+  "runs": [
+    {
+      "fixture": "nemesis-data",
+      "trees": {
+        "fixtures/nemesis-data": ""
+      },
+      "fixture_sha256": "900d163c564f7818898d3999ad70377b9879297e74d9be15fefb3016aaf9b498",
+      "command": "cd <copy> && node dist/cli/main.js fixtures --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_fixtures": 1,
+          "unmatched_fixtures": 0,
+          "violations_count": 4
+        },
+        "violations": [
+          {
+            "file": "fixtures/users.fixture.json",
+            "line": 1,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "double_type": "stale_fixture",
+            "target": "UserRecord.name",
+            "message": "Fixture 'users.fixture.json' is missing required field 'name' of UserRecord."
+          },
+          {
+            "file": "fixtures/users.fixture.json",
+            "line": 1,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "double_type": "stale_fixture",
+            "target": "UserRecord.email",
+            "message": "Fixture 'users.fixture.json' is missing required field 'email' of UserRecord."
+          },
+          {
+            "file": "fixtures/users.fixture.json",
+            "line": 1,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "stale_fixture",
+            "target": "UserRecord.username",
+            "message": "Fixture 'users.fixture.json' has field 'username' which no longer exists on UserRecord."
+          },
+          {
+            "file": "fixtures/users.fixture.json",
+            "line": 1,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "stale_fixture",
+            "target": "UserRecord.emailAddress",
+            "message": "Fixture 'users.fixture.json' has field 'emailAddress' which no longer exists on UserRecord."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-enum",
+      "trees": {
+        "fixtures/nemesis-enum": ""
+      },
+      "fixture_sha256": "91cd088c5dac93765366f779bc4e1e7e97106b8c60e379213ce9eb5aeb16a91d",
+      "command": "cd <copy> && node dist/cli/main.js fixtures --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_fixtures": 1,
+          "unmatched_fixtures": 0,
+          "violations_count": 1
+        },
+        "violations": [
+          {
+            "file": "fixtures/lanes.fixture.json",
+            "line": 1,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "stale_fixture",
+            "target": "FixturesEnum\\LaneRecord.lane",
+            "message": "Fixture 'lanes.fixture.json' has 'lane' as \"express\", which is not a case of FixturesEnum\\Lane."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-invalid",
+      "trees": {
+        "fixtures/nemesis-invalid": ""
+      },
+      "fixture_sha256": "13e0966880d5a9568d1e37fa1feb8d519df6a5b095a953c33af93c5482a605fa",
+      "command": "cd <copy> && node dist/cli/main.js fixtures --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_fixtures": 0,
+          "unmatched_fixtures": 0,
+          "unparsable_fixtures": [
+            "test/fixtures-invalid/invalid.json"
+          ],
+          "violations_count": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "nemesis-magic",
+      "trees": {
+        "fixtures/nemesis-magic": ""
+      },
+      "fixture_sha256": "ea67ee7dbd5b74c614426ae618408f0684938e22c8e1386ee5bd89dc7292e75b",
+      "command": "cd <copy> && node dist/cli/main.js fixtures --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_fixtures": 1,
+          "unmatched_fixtures": 0,
+          "violations_count": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "nemesis-nested",
+      "trees": {
+        "fixtures/nemesis-nested": ""
+      },
+      "fixture_sha256": "91f261c709e61440c9ac90ed5bf97098122fb3183435f3203727f105c5ad9a42",
+      "command": "cd <copy> && node dist/cli/main.js fixtures --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_fixtures": 1,
+          "unmatched_fixtures": 0,
+          "violations_count": 2
+        },
+        "violations": [
+          {
+            "file": "fixtures/consignments.fixture.json",
+            "line": 1,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "double_type": "stale_fixture",
+            "target": "ShippingAddress.city",
+            "message": "Fixture 'consignments.fixture.json' is missing required field 'destination.city' of ShippingAddress."
+          },
+          {
+            "file": "fixtures/consignments.fixture.json",
+            "line": 1,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "stale_fixture",
+            "target": "ShippingAddress.town",
+            "message": "Fixture 'consignments.fixture.json' has field 'destination.town' which no longer exists on ShippingAddress."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-typed",
+      "trees": {
+        "fixtures/nemesis-typed": ""
+      },
+      "fixture_sha256": "44c66c4ce11fd6143211fbcc743f6780905e440ce0448cfc70259548c7cb5e63",
+      "command": "cd <copy> && node dist/cli/main.js fixtures --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_fixtures": 1,
+          "unmatched_fixtures": 0,
+          "violations_count": 3
+        },
+        "violations": [
+          {
+            "file": "fixtures/shipments.fixture.json",
+            "line": 1,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "stale_fixture",
+            "target": "ShipmentRecord.id",
+            "message": "Fixture 'shipments.fixture.json' has 'id' as int but ShipmentRecord declares 'string'."
+          },
+          {
+            "file": "fixtures/shipments.fixture.json",
+            "line": 1,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "stale_fixture",
+            "target": "ShipmentRecord.weight",
+            "message": "Fixture 'shipments.fixture.json' has 'weight' as string but ShipmentRecord declares 'number'."
+          },
+          {
+            "file": "fixtures/shipments.fixture.json",
+            "line": 1,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "stale_fixture",
+            "target": "ShipmentRecord.express",
+            "message": "Fixture 'shipments.fixture.json' has 'express' as string but ShipmentRecord declares 'boolean'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-data",
+      "trees": {
+        "fixtures/nemesis-data": ""
+      },
+      "fixture_sha256": "900d163c564f7818898d3999ad70377b9879297e74d9be15fefb3016aaf9b498",
+      "command": "cd <copy> && node dist/cli/main.js fixtures --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_fixtures": 1,
+          "unmatched_fixtures": 0,
+          "violations_count": 2
+        },
+        "violations": [
+          {
+            "file": "fixtures/users.fixture.json",
+            "line": 1,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "double_type": "stale_fixture",
+            "target": "UserRecord.name",
+            "message": "Fixture 'users.fixture.json' is missing required field 'name' of UserRecord."
+          },
+          {
+            "file": "fixtures/users.fixture.json",
+            "line": 1,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "double_type": "stale_fixture",
+            "target": "UserRecord.email",
+            "message": "Fixture 'users.fixture.json' is missing required field 'email' of UserRecord."
+          }
+        ]
+      }
+    }
+  ]
+}

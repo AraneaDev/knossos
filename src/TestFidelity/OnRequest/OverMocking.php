@@ -95,13 +95,36 @@ final class OverMocking
         return $silent;
     }
 
+    /**
+     * Whether an outside Python package is the package of a project module
+     * the same file imports: `from postal import mailer`, with `postal/` a
+     * namespace package, sends the outside `postal` beside `postal.mailer`,
+     * and that is one import, as Momus counts it.
+     *
+     * @param list<array{module: string, name: string, local: bool}> $imports
+     */
+    private static function holdsAProjectImport(string $language, string $package, array $imports): bool
+    {
+        if ($language !== 'python') {
+            return false;
+        }
+        foreach ($imports as $import) {
+            if (!$import['local'] && !str_starts_with($import['module'], 'external:') && str_starts_with($import['name'], $package . '.')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** The finding on one test file, or null when it is not over-mocked. */
     private static function judge(string $file, string $language, OnRequestInput $input): ?OnRequestFinding
     {
         $dependencies = [];
-        foreach ($input->imports[$file] ?? [] as $import) {
+        $imports = $input->imports[$file] ?? [];
+        foreach ($imports as $import) {
             $external = str_starts_with($import['module'], 'external:');
-            if ($import['local'] || $import['module'] === $file || ($external && FrameworkModules::contains($language, $import['name']))) {
+            if ($import['local'] || $import['module'] === $file || ($external && (FrameworkModules::contains($language, $import['name']) || self::holdsAProjectImport($language, $import['name'], $imports)))) {
                 continue;
             }
             $dependencies[$import['module']] = true;

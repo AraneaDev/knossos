@@ -192,6 +192,30 @@ final class OverMockingTest extends TestCase
         self::assertSame('1/1 dependencies mocked, 0 production assertions: over-mocked', OverMocking::findings($input)[0]->message);
     }
 
+    public function testAPythonPackageOfAnImportedProjectModuleIsNoDependencyOfItsOwn(): void
+    {
+        // `from postal import mailer`, where `postal/` is a namespace package: the worker sends the outside
+        // `postal` beside the project's `postal.mailer`. Momus counts the one import (Nemesis `module-drift`).
+        $file = 'tests/test_mailer.py';
+        $postal = ['module' => 'external:postal', 'name' => 'postal', 'local' => false];
+        $mailer = ['module' => 'postal/mailer.py', 'name' => 'postal.mailer', 'local' => false];
+        $doubles = [$file => [self::double('postal/mailer.py'), self::double('postal/sender.py')]];
+
+        $findings = OverMocking::findings(new OnRequestInput([$file => 'python'], [$file => [$postal, $mailer]], $doubles, [$file => []]));
+        self::assertSame('2/2 dependencies mocked, 0 production assertions: over-mocked', $findings[0]->message ?? null);
+
+        // A project import inside a function holds no package for the module-level one: 2/3, silent.
+        $local = ['module' => 'postal/mailer.py', 'name' => 'postal.mailer', 'local' => true];
+        self::assertSame([], OverMocking::findings(new OnRequestInput([$file => 'python'], [$file => [$postal, $local]], $doubles, [$file => []])));
+
+        // An outside package no project import sits under stays a dependency, and so does one in another language.
+        $other = ['module' => 'external:postbox', 'name' => 'postbox', 'local' => false];
+        self::assertSame([], OverMocking::findings(new OnRequestInput([$file => 'python'], [$file => [$other, $mailer]], $doubles, [$file => []])));
+        $ts = 'tests/mailer.test.ts';
+        $tsImports = [$ts => [['module' => 'external:postal', 'name' => 'postal', 'local' => false], ['module' => 'src/a.ts', 'name' => 'postal.mailer', 'local' => false]]];
+        self::assertSame([], OverMocking::findings(new OnRequestInput([$ts => 'typescript'], $tsImports, [$ts => [self::double('src/a.ts'), self::double('src/b.ts')]], [$ts => []])));
+    }
+
     public function testItIsAlwaysAWarningAtLineOne(): void
     {
         $finding = OverMocking::findings(self::input(mocked: 3, imported: 3))[0];

@@ -1,0 +1,618 @@
+{
+  "tool": "momus",
+  "commit": "9fe7283ae4f0258ea1ba56fbed3a1c40a87e850a",
+  "suite": "RustAcceptanceTest",
+  "runs": [
+    {
+      "fixture": "momus-drift",
+      "trees": {
+        "rust/momus-drift": ""
+      },
+      "fixture_sha256": "367f7af285a7c6c36797d8a509f5736ae7bfc8c2d4b702312692749bc36de93a",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "typescript": false,
+          "php": false,
+          "python": false,
+          "rust": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 8,
+            "issues": 9,
+            "errors": 1,
+            "warnings": 6,
+            "infos": 2,
+            "totalIssues": 9,
+            "totalErrors": 1,
+            "totalWarnings": 6,
+            "totalInfos": 2,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 3,
+            "symbols": 19,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "drift_test.rs",
+              "line": 10,
+              "column": 8,
+              "endLine": 10,
+              "endColumn": 9,
+              "message": "missing-member: 'save2' does not exist on Repo",
+              "tokens": 26
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "drift_test.rs",
+              "line": 9,
+              "column": 20,
+              "endLine": 9,
+              "endColumn": 21,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 30
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "drift_test.rs",
+              "line": 11,
+              "column": 37,
+              "endLine": 11,
+              "endColumn": 38,
+              "message": "return-type-mismatch: configured value does not match 'find's production return ",
+              "tokens": 35
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "drift_test.rs",
+              "line": 12,
+              "column": 39,
+              "endLine": 12,
+              "endColumn": 40,
+              "message": "return-type-mismatch: configured value does not match 'record's production retur",
+              "tokens": 35
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "healthy_test.rs",
+              "line": 9,
+              "column": 20,
+              "endLine": 9,
+              "endColumn": 21,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 30
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "mocktopus_test.rs",
+              "line": 12,
+              "column": 12,
+              "endLine": 12,
+              "endColumn": 13,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 31
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "mocktopus_test.rs",
+              "line": 12,
+              "column": 35,
+              "endLine": 12,
+              "endColumn": 36,
+              "message": "return-type-mismatch: configured value does not match '<mocktopus>'s production ",
+              "tokens": 36
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "generic_test.rs",
+              "line": 36,
+              "column": 19,
+              "endLine": 36,
+              "endColumn": 20,
+              "message": "mock-of-self: 'Foo' is mocked but also declared as the subject under test",
+              "tokens": 33
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "generic_test.rs",
+              "line": 43,
+              "column": 19,
+              "endLine": 43,
+              "endColumn": 20,
+              "message": "mock-of-self: 'A' is mocked but also declared as the subject under test",
+              "tokens": 32
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis",
+      "trees": {
+        "rust/nemesis": ""
+      },
+      "fixture_sha256": "37b29ecdf1be4d127deca3c4f3670c550e241197e70eca895105f9d23b0f1b40",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "typescript": false,
+          "php": false,
+          "python": false,
+          "rust": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 0,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 0,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 3,
+            "mocks": 0
+          },
+          "issues": []
+        }
+      }
+    },
+    {
+      "fixture": "tautology",
+      "trees": {
+        "rust/tautology": ""
+      },
+      "fixture_sha256": "42b999ced56abcbde9d49af79d417594a54a3a4d6d75c9ec5889704c148473c5",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "typescript": false,
+          "php": false,
+          "python": false,
+          "rust": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 8,
+            "issues": 7,
+            "errors": 3,
+            "warnings": 4,
+            "infos": 0,
+            "totalIssues": 7,
+            "totalErrors": 3,
+            "totalWarnings": 4,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 3,
+            "symbols": 14,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "TAUT-003",
+              "severity": "error",
+              "file": "tests/constant.rs",
+              "line": 5,
+              "column": 4,
+              "endLine": 5,
+              "endColumn": 5,
+              "message": "constant-tautology: 3 compared with 10; cannot fail",
+              "fix": {
+                "kind": "replace",
+                "description": "assert a value that flows from the code under test"
+              },
+              "tokens": 42
+            },
+            {
+              "rule": "TAUT-001",
+              "severity": "error",
+              "file": "tests/self_comparison.rs",
+              "line": 5,
+              "column": 4,
+              "endLine": 5,
+              "endColumn": 5,
+              "message": "self-comparison: 7 compared with itself",
+              "fix": {
+                "kind": "replace",
+                "description": "assert against a real business outcome"
+              },
+              "tokens": 38
+            },
+            {
+              "rule": "TAUT-003",
+              "severity": "error",
+              "file": "tests/self_comparison.rs",
+              "line": 5,
+              "column": 4,
+              "endLine": 5,
+              "endColumn": 5,
+              "message": "constant-tautology: 7 compared with 7; cannot fail",
+              "fix": {
+                "kind": "replace",
+                "description": "assert a value that flows from the code under test"
+              },
+              "tokens": 43
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/mock_echo.rs",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 45
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/mock_only.rs",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 45
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/zero_reach.rs",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 45
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/zero_reach.rs",
+              "line": 5,
+              "column": 20,
+              "endLine": 5,
+              "endColumn": 21,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 31
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/automock",
+      "trees": {
+        "rust/nemesis-experiments/automock": ""
+      },
+      "fixture_sha256": "2c90a64960ffac0040edf17333ae2b736025babd66f92f8f8dea9ef7706bc8d7",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "typescript": false,
+          "php": false,
+          "python": false,
+          "rust": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 0,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 0,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 3,
+            "mocks": 0
+          },
+          "issues": []
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/automock-drift",
+      "trees": {
+        "rust/nemesis-experiments/automock-drift": ""
+      },
+      "fixture_sha256": "e64eea674bbe5051bee504cd25f8890d14888e438cbf9c872340c7cb9fac3737",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "typescript": false,
+          "php": false,
+          "python": false,
+          "rust": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 4,
+            "errors": 1,
+            "warnings": 3,
+            "infos": 0,
+            "totalIssues": 4,
+            "totalErrors": 1,
+            "totalWarnings": 3,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 3,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/gateway_mock.rs",
+              "line": 7,
+              "column": 4,
+              "endLine": 7,
+              "endColumn": 5,
+              "message": "missing-member: 'dispatch' does not exist on Gateway",
+              "tokens": 29
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/gateway_mock.rs",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 46
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/gateway_mock.rs",
+              "line": 5,
+              "column": 22,
+              "endLine": 5,
+              "endColumn": 23,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 32
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/gateway_mock.rs",
+              "line": 12,
+              "column": 22,
+              "endLine": 12,
+              "endColumn": 23,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 32
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/mock-block",
+      "trees": {
+        "rust/nemesis-experiments/mock-block": ""
+      },
+      "fixture_sha256": "16830f88eae21b4805e1959dc92de0baa5edd753a1bdde529126b9f0ece45b74",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "typescript": false,
+          "php": false,
+          "python": false,
+          "rust": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 0,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 0,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 1,
+            "mocks": 0
+          },
+          "issues": []
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/mock-macro",
+      "trees": {
+        "rust/nemesis-experiments/mock-macro": ""
+      },
+      "fixture_sha256": "dc34300e8963cfc1a73766845d9dda9ff442819767a89834804f5b078ceb1999",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "typescript": false,
+          "php": false,
+          "python": false,
+          "rust": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 0,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 0,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": []
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/trait-shapes",
+      "trees": {
+        "rust/nemesis-experiments/trait-shapes": ""
+      },
+      "fixture_sha256": "73e932e5a9b147dccc58cccac673855576b4749eb954d12e2aafaa09e72d1c53",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "typescript": false,
+          "php": false,
+          "python": false,
+          "rust": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 0,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 0,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 3,
+            "mocks": 0
+          },
+          "issues": []
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,945 @@
+{
+  "tool": "momus",
+  "commit": "9fe7283ae4f0258ea1ba56fbed3a1c40a87e850a",
+  "suite": "PhpAcceptanceTest",
+  "runs": [
+    {
+      "fixture": "momus",
+      "trees": {
+        "php/momus": ""
+      },
+      "fixture_sha256": "66a04b9991568c4adf9ad9e247e6bd6c9eecc588917343dab5fb280c968058a9",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 19,
+            "issues": 25,
+            "errors": 12,
+            "warnings": 13,
+            "infos": 0,
+            "totalIssues": 25,
+            "totalErrors": 12,
+            "totalWarnings": 13,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 8,
+            "symbols": 18,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/AbstractMockTest.php",
+              "line": 13,
+              "column": 23,
+              "endLine": 13,
+              "endColumn": 37,
+              "message": "missing-member: 'staleProcess' does not exist on AbstractGateway",
+              "tokens": 34
+            },
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/AnonymousTest.php",
+              "line": 13,
+              "column": 13,
+              "endLine": 15,
+              "endColumn": 14,
+              "message": "missing-member: 'staleMethod' does not exist on InvoiceRepository",
+              "tokens": 33
+            },
+            {
+              "rule": "DRIFT-004",
+              "severity": "error",
+              "file": "tests/ConstructorTest.php",
+              "line": 13,
+              "column": 20,
+              "endLine": 15,
+              "endColumn": 24,
+              "message": "constructor-drift: double supplies 0 constructor args, production requires 1",
+              "fix": {
+                "kind": "replace",
+                "description": "supply all required constructor arguments"
+              },
+              "tokens": 49
+            },
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/InvoiceTest.php",
+              "line": 15,
+              "column": 47,
+              "endLine": 15,
+              "endColumn": 57,
+              "message": "missing-member: 'fetchAll' does not exist on InvoiceRepository",
+              "tokens": 32
+            },
+            {
+              "rule": "TAUT-001",
+              "severity": "error",
+              "file": "tests/InvoiceTest.php",
+              "line": 16,
+              "column": 9,
+              "endLine": 16,
+              "endColumn": 38,
+              "message": "self-comparison: 4200 compared with itself",
+              "fix": {
+                "kind": "replace",
+                "description": "assert against a real business outcome"
+              },
+              "tokens": 38
+            },
+            {
+              "rule": "TAUT-003",
+              "severity": "error",
+              "file": "tests/InvoiceTest.php",
+              "line": 16,
+              "column": 9,
+              "endLine": 16,
+              "endColumn": 38,
+              "message": "constant-tautology: 4200 compared with 4200; cannot fail",
+              "fix": {
+                "kind": "replace",
+                "description": "assert a value that flows from the code under test"
+              },
+              "tokens": 44
+            },
+            {
+              "rule": "TAUT-002",
+              "severity": "error",
+              "file": "tests/InvoiceTest.php",
+              "line": 23,
+              "column": 9,
+              "endLine": 23,
+              "endColumn": 54,
+              "message": "mock-echo: asserts stubbed value (42) against itself",
+              "fix": {
+                "kind": "replace",
+                "description": "assert against a production-derived value"
+              },
+              "tokens": 41
+            },
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/MockeryPestTest.php",
+              "line": 13,
+              "column": 37,
+              "endLine": 13,
+              "endColumn": 47,
+              "message": "missing-member: 'fetchAll' does not exist on InvoiceRepository",
+              "tokens": 33
+            },
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/MockeryPestTest.php",
+              "line": 33,
+              "column": 31,
+              "endLine": 33,
+              "endColumn": 41,
+              "message": "missing-member: 'fetchAll' does not exist on InvoiceRepository",
+              "tokens": 33
+            },
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/MockeryPestTest.php",
+              "line": 42,
+              "column": 30,
+              "endLine": 42,
+              "endColumn": 40,
+              "message": "missing-member: 'fetchAll' does not exist on InvoiceRepository",
+              "tokens": 33
+            },
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/SetUpMockTest.php",
+              "line": 19,
+              "column": 29,
+              "endLine": 19,
+              "endColumn": 41,
+              "message": "missing-member: 'deleteById' does not exist on InvoiceRepository",
+              "tokens": 33
+            },
+            {
+              "rule": "TAUT-002",
+              "severity": "error",
+              "file": "tests/SetUpMockTest.php",
+              "line": 26,
+              "column": 9,
+              "endLine": 26,
+              "endColumn": 56,
+              "message": "mock-echo: asserts stubbed value (42) against itself",
+              "fix": {
+                "kind": "replace",
+                "description": "assert against a production-derived value"
+              },
+              "tokens": 42
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/DocblockTest.php",
+              "line": 14,
+              "column": 9,
+              "endLine": 14,
+              "endColumn": 68,
+              "message": "return-type-mismatch: configured value does not match 'findById's production ret",
+              "tokens": 37
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/DocblockTest.php",
+              "line": 21,
+              "column": 9,
+              "endLine": 21,
+              "endColumn": 58,
+              "message": "return-type-mismatch: configured value does not match 'fetchIds's production ret",
+              "tokens": 37
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/Drift003Test.php",
+              "line": 14,
+              "column": 9,
+              "endLine": 14,
+              "endColumn": 47,
+              "message": "return-type-mismatch: configured value does not match 'save's production return ",
+              "tokens": 37
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/Drift003Test.php",
+              "line": 21,
+              "column": 9,
+              "endLine": 21,
+              "endColumn": 65,
+              "message": "return-type-mismatch: configured value does not match 'findById's production ret",
+              "tokens": 37
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/Drift003Test.php",
+              "line": 28,
+              "column": 9,
+              "endLine": 28,
+              "endColumn": 58,
+              "message": "return-type-mismatch: configured value does not match 'fetchAll's production ret",
+              "tokens": 37
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/Drift003Test.php",
+              "line": 36,
+              "column": 20,
+              "endLine": 36,
+              "endColumn": 63,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 32
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/InvoiceTest.php",
+              "line": 13,
+              "column": 17,
+              "endLine": 13,
+              "endColumn": 47,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 32
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/InvoiceTest.php",
+              "line": 22,
+              "column": 9,
+              "endLine": 22,
+              "endColumn": 55,
+              "message": "return-type-mismatch: configured value does not match 'findById's production ret",
+              "tokens": 37
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/MockeryPestTest.php",
+              "line": 41,
+              "column": 17,
+              "endLine": 41,
+              "endColumn": 47,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 33
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/PartialMockTest.php",
+              "line": 13,
+              "column": 9,
+              "endLine": 13,
+              "endColumn": 53,
+              "message": "return-type-mismatch: configured value does not match 'findById's production ret",
+              "tokens": 38
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/PartialMockTest.php",
+              "line": 19,
+              "column": 82,
+              "endLine": 19,
+              "endColumn": 86,
+              "message": "return-type-mismatch: configured value does not match 'save's production return ",
+              "tokens": 38
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/ReassignTest.php",
+              "line": 13,
+              "column": 17,
+              "endLine": 13,
+              "endColumn": 60,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 32
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/SetUpMockTest.php",
+              "line": 25,
+              "column": 9,
+              "endLine": 25,
+              "endColumn": 57,
+              "message": "return-type-mismatch: configured value does not match 'findById's production ret",
+              "tokens": 37
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis",
+      "trees": {
+        "php/nemesis": ""
+      },
+      "fixture_sha256": "1c108a373c194ff2a1637221ac754368c030066d87f2f31820dbba0402dcf4d2",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 3,
+            "errors": 0,
+            "warnings": 3,
+            "infos": 0,
+            "totalIssues": 3,
+            "totalErrors": 0,
+            "totalWarnings": 3,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 1,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/BillingServiceTest.php",
+              "line": 20,
+              "column": 20,
+              "endLine": 20,
+              "endColumn": 60,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 34
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/BillingServiceTest.php",
+              "line": 27,
+              "column": 20,
+              "endLine": 27,
+              "endColumn": 60,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 34
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/BillingServiceTest.php",
+              "line": 34,
+              "column": 20,
+              "endLine": 34,
+              "endColumn": 56,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 34
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-magic",
+      "trees": {
+        "php/nemesis-magic": ""
+      },
+      "fixture_sha256": "f2762be4c76405f6353beab33298cb2891895e352ef3fe8655725f1791cb372a",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 2,
+            "errors": 1,
+            "warnings": 0,
+            "infos": 1,
+            "totalIssues": 2,
+            "totalErrors": 1,
+            "totalWarnings": 0,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/BagTest.php",
+              "line": 15,
+              "column": 29,
+              "endLine": 15,
+              "endColumn": 46,
+              "message": "missing-member: 'whateverYouLike' does not exist on Bag",
+              "tokens": 29
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/BagTest.php",
+              "line": 14,
+              "column": 16,
+              "endLine": 14,
+              "endColumn": 41,
+              "message": "mock-of-self: 'Bag' is mocked but also the subject under test",
+              "tokens": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/callback",
+      "trees": {
+        "php/nemesis-experiments/callback": ""
+      },
+      "fixture_sha256": "91b08f34f836603a445ab4d50b23a84c12be28832a4a8b4236ac3a0c65a3dbb9",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 1,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 1,
+            "totalIssues": 1,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/CourierTest.php",
+              "line": 12,
+              "column": 19,
+              "endLine": 12,
+              "endColumn": 52,
+              "message": "mock-of-self: 'Courier' is mocked but also the subject under test",
+              "tokens": 32
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/final",
+      "trees": {
+        "php/nemesis-experiments/final": ""
+      },
+      "fixture_sha256": "3c691c3b6383a707d69f46e2d4d98b8405e5106f2ce663a62a97a3a4ab77db48",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 2,
+            "errors": 0,
+            "warnings": 1,
+            "infos": 1,
+            "totalIssues": 2,
+            "totalErrors": 0,
+            "totalWarnings": 1,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 3,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/SealedTest.php",
+              "line": 16,
+              "column": 19,
+              "endLine": 16,
+              "endColumn": 51,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 32
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/SealedTest.php",
+              "line": 13,
+              "column": 19,
+              "endLine": 13,
+              "endColumn": 51,
+              "message": "mock-of-self: 'Sealed' is mocked but also the subject under test",
+              "tokens": 32
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/fluent",
+      "trees": {
+        "php/nemesis-experiments/fluent": ""
+      },
+      "fixture_sha256": "25074ed4ae2c6f8ce1d9cfabdfbc3b7f0812542b77f5efba324c419f9289ad53",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 1,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 1,
+            "totalIssues": 1,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/QueryTest.php",
+              "line": 13,
+              "column": 18,
+              "endLine": 13,
+              "endColumn": 49,
+              "message": "mock-of-self: 'Query' is mocked but also the subject under test",
+              "tokens": 31
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/mockery",
+      "trees": {
+        "php/nemesis-experiments/mockery": ""
+      },
+      "fixture_sha256": "df3d2c5d979b037499e55c962d2dd4846772fa1158610dcdff19ddfb71334c0d",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 1,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 1,
+            "totalIssues": 1,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 1,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/NotifierTest.php",
+              "line": 13,
+              "column": 21,
+              "endLine": 13,
+              "endColumn": 51,
+              "message": "mock-of-self: 'Notifier' is mocked but also the subject under test",
+              "tokens": 33
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/partial-mock",
+      "trees": {
+        "php/nemesis-experiments/partial-mock": ""
+      },
+      "fixture_sha256": "d7119c99e14fe11fee102afb0d81af3840eb9748adcfbe2ac16ac02b93efd02e",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 5,
+            "errors": 2,
+            "warnings": 1,
+            "infos": 2,
+            "totalIssues": 5,
+            "totalErrors": 2,
+            "totalWarnings": 1,
+            "totalInfos": 2,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/LedgerTest.php",
+              "line": 15,
+              "column": 69,
+              "endLine": 15,
+              "endColumn": 80,
+              "message": "missing-member: 'reconcile' does not exist on Ledger",
+              "tokens": 29
+            },
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/LedgerTest.php",
+              "line": 24,
+              "column": 13,
+              "endLine": 24,
+              "endColumn": 24,
+              "message": "missing-member: 'reconcile' does not exist on Ledger",
+              "tokens": 29
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/LedgerTest.php",
+              "line": 23,
+              "column": 26,
+              "endLine": 23,
+              "endColumn": 29,
+              "message": "return-type-mismatch: configured value does not match 'balance's production retu",
+              "tokens": 37
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/LedgerTest.php",
+              "line": 15,
+              "column": 20,
+              "endLine": 15,
+              "endColumn": 82,
+              "message": "mock-of-self: 'Ledger' is mocked but also the subject under test",
+              "tokens": 32
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/LedgerTest.php",
+              "line": 22,
+              "column": 23,
+              "endLine": 25,
+              "endColumn": 11,
+              "message": "mock-of-self: 'Ledger' is mocked but also the subject under test",
+              "tokens": 32
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/pest",
+      "trees": {
+        "php/nemesis-experiments/pest": ""
+      },
+      "fixture_sha256": "c57990a77487957bce004e967a0654a90c0734c958126791903a967bfa13c8e8",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 3,
+            "errors": 1,
+            "warnings": 1,
+            "infos": 1,
+            "totalIssues": 3,
+            "totalErrors": 1,
+            "totalWarnings": 1,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 1,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/FeatureFlagTest.php",
+              "line": 7,
+              "column": 26,
+              "endLine": 7,
+              "endColumn": 37,
+              "message": "missing-member: 'isEnabled' does not exist on FeatureFlag",
+              "tokens": 31
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/FeatureFlagTest.php",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 47
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/FeatureFlagTest.php",
+              "line": 6,
+              "column": 13,
+              "endLine": 6,
+              "endColumn": 37,
+              "message": "mock-of-self: 'FeatureFlag' is mocked but also the subject under test",
+              "tokens": 34
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/phpunit-stub",
+      "trees": {
+        "php/nemesis-experiments/phpunit-stub": ""
+      },
+      "fixture_sha256": "3803dd63301f3c206e871a7b6a22170b4e77efdf60e81020a259d816324d7cf2",
+      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 1,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 1,
+            "totalIssues": 1,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 1,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/InvoiceGatewayTest.php",
+              "line": 12,
+              "column": 20,
+              "endLine": 12,
+              "endColumn": 60,
+              "message": "mock-of-self: 'InvoiceGateway' is mocked but also the subject under test",
+              "tokens": 36
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

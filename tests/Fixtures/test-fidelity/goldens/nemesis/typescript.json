@@ -1,0 +1,176 @@
+{
+  "tool": "nemesis",
+  "commit": "bf9be2704abf37502f07f12a9e629cc1ea55c3fe",
+  "version": "0.4.1",
+  "suite": "TypeScriptAcceptanceTest",
+  "runs": [
+    {
+      "fixture": "momus",
+      "trees": {
+        "typescript/momus": ""
+      },
+      "fixture_sha256": "9fb856204e72c7ff6e57b5f9c5ace8744cd59b8cd9dc675f230fc0bdaa9aedfc",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 9,
+          "doubles_inspected": 15,
+          "violations_count": 5,
+          "doubles_checked": 11,
+          "doubles_unresolved": 4,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/assignability.test.ts",
+            "line": 36,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "vi.spyOn",
+            "target": "InvoiceService::totalCents",
+            "message": "Stub hands back a promise but InvoiceService::totalCents returns 'number', which is not awaitable."
+          },
+          {
+            "file": "tests/assignability.test.ts",
+            "line": 36,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "vi.spyOn",
+            "target": "InvoiceService::totalCents",
+            "message": "Stub returns 'string' but InvoiceService::totalCents returns 'number'."
+          },
+          {
+            "file": "tests/ledger.test.ts",
+            "line": 16,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "vi.spyOn",
+            "target": "LedgerService::totalForX",
+            "message": "Method 'totalForX' does not exist on 'LedgerService'. Did you mean 'totalFor'?",
+            "suggestion": "totalFor"
+          },
+          {
+            "file": "tests/signature.fixture.ts",
+            "line": 6,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "vi.spyOn",
+            "target": "LedgerService::totalFor",
+            "message": "Replacement function declares 2 parameter(s) but 'LedgerService::totalFor' passes at most 1."
+          },
+          {
+            "file": "tests/signature.fixture.ts",
+            "line": 9,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "vi.spyOn",
+            "target": "LedgerService::totalFor",
+            "message": "Replacement function declares parameter 1 as 'number' but 'LedgerService::totalFor' passes 'string'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis",
+      "trees": {
+        "typescript/nemesis/src": "src",
+        "typescript/nemesis/tests": "tests"
+      },
+      "fixture_sha256": "b2f7305f5187bc9f33cfc4cd517f8d99d4ecfc5581f0969b862b323a66f0ebcc",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 2,
+          "doubles_inspected": 6,
+          "violations_count": 5,
+          "doubles_checked": 5,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 1,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/UserService.spec.ts",
+            "line": 7,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "vi.spyOn",
+            "target": "UserService::getProfil",
+            "message": "Method 'getProfil' does not exist on 'UserService'. Did you mean 'getProfile'?",
+            "suggestion": "getProfile"
+          },
+          {
+            "file": "tests/UserService.spec.ts",
+            "line": 17,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "heuristic",
+            "double_type": "vi.spyOn",
+            "target": "UserService::getProfile",
+            "message": "Stub returns an object missing required field 'displayName' of UserProfile."
+          },
+          {
+            "file": "tests/UserService.spec.ts",
+            "line": 17,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "heuristic",
+            "double_type": "vi.spyOn",
+            "target": "UserService::getProfile",
+            "message": "Stub returns an object missing required field 'email' of UserProfile."
+          },
+          {
+            "file": "tests/UserService.spec.ts",
+            "line": 23,
+            "type": "VISIBILITY_BREACH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "vi.spyOn",
+            "target": "UserService::purgeCache",
+            "message": "Stubbed private method 'purgeCache' bypasses the public interface of 'UserService'."
+          },
+          {
+            "file": "tests/UserService.spec.ts",
+            "line": 29,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "vi.spyOn",
+            "target": "UserService::updateProfile",
+            "message": "Stub passes 3 argument(s) but 'UserService::updateProfile' accepts at most 2."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis/dogfood-clean",
+      "trees": {
+        "typescript/nemesis/dogfood-clean": ""
+      },
+      "fixture_sha256": "7e6f2adc01e5e463c12114568aebdf45023d3517b97bf909026268e0ed67fbcd",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 0,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    }
+  ]
+}

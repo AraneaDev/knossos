@@ -1,0 +1,424 @@
+{
+  "tool": "nemesis",
+  "commit": "bf9be2704abf37502f07f12a9e629cc1ea55c3fe",
+  "version": "0.4.1",
+  "suite": "PythonAcceptanceTest",
+  "runs": [
+    {
+      "fixture": "momus-drift",
+      "trees": {
+        "python/momus-drift": ""
+      },
+      "fixture_sha256": "dce26b845bf29c914f4f3c5ea8f29f3ee58bc5d9f85d845452a1a9aa42d7001d",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 4,
+          "doubles_inspected": 14,
+          "violations_count": 3,
+          "doubles_checked": 8,
+          "doubles_unresolved": 6,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "drift_test.py",
+            "line": 6,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "unittest.mock",
+            "target": "Repo::save2",
+            "message": "Method 'save2' does not exist on 'Repo'. Did you mean 'save'?",
+            "suggestion": "save"
+          },
+          {
+            "file": "drift_test.py",
+            "line": 12,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "unittest.mock",
+            "target": "Repo::price",
+            "message": "Stub returns 'string' but Repo::price returns 'int'."
+          },
+          {
+            "file": "drift_test.py",
+            "line": 17,
+            "type": "RETURN_DRIFT",
+            "confidence": "warning",
+            "evidence": "untyped",
+            "double_type": "unittest.mock",
+            "target": "Repo::count",
+            "message": "Stub returns 'string' but Repo::count declares no return type, so the contract cannot be verified."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "momus-src-layout",
+      "trees": {
+        "python/momus-src-layout": ""
+      },
+      "fixture_sha256": "4fdcef0006b0f31965e5a843e2de00dfa99416631fcfad703cac9c347ef68a77",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 2,
+          "doubles_inspected": 2,
+          "violations_count": 0,
+          "doubles_checked": 0,
+          "doubles_unresolved": 2,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "nemesis",
+      "trees": {
+        "python/nemesis": ""
+      },
+      "fixture_sha256": "2e1056fe81aca8bfc2240724ed545acfe7d2b5c8ec5c03369906ad2a285ba9cd",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 3,
+          "violations_count": 1,
+          "doubles_checked": 3,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/test_auth.py",
+            "line": 9,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "unittest.mock",
+            "target": "AuthClient::logn",
+            "message": "Method 'logn' does not exist on 'AuthClient'. Did you mean 'login'?",
+            "suggestion": "login"
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "tautology",
+      "trees": {
+        "python/tautology": ""
+      },
+      "fixture_sha256": "94309c59e2fa2f1474e2bd30c272da55bc7bdc48ab47e00c2a7ec2566b8e4fe0",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 7,
+          "doubles_inspected": 0,
+          "violations_count": 0,
+          "doubles_checked": 0,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/autospec",
+      "trees": {
+        "python/nemesis-experiments/autospec": ""
+      },
+      "fixture_sha256": "d2021fdab794216079fb7debd217b8ca198c6fc1c24691d7f0816b37cafba7df",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 0,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/inherited-collision",
+      "trees": {
+        "python/nemesis-experiments/inherited-collision": ""
+      },
+      "fixture_sha256": "46a49020719baf8a5fd3c8dbfd3c8dcd82bbfa8376f7a8dad6fe9aa9c670f218",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 1,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/test_x.py",
+            "line": 8,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "pytest-mock",
+            "target": "Base::save",
+            "message": "Replacement function declares 3 parameter(s) but 'Base::save' passes at most 1."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/kwargs",
+      "trees": {
+        "python/nemesis-experiments/kwargs": ""
+      },
+      "fixture_sha256": "19d7fc27d8259237cdeda27d4017c996a8a3d359105ca65d25803506bb6ac6f1",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 1,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/test_session.py",
+            "line": 8,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "unittest.mock",
+            "target": "Session::open",
+            "message": "Argument named 'user' does not match any parameter of Session::open."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/module-drift",
+      "trees": {
+        "python/nemesis-experiments/module-drift": ""
+      },
+      "fixture_sha256": "e792f97c141618e918c71e32a8397dbb8bee70268df3cb10a553576e45fedd19",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 2,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/test_mailer.py",
+            "line": 6,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "pytest-mock",
+            "target": "postal/mailer.py::dispatch",
+            "message": "Method 'dispatch' does not exist on 'postal/mailer.py'."
+          },
+          {
+            "file": "tests/test_mailer.py",
+            "line": 10,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "pytest-mock",
+            "target": "postal/sender.py::deliver",
+            "message": "Stub returns 'string' but postal/sender.py::deliver returns 'bool'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/patch",
+      "trees": {
+        "python/nemesis-experiments/patch": ""
+      },
+      "fixture_sha256": "275da4657675ac3d61e34194d6aa959d83ca5347f6795a00b15e53c3ce26b55f",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 1,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/test_payment.py",
+            "line": 12,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "unittest.mock",
+            "target": "PaymentClient::capture",
+            "message": "Method 'capture' does not exist on 'PaymentClient'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/patch-multiple",
+      "trees": {
+        "python/nemesis-experiments/patch-multiple": ""
+      },
+      "fixture_sha256": "691a8a74f3edfe7f8e11ee7fbaf909a1322ef75e29a3885cd0de1265dc7f09fc",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 1,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/test_vault.py",
+            "line": 6,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "pytest-mock",
+            "target": "Vault::reseal",
+            "message": "Method 'reseal' does not exist on 'Vault'. Did you mean 'seal'?",
+            "suggestion": "seal"
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/property",
+      "trees": {
+        "python/nemesis-experiments/property": ""
+      },
+      "fixture_sha256": "93bc55dadfbfb284011c4f6e7de7331dc0e2796deeff53661d60c920a080afad",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 1,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/test_account.py",
+            "line": 7,
+            "type": "VISIBILITY_BREACH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "unittest.mock",
+            "target": "Account::balance",
+            "message": "'balance' is a getter on 'Account', so doubling it needs `new_callable=PropertyMock`."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/side-effect",
+      "trees": {
+        "python/nemesis-experiments/side-effect": ""
+      },
+      "fixture_sha256": "3d93cda37827575dbaa0fa12ebab77566540f1fc095cd2affc88d2f508122605",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 1,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/test_mailer.py",
+            "line": 7,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "pytest-mock",
+            "target": "Mailer::send",
+            "message": "Replacement function declares 2 parameter(s) but 'Mailer::send' passes at most 1."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/spec",
+      "trees": {
+        "python/nemesis-experiments/spec": ""
+      },
+      "fixture_sha256": "af03cf2f4506b17ddd213df78dac501f70e70b8c4bd6342dba55c9a518c8dffa",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 3,
+          "violations_count": 1,
+          "doubles_checked": 3,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/test_session.py",
+            "line": 13,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "unittest.mock",
+            "target": "SessionClient::close",
+            "message": "Method 'close' does not exist on 'SessionClient'."
+          }
+        ]
+      }
+    }
+  ]
+}
