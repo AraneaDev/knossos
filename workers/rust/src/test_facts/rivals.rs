@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 
 use syn::visit::Visit;
 
-use super::TestInput;
+use super::input::TestInput;
 use crate::resolve::ident_name;
 
 /// The methods the standard crates' blanket traits give every type (or

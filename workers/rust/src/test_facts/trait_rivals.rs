@@ -17,8 +17,8 @@
 use std::cell::OnceCell;
 use std::collections::BTreeSet;
 
+use super::input::TestInput;
 use super::rivals::{file_modules, standard, Rivals};
-use super::TestInput;
 use crate::visit::Declarations;
 
 /// The items of the mock frameworks a test imports that are no trait, so

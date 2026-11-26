@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::declaration_paths::merge_rename;
-use super::GeneratedMock;
+use super::generated_mock::GeneratedMock;
 
 mod traits;
 

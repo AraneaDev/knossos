@@ -282,7 +282,12 @@ pub(crate) fn index_project(
         .map(|entry| (entry.relative.clone(), entry.mods.clone()))
         .collect();
     let placed = layout.place_path_modules(&mods);
-    let included = included_files(&pending, &mods);
+    let included = included_files(
+        pending
+            .iter()
+            .map(|entry| (entry.relative.as_str(), entry.includes.as_slice())),
+        &mods,
+    );
     let mut orphans = orphan_neighbours(&placed, &mods);
     // A file `include!` pulls in is compiled as part of the file writing
     // it, which decides whether it is test code: it reads that file.

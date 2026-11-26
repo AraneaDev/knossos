@@ -25,11 +25,11 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 
 use super::doubles::{DoubleFact, Member, Pin};
+use super::input::TestInput;
 use super::literals::literal_text;
 use super::macros::Frozen;
 use super::rivals::Rivals;
 use super::syntax::identifiers;
-use super::TestInput;
 use crate::resolve::ident_name;
 
 /// The attributes a fake may carry and keep its pins.

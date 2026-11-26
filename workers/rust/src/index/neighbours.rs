@@ -3,21 +3,21 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::Pending;
 use crate::layout::{Layout, ModDeclaration};
 
 /// Each project file an `include!("path")` of another file pulls in, with
 /// the files that include it and whether every one of them does so only for
 /// the tests (under `#[cfg(test)]`). The path is relative to the including
-/// file's directory.
-pub(super) fn included_files(
-    pending: &[Pending],
+/// file's directory. `files` is each file's path with its `include!`
+/// sites, in the order the first pass read them.
+pub(super) fn included_files<'p>(
+    files: impl IntoIterator<Item = (&'p str, &'p [(String, bool)])>,
     mods: &BTreeMap<String, Vec<ModDeclaration>>,
 ) -> BTreeMap<String, (Vec<String>, bool)> {
     let mut included: BTreeMap<String, (Vec<String>, bool)> = BTreeMap::new();
-    for entry in pending {
-        let directory = entry.relative.rsplit_once('/').map_or("", |(dir, _)| dir);
-        for (written, test) in &entry.includes {
+    for (relative, includes) in files {
+        let directory = relative.rsplit_once('/').map_or("", |(dir, _)| dir);
+        for (written, test) in includes {
             if written.starts_with('/') || written.contains('\\') {
                 continue;
             }
@@ -31,11 +31,11 @@ pub(super) fn included_files(
                 }
             }
             let target = segments.join("/");
-            if escaped || target == entry.relative || !mods.contains_key(&target) {
+            if escaped || target == relative || !mods.contains_key(&target) {
                 continue;
             }
             let (includers, all_test) = included.entry(target).or_insert((Vec::new(), true));
-            includers.push(entry.relative.clone());
+            includers.push(relative.to_owned());
             *all_test &= *test;
         }
     }

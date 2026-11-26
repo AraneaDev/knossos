@@ -16,7 +16,7 @@ use syn::visit::Visit;
 use crate::facts::{reference, Facts};
 use crate::layout::Layout;
 use crate::resolve::ident_name;
-use crate::visit::{is_test_module_path, Declarations, FileScope, ModuleGates};
+use crate::visit::is_test_module_path;
 
 mod assertions;
 mod cases;
@@ -25,6 +25,7 @@ mod fakes;
 mod frameworks;
 mod generated;
 mod handles;
+mod input;
 mod literals;
 mod locals;
 mod macros;
@@ -43,6 +44,7 @@ use assertions::{assertion, AssertionShape};
 use cases::{helpers, test_functions, TestFunction};
 use frameworks::FrameworkContext;
 use generated::MockResolver;
+pub(crate) use input::TestInput;
 use locals::{FileConsts, LocalLiterals};
 use macros::Frozen;
 pub(crate) use macros::{
@@ -56,30 +58,6 @@ use trait_rivals::TraitRivals;
 
 /// The scope attributes a case takes from its function's node.
 const SCOPE_ATTRIBUTES: [&str; 3] = ["test", "test_support", "cfg"];
-
-/// Everything the pass reads one file through, all of it read-only.
-pub(crate) struct TestInput<'a> {
-    /// The file's project-relative path.
-    pub(crate) relative: &'a str,
-    /// The module the file is placed in.
-    pub(crate) module: &'a str,
-    /// The parsed file.
-    pub(crate) file: &'a syn::File,
-    /// The scan-wide declaration index, asked only quietly (see
-    /// [`Declarations::declares_quietly`]).
-    pub(crate) declarations: &'a Declarations,
-    /// Where the project's crates are.
-    pub(crate) layout: &'a Layout,
-    /// The modules declared `#[cfg(test)] mod name;`.
-    pub(crate) test_modules: &'a ModuleGates,
-    /// The names the file's walk brought into scope.
-    pub(crate) scope: &'a FileScope,
-    /// Every file the scan read, with its hash (`None` when it could not be
-    /// read): which of a module's possible files exists.
-    pub(crate) read: &'a BTreeMap<String, Option<String>>,
-    /// The walk's facts for the file.
-    pub(crate) facts: &'a Facts,
-}
 
 /// Whether a file holds test code: a node the walk marked as a test, or a
 /// place in a Cargo `tests/` directory (R5-11).

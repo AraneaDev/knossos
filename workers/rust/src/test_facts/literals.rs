@@ -22,22 +22,31 @@ pub(super) fn literal_text(expr: &syn::Expr) -> Option<String> {
                 _ => None,
             }
         }
+        // A tuple or an array is a literal when every element is one. The
+        // recursion stays in this one function: a helper beside it made the
+        // pair a dependency cycle.
         syn::Expr::Tuple(tuple) => {
-            let parts = elements(tuple.elems.iter())?;
+            let parts: Vec<String> = tuple
+                .elems
+                .iter()
+                .map(literal_text)
+                .collect::<Option<_>>()?;
             Some(if parts.len() == 1 {
                 format!("({},)", parts[0])
             } else {
                 format!("({})", parts.join(", "))
             })
         }
-        syn::Expr::Array(array) => Some(format!("[{}]", elements(array.elems.iter())?.join(", "))),
+        syn::Expr::Array(array) => {
+            let parts: Vec<String> = array
+                .elems
+                .iter()
+                .map(literal_text)
+                .collect::<Option<_>>()?;
+            Some(format!("[{}]", parts.join(", ")))
+        }
         _ => None,
     }
-}
-
-/// The texts of a tuple's or an array's elements, when every one is a literal.
-fn elements<'e>(items: impl Iterator<Item = &'e syn::Expr>) -> Option<Vec<String>> {
-    items.map(literal_text).collect()
 }
 
 /// The text of one literal token: a number's decimal digits, anything else

@@ -24,7 +24,7 @@ use syn::visit::Visit;
 
 use super::assertions::arguments;
 use super::handles::Handles;
-use super::TestInput;
+use super::input::TestInput;
 use crate::layout::Layout;
 use crate::resolve::ident_name;
 use crate::visit::is_test_module_path;

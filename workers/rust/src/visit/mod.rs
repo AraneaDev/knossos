@@ -22,6 +22,7 @@ mod declaration_paths;
 mod declarations;
 mod fields;
 mod generated;
+mod generated_mock;
 mod globs;
 mod impls;
 mod item_types;
@@ -50,7 +51,8 @@ pub use declarations::{
     Declarations, ExportAlternatives, ExportedNames, FieldType, FunctionReturns, GlobImports,
     StructFields, TypeAliases, ANY_PACKAGE,
 };
-pub use generated::{generated_mocks, GeneratedMock, AUTOMOCK, MOCK_MACRO};
+pub use generated::generated_mocks;
+pub use generated_mock::{GeneratedMock, AUTOMOCK, MOCK_MACRO};
 use labels::{path_label, type_label};
 use placement::mod_child;
 pub use placement::mod_declarations;
