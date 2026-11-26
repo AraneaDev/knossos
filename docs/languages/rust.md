@@ -482,6 +482,10 @@ implements none to rule out. The value is dropped when any of these holds:
   `borrow`, …);
 - the file declares another trait with a method of that name;
 - a `use` inside a function body leaves the standard crates;
+- a macro other than `macro_rules!`, `thread_local!` and mockall's `mock!`
+  stands where an item may in a module of the file that holds a test or that
+  the file globs, or inside a trait of the file, since it may declare a trait
+  or a method;
 - the file imports a name the declaration index holds as a trait other than
   a mocked one, or one outside the standard crates the index cannot place;
 - it globs a module, other than one of its own, that declares or re-exports
@@ -556,9 +560,6 @@ pretty_assertions`, or a Cargo `package =` rename to `pretty_assertions`,
   is trusted as `pretty_assertions`, whose `assert_eq!` compares. A crate
   renamed to `mockall`, `mockiato`, `mry`, `faux` or `async_trait` is trusted
   in the same way, as holding no trait that could take a mock's call.
-- **A trait the file shows only through a macro.** A trait whose methods a
-  macro inside its body declares, or one a macro in a body declares, is not
-  read as a rival.
 
 ### What the Rust rules do not see
 

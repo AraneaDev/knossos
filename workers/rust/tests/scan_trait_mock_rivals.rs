@@ -500,3 +500,79 @@ fn an_imported_trait_may_take_an_inherent_mocks_call() {
     assert_eq!("mock-config", operand["source"]);
     assert_eq!(Value::Null, operand["value"]);
 }
+
+/// The value `m.limit()` gives in `src/t.rs`, holding `source`, beside an
+/// `#[automock] trait Gauge` in `src/gauge.rs` (the re-review's `mac`
+/// probe).
+fn macro_probe(name: &str, source: &str) -> Value {
+    let contributions = scan_fixture_with(
+        name,
+        &[
+            ("Cargo.toml", "[package]\nname = \"probe\"\n"),
+            ("src/lib.rs", "pub mod gauge;\npub mod t;\n"),
+            (
+                "src/gauge.rs",
+                "#[mockall::automock]\npub trait Gauge {\n    fn limit(&self) -> u32;\n}\n",
+            ),
+            ("src/t.rs", source),
+        ],
+        &json!({ "config_files": ["Cargo.toml"] }),
+    );
+    let cases = nodes_of(&contributions, "test_case");
+    let operand = &cases.values().next().unwrap()["attributes"]["assertions"][0]["operands"][0];
+    assert_eq!("mock-config", operand["source"]);
+    operand["value"].clone()
+}
+
+/// A `macro_rules!` that declares the blanket `Limits`.
+const MAKE_TRAIT: &str = "macro_rules! make_trait {\n    () => {\n        pub trait Limits {\n            \
+    fn limit(self) -> u32 where Self: Sized { 5 }\n        }\n        impl<T> Limits for T {}\n    };\n}\n";
+
+/// A test module whose case echoes `m.limit()`, with `items` at its top.
+fn echo_module(items: &str) -> String {
+    format!(
+        "#[cfg(test)]\nmod tests {{\n    use crate::gauge::MockGauge;\n{items}\n    #[test]\n    fn echoes() {{\n        \
+         let mut m = MockGauge::new();\n        m.expect_limit().return_const(5u32);\n        \
+         assert_eq!(m.limit(), 5);\n    }}\n}}\n"
+    )
+}
+
+#[test]
+fn an_item_macro_a_test_sees_may_declare_a_rival() {
+    // `t_local`: the macro at the file's top, which the test globs.
+    let local = format!(
+        "{MAKE_TRAIT}make_trait!();\n{}",
+        echo_module("    use super::*;")
+    );
+    assert_eq!(Value::Null, macro_probe("item-macro-local", &local));
+    // `t_inner`: the macro in the test's own module.
+    let inner = echo_module(&format!("{MAKE_TRAIT}make_trait!();"));
+    assert_eq!(Value::Null, macro_probe("item-macro-inner", &inner));
+}
+
+#[test]
+fn a_mock_macro_or_a_macro_no_test_sees_declares_no_rival() {
+    let mock = "mockall::mock! {\n    pub Store {\n        fn size(&self) -> u32;\n    }\n}\n";
+    let with_mock = format!(
+        "{mock}{}",
+        echo_module("    use super::*;\n    use crate::gauge::Gauge;")
+    );
+    assert_eq!(json!("5"), macro_probe("item-macro-mock", &with_mock));
+    // A module of its own, which nothing imports, keeps what the macro
+    // declares to itself.
+    let apart = format!(
+        "mod apart {{\n{MAKE_TRAIT}make_trait!();\n}}\n{}",
+        echo_module("    use crate::gauge::Gauge;")
+    );
+    assert_eq!(json!("5"), macro_probe("item-macro-apart", &apart));
+}
+
+#[test]
+fn a_macro_in_a_trait_of_the_file_may_declare_the_method() {
+    let declared = format!(
+        "macro_rules! limit {{\n    () => {{\n        fn limit(self) -> u32 where Self: Sized {{ 5 }}\n    }};\n}}\n\
+         pub trait Limits {{\n    limit!();\n}}\nimpl<T> Limits for T {{}}\n{}",
+        echo_module("    use super::*;")
+    );
+    assert_eq!(Value::Null, macro_probe("item-macro-trait", &declared));
+}

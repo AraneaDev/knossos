@@ -33,6 +33,17 @@ const STD_BLANKET: [&str; 9] = [
     "type_id",
 ];
 
+/// The item macros known to declare no trait: a `macro_rules!`
+/// definition, `thread_local!` and mockall's `mock!`, whose impls are of
+/// the traits it names.
+const TRAITLESS_MACROS: [&str; 5] = [
+    "macro_rules",
+    "thread_local",
+    "std::thread_local",
+    "mock",
+    "mockall::mock",
+];
+
 /// The standard crates, whose imports bring no project trait.
 const STD_CRATES: [&str; 3] = ["std", "core", "alloc"];
 
@@ -56,6 +67,12 @@ pub(super) struct Rivals {
     opened: bool,
     /// Whether a `use` inside a body leaves the standard crates.
     body_use: bool,
+    /// Whether a macro may declare a trait a test of the file sees (final
+    /// re-review N1): one standing where an item may in a module that holds
+    /// a test or that a glob of the file imports, or in a trait's body.
+    item_macro: bool,
+    /// The modules of the file where a macro stands where an item may.
+    macro_modules: BTreeSet<String>,
 }
 
 impl Rivals {
@@ -70,6 +87,16 @@ impl Rivals {
         seen.visit_file(input.file);
         let mut rivals = seen.rivals;
         let scope = input.scope;
+        // A macro's items are in scope in its own module, and wherever a
+        // glob imports them; a named import of one is an import the index
+        // cannot place.
+        let seen_by_tests: BTreeSet<String> =
+            super::cases::test_functions(&input.file.items, input.module)
+                .into_iter()
+                .map(|case| case.container)
+                .chain(scope.globs.iter().map(|(_, source)| source.clone()))
+                .collect();
+        rivals.item_macro |= !rivals.macro_modules.is_disjoint(&seen_by_tests);
         for imported in scope.module_aliases.values() {
             match imported {
                 None => rivals.opened = true,
@@ -111,11 +138,13 @@ impl Rivals {
     /// Whether something the file itself shows may take a call of `member`
     /// on a mock of the traits `targets` (final review I1): a standard
     /// blanket method, another trait the file declares with a method of
-    /// that name, or a `use` inside a body that leaves the standard crates.
+    /// that name, a `use` inside a body that leaves the standard crates, or
+    /// an item macro of the file that may declare a trait.
     /// What the file imports is [`super::trait_rivals`]'s.
     pub(super) fn local_trait_rival(&self, targets: &[String], member: &str) -> bool {
         STD_BLANKET.contains(&member)
             || self.body_use
+            || self.item_macro
             || self
                 .traits
                 .iter()
@@ -212,6 +241,28 @@ impl Visit<'_> for Seen {
             functions,
         ));
         syn::visit::visit_item_trait(self, node);
+    }
+
+    fn visit_item_macro(&mut self, node: &syn::ItemMacro) {
+        let path = node
+            .mac
+            .path
+            .segments
+            .iter()
+            .map(|segment| ident_name(&segment.ident))
+            .collect::<Vec<_>>()
+            .join("::");
+        if !TRAITLESS_MACROS.contains(&path.as_str()) {
+            let container = self.containers.last().cloned().unwrap_or_default();
+            self.rivals.macro_modules.insert(container);
+        }
+        syn::visit::visit_item_macro(self, node);
+    }
+
+    fn visit_trait_item_macro(&mut self, node: &syn::TraitItemMacro) {
+        // A method of a trait of the file that a macro declares.
+        self.rivals.item_macro = true;
+        syn::visit::visit_trait_item_macro(self, node);
     }
 
     fn visit_item_use(&mut self, node: &syn::ItemUse) {
