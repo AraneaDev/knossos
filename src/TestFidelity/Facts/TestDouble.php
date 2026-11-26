@@ -11,7 +11,10 @@ use Knossos\Scanner\Protocol\NodeFact;
  */
 final readonly class TestDouble
 {
-    private const FRAMEWORKS = ['vitest', 'jest', 'phpunit', 'mockery', 'pest', 'prophecy', 'unittest', 'pytest-mock', 'pytest', 'mockall', 'faux', 'mry', 'mockers', 'mockiato', 'mocktopus', 'mock_derive', 'galvanic', 'hand-written'];
+    /** The Rust mocking crates a double may come from, by crate name; also what a Rust test imports as its framework. */
+    public const RUST_CRATES = ['mockall', 'faux', 'mry', 'mockers', 'mockiato', 'mocktopus', 'mock_derive', 'galvanic'];
+
+    private const FRAMEWORKS = ['vitest', 'jest', 'phpunit', 'mockery', 'pest', 'prophecy', 'unittest', 'pytest-mock', 'pytest', ...self::RUST_CRATES, 'hand-written'];
     private const TARGET_KINDS = ['module', 'class', 'instance-member', 'global', 'unknown'];
 
     /**

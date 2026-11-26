@@ -35,6 +35,7 @@ final class DigQuestionToolsTest extends KnossosTestCase
         'export_diagram' => 'export',
         'creation_brief' => 'creation',
         'audit_tests' => 'diagnostics',
+        'list_test_rules' => 'catalog',
     ];
 
     #[Group('mcp')]

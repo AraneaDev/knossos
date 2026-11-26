@@ -256,11 +256,26 @@ List test doubles that no longer match the code they replace and assertions that
 | `project_id` | string | yes | minLength=1 | none |
 | `path_prefix` | string | no | minLength=1 | none |
 | `confidence` | string | no | enum=definite, warning | none |
-| `category` | string | no | enum=GHOST_MEMBER, ARITY_MISMATCH, RETURN_DRIFT, VISIBILITY_BREACH, TAUTOLOGY, MOCKS_SUBJECT | none |
+| `category` | string | no | enum=GHOST_MEMBER, ARITY_MISMATCH, RETURN_DRIFT, VISIBILITY_BREACH, TAUTOLOGY, MOCKS_SUBJECT, OVER_MOCKING, STALE_SINCE, FIXTURE_DRIFT | An on-request category implies its tier. |
 | `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 | `limit` | integer | no | minimum=1; maximum=200; default=50 | none |
+| `tier` | string | no | default="scan"; enum=scan, on_request, all | scan: stored findings; on_request: computed now (OVER_MOCKING), never stored; all: both. |
+| `scope` | string | no | default="all"; enum=all, git-diff | none |
+| `base_ref` | string | no | minLength=1; maxLength=200 | none |
+| `timeout_ms` | integer | no | minimum=1; maximum=10000; default=2000 | Bound on the on-request tier; past it the result is partial. |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
+
+## `list_test_rules`
+
+List the rules audit_tests reports, with each one's category, tier (scan or on_request), confidences and sub-rules. Use to read a finding's rule or to write a test_finding_suppressions entry.
+
+| Input | Type | Required | Constraints/default | Description |
+| --- | --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
+
+Annotations: read-only `yes`; destructive `no`; idempotent `yes`; open-world `no`.
 
 ## `file_context`
 

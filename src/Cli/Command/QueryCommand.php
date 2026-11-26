@@ -40,7 +40,7 @@ final class QueryCommand implements CliCommand
         'find-component', 'inspect-component', 'list-usages', 'architecture-summary', 'file-metrics', 'untested-code', 'explain-flow', 'impact-analysis',
         'dependency-cycles', 'architecture-health', 'check-architecture', 'suggest-location', 'change-impact',
         'changed-files-impact', 'test-impact', 'review-diff', 'architecture-context', 'export-diagram', 'export-agent-brief', 'list-boundaries',
-        'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief', 'audit-tests',
+        'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief', 'audit-tests', 'list-test-rules',
     ];
 
     /**
@@ -182,6 +182,7 @@ final class QueryCommand implements CliCommand
             'list-projects' => self::projectLines($result),
             'untested-code' => self::untestedLines($result),
             'audit-tests' => self::auditLines($result),
+            'list-test-rules' => self::ruleLines($result),
             'creation-brief' => $json ? '' : CreationBriefRenderer::lines($result->data, (new StalenessProbe($context->database()))->probe($result->projectId)),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],
@@ -221,13 +222,35 @@ final class QueryCommand implements CliCommand
         return implode("\n", $lines);
     }
 
-    /** audit-tests' text: one line per finding, then the summary. */
+    /**
+     * audit-tests' text: one line per finding, then what could not be judged
+     * (a language's note, a timeout's warning), then the summary.
+     */
     private static function auditLines(ResultEnvelope $result): string
     {
         $lines = [];
         foreach ($result->data['items'] as $item) {
             $lines[] = sprintf('%s:%s  %s %s  %s', $item['file'] ?? '?', $item['line'] ?? '?', $item['category'], $item['confidence'], $item['message']);
         }
+        foreach ($result->data['summary']['by_language'] as $language => $counts) {
+            foreach ($counts['notes'] ?? [] as $note) {
+                $lines[] = $language . ': ' . $note;
+            }
+        }
+        array_push($lines, ...$result->warnings);
+        $lines[] = $result->summary;
+
+        return implode("\n", $lines);
+    }
+
+    /** list-test-rules' text: one line per rule, then where to suppress a finding, then the summary. */
+    private static function ruleLines(ResultEnvelope $result): string
+    {
+        $lines = [];
+        foreach ($result->data['rules'] as $rule) {
+            $lines[] = implode('  ', [$rule['id'], $rule['category'], $rule['tier'], implode(',', $rule['confidences']), implode(',', $rule['sub_rules']), $rule['description']]);
+        }
+        $lines[] = 'Suppress a finding with ' . $result->data['suppression'] . '.';
         $lines[] = $result->summary;
 
         return implode("\n", $lines);

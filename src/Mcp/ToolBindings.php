@@ -313,7 +313,12 @@ final class ToolBindings
                 'arguments' => [
                     'project_id' => self::at('Usage: knossos audit-tests <path|project-id> [options]'),
                     'path_prefix' => self::as('path'), 'confidence' => [], 'category' => [], 'limit' => [], 'offset' => [],
+                    'tier' => [], 'scope' => [], 'base_ref' => [], 'timeout_ms' => [],
                 ],
+            ],
+            'list_test_rules' => [
+                'call' => static fn(ArchitectureQueryService $q): ResultEnvelope => $q->services()->testFidelityQueries->listTestRules(),
+                'arguments' => [],
             ],
             // MCP only: the CLI's file-context is the pane's, a different answer.
             'file_context' => [

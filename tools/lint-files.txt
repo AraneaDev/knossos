@@ -249,6 +249,7 @@ php	src/Mcp/ResponseOptions.php
 php	src/Mcp/ResultEnricher.php
 php	src/Mcp/StaleScanRefresher.php
 php	src/Mcp/StdioServer.php
+php	src/Mcp/TestFidelityToolDefinitions.php
 php	src/Mcp/ToolArgumentPreflight.php
 php	src/Mcp/ToolArgumentSpec.php
 php	src/Mcp/ToolArguments.php
@@ -376,6 +377,7 @@ php	src/Query/StalenessProbe.php
 php	src/Query/StalenessSnapshot.php
 php	src/Query/StandInExpansion.php
 php	src/Query/SupertypeMethods.php
+php	src/Query/TestFidelity/OnRequestFindings.php
 php	src/Query/TestFidelityQueryService.php
 php	src/Query/TestFindingsDiff.php
 php	src/Query/TestReachSearch.php
@@ -474,6 +476,7 @@ php	src/Scan/StaleWorkerBinaries.php
 php	src/Scan/TreeFingerprint.php
 php	src/Scan/UndiscoveredInputVerifier.php
 php	src/Scan/UndiscoveredInputs.php
+php	src/Scanner/PackagedLanguages.php
 php	src/Scanner/Protocol/Confidence.php
 php	src/Scanner/Protocol/ConfidenceRank.php
 php	src/Scanner/Protocol/Diagnostic.php
@@ -548,6 +551,11 @@ php	src/TestFidelity/Facts/TestDouble.php
 php	src/TestFidelity/FindingCategory.php
 php	src/TestFidelity/FindingConfidence.php
 php	src/TestFidelity/MockedModulePaths.php
+php	src/TestFidelity/OnRequest/FrameworkModules.php
+php	src/TestFidelity/OnRequest/OnRequestFinding.php
+php	src/TestFidelity/OnRequest/OnRequestInput.php
+php	src/TestFidelity/OnRequest/OverMocking.php
+php	src/TestFidelity/OnRequestCategory.php
 php	src/TestFidelity/PhpTypeFit.php
 php	src/TestFidelity/PythonAnnotation.php
 php	src/TestFidelity/PythonTypeFit.php
@@ -575,6 +583,7 @@ php	src/TestFidelity/TestFidelityRule.php
 php	src/TestFidelity/TestFinding.php
 php	src/TestFidelity/TestFindingKey.php
 php	src/TestFidelity/TestFindingSuppressions.php
+php	src/TestFidelity/TestRuleCatalog.php
 php	src/TestFidelity/TurnTestFindings.php
 php	src/Watch/ExternalScanProbe.php
 php	src/Watch/ProcessScanner.php
@@ -680,6 +689,7 @@ php	tests/phpunit/Cli/SelfUpdateCommandTest.php
 php	tests/phpunit/Cli/SessionBriefUpdateNoticeTest.php
 php	tests/phpunit/Cli/SessionCommandTest.php
 php	tests/phpunit/Cli/SettingsDirectoryTest.php
+php	tests/phpunit/Cli/TestFidelityCommandContractTest.php
 php	tests/phpunit/Cli/TestHomeIsolationTest.php
 php	tests/phpunit/Cli/TuiCommandTest.php
 php	tests/phpunit/Cli/WatchCommandTest.php
@@ -1001,6 +1011,7 @@ php	tests/phpunit/Query/SuggestionTest.php
 php	tests/phpunit/Query/SuggestionTruncationTest.php
 php	tests/phpunit/Query/SupertypeMethodsTest.php
 php	tests/phpunit/Query/TestFactsExcludedFromCountsTest.php
+php	tests/phpunit/Query/TestFidelity/OnRequestFindingsTest.php
 php	tests/phpunit/Query/TestFidelityQueryServiceTest.php
 php	tests/phpunit/Query/TestFindingsCountedTest.php
 php	tests/phpunit/Query/TestImpactReportTest.php
@@ -1304,6 +1315,8 @@ php	tests/phpunit/TestFidelity/DriftEndToEndTest.php
 php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
 php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
 php	tests/phpunit/TestFidelity/MockedModulePathsTest.php
+php	tests/phpunit/TestFidelity/OnRequest/OverMockingTest.php
+php	tests/phpunit/TestFidelity/OnRequestIsolationTest.php
 php	tests/phpunit/TestFidelity/PhpAcceptanceTest.php
 php	tests/phpunit/TestFidelity/PhpHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/PhpTypeFitTest.php
@@ -1336,6 +1349,7 @@ php	tests/phpunit/TestFidelity/TestFidelityAnalysisTest.php
 php	tests/phpunit/TestFidelity/TestFidelityGraphTest.php
 php	tests/phpunit/TestFidelity/TestFindingKeyTest.php
 php	tests/phpunit/TestFidelity/TestFindingSuppressionsTest.php
+php	tests/phpunit/TestFidelity/TestRuleCatalogTest.php
 php	tests/phpunit/TestFidelity/TurnTestFindingsTest.php
 php	tests/phpunit/TestFidelity/TypeScriptAcceptanceTest.php
 php	tests/phpunit/TestFidelity/TypeScriptTestCaseFlowTest.php
