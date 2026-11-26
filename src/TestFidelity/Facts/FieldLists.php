@@ -21,9 +21,10 @@ use Knossos\TestFidelity\TestFidelityGraph;
  * project (`pydantic.BaseModel`, `TypedDict`) declares no field either, so
  * reaching it ends the walk, unless the scan holds a class of that name. A
  * TypeScript worker merges what its type checker resolves, a base in
- * `node_modules` included, and marks the rest open, and a Rust struct
- * inherits no field (its `implements` edges name traits), so their lists are
- * taken as sent.
+ * `node_modules` included, and marks the rest open, so its list is taken as
+ * sent. A Rust struct inherits no field, so its list is taken as sent too,
+ * unless it implements `Deserialize` by hand: then its fields say nothing
+ * about what is read.
  */
 final class FieldLists
 {
@@ -33,14 +34,20 @@ final class FieldLists
     /** A Python reference to a class outside the project, the name captured. */
     private const PYTHON_REFERENCE = '/^py:(?:external_symbol|class):(.+)$/sD';
 
+    /** A Rust reference to serde's `Deserialize` trait, under any path. */
+    private const DESERIALIZE_REFERENCE = '/^rust:(?:external_)?interface:(?:.*::)?Deserialize$/sD';
+
     private function __construct() {}
 
     /** The fields `$type` declares or inherits, nearest declaration first; null when that cannot be known. */
     public static function of(TestFidelityGraph $graph, NodeFact $type): ?FieldList
     {
         $own = FieldList::ofNode($type);
-        if ($own === null || str_starts_with($type->localId, 'ts:') || str_starts_with($type->localId, 'rust:')) {
+        if ($own === null || str_starts_with($type->localId, 'ts:')) {
             return $own;
+        }
+        if (str_starts_with($type->localId, 'rust:')) {
+            return self::implementsDeserialize($graph, $type) ? null : $own;
         }
         [$lineage, $unseen] = $graph->lineageThrough($type, static fn(string $parent): bool => !str_starts_with($parent, 'php:interface:') && !self::isPythonRoot($graph, $parent));
         if ($unseen) {
@@ -57,6 +64,24 @@ final class FieldLists
         ksort($fields, SORT_STRING);
 
         return new FieldList($fields);
+    }
+
+    /**
+     * Whether a Rust type has an `implements` edge to serde's `Deserialize`,
+     * however spelled: a hand-written impl, in any file and before or after
+     * the struct, may read another shape than its fields.
+     */
+    private static function implementsDeserialize(TestFidelityGraph $graph, NodeFact $type): bool
+    {
+        $found = false;
+        // The walk follows none of the parents, so only `$type`'s own are asked.
+        $graph->lineageThrough($type, static function (string $parent) use (&$found): bool {
+            $found = $found || preg_match(self::DESERIALIZE_REFERENCE, $parent) === 1;
+
+            return false;
+        });
+
+        return $found;
     }
 
     /** Whether a parent reference names a Python root the scan does not hold. */

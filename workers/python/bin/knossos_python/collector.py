@@ -152,7 +152,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.superseded = superseded_definitions(tree)
         self.overloaded = overloaded_definitions(tree)
         self.members = ClassMembers(tree, self.resolve_name)
-        self.fields = FieldFacts(tree, self.name, self.resolve_name, self.members)
+        self.fields = FieldFacts(tree, self.name, self.resolve_name, self.members, index)
         self.aliases: dict[str, str] = {}
         self.containers: list[tuple[str, str, str]] = []
         self.local_function_scopes: list[dict[str, str]] = []

@@ -66,6 +66,25 @@ final class FieldListsTest extends KnossosTestCase
         assertSame(['id'], array_keys(FieldLists::of($graph, $user)?->fields() ?? []));
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function deserializeImpls(): iterable
+    {
+        yield 'serde::Deserialize' => ['rust:interface:serde::Deserialize'];
+        yield 'serde::de::Deserialize' => ['rust:interface:serde::de::Deserialize'];
+        yield 'external' => ['rust:external_interface:serde::Deserialize'];
+        yield 'bare' => ['rust:interface:Deserialize'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('deserializeImpls')]
+    public function testARustStructWithAHandWrittenDeserializeHasNoList(string $impl): void
+    {
+        // A hand-written impl may read another shape than the struct's fields.
+        $user = self::node('rust:class:crate::User', self::fields('id'));
+        $graph = self::graph([$user], [['implements', $user, 'rust:interface:std::fmt::Display'], ['implements', $user, $impl]]);
+
+        assertSame(null, FieldLists::of($graph, $user));
+    }
+
     public function testAPythonModelComposesItsBasesAndStopsAtTheRootOutsideTheProject(): void
     {
         $base = self::node('py:class:app.Base', self::fields('id'));

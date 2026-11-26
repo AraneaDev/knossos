@@ -190,6 +190,45 @@ fn a_with_or_deserialize_with_field_drops_its_type_but_keeps_its_key() {
 }
 
 #[test]
+fn a_struct_without_a_derived_deserialize_sends_no_list() {
+    // A hand-written impl may read another shape: written before the
+    // struct, after it, or in another file.
+    let lib = "use serde::{Deserialize, Deserializer};\npub mod other;\n\
+        impl<'de> Deserialize<'de> for Before {\n    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> { todo!() }\n}\n\
+        pub struct Before {\n    pub a: u64,\n}\n\
+        pub struct Manual {\n    pub a: u64,\n}\n\
+        impl<'de> Deserialize<'de> for Manual {\n    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> { todo!() }\n}\n\
+        impl<'de> Deserialize<'de> for crate::other::Elsewhere {\n    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> { todo!() }\n}\n\
+        #[derive(Debug, Clone)]\npub struct Plain {\n    pub a: u64,\n}\n\
+        #[derive(Debug)]\npub enum Lane { Fast, Slow }\n";
+    let other = "pub struct Elsewhere {\n    pub a: u64,\n}\n";
+    let contributions = scan_fixture(
+        "fields-manual",
+        &[("src/lib.rs", lib), ("src/other.rs", other)],
+    );
+    let classes = nodes_of(&contributions, "class");
+
+    for name in [
+        "crate::Before",
+        "crate::Manual",
+        "crate::Plain",
+        "crate::Lane",
+        "crate::other::Elsewhere",
+    ] {
+        let attributes = &classes[name]["attributes"];
+        assert!(attributes.get("fields").is_none(), "{name}");
+        assert!(attributes.get("cases").is_none(), "{name}");
+    }
+}
+
+#[test]
+fn a_deserialize_a_cfg_attr_derives_counts() {
+    let source = "#[cfg_attr(feature = \"serde\", derive(serde::Deserialize))]\npub struct User {\n    id: u64,\n}\n";
+
+    assert_eq!(pairs(&[("id", true)]), required(&class("User", source)));
+}
+
+#[test]
 fn a_tuple_or_unit_struct_sends_no_list() {
     let source = "pub struct Id(u64);\npub struct Marker;\npub union Bits { a: u32, b: f32 }\n";
     let contributions = scan_fixture("fields-tuple", &[("src/lib.rs", source)]);
@@ -215,7 +254,7 @@ fn a_struct_a_macro_generates_sends_no_list() {
 
 #[test]
 fn two_cfg_alternatives_of_one_struct_open_the_list() {
-    let source = "#[cfg(unix)]\npub struct Config {\n    a: u8,\n}\n#[cfg(not(unix))]\npub struct Config {\n    b: u8,\n}\n";
+    let source = "#[cfg(unix)]\n#[derive(Deserialize)]\npub struct Config {\n    a: u8,\n}\n#[cfg(not(unix))]\n#[derive(Deserialize)]\npub struct Config {\n    b: u8,\n}\n";
 
     let contributions = scan_fixture("fields-cfg-alternatives", &[("src/lib.rs", source)]);
     let declared: Vec<&Value> = contributions[0]["nodes"]
@@ -248,7 +287,10 @@ fn a_long_list_is_cut_and_marked() {
     let fields: String = (0..70)
         .map(|index| format!("    f{index:03}: u8,\n"))
         .collect();
-    let attributes = class("Wide", &format!("pub struct Wide {{\n{fields}}}\n"));
+    let attributes = class(
+        "Wide",
+        &format!("#[derive(Deserialize)]\npub struct Wide {{\n{fields}}}\n"),
+    );
 
     assert_eq!(64, attributes["fields"].as_array().unwrap().len());
     assert_eq!("f063", attributes["fields"][63]["name"]);

@@ -26,6 +26,8 @@ from typing import Any
 
 from .ast_helpers import dotted
 from .class_members import ClassMembers, Resolve, is_dunder
+from .field_names import FieldNames
+from .module_index import ProjectModuleIndex
 
 MAX_ENTRIES = 64
 """Fields or cases listed at most; a longer list is cut and marked truncated."""
@@ -48,6 +50,9 @@ ROOTS = {
 GENERIC_BASES = frozenset({"typing.Generic", "typing_extensions.Generic"})
 
 ENUM_DECORATORS = frozenset({"enum.unique", "enum.verify"})
+
+VALUE_HOOKS = frozenset({"_missing_", "__new__", "__init__", "_generate_next_value_"})
+"""Methods that may give an Enum member a value no case is written with, or read one by another."""
 
 ENUM_MIXINS = frozenset({"str", "int"})
 """The builtin data types an Enum may mix in, unchanged in how its cases are named."""
@@ -77,9 +82,12 @@ WRAPPERS = {
 class FieldFacts:
     """The ``fields`` or ``cases`` of each class one module declares."""
 
-    def __init__(self, tree: ast.Module, module: str, resolve: Resolve, members: ClassMembers) -> None:
+    def __init__(
+        self, tree: ast.Module, module: str, resolve: Resolve, members: ClassMembers, index: ProjectModuleIndex
+    ) -> None:
         self.resolve = resolve
         self.members = members
+        self.names = FieldNames(tree, module, resolve, index)
         declared = [item for item in ast.walk(tree) if isinstance(item, ast.ClassDef)]
         counts = Counter(f"{module}.{item.name}" for item in declared)
         # A class this file declares once, by the name its references resolve to.
@@ -155,6 +163,7 @@ class FieldFacts:
         found: dict[str, dict[str, Any]] = {}
         opened = False
         total = not any(keyword.arg == "total" and _not_true(keyword) for keyword in node.keywords)
+        params = {param.name for param in getattr(node, "type_params", [])}
         for item in node.body:
             opened = opened or self.body_opens(item, kind)
             if not isinstance(item, ast.AnnAssign) or not isinstance(item.target, ast.Name):
@@ -168,6 +177,7 @@ class FieldFacts:
             if wrappers & {"ClassVar", "KW_ONLY"} or (kind == "pydantic" and name.startswith("_")):
                 continue
             opened = opened or "InitVar" in wrappers or self.renames([annotation, item.value])
+            opened = opened or self.names.opens(item.annotation, item.value, params)
             required = self.required(kind, item.value, wrappers, metadata, total)
             found[name] = {"name": name, "type": ast.unparse(inner), "required": required, "line": item.lineno}
         return [found[name] for name in sorted(found)], opened
@@ -241,16 +251,23 @@ class FieldFacts:
         An Enum whose members this body may not show (a decorator, a keyword,
         a base it cannot read, an ``_ignore_``, a tuple target, a statement
         that may bind names, :meth:`ClassMembers.opens_fields`'s causes) sends
-        none. A ``_missing_``, ``__new__`` or ``_generate_next_value_`` may
-        give a value no case is written with, so the cases carry none.
+        none, and so does one over a class of this file that does. A
+        :data:`VALUE_HOOKS` method on the Enum or any class of its lineage,
+        mixins included, may give a value no case is written with, so the
+        cases then carry none.
         """
-        if self.enum_opens(node):
+        lineage = self.enum_lineage(node)
+        if lineage is None:
             return {}
         found: dict[str, str | None] = {}
-        defined: set[str] = set()
+        defined = {
+            item.name
+            for each in lineage
+            for item in each.body
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
         for item in node.body:
             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                defined.add(item.name)
                 continue
             if isinstance(item, ast.Pass) or (isinstance(item, ast.Expr) and _string_value(item.value) is not None):
                 continue
@@ -266,20 +283,35 @@ class FieldFacts:
                 return {}  # A private name is a member before 3.11 and not after.
             if not is_dunder(name) and not _is_sunder(name):
                 found[name] = _literal(item.value)
-        valued = None not in found.values() and not defined & {"_missing_", "__new__", "_generate_next_value_"}
+        valued = None not in found.values() and not defined & VALUE_HOOKS
         listed = [{"name": name, **({"value": found[name]} if valued else {})} for name in sorted(found)]
         return _listed("cases", listed)
 
-    def enum_opens(self, node: ast.ClassDef) -> bool:
-        """Whether an Enum's decorators, keywords or bases may give it members its body does not show."""
-        if node.keywords or any(self.qualified(item) not in ENUM_DECORATORS for item in node.decorator_list):
-            return True
-        for base in node.bases:
-            named = self.qualified(base)
-            mixin = isinstance(base, ast.Name) and base.id in ENUM_MIXINS and self.members.bindings()[base.id] == 0
-            if not mixin and ROOTS.get(named or "") != "enum" and named not in self.classes:
-                return True
-        return self.members.opens_fields(node)
+    def enum_lineage(self, node: ast.ClassDef) -> list[ast.ClassDef] | None:
+        """The Enum and every class of this file it derives from, mixins included; None when one may hide members.
+
+        Each class's decorators, keywords and :meth:`ClassMembers.opens_fields`
+        causes count, and every base must be an Enum root, a ``str`` or
+        ``int`` mixin, or a class of this file.
+        """
+        lineage: list[ast.ClassDef] = []
+        pending = [node]
+        while pending:
+            current = pending.pop()
+            if current in lineage:
+                continue
+            lineage.append(current)
+            decorated = any(self.qualified(item) not in ENUM_DECORATORS for item in current.decorator_list)
+            if current.keywords or decorated or self.members.opens_fields(current):
+                return None
+            for base in current.bases:
+                named = self.qualified(base)
+                mixin = isinstance(base, ast.Name) and base.id in ENUM_MIXINS and self.members.bindings()[base.id] == 0
+                if named in self.classes:
+                    pending.append(self.classes[named])
+                elif not mixin and ROOTS.get(named or "") != "enum":
+                    return None
+        return lineage
 
 
 def merge_field_facts(attributes: dict[str, Any], found: dict[str, Any]) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import pytest
@@ -13,7 +14,8 @@ ENUM = "import enum\nfrom enum import Enum, IntEnum, auto\n"
 
 
 def _class(project, scan_collect, source: str, name: str = "C", files: dict[str, str] | None = None) -> dict[str, Any]:
-    [*_, contribution] = scan_collect(project({**(files or {}), "m.py": source}), [*(files or {}), "m.py"])
+    contributions = scan_collect(project({**(files or {}), "m.py": source}), [*(files or {}), "m.py"])
+    [contribution] = [each for each in contributions if each["owner_key"].endswith(":m.py")]
     nodes = {node["canonical_name"]: node["attributes"] for node in contribution["nodes"] if node["kind"] == "class"}
     return nodes[f"m.{name}"]
 
@@ -434,3 +436,120 @@ def test_an_enum_whose_members_may_differ_sends_no_cases(project, scan_collect, 
 
     assert "cases" not in attributes
     assert "fields" not in attributes
+
+
+ALIASED = "from typing import Annotated\nAliasedId = Annotated[int, Field(alias='userId')]\n"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        ALIASED + "class C(BaseModel):\n    user_id: AliasedId\n",
+        ALIASED + "class C(BaseModel):\n    user_id: 'AliasedId'\n",
+        ALIASED + "class C(BaseModel):\n    user_id: list[AliasedId]\n",
+        ALIASED + "class C(BaseModel):\n    user_id: 'list[AliasedId] | None' = None\n",
+        ALIASED + "class C(BaseModel):\n    user_id: Annotated[int, ID_FIELD]\nID_FIELD = Field(alias='userId')\n",
+        "ID_FIELD = Field(alias='userId')\nclass C(BaseModel):\n    user_id: int = ID_FIELD\n",
+        "class C(BaseModel):\n    user_id: Missing\n",
+        "LIMIT: int = 3\nclass C(BaseModel):\n    user_id: int = LIMIT\n",
+        "class C(BaseModel):\n    user_id: list['Owner[']\n",
+        "def AliasedId(): pass\nclass C(BaseModel):\n    user_id: AliasedId\n",
+    ],
+)
+def test_a_field_whose_type_or_value_is_a_name_that_may_hold_an_alias_opens(project, scan_collect, body: str) -> None:
+    source = PYDANTIC + body
+
+    assert _class(project, scan_collect, source).get("fields_open") is True
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="`type X = …` parses from 3.12")
+def test_a_type_statement_alias_opens(project, scan_collect) -> None:
+    source = PYDANTIC + "from typing import Annotated\ntype AliasedId = Annotated[int, Field(alias='userId')]\n"
+    source += "class C(BaseModel):\n    user_id: AliasedId\n"
+
+    assert _class(project, scan_collect, source).get("fields_open") is True
+
+
+@pytest.mark.parametrize(
+    "imported",
+    [
+        "from aliases import AliasedId\nclass C(BaseModel):\n    user_id: AliasedId\n",
+        "import aliases\nclass C(BaseModel):\n    user_id: aliases.AliasedId\n",
+        "from aliases import ID_FIELD\nclass C(BaseModel):\n    user_id: int = ID_FIELD\n",
+        "import aliases\nclass C(BaseModel):\n    user_id: aliases\n",
+    ],
+)
+def test_an_alias_imported_from_another_project_file_opens(project, scan_collect, imported: str) -> None:
+    files = {"aliases.py": PYDANTIC + ALIASED + "ID_FIELD = Field(alias='userId')\nclass Shared:\n    pass\n"}
+
+    assert _class(project, scan_collect, PYDANTIC + imported, files=files).get("fields_open") is True
+
+
+def test_names_that_are_types_keep_the_list_closed(project, scan_collect) -> None:
+    files = {"shared.py": "class Shared:\n    pass\n"}
+    source = (
+        PYDANTIC
+        + "import datetime\nimport typing\nfrom decimal import Decimal\nfrom enum import Enum\n"
+        + "from typing import Annotated, Literal, NewType, Optional, TypeVar\nfrom shared import Shared\n"
+        + "T = TypeVar('T')\nUserId = NewType('UserId', int)\n"
+        + "class Color(Enum):\n    RED = 'r'\n"
+        + "class Owner:\n    pass\n"
+        + "class C(BaseModel):\n"
+        + "    a: Optional[int]\n"
+        + "    b: Literal['x', 'y']\n"
+        + "    c: list['Owner'] = []\n"
+        + "    d: Annotated[int, 'a doc string']\n"
+        + "    e: Color = Color.RED\n"
+        + "    f: UserId\n"
+        + "    g: datetime.datetime\n"
+        + "    h: typing.Optional[Decimal] = None\n"
+        + "    i: Shared\n"
+        + "    j: dict[str, list[T]] = {}\n"
+        + "    k: 'Owner | None' = None\n"
+    )
+    attributes = _class(project, scan_collect, source, files=files)
+
+    assert "fields_open" not in attributes, attributes
+    assert len(attributes["fields"]) == 11
+
+
+@pytest.mark.parametrize(
+    ("source", "name"),
+    [
+        (ENUM + "class C(Enum):\n    A = 'a'\n    def __init__(self, v):\n        self._value_ = v.upper()\n", "C"),
+        (
+            ENUM
+            + "class NewBase(Enum):\n    def __new__(cls, v):\n        obj = object.__new__(cls)\n"
+            + "        obj._value_ = v * 2\n        return obj\nclass C(NewBase):\n    A = 1\n",
+            "C",
+        ),
+        (
+            ENUM
+            + "class MissBase(Enum):\n    @classmethod\n    def _missing_(cls, value):\n        return None\n"
+            + "class C(MissBase):\n    A = 'a'\n",
+            "C",
+        ),
+        (
+            ENUM
+            + "class UpperMixin(str):\n    def __new__(cls, v):\n        return str.__new__(cls, v.upper())\n"
+            + "class C(UpperMixin, Enum):\n    A = 'a'\n",
+            "C",
+        ),
+    ],
+)
+def test_an_enum_whose_lineage_may_rewrite_values_sends_none(project, scan_collect, source: str, name: str) -> None:
+    attributes = _class(project, scan_collect, source, name)
+
+    assert attributes["cases"] == [{"name": "A"}]
+
+
+def test_an_enum_over_a_same_file_base_that_opens_sends_no_cases(project, scan_collect) -> None:
+    source = ENUM + "class Base(Enum):\n    for _ in range(1):\n        pass\nclass C(Base):\n    A = 'a'\n"
+
+    assert "cases" not in _class(project, scan_collect, source)
+
+
+def test_an_enum_reaching_one_mixin_twice_keeps_its_values(project, scan_collect) -> None:
+    source = ENUM + "class A(str):\n    pass\nclass B(A):\n    pass\nclass C(B, A, Enum):\n    X = 'x'\n"
+
+    assert _class(project, scan_collect, source)["cases"] == [{"name": "X", "value": "x"}]

@@ -1,6 +1,9 @@
 //! The fields a named-field struct lists and the cases a unit-only enum
 //! lists, for the test-fidelity fixture checks (protocol "Field lists").
 //!
+//! Only a struct or enum that derives `Deserialize` (directly or through a
+//! `cfg_attr`) sends a list: a hand-written impl may read any shape.
+//!
 //! A list is a claim about the keys serde reads, and one that looks whole
 //! but is not gives false drift later, so every doubt opens it. A struct's
 //! list is `fields_open` for any `serde` key this module does not know to
@@ -94,6 +97,9 @@ struct Reading {
     serde: bool,
     /// `with` or `deserialize_with`: the wire value is not the declared type.
     untyped: bool,
+    /// `Deserialize` is derived, directly or through a `cfg_attr`: without
+    /// it a hand-written impl may read any shape.
+    deserialize: bool,
 }
 
 /// Queue the `fields` and `cases` of every struct and enum in `items`,
@@ -164,7 +170,9 @@ fn record(
 }
 
 /// A named-field struct's `fields`, sorted by name, with `fields_open` and
-/// `fields_truncated` when they apply; nothing for a tuple or unit struct.
+/// `fields_truncated` when they apply; nothing for a tuple or unit struct,
+/// or one that does not derive `Deserialize`, whose hand-written impl (in
+/// any file, before or after it) may read another shape.
 fn struct_fields(node: &syn::ItemStruct) -> Map<String, Value> {
     let syn::Fields::Named(named) = &node.fields else {
         return Map::new();
@@ -172,6 +180,9 @@ fn struct_fields(node: &syn::ItemStruct) -> Map<String, Value> {
     let mut container = Reading::default();
     for attr in &node.attrs {
         read_container(&attr.meta, &mut container);
+    }
+    if !container.deserialize {
+        return Map::new();
     }
     let params: BTreeSet<String> = node
         .generics
@@ -226,7 +237,7 @@ fn enum_cases(node: &syn::ItemEnum) -> Map<String, Value> {
         }
         names.insert(ident_name(&variant.ident));
     }
-    if container.open || container.serde {
+    if container.open || container.serde || !container.deserialize {
         return Map::new();
     }
     let cases = names
@@ -251,7 +262,7 @@ fn listed(key: &str, mut entries: Vec<Value>) -> Map<String, Value> {
 fn read_container(meta: &Meta, reading: &mut Reading) {
     let path = meta.path();
     if path.is_ident("derive") {
-        reading.open |= !derives_closed(meta);
+        read_derive(meta, reading);
     } else if path.is_ident("serde") {
         read_serde(meta, reading, false);
     } else if path.is_ident("cfg_attr") {
@@ -285,27 +296,34 @@ fn applied(meta: &Meta, reading: &mut Reading, read: fn(&Meta, &mut Reading)) {
     }
 }
 
-/// Whether every derive in a `derive(...)` is one of [`DERIVES`], spelled
-/// bare or through one of [`DERIVE_CRATES`].
-fn derives_closed(meta: &Meta) -> bool {
+/// Read a `derive(...)`: one outside [`DERIVES`], or not spelled bare or
+/// through one of [`DERIVE_CRATES`], opens, and a `Deserialize` among the
+/// rest is recorded; one that does not parse opens.
+fn read_derive(meta: &Meta, reading: &mut Reading) {
     let parsed = meta.require_list().and_then(|list| {
         list.parse_args_with(
             syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
         )
     });
-    parsed.is_ok_and(|paths| {
-        paths.iter().all(|path| {
-            let segments: Vec<String> = path
-                .segments
-                .iter()
-                .map(|segment| ident_name(&segment.ident))
-                .collect();
-            let known = segments
-                .last()
-                .is_some_and(|last| DERIVES.contains(&last.as_str()));
-            known && (segments.len() == 1 || DERIVE_CRATES.contains(&segments[0].as_str()))
-        })
-    })
+    let Ok(paths) = parsed else {
+        reading.open = true;
+        return;
+    };
+    for path in &paths {
+        let segments: Vec<String> = path
+            .segments
+            .iter()
+            .map(|segment| ident_name(&segment.ident))
+            .collect();
+        let last = segments.last().map_or("", String::as_str);
+        if DERIVES.contains(&last)
+            && (segments.len() == 1 || DERIVE_CRATES.contains(&segments[0].as_str()))
+        {
+            reading.deserialize |= last == "Deserialize";
+        } else {
+            reading.open = true;
+        }
+    }
 }
 
 /// Read a `serde(...)` attribute's keys: any key not known to leave the
