@@ -68,9 +68,9 @@ final class OverMockingTest extends TestCase
     public static function frameworkImports(): iterable
     {
         yield 'typescript' => ['typescript', 'tests/a.test.ts', ['vitest', '@vitest/expect', 'jest', '@jest/globals']];
-        yield 'php' => ['php', 'tests/ATest.php', ['PHPUnit\\Framework\\TestCase', 'Mockery', 'Mockery\\MockInterface', 'Prophecy\\Argument', 'Pest', 'Pest\\Expectation']];
+        yield 'php' => ['php', 'tests/ATest.php', ['PHPUnit\\Framework\\TestCase', '\\PHPUnit\\Framework\\Assert', 'phpunit\\framework\\mockobject', 'Mockery', 'Mockery\\MockInterface', 'Prophecy\\Argument', 'Pest', 'Pest\\Expectation']];
         yield 'python' => ['python', 'tests/test_a.py', ['unittest', 'unittest.mock', 'mock', 'pytest', 'pytest_mock']];
-        yield 'rust' => ['rust', 'tests/a.rs', ['mockall', 'mockall::predicate', 'faux', 'mry', 'mockers', 'mockiato', 'mocktopus', 'mock_derive', 'galvanic', 'std', 'std::sync', 'pretty_assertions']];
+        yield 'rust' => ['rust', 'tests/a.rs', ['mockall', 'mockall::predicate', 'faux', 'mry', 'mockers', 'mockiato', 'mocktopus', 'mock_derive', 'galvanic', 'std', 'std::sync', 'pretty_assertions', 'pretty-assertions', 'mock-derive']];
     }
 
     /**
