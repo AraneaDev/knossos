@@ -417,10 +417,10 @@ final readonly class MockMembers
         return $names;
     }
 
-    /** Whether a listed name is one a mock needs nothing for: a constructor, an enum's built-ins. */
+    /** Whether a listed name is one a mock needs nothing for: a constructor, an enum's built-ins, an ECMAScript `#private` name no double reaches. */
     private static function isBuiltIn(string $name, string $language, NodeFact $type): bool
     {
-        return $language === 'php' ? strcasecmp($name, '__construct') === 0 || $type->kind === 'enum' : $name === 'constructor';
+        return $language === 'php' ? strcasecmp($name, '__construct') === 0 || $type->kind === 'enum' : $name === 'constructor' || str_starts_with($name, '#');
     }
 
     /**

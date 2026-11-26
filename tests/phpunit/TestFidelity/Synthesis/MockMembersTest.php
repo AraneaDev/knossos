@@ -171,6 +171,20 @@ final class MockMembersTest extends KnossosTestCase
         assertSame([['name' => 'label', 'reason' => 'no signature recorded: an accessor, a docblock @method, or a member the scan gives no node']], $members->omitted);
     }
 
+    public function testAnEcmaScriptPrivateNameIsNoMember(): void
+    {
+        // `#rows = new Map()` (the TypeScript worker's own ReadTable): no double can reach it, so it is
+        // neither a member nor an omission, and the list stays complete.
+        $class = $this->type('ts:class:src/a.ts#ReadTable', 'class', ['member_names' => ['#rows', '#size', 'refer']]);
+        $this->method($class, 'refer');
+
+        $members = $this->members($class, 'typescript');
+
+        assertSame(['refer'], self::names($members->members));
+        assertSame([], $members->omitted);
+        self::assertTrue($members->complete);
+    }
+
     public function testAnOpenListIsIncomplete(): void
     {
         $open = $this->type('ts:class:src/a.ts#Open', 'class', ['member_names' => ['a'], 'member_names_open' => true]);
