@@ -78,8 +78,9 @@ final readonly class DtoMatch
     /**
      * Where the records of `$type` are in `$root` (`staleFixtures.ts:610-666`):
      * a top-level array's objects; the objects under a key that names the
-     * type; else, when the object carries none of the type's fields, those of
-     * any top-level array; else the object itself.
+     * type; else, when the object carries none of the type's fields, its values
+     * when every one is an object (a map of id to record), or those of any
+     * top-level array; else the object itself.
      *
      * @return list<Value>
      */
@@ -100,6 +101,10 @@ final readonly class DtoMatch
             }
         }
         $carriesFields = array_intersect($root->keys(), array_map(strval(...), array_keys($type->fields))) !== [];
+        if ($records === [] && !$carriesFields && $root->children !== [] && count(array_filter($root->children, static fn(Value $value): bool => !$value->isDict())) === 0) {
+            // A map of id to record (`{"a1": {...}, "a2": {...}}`): its keys are data, its values the records. A departure: Nemesis reads the map itself as the record.
+            return array_values($root->children);
+        }
         if ($records === [] && !$carriesFields) {
             foreach ($root->children as $value) {
                 if ($value->isList()) {

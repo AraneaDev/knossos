@@ -132,7 +132,7 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
                 'unmatched: rust/fixtures/cartons.fixture.json',
                 'unmatched: rust/fixtures/tracking.fixture.json',
                 'unparsable: tests/fixtures/invalid.json (invalid JSON)',
-                '0 fixture drift findings in 4 fixture files.',
+                '0 fixture drift findings in 5 fixture files.',
             ]) . "\n", $run('check-fixtures', [$projectId, 'rust/fixtures', 'tests/fixtures/invalid.json'], []));
         }, 'fixtures/healthy');
     }

@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -32,4 +33,10 @@ pub struct Bundle {
     pub id: u32,
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Quote {
+    pub price: Decimal,
+    pub quantity: u32,
 }

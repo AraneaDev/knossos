@@ -1,0 +1,4 @@
+{
+  "a1": { "accountId": "a1", "name": "Ada" },
+  "a2": { "accountId": "a2", "name": "Grace", "nickname": "amazing" }
+}

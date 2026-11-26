@@ -15,7 +15,8 @@ namespace Knossos\TestFidelity\Fixtures;
  * field the fixture leaves out, so only the fields the constructor itself
  * takes (`promoted`, PHP's promoted properties) are required of it. A PHP
  * constructor taking a parameter no field names (`keysRenamed`,
- * `__construct(int $amount)` setting `$this->cents`) says the wire's keys are
+ * `__construct(int $amount)` setting `$this->cents`), or a private or
+ * protected one reached only through a factory, says the wire's keys are
  * not the fields' names at all.
  */
 final readonly class FixtureType

@@ -68,6 +68,17 @@ final class Customer
     protected array $cache;
 }
 
+/** Built only through a factory, which reads keys its fields do not name. */
+final class Rate
+{
+    private function __construct(public readonly int $basisPoints) {}
+
+    public static function fromArray(array $data): self
+    {
+        return new self((int) round($data['percent'] * 100));
+    }
+}
+
 /** Answers to any property name. */
 class Sack
 {

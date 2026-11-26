@@ -58,6 +58,13 @@ export interface SnakeRecord {
   placed_at: string;
 }
 
+/** Held in a fixture as a map of id to record. */
+export interface AccountRecord {
+  accountId: string;
+  name: string;
+  nickname?: string;
+}
+
 /** No constructor; its non-public fields are set by its own code, never read from a fixture. */
 export class Vault {
   vaultId!: string;

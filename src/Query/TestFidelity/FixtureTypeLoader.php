@@ -151,7 +151,8 @@ final readonly class FixtureTypeLoader
                 }
             }
             $params = $constructor->attributes['signature']['params'] ?? null;
-            $renamed = !is_array($params) || array_filter($params, static fn(mixed $param): bool => !is_array($param) || !isset($fields[(string) ($param['name'] ?? '')])) !== [];
+            // A private or protected constructor is reached only through a factory, which may read any key.
+            $renamed = ($constructor->attributes['visibility'] ?? 'public') !== 'public' || !is_array($params) || array_filter($params, static fn(mixed $param): bool => !is_array($param) || !isset($fields[(string) ($param['name'] ?? '')])) !== [];
         }
 
         return new FixtureType($node->displayName, $node->canonicalName, $language, $node->evidence->relativePath, $fields, $magic, $constructor !== null, $renamed, $promoted);

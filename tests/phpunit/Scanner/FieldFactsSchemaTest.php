@@ -28,6 +28,7 @@ final class FieldFactsSchemaTest extends KnossosTestCase
 
         // An open list (a rename, an alias generator, a decorator, an ignored key) reads as none.
         assertSame([
+            'AccountRecord' => ['accountId', 'name', 'nickname'],
             'AddressRecord' => ['city', 'street'],
             'Article' => ['id', 'tags', 'title'],
             'Bag' => ['id'],
@@ -52,6 +53,7 @@ final class FieldFactsSchemaTest extends KnossosTestCase
             'Parcel' => ['courier', 'id', 'label', 'weight_kg'],
             'Price' => ['cents', 'currency'],
             'Priority' => ['High' => null, 'Low' => null],
+            'Rate' => ['basisPoints'],
             'RenamedUser' => [],
             'RouteRecord' => ['destination', 'lookup', 'reference', 'stops'],
             'Sack' => ['id'],
@@ -79,6 +81,7 @@ final class FieldFactsSchemaTest extends KnossosTestCase
             'Carton' => [],
             'Dock' => ['North' => 'North', 'South' => 'South'],
             'Pallet' => ['dock', 'id', 'layers', 'note'],
+            'Quote' => ['price', 'quantity'],
             'Tracking' => [],
         ], $this->lists(['rs']));
     }

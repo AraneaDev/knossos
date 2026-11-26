@@ -146,6 +146,12 @@ final class DtoMatchTest extends KnossosTestCase
 
         self::assertSame([[1, ['app', 'mode', 'run', 'gaps']]], self::records($json, $meta));
         self::assertSame([[1, ['mode', 'run', 'gaps']]], self::records('{"mode": "baseline", "run": 1, "gaps": [{"kind": "idle"}]}', $meta));
+        // A map of id to record: every value an object, and none of the type's fields at the top.
+        $account = self::type('Account', 'accountId', 'name');
+        self::assertSame([[1, ['accountId', 'name']], [2, ['accountId']]], self::records('{"a1": {"accountId": "a1", "name": "A"},' . "\n" . '"a2": {"accountId": "a2"}}', $account));
+        // A map with a scalar among its values, or one carrying a field, is still read as before.
+        self::assertSame([[1, ['a1', 'n']]], self::records('{"a1": {"accountId": "a1"}, "n": 2}', $account));
+        self::assertSame([[1, ['name', 'a1']]], self::records('{"name": "x", "a1": {"accountId": "a1"}}', $account));
         // An object carrying none of them, and no array, is still the one record.
         self::assertSame([[1, ['x']]], self::records('{"x": 1}', $meta));
         // A scalar document holds no record.

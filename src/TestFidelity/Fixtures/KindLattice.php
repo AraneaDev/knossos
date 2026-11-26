@@ -32,14 +32,20 @@ final class KindLattice
 
     private const PY_ASYNC = '/^(?:Awaitable|Coroutine)\s*\[([\s\S]+)]$/D';
 
-    /** The kinds of `canon` (`analyzer.ts:1070-1096`), each matched on a type's lower-case last segment. */
+    /**
+     * The kinds of `canon` (`analyzer.ts:1070-1096`), each matched on a
+     * type's lower-case last segment. `decimal` is not a float here, as it is in
+     * Nemesis: `Decimal` and `BigDecimal` (rust_decimal, bigdecimal, a
+     * TypeScript decimal library) read a string as readily as a number, so
+     * they are names, and not judged.
+     */
     private const KINDS = [
         'wild' => '/^(?:mixed|any|unknown|self|static|this|json|jsonvalue|serializable)$/D',
         'string' => '/^(?:string|str|&str|text|char)$/D',
         'bytes' => '/^(?:bytes|bytearray|memoryview)$/D',
         'bool' => '/^(?:bool|boolean)$/D',
         'int' => '/^(?:int|integer|long|short|byte|bigint|usize|isize|[iu](?:8|16|32|64|128))$/D',
-        'float' => '/^(?:float|double|number|real|decimal|f32|f64)$/D',
+        'float' => '/^(?:float|double|number|real|f32|f64)$/D',
         'void' => '/^(?:void|none|nonetype|unit|never|nothing)$/D',
         'null' => '/^null$/D',
         'undefined' => '/^undefined$/D',

@@ -10,6 +10,7 @@ use Knossos\TestFidelity\Fixtures\FixtureDrift;
 use Knossos\TestFidelity\Fixtures\FixtureType;
 use Knossos\TestFidelity\Fixtures\FixtureTypes;
 use Knossos\TestFidelity\Fixtures\JsonDocument;
+use Knossos\TestFidelity\Fixtures\YamlDocument;
 use Knossos\TestFidelity\OnRequest\OnRequestFinding;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\Tests\Phpunit\KnossosTestCase;
@@ -178,6 +179,15 @@ final class FixtureDriftTest extends KnossosTestCase
         ], self::drift('{"cents": [], "tags": "x", "label": {}, "owner": null, "any": 1, "code": "c"}', 'Money', [$money]));
     }
 
+    public function testADecimalTakesAStringOrANumber(): void
+    {
+        // rust_decimal and bigdecimal read "12.50" as readily as 12.5: a decimal is a name, not a float (a departure from Nemesis).
+        $quote = new FixtureType('Quote', 'healthy::Quote', 'rust', 'src/lib.rs', ['price' => self::field('Decimal'), 'total' => self::field('rust_decimal::Decimal'), 'big' => self::field('BigDecimal')]);
+        self::assertSame([], self::drift('[{"price": "12.50", "total": 3, "big": "1e400"}]', 'Quote', [$quote]));
+        $ts = self::ts('PriceRecord', ['amount' => self::field('Decimal'), 'cost' => self::field('number')]);
+        self::assertSame(["kind_mismatch 1 Fixture 'consignments.fixture.json' has 'cost' as string but PriceRecord declares 'number'."], self::drift('[{"amount": "1.10", "cost": "x"}]', 'PriceRecord', [$ts]));
+    }
+
     public function testACaseTheEnumNoLongerHas(): void
     {
         $lane = ['language' => 'php', 'name' => 'Lane', 'canonical' => 'FixturesEnum\Lane', 'cases' => new EnumCases(['Fast' => 'fast', 'Slow' => 'slow'])];
@@ -207,6 +217,18 @@ final class FixtureDriftTest extends KnossosTestCase
         // A name two enums share settles nothing.
         $other = ['language' => 'typescript', 'name' => 'Lane', 'canonical' => 'src/other.ts#Lane', 'cases' => new EnumCases(['Fast' => 'fast'])];
         self::assertSame([], self::drift('{"lane": "express"}', 'LaneRecord', [$record], [$implicit, $other]));
+    }
+
+    public function testAYamlScalarOfAmbiguousKindIsNotJudged(): void
+    {
+        $order = self::ts('OrderRecord', ['qty' => self::field('number'), 'insured' => self::field('boolean'), 'code' => self::field('string')]);
+        $types = new FixtureTypes([$order], [], ['OrderRecord' => 1], TestFidelityGraph::fromContributions([]));
+        $root = (YamlDocument::parse("- qty: 1_000\n  insured: yes\n  code: 010\n- qty: lots\n  insured: true\n  code: x\n") ?? self::fail())->root;
+
+        self::assertSame(
+            ["kind_mismatch 4 Fixture 'orders.yaml' has 'qty' as string but OrderRecord declares 'number'."],
+            array_map(static fn(OnRequestFinding $finding): string => sprintf('%s %d %s', $finding->subRule, $finding->line, $finding->message), FixtureDrift::check('fixtures/orders.yaml', DtoMatch::recordsOf($root, $order), $order, $types)),
+        );
     }
 
     public function testAMagicTypeTakesAnyKey(): void
