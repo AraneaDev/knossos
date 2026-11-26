@@ -18,7 +18,7 @@ final readonly class TestFidelityToolDefinitions
      */
     public static function definitions(): array
     {
-        return [self::listTestRules(), self::verifyTestDoubles()];
+        return [self::listTestRules(), self::verifyTestDoubles(), self::checkFixtures()];
     }
 
     /**
@@ -61,6 +61,33 @@ final readonly class TestFidelityToolDefinitions
                     'symbol' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 500, 'description' => 'The canonical or display name, matched exactly; a name several types share is an error listing their canonical names.'],
                 ],
                 'required' => ['project_id', 'symbol'],
+                'additionalProperties' => false,
+            ],
+        ];
+    }
+
+    /**
+     * `check_fixtures`: the project's JSON and YAML fixtures against the types whose records they hold.
+     *
+     * @return array<string, mixed>
+     */
+    private static function checkFixtures(): array
+    {
+        return [
+            'name' => 'check_fixtures',
+            'title' => 'Check fixtures',
+            'description' => 'Check the JSON and YAML fixture files under test and fixture directories against the project type each holds records of, and list FIXTURE_DRIFT warnings: a field missing or no longer declared, a value of the wrong kind, an enum value that is no case. Use after changing a DTO, an entity or an enum.',
+            'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    ...ToolCatalog::commonReadProperties(),
+                    'project_id' => ['type' => 'string', 'minLength' => 1],
+                    'paths' => ['type' => 'array', 'maxItems' => 50, 'items' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 1000], 'description' => 'Project-relative fixture files or directories to check instead of every fixture; each JSON or YAML file under one is checked.'],
+                    'offset' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 100000, 'default' => 0],
+                    'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 200, 'default' => 50],
+                ],
+                'required' => ['project_id'],
                 'additionalProperties' => false,
             ],
         ];

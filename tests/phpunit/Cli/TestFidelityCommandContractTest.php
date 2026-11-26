@@ -18,7 +18,7 @@ use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The test-fidelity commands' CLI contract: `audit-tests`,
- * `list-test-rules` and `verify-test-doubles`, their options against their
+ * `list-test-rules`, `verify-test-doubles` and `check-fixtures`, their options against their
  * tools' schemas, and the text each prints. Kept apart from QueryCommandContractTest, which is at
  * its length cap (preflight F3).
  */
@@ -27,7 +27,7 @@ use PHPUnit\Framework\Attributes\Group;
 final class TestFidelityCommandContractTest extends KnossosTestCase
 {
     /** The arguments each command takes as positionals rather than options. */
-    private const POSITIONAL_ARGUMENTS = ['audit-tests' => ['project_id'], 'list-test-rules' => [], 'verify-test-doubles' => ['project_id', 'symbol']];
+    private const POSITIONAL_ARGUMENTS = ['audit-tests' => ['project_id'], 'list-test-rules' => [], 'verify-test-doubles' => ['project_id', 'symbol'], 'check-fixtures' => ['project_id', 'paths']];
 
     public function testEveryToolArgumentHasACliOptionOrPositional(): void
     {
@@ -114,6 +114,29 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
         });
     }
 
+    public function testCheckFixturesText(): void
+    {
+        $this->withScannedAudit(function (\Closure $run, string $projectId): void {
+            self::assertSame(implode("\n", [
+                "fixtures/users.fixture.json:4  FIXTURE_DRIFT warning  Fixture 'users.fixture.json' is missing required field 'email' of UserRecord.",
+                "fixtures/users.fixture.json:4  FIXTURE_DRIFT warning  Fixture 'users.fixture.json' is missing required field 'name' of UserRecord.",
+                '4 fixture drift findings in 1 fixture file.',
+            ]) . "\n", $run('check-fixtures', [$projectId], ['limit' => ['2'], 'offset' => ['1']]));
+            $json = json_decode($run('check-fixtures', [$projectId], ['json' => ['true']]), true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame([4, 1], [$json['data']['total'], $json['data']['scanned']]);
+        }, 'fixtures/nemesis-data');
+        // The paths are the positionals after the project; what was not checked, and why, comes before the summary.
+        $this->withScannedAudit(function (\Closure $run, string $projectId): void {
+            self::assertSame(implode("\n", [
+                'unmatched: rust/fixtures/bundles.fixture.json',
+                'unmatched: rust/fixtures/cartons.fixture.json',
+                'unmatched: rust/fixtures/tracking.fixture.json',
+                'unparsable: tests/fixtures/invalid.json (invalid JSON)',
+                '0 fixture drift findings in 4 fixture files.',
+            ]) . "\n", $run('check-fixtures', [$projectId, 'rust/fixtures', 'tests/fixtures/invalid.json'], []));
+        }, 'fixtures/healthy');
+    }
+
     public function testListTestRulesText(): void
     {
         $this->withScannedAudit(function (\Closure $run): void {
@@ -132,17 +155,17 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
     }
 
     /**
-     * Run `$test` against a scanned copy of `ts-audit` and a command runner that returns what it printed.
+     * Run `$test` against a scanned copy of a test-fidelity fixture (`ts-audit` by default) and a command runner that returns what it printed.
      *
      * @param \Closure(\Closure(string, list<string>, array<string, list<string>>): string, string, \PDO, string): void $test
      */
-    private function withScannedAudit(\Closure $test): void
+    private function withScannedAudit(\Closure $test, string $fixture = 'ts-audit'): void
     {
         $base = self::scratchPath('knossos-stale-test-fidelity-cli');
         $root = $base . '/project';
         $database = $base . '/data/knossos.sqlite';
         try {
-            $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/ts-audit', $root);
+            $this->copyTree(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/' . $fixture, $root);
             $runtime = new RuntimeFactory(self::repositoryRoot());
             $pdo = $runtime->database($database);
             $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;

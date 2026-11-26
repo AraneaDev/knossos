@@ -7,7 +7,7 @@ namespace Knossos\Query;
 use Closure;
 use InvalidArgumentException;
 use Knossos\Git\GitWorkingTreeProvider;
-use Knossos\Query\TestFidelity\{OnRequestFindings, ScanTierItems};
+use Knossos\Query\TestFidelity\{FixtureCheckService, OnRequestFindings, ScanTierItems};
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\PackagedLanguages;
 use Knossos\TestFidelity\{ActiveTestFindings, OnRequestCategory, TestFindingSuppressions, TestRuleCatalog};
@@ -17,7 +17,8 @@ use Throwable;
 
 /**
  * The test-fidelity findings of the active graph: test doubles that no longer
- * match the code they replace and assertions that cannot fail.
+ * match the code they replace, assertions that cannot fail, and fixtures
+ * whose records no longer fit their type.
  *
  * Two tiers. The scan tier's findings were stored by the scan that judged
  * them, and are only read here. The on-request tier's are computed from the
@@ -53,8 +54,9 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
 
     /**
      * @param ?GitWorkingTreeProvider $gitWorkingTree where scope `git-diff` reads the changed files; null makes that scope an error
+     * @param ?FixtureCheckService $fixtures what computes `FIXTURE_DRIFT`; one over the same database by default
      */
-    public function __construct(PDO $pdo, ?Closure $clock = null, private ?GitWorkingTreeProvider $gitWorkingTree = null)
+    public function __construct(PDO $pdo, ?Closure $clock = null, private ?GitWorkingTreeProvider $gitWorkingTree = null, private ?FixtureCheckService $fixtures = null)
     {
         parent::__construct($pdo, $clock);
     }
@@ -89,8 +91,11 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $filters = ['path_prefix' => $pathPrefix, 'confidence' => $confidence, 'category' => $category];
         $scan = $tier !== TestRuleCatalog::ON_REQUEST;
         $input = $tier === TestRuleCatalog::SCAN ? new OnRequestInput([], [], [], []) : (new OnRequestFindings($this->pdo, fn(): int => $this->now()))->load($projectId, $deadline, $changed);
+        // The fixture walk reads files, so it runs only when its category may be listed.
+        $fixtures = $tier === TestRuleCatalog::SCAN || ($category !== null && $category !== OnRequestCategory::FixtureDrift->value) ? ['findings' => [], 'languages' => [], 'partial' => false]
+            : ($this->fixtures ?? new FixtureCheckService($this->pdo, $this->clock))->findings($projectId, (string) $project['root_realpath'], $deadline);
         $onRequest = array_values(array_filter(
-            [...OverMocking::findings($input), ...StaleSince::findings($input, $ref)],
+            [...OverMocking::findings($input), ...StaleSince::findings($input, $ref), ...$fixtures['findings']],
             static fn(OnRequestFinding $finding): bool => !$suppressions->suppresses($finding->ruleId, $finding->category->value, $finding->subRule, $finding->file),
         ));
         $findings = new ActiveTestFindings($this->pdo, $projectId, $suppressions);
@@ -103,8 +108,8 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $data = [
             'items' => $items,
             'total' => $total,
-            'partial' => $input->partial,
-            'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions, $scan, $onRequest, $input->testFiles, OverMocking::languagesWithoutImports($input))],
+            'partial' => $input->partial || $fixtures['partial'],
+            'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions, $scan, $onRequest, $input->testFiles + $fixtures['languages'], OverMocking::languagesWithoutImports($input))],
             'suppressions_invalid' => $suppressions->invalid(),
             'pagination' => ['offset' => $offset, 'next_offset' => $next],
         ];
@@ -115,7 +120,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
             sprintf('%d test-fidelity finding%s.', $total, $total === 1 ? '' : 's'),
             $changed === null ? $data : $data + ['git' => ['base_ref' => $ref, 'changed_files' => count($changed)]],
             [],
-            self::warnings($input, $scan, $timeoutMs, $category, $changed),
+            [...self::warnings($input, $scan, $timeoutMs, $category, $changed), ...($fixtures['partial'] ? [sprintf('FIXTURE_DRIFT was cut short by timeout_ms %d or a bound on the walk; the list holds what was checked by then.', $timeoutMs)] : [])],
             $next !== null,
         );
     }

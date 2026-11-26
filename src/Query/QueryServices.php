@@ -8,7 +8,7 @@ use Closure;
 use Knossos\Git\{GitHistoryProvider, GitWorkingTreeProvider};
 use Knossos\Query\CreationBrief\CreationBriefQueryService;
 use Knossos\Query\Drift\DriftOracle;
-use Knossos\Query\TestFidelity\{DoublesOfSymbol, SymbolResolution};
+use Knossos\Query\TestFidelity\{DoublesOfSymbol, FixtureCheckService, SymbolResolution};
 use PDO;
 
 /**
@@ -48,6 +48,7 @@ final readonly class QueryServices
         public DiagnosticsQueryService $diagnosticsQueries,
         public TestFidelityQueryService $testFidelityQueries,
         public DoublesOfSymbol $doublesOfSymbol,
+        public FixtureCheckService $fixtureChecks,
         public RefreshPolicy $refreshPolicy,
     ) {}
 
@@ -83,6 +84,7 @@ final readonly class QueryServices
         $diffQueries = new SnapshotDiffQuery($pdo, $clock);
         $gateQueries = new QualityGateQueryService($pdo, $clock, $policyQueries, $catalogQueries, $diffQueries);
         $changeQueries = new ChangeImpactQueryService($pdo, $clock, $impactQueries, $gitHistory, $gitWorkingTree);
+        $fixtureChecks = new FixtureCheckService($pdo, $clock);
 
         return new self(
             pdo: $pdo,
@@ -109,8 +111,9 @@ final readonly class QueryServices
             fileContextQueries: new FileContextQueryService($pdo, $clock),
             creationBriefQueries: new CreationBriefQueryService($pdo, $clock),
             diagnosticsQueries: new DiagnosticsQueryService($pdo, $clock),
-            testFidelityQueries: new TestFidelityQueryService($pdo, $clock, $gitWorkingTree),
+            testFidelityQueries: new TestFidelityQueryService($pdo, $clock, $gitWorkingTree, $fixtureChecks),
             doublesOfSymbol: new DoublesOfSymbol($pdo, $clock, new SymbolResolution($pdo, $componentQueries)),
+            fixtureChecks: $fixtureChecks,
             refreshPolicy: $refreshPolicy,
         );
     }

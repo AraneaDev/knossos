@@ -21,9 +21,10 @@ use PHPUnit\Framework\Attributes\Group;
  * and `audit_tests` share, the dashboard, the turn brief, the gate's metric
  * and SARIF, and `snapshot_diff`.
  *
- * A planted test file that only `OVER_MOCKING` judges, and a change to a
- * doubled class's file that only `STALE_SINCE` judges, leave each of them as
- * they were. Each plant is proved live first (preflight F16): `audit_tests`
+ * A planted test file that only `OVER_MOCKING` judges, a change to a
+ * doubled class's file that only `STALE_SINCE` judges, and a fixture whose
+ * records drifted from their type, which only `FIXTURE_DRIFT` judges, leave
+ * each of them as they were. Each plant is proved live first (preflight F16): `audit_tests`
  * lists it on request, so the equality is not one of two empty answers.
  */
 #[Group('test-fidelity')]
@@ -34,6 +35,9 @@ final class OnRequestIsolationTest extends KnossosTestCase
     private const PLANT = 'tests/overMocked.spec.ts';
 
     private const CONTROL = 'src/Notes.ts';
+
+    /** A fixture of `UserProfile` records that lost its `email`: only `FIXTURE_DRIFT` judges it. */
+    private const FIXTURE_PLANT = 'tests/fixtures/userProfiles.fixture.json';
 
     /** The class `tests/UserService.spec.ts` doubles: changed and uncommitted, it makes that spec stale. */
     private const TARGET = 'src/UserService.ts';
@@ -87,16 +91,24 @@ final class OnRequestIsolationTest extends KnossosTestCase
             file_put_contents($root . '/' . self::CONTROL, "export const NOTE = 1;\n");
             $without = $this->surfaces($pdo, $root, $baseline, [self::CONTROL]);
             self::assertSame([], $this->onRequestIn($pdo, self::PLANT));
+            self::assertSame([], $this->onRequestIn($pdo, self::FIXTURE_PLANT));
             self::assertSame([], $this->staleIn($pdo));
 
             file_put_contents($root . '/' . self::PLANT, self::PLANTED);
+            mkdir($root . '/tests/fixtures');
+            file_put_contents($root . '/' . self::FIXTURE_PLANT, '[{"id": "u-1", "displayName": "Ada"}]');
             file_put_contents($root . '/' . self::TARGET, (string) file_get_contents($root . '/' . self::TARGET) . "// reworked\n");
-            $with = $this->surfaces($pdo, $root, $baseline, [self::PLANT, self::TARGET]);
+            $with = $this->surfaces($pdo, $root, $baseline, [self::PLANT, self::TARGET, self::FIXTURE_PLANT]);
 
             // The plant is live: on request, it is over-mocked.
             self::assertSame([[self::PLANT, 1, 'OVER_MOCKING', 'warning']], array_map(
                 static fn(array $item): array => [$item['file'], $item['line'], $item['category'], $item['confidence']],
                 $this->onRequestIn($pdo, self::PLANT),
+            ));
+            // The fixture drifted from the type it holds records of.
+            self::assertSame([[self::FIXTURE_PLANT, 1, 'FIXTURE_DRIFT', 'warning']], array_map(
+                static fn(array $item): array => [$item['file'], $item['line'], $item['category'], $item['confidence']],
+                $this->onRequestIn($pdo, self::FIXTURE_PLANT),
             ));
             // And in scope git-diff, the spec that doubles the changed class is stale.
             self::assertNotSame([], $this->staleIn($pdo));

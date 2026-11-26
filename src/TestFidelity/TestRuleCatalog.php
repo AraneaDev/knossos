@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\TestFidelity;
 
+use Knossos\TestFidelity\Fixtures\FixtureDrift;
 use Knossos\TestFidelity\OnRequest\OverMocking;
 use Knossos\TestFidelity\Rules\{ArityMismatchRule, GhostMemberRule, MocksSubjectRule, ReturnDriftRule, TautologyRule, VisibilityBreachRule};
 
@@ -49,7 +50,7 @@ final class TestRuleCatalog
             self::rule(MocksSubjectRule::ID, FindingCategory::MocksSubject, $warning, ['mock_of_self'], 'A test replaces the module it is testing.'),
             self::rule(OverMocking::ID, OnRequestCategory::OverMocking, $warning, [OverMocking::SUB_RULE], 'At least 7 in 10 of a test file\'s dependencies are doubles, and fewer than 2 of its assertions read production code (Momus MOCK-001).'),
             self::rule('test.fidelity.stale_since.v1', OnRequestCategory::StaleSince, $warning, ['stale_mock'], 'A double\'s target changed since a git ref while the double\'s own file did not (scope git-diff; Momus DRIFT-006).'),
-            self::rule('test.fidelity.fixture_drift.v1', OnRequestCategory::FixtureDrift, $warning, ['not_a_case', 'kind_mismatch', 'missing_required', 'unknown_key'], 'A JSON or YAML fixture no longer matches the type whose shape it holds (Nemesis stale fixtures).'),
+            self::rule(FixtureDrift::ID, OnRequestCategory::FixtureDrift, $warning, FixtureDrift::SUB_RULES, 'A JSON or YAML fixture no longer matches the type whose shape it holds (Nemesis stale fixtures).'),
         ];
     }
 

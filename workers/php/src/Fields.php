@@ -35,8 +35,12 @@ final class Fields
     /** The renaming attribute and tag names, whatever namespace or alias they are written under. */
     private const RENAMING_NAMES = ['SerializedName', 'SerializedPath', 'Groups', 'MapInputName', 'MapName', 'MapOutputName'];
 
-    /** A docblock tag of a serializer: a renaming name, or any tag under a JMS or Serializer alias. */
-    private const SERIALIZER_TAG = '/(?<=[\s*])@(?:(?:JMS|Serializer)\\\\[A-Za-z]|(?:[A-Za-z_\\\\]+\\\\)?(?:SerializedName|SerializedPath|Groups|MapInputName|MapName|MapOutputName)\b)/';
+    /**
+     * A docblock tag of a serializer: a renaming name, Symfony's `@Ignore`
+     * and `@MaxDepth` (a key left off or cut short), or any tag under a JMS
+     * or Serializer alias.
+     */
+    private const SERIALIZER_TAG = '/(?<=[\s*])@(?:(?:JMS|Serializer)\\\\[A-Za-z]|(?:[A-Za-z_\\\\]+\\\\)?(?:SerializedName|SerializedPath|Groups|MapInputName|MapName|MapOutputName|Ignore|MaxDepth)(?![\w\\\\]))/';
 
     private function __construct() {}
 

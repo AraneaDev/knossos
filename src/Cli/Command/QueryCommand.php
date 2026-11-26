@@ -41,7 +41,7 @@ final class QueryCommand implements CliCommand
         'dependency-cycles', 'architecture-health', 'check-architecture', 'suggest-location', 'change-impact',
         'changed-files-impact', 'test-impact', 'review-diff', 'architecture-context', 'export-diagram', 'export-agent-brief', 'list-boundaries',
         'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief', 'audit-tests', 'list-test-rules',
-        'verify-test-doubles',
+        'verify-test-doubles', 'check-fixtures',
     ];
 
     /**
@@ -185,6 +185,7 @@ final class QueryCommand implements CliCommand
             'audit-tests' => self::auditLines($result),
             'list-test-rules' => self::ruleLines($result),
             'verify-test-doubles' => self::doubleLines($result),
+            'check-fixtures' => self::fixtureLines($result),
             'creation-brief' => $json ? '' : CreationBriefRenderer::lines($result->data, (new StalenessProbe($context->database()))->probe($result->projectId)),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],
@@ -241,6 +242,26 @@ final class QueryCommand implements CliCommand
         }
         array_push($lines, ...$result->warnings);
         $lines[] = $result->summary;
+
+        return implode("\n", $lines);
+    }
+
+    /** check-fixtures' text: audit-tests' lines, with each fixture file not checked and why before the summary. */
+    private static function fixtureLines(ResultEnvelope $result): string
+    {
+        $lines = explode("\n", self::auditLines($result));
+        $summary = array_pop($lines);
+        foreach ($result->data['unmatched'] as $unmatched) {
+            $best = $unmatched['best'];
+            $lines[] = sprintf('unmatched: %s%s', $unmatched['file'], $best === null ? '' : sprintf(' (nearest %s, score %d)', $best['type'], $best['score']));
+        }
+        foreach ($result->data['unparsable'] as $unparsable) {
+            $lines[] = sprintf('unparsable: %s (%s)', $unparsable['file'], $unparsable['reason']);
+        }
+        if ($result->data['skipped'] > 0) {
+            $lines[] = sprintf('skipped: %d', $result->data['skipped']);
+        }
+        $lines[] = $summary;
 
         return implode("\n", $lines);
     }

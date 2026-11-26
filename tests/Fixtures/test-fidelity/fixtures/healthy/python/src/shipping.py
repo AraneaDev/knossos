@@ -30,3 +30,21 @@ class Stop:
 class Manifest(TypedDict):
     reference: str
     courier: NotRequired[str]
+
+
+def to_camel(name: str) -> str:
+    head, *rest = name.split("_")
+    return head + "".join(part.title() for part in rest)
+
+
+class CamelOrder(BaseModel):
+    model_config = {"alias_generator": to_camel}
+    order_id: int
+
+
+@dataclass
+class Settings:
+    name: str
+
+    def __getattr__(self, item: str) -> str:
+        return ""

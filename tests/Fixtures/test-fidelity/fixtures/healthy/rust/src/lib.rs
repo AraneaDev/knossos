@@ -20,3 +20,16 @@ pub struct Pallet {
 pub struct Tracking {
     pub tracking_code: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct Carton {
+    #[serde(rename = "cartonId")]
+    pub carton_id: u32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Bundle {
+    pub id: u32,
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, String>,
+}

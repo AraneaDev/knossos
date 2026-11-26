@@ -327,6 +327,13 @@ final class ToolBindings
                     'symbol' => self::at('A symbol is required.'),
                 ],
             ],
+            'check_fixtures' => [
+                'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->services()->fixtureChecks->check(...$v),
+                'arguments' => [
+                    'project_id' => self::at('Usage: knossos check-fixtures <path|project-id> [PATH...] [--limit=N] [--offset=N] [--json]'),
+                    'paths' => self::rest(), 'limit' => [], 'offset' => [],
+                ],
+            ],
             // MCP only: the CLI's file-context is the pane's, a different answer.
             'file_context' => [
                 'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->fileContext(...$v),

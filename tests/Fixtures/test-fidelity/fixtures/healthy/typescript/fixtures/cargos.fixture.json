@@ -1,0 +1,4 @@
+[
+  { "id": "A-1", "weight": 12, "express": false, "tags": [], "meta": { "k": "v" }, "sentAt": "2026-11-26", "mode": "air" },
+  { "id": "A-2", "weight": 12.5, "express": true, "tags": ["fragile"], "meta": {}, "sentAt": "2026-11-27", "mode": "sea" }
+]

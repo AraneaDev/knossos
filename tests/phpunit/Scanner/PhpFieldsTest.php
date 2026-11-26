@@ -101,10 +101,11 @@ final class PhpFieldsTest extends KnossosTestCase
     {
         $nodes = $this->classLikes();
 
-        foreach (['SymfonyRenamed', 'SymfonyGrouped', 'SpatieMapped', 'JmsRenamed', 'JmsClassTag', 'AliasedAttribute'] as $class) {
+        foreach (['SymfonyRenamed', 'SymfonyGrouped', 'SpatieMapped', 'JmsRenamed', 'JmsClassTag', 'AliasedAttribute', 'SymfonyIgnored', 'SymfonyDepth'] as $class) {
             assertSame([$class, true], [$class, $nodes['Fields\\' . $class]->attributes['fields_open'] ?? null]);
         }
         assertSame(null, $nodes['Fields\Unrelated']->attributes['fields_open'] ?? null);
+        assertSame(null, $nodes['Fields\NotSerializerTags']->attributes['fields_open'] ?? null);
     }
 
     public function testMagicMembersLeaveTheListClosed(): void

@@ -80,3 +80,27 @@ class Typed
     public \Countable&\Traversable $both;
     public int|string $scalar;
 }
+
+/** Symfony's bare docblock tags, imported under their short names. */
+class SymfonyIgnored
+{
+    public string $id;
+
+    /** @Ignore */
+    public string $secret;
+}
+
+class SymfonyDepth
+{
+    /**
+     * @MaxDepth(2)
+     */
+    public array $children;
+}
+
+/** Tags that only end in a serializer's name. */
+class NotSerializerTags
+{
+    /** @codeCoverageIgnore @IgnoreAnnotation("x") @MaxDepthLimit */
+    public string $id;
+}

@@ -26,19 +26,42 @@ final class FieldFactsSchemaTest extends KnossosTestCase
     {
         $lists = $this->lists(['ts', 'php', 'py']);
 
+        // An open list (a rename, an alias generator, a decorator, an ignored key) reads as none.
         assertSame([
+            'AddressRecord' => ['city', 'street'],
+            'Article' => ['id', 'tags', 'title'],
             'Bag' => ['id'],
             'BagTest' => [],
+            'Basket' => ['count', 'items', 'owner'],
+            'CamelOrder' => [],
+            'CargoRecord' => ['express', 'id', 'meta', 'mode', 'sentAt', 'tags', 'weight'],
             'ConsignmentRecord' => ['destination', 'reference', 'stops', 'weightKg'],
+            'Coupon' => ['code', 'percent'],
             'Courier' => ['POST' => 'post', 'VAN' => 'van'],
+            'Envelope' => ['stamp'],
+            'ExposedRecord' => [],
+            'IgnoredSecret' => [],
+            'Invoice' => ['lines', 'memo', 'rate', 'total'],
+            'JmsUser' => [],
             'Labelled' => [],
             'Lane' => ['Fast' => 'fast', 'Slow' => 'slow'],
             'LaneRecord' => ['id', 'lane'],
             'Manifest' => ['courier', 'reference'],
+            'Member' => ['id', 'nickname', 'tier'],
             'Parcel' => ['courier', 'id', 'label', 'weight_kg'],
+            'Price' => ['cents', 'currency'],
+            'Priority' => ['High' => null, 'Low' => null],
+            'RenamedUser' => [],
+            'RouteRecord' => ['destination', 'lookup', 'reference', 'stops'],
+            'Sack' => ['id'],
+            'Settings' => ['name'],
             'ShipmentRecord' => ['express', 'id', 'weight'],
             'ShippingAddress' => ['city', 'street'],
+            'SnakeRecord' => ['order_id', 'placed_at'],
+            'Speed' => ['Fast' => 'fast', 'Slow' => 'slow'],
             'Stop' => ['city', 'notes'],
+            'Tier' => ['Free' => 'free', 'Gold' => 'gold'],
+            'TripRecord' => ['id', 'note', 'priority', 'speed'],
             'UserRecord' => ['email', 'id', 'name'],
         ], $lists);
     }
@@ -50,6 +73,8 @@ final class FieldFactsSchemaTest extends KnossosTestCase
         }
 
         assertSame([
+            'Bundle' => [],
+            'Carton' => [],
             'Dock' => ['North' => 'North', 'South' => 'South'],
             'Pallet' => ['dock', 'id', 'layers', 'note'],
             'Tracking' => [],

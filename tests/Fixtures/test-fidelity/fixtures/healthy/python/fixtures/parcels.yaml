@@ -1,0 +1,9 @@
+# parcels read by the import test
+parcels:
+  - id: 1
+    weight_kg: 2
+    courier: post
+  - id: 2
+    weight_kg: 1.5
+    label: fragile
+    courier: ~
