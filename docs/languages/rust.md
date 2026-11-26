@@ -128,6 +128,18 @@ one) adds its methods to each. A private `use` is a path from the module's
 descendants too, so `use super::platform;` in a child module names what the
 parent's `use` imports.
 
+A `fn` node carries its `signature` (see
+[Function signatures](../reference/scanner-protocol-v1.md#function-signatures)):
+the receiver as written (`&self`, `self: Box<Self>`), absent for an
+associated function, and the type parameters and where clause. A free
+function or an inherent method also carries `visibility`, `private` without
+`pub` and the restriction as written for `pub(crate)` and the like; plain
+`pub`, a trait's items and a trait impl's send none. `async: true` and
+`unsafe: true` mark the ones so declared. A `struct`, `enum` or
+`trait` with type parameters carries `type_params`, and `where` for a where
+clause. `synthesize_mock` reads them; the drift rules do not, since a Rust
+double is compile-checked.
+
 A node's `local_id` and both ends of an edge are written
 `rust:<kind>:<canonical>`. `canonical_name` itself carries no prefix. A raw
 identifier is named without its `r#`: `mod r#async;` is the module
@@ -581,8 +593,6 @@ the deferred-gaps tracker's:
   httpmock give no facts.
 - **Tests inside macros and doctests** (G5-14): a test in `proptest! {}`,
   `quickcheck!` or a project macro, and every doctest, are not read.
-- **Signatures for synthesis** (G5-15): Rust signatures carry no visibility,
-  receiver, `static` or `async`.
 - **A `const` from another file** (G5-16) is unknown to literal tracing.
 - **A mock reached through a re-export** (G5-17, `pub use inner::MockFoo`)
   that the walk does not follow makes no double.

@@ -20,7 +20,7 @@ import {
     isFunctionProperty,
     unwrapExpression,
 } from "./typescript-fact-utils.js";
-import { signatureOf } from "./signatures.js";
+import { mockFactsOf, signatureOf } from "./signatures.js";
 
 import { memberAttributes } from "./public-names.js";
 import { fieldFacts } from "./fields.js";
@@ -52,6 +52,7 @@ export function declarationDescriptor(node, { sourceFile, checker }) {
                 : {}),
             ...visibilityOf(modifiers),
             ...signatureAttribute(kind, node, sourceFile),
+            ...mockFactsOf(kind, node, sourceFile),
             ...memberAttributes(checker, node),
             ...fieldFacts(checker, node),
         },

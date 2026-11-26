@@ -437,11 +437,10 @@ fn functions_and_methods_carry_their_signature() {
         signature("rust:function:crate::scan"),
     );
     assert_eq!(
-        serde_json::json!({"params": [{"name": "key", "type": "&str"}], "returns": "Option<&str>"}),
+        serde_json::json!({"params": [{"name": "key", "type": "&str"}], "returns": "Option<&str>", "receiver": "&self"}),
         signature("rust:method:crate::Store::get"),
     );
-    let find =
-        serde_json::json!({"params": [{"name": "id", "type": "u64"}], "returns": "Option<String>"});
+    let find = serde_json::json!({"params": [{"name": "id", "type": "u64"}], "returns": "Option<String>", "receiver": "&self"});
     assert_eq!(find, signature("rust:method:crate::Finder::find"));
     let methods: Vec<&str> = nodes
         .iter()

@@ -305,6 +305,7 @@ impl Walk<'_> {
                     "class",
                     item.span(),
                 );
+                self.record_generics(&canonical, &node.generics);
                 self.walk_type_declaration(
                     &reference("class", &canonical),
                     container,
@@ -321,6 +322,7 @@ impl Walk<'_> {
                     "class",
                     item.span(),
                 );
+                self.record_generics(&canonical, &node.generics);
                 let fields: Vec<&syn::Fields> = node.variants.iter().map(|v| &v.fields).collect();
                 let variant_attrs: Vec<&[syn::Attribute]> =
                     node.variants.iter().map(|v| v.attrs.as_slice()).collect();
@@ -375,8 +377,7 @@ impl Walk<'_> {
             self.facts.enter_test_scope();
         }
         let canonical = self.declare(container, container_kind, &name, "function", span);
-        self.facts
-            .node_attribute(&canonical, "signature", signatures::signature_of(&node.sig));
+        self.record_signature(&canonical, &node.sig, Some(&node.vis));
         // A crate-root `fn main` is what the runtime invokes — nothing
         // calls or imports it, so without the executable mark the
         // whole entry point reads as dead code.
@@ -434,6 +435,7 @@ impl Walk<'_> {
             "interface",
             span,
         );
+        self.record_generics(&canonical, &node.generics);
         // A supertrait bound (`trait Named: Display`) names a trait the
         // declared trait extends. Only a plain trait bound is handled;
         // a lifetime bound (`trait Named: 'static`) names no node.
@@ -461,6 +463,7 @@ impl Walk<'_> {
                     "interface",
                     &method.attrs,
                     &method.sig,
+                    None,
                     method.default.as_ref(),
                     member.span(),
                     |_, _| {},

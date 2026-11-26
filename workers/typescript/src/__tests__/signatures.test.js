@@ -138,4 +138,20 @@ describe("signatureOf bounds", () => {
             ).truncated,
         ).toBeUndefined();
     });
+
+    it("keeps a function's type parameters as written", () => {
+        expect(
+            signature(
+                "class A { target<U extends string, V = number>(x: U): V { return y; } }",
+            ),
+        ).toEqual({
+            params: [{ name: "x", type: "U" }],
+            returns: "V",
+            type_params: ["U extends string", "V = number"],
+        });
+        expect(
+            signature("const target = <T,>(x: T): T => x;").type_params,
+        ).toEqual(["T"]);
+        expect(signature("function target() {}").type_params).toBeUndefined();
+    });
 });

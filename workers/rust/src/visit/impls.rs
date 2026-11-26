@@ -324,6 +324,8 @@ impl Walk<'_> {
                     "class",
                     &method.attrs,
                     &method.sig,
+                    // A trait impl's method is as public as the trait.
+                    node.trait_.is_none().then_some(&method.vis),
                     Some(&method.block),
                     member.span(),
                     |this, method_canonical| {
@@ -372,7 +374,8 @@ impl Walk<'_> {
     }
 
     /// Declare one trait or impl method under `owner` and walk its body, when
-    /// it has one. A member compiled only for tests is test code, as a free
+    /// it has one. `visibility` is an inherent method's, `None` for a trait's
+    /// item or a trait impl's. A member compiled only for tests is test code, as a free
     /// function is (see `Walk::walk_items`), so the whole member sits in a
     /// test scope. `annotate` adds the facts only one kind of member carries,
     /// given the method's canonical path, between declaring it and walking
@@ -385,6 +388,7 @@ impl Walk<'_> {
         owner_kind: &str,
         attrs: &[syn::Attribute],
         signature: &syn::Signature,
+        visibility: Option<&syn::Visibility>,
         block: Option<&syn::Block>,
         span: proc_macro2::Span,
         annotate: impl FnOnce(&mut Self, &str),
@@ -412,11 +416,7 @@ impl Walk<'_> {
             }
             None => self.declare(owner, owner_kind, &name, "method", span),
         };
-        self.facts.node_attribute(
-            &method_canonical,
-            "signature",
-            super::signatures::signature_of(signature),
-        );
+        self.record_signature(&method_canonical, signature, visibility);
         let outer = self.enter_type_params(&signature.generics);
         annotate(self, &method_canonical);
         if let Some(block) = block {

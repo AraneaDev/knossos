@@ -201,6 +201,27 @@ A Rust parameter bound by a pattern rather than a name is listed as `_`. A node
 whose function cannot be read, such as a property assigned the result of a
 call, has no `signature`.
 
+A TypeScript or Rust signature also carries `type_params`, the function's own
+type parameters each as written (`U extends string`, `T: Clone`, `'a`), and a
+Rust one `where`, its where clause as written, each only when there is one. A
+Rust signature carries `receiver`, the receiver as written (`&self`, `&mut
+self`, `self`, `mut self`, `self: Box<Self>`), absent for an associated
+function; the receiver is still not listed in `params`. A cut text sets
+`truncated` as a cut type does.
+
+Beside the signature, on the node: a TypeScript or Rust function or method
+declared `async` carries `"async": true`, and a Rust one declared `unsafe`
+carries `"unsafe": true`, each only when true (a Python method sends `async`
+always). A Rust free function or inherent method carries `visibility`:
+`private` when it has no `pub`, and the restriction as written (`pub(crate)`,
+`pub(super)`, `pub(in …)`) for a restricted one. Plain `pub`, a trait's
+items and a trait impl's methods send none, so an absent `visibility` means
+public from every worker. A TypeScript class or interface, and a Rust
+struct, enum or trait, with type parameters carries `type_params`, and
+a Rust one with a where clause `where`; a text cut to 80 characters ends in
+`…`. A mock template reads them all; the drift rules read none of them, and a
+Rust double stays compile-checked, so `VISIBILITY_BREACH` stays silent for it.
+
 #### Complete name lists
 
 All of it optional. A TypeScript module node may carry `exports` and a class
