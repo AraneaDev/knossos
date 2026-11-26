@@ -35,6 +35,9 @@
     },
     "test_fidelity_rescan_one_file_python": {
       "incremental_scan_seconds": 4
+    },
+    "test_fidelity_rescan_one_file_rust": {
+      "incremental_scan_seconds": 3
     }
   }
 }

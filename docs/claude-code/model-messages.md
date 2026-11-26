@@ -121,12 +121,20 @@ knossos: this turn introduced 1 test finding. Fix it before finishing:
 knossos: this turn introduced 1 stale mock and 2 other test findings. Fix them before finishing:
 ```
 
-The findings come from TypeScript, PHP and Python tests alike. A Python one
-names the double the way the test made it:
+The findings come from TypeScript, PHP, Python and Rust tests alike. A Python
+one names the double the way the test made it:
 
 ```text
 knossos: this turn introduced 1 stale mock. Fix it before finishing:
 - tests/test_ledger.py:8 unittest.mock.Mock ledger.Ledger stubs total, which Ledger no longer has; did you mean totals?
+```
+
+A Rust test never gives a stale mock, since the compiler rejects a double that
+no longer matches its trait. Its findings are assertions that cannot fail:
+
+```text
+knossos: this turn introduced 1 test finding. Fix it before finishing:
+- tests/mock_echo.rs:7 the assertion compares the stubbed value 7 with itself; it cannot fail
 ```
 
 The message lists at most ten, then `- …and 2 more (run audit_tests)`.
