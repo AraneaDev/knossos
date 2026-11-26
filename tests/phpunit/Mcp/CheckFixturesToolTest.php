@@ -115,7 +115,7 @@ final class CheckFixturesToolTest extends KnossosTestCase
             self::assertSame([], $data['items']);
             self::assertSame(0, $data['total']);
             // Every other fixture was matched to its type and found to fit it.
-            self::assertSame(26, $data['scanned']);
+            self::assertSame(28, $data['scanned']);
             self::assertSame(self::OPEN, array_column($data['unmatched'], 'file'));
             self::assertSame(self::UNPARSABLE, $data['unparsable']);
             self::assertSame([4, false], [$data['skipped'], $data['truncated']]);
@@ -206,7 +206,7 @@ final class CheckFixturesToolTest extends KnossosTestCase
     {
         $this->withScan('healthy', function (ToolService $tools, string $projectId, string $root): void {
             $php = $tools->call('check_fixtures', ['project_id' => $projectId, 'paths' => ['php/fixtures']])->data;
-            self::assertSame([10, ['php/fixtures/ignoredSecret.fixture.json', 'php/fixtures/jmsUser.fixture.json', 'php/fixtures/renamedUser.fixture.json'], []], [$php['scanned'], array_column($php['unmatched'], 'file'), $php['unparsable']]);
+            self::assertSame([11, ['php/fixtures/ignoredSecret.fixture.json', 'php/fixtures/jmsUser.fixture.json', 'php/fixtures/renamedUser.fixture.json'], []], [$php['scanned'], array_column($php['unmatched'], 'file'), $php['unparsable']]);
 
             $one = $tools->call('check_fixtures', ['project_id' => $projectId, 'paths' => ['./typescript/fixtures/trips.fixture.json', 'rust/fixtures']])->data;
             self::assertSame([5, ['rust/fixtures/bundles.fixture.json', 'rust/fixtures/cartons.fixture.json', 'rust/fixtures/tracking.fixture.json']], [$one['scanned'], array_column($one['unmatched'], 'file')]);
@@ -214,7 +214,7 @@ final class CheckFixturesToolTest extends KnossosTestCase
             // A file outside any fixture directory is no fixture, unless it is named: then it is taken at its word.
             mkdir($root . '/data');
             file_put_contents($root . '/data/trips.json', '{"trips": [{"id": "T", "speed": "warp", "priority": 1}]}');
-            self::assertSame(26, $tools->call('check_fixtures', ['project_id' => $projectId])->data['scanned']);
+            self::assertSame(28, $tools->call('check_fixtures', ['project_id' => $projectId])->data['scanned']);
             $named = $tools->call('check_fixtures', ['project_id' => $projectId, 'paths' => ['data']])->data;
             self::assertSame([['not_a_case', 'data/trips.json', 1, 'TripRecord.speed']], self::findings($named['items']));
         });

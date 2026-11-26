@@ -24,13 +24,13 @@ final class FixtureDriftTest extends KnossosTestCase
 {
     private const FILE = 'fixtures/consignments.fixture.json';
 
-    /** A field. @return array{type: ?string, required: bool, line: int} */
+    /** A field. @return array{type: ?string, required: bool, line: int, visibility?: string} */
     private static function field(?string $type, bool $required = true): array
     {
         return ['type' => $type, 'required' => $required, 'line' => 2];
     }
 
-    /** @param array<string, array{type: ?string, required: bool, line: int}> $fields */
+    /** @param array<string, array{type: ?string, required: bool, line: int, visibility?: string}> $fields */
     private static function ts(string $name, array $fields): FixtureType
     {
         return new FixtureType($name, 'src/dto.ts#' . $name, 'typescript', 'src/dto.ts', $fields);
@@ -232,6 +232,21 @@ final class FixtureDriftTest extends KnossosTestCase
         $money = new FixtureType('Money', 'App\Money', 'php', 'src/Money.php', ['cents' => self::field('int'), 'currency' => self::field('string')], constructed: true, keysRenamed: true, promoted: ['currency']);
         self::assertSame([], self::drift('{"amount": 100}', 'Money', [$money]));
         self::assertSame(["kind_mismatch 1 Fixture 'consignments.fixture.json' has 'currency' as list but Money declares 'string'."], self::drift('{"amount": 100, "currency": []}', 'Money', [$money]));
+    }
+
+    public function testANonPublicFieldIsAKnownKeyButNeverRequired(): void
+    {
+        $plain = self::ts('Plain', [
+            'plainId' => self::field('string'),
+            'internalHash' => ['type' => 'string', 'required' => true, 'line' => 3, 'visibility' => 'private'],
+            'tag' => ['type' => 'string', 'required' => true, 'line' => 4, 'visibility' => 'protected'],
+        ]);
+
+        self::assertSame([], self::drift('[{"plainId": "p"}]', 'Plain', [$plain]));
+        self::assertSame([], self::drift('[{"plainId": "p", "tag": "t"}]', 'Plain', [$plain]));
+        // Its value is still held against its type.
+        self::assertSame(["kind_mismatch 1 Fixture 'consignments.fixture.json' has 'tag' as int but Plain declares 'string'."], self::drift('[{"plainId": "p", "tag": 3}]', 'Plain', [$plain]));
+        self::assertSame(["missing_required 1 Fixture 'consignments.fixture.json' is missing required field 'plainId' of Plain."], self::drift('[{"tag": "t"}]', 'Plain', [$plain]));
     }
 
     public function testAKeyInAnotherCaseStyleIsTheFieldItSpells(): void

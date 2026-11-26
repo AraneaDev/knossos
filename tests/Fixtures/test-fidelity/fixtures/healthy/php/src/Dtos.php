@@ -60,6 +60,14 @@ final class Price
     }
 }
 
+/** No constructor; its non-public fields are its own state, never read from a fixture. */
+final class Customer
+{
+    public string $customerId;
+    private string $passwordHash;
+    protected array $cache;
+}
+
 /** Answers to any property name. */
 class Sack
 {

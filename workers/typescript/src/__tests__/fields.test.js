@@ -133,6 +133,59 @@ describe("field lists", () => {
     });
 });
 
+describe("field visibility", () => {
+    it("marks a private or protected field with its visibility", () => {
+        const nodes = scan({
+            "src/dto.ts":
+                "export class Plain {\n" +
+                "  id!: string;\n" +
+                "  private hash!: string;\n" +
+                "  protected tag!: string;\n" +
+                "  public label!: string;\n" +
+                "}\n" +
+                "export class Holder {\n" +
+                "  constructor(private key: string, protected scope: string, public owner: string) {}\n" +
+                "}\n",
+        });
+
+        expect(nodes.Plain.fields).toEqual([
+            {
+                name: "hash",
+                type: "string",
+                required: true,
+                line: 3,
+                visibility: "private",
+            },
+            { name: "id", type: "string", required: true, line: 2 },
+            { name: "label", type: "string", required: true, line: 5 },
+            {
+                name: "tag",
+                type: "string",
+                required: true,
+                line: 4,
+                visibility: "protected",
+            },
+        ]);
+        expect(nodes.Holder.fields).toEqual([
+            {
+                name: "key",
+                type: "string",
+                required: true,
+                line: 8,
+                visibility: "private",
+            },
+            { name: "owner", type: "string", required: true, line: 8 },
+            {
+                name: "scope",
+                type: "string",
+                required: true,
+                line: 8,
+                visibility: "protected",
+            },
+        ]);
+    });
+});
+
 describe("field lists that are open", () => {
     it("an_unresolved_base_opens_the_list", () => {
         const nodes = scan({

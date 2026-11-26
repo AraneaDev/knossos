@@ -38,6 +38,7 @@ final class FieldFactsSchemaTest extends KnossosTestCase
             'ConsignmentRecord' => ['destination', 'reference', 'stops', 'weightKg'],
             'Coupon' => ['code', 'percent'],
             'Courier' => ['POST' => 'post', 'VAN' => 'van'],
+            'Customer' => ['cache', 'customerId', 'passwordHash'],
             'Envelope' => ['stamp'],
             'ExposedRecord' => [],
             'IgnoredSecret' => [],
@@ -63,6 +64,7 @@ final class FieldFactsSchemaTest extends KnossosTestCase
             'Tier' => ['Free' => 'free', 'Gold' => 'gold'],
             'TripRecord' => ['id', 'note', 'priority', 'speed'],
             'UserRecord' => ['email', 'id', 'name'],
+            'Vault' => ['hash', 'tag', 'vaultId'],
         ], $lists);
     }
 

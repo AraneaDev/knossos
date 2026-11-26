@@ -19,8 +19,11 @@ use Knossos\Scanner\Protocol\NodeFact;
  */
 final readonly class FieldList
 {
+    /** The visibilities a field may declare; an entry without one is public. */
+    private const VISIBILITIES = ['public', 'protected', 'private'];
+
     /**
-     * @param array<string, array{type: ?string, required: bool, line: int}> $fields by name, in the order sent
+     * @param array<string, array{type: ?string, required: bool, line: int, visibility?: string}> $fields by name, in the order sent
      */
     public function __construct(private array $fields) {}
 
@@ -47,10 +50,11 @@ final readonly class FieldList
             $type = $entry['type'] ?? null;
             $required = $entry['required'] ?? null;
             $line = $entry['line'] ?? null;
-            if (!is_string($name) || $name === '' || isset($fields[$name]) || ($type !== null && !is_string($type)) || !is_bool($required) || !is_int($line) || $line < 1) {
+            $visibility = $entry['visibility'] ?? 'public';
+            if (!is_string($name) || $name === '' || isset($fields[$name]) || ($type !== null && !is_string($type)) || !is_bool($required) || !is_int($line) || $line < 1 || !in_array($visibility, self::VISIBILITIES, true)) {
                 return null;
             }
-            $fields[$name] = ['type' => $type, 'required' => $required, 'line' => $line];
+            $fields[$name] = ['type' => $type, 'required' => $required, 'line' => $line, ...($visibility === 'public' ? [] : ['visibility' => $visibility])];
         }
 
         return new self($fields);
@@ -58,9 +62,10 @@ final readonly class FieldList
 
     /**
      * Every field by name: its type as written (null when the source gives
-     * none), whether a deserialiser needs the key, and its line.
+     * none), whether a deserialiser needs the key, its line, and, for a
+     * protected or private field, its visibility.
      *
-     * @return array<string, array{type: ?string, required: bool, line: int}>
+     * @return array<string, array{type: ?string, required: bool, line: int, visibility?: string}>
      */
     public function fields(): array
     {

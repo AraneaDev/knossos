@@ -58,6 +58,13 @@ export interface SnakeRecord {
   placed_at: string;
 }
 
+/** No constructor; its non-public fields are set by its own code, never read from a fixture. */
+export class Vault {
+  vaultId!: string;
+  private hash!: string;
+  protected tag!: string;
+}
+
 /** class-transformer renames the key: the list is open, and never a candidate. */
 export class ExposedRecord {
   @Expose({ name: 'user_name' })

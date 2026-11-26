@@ -133,7 +133,7 @@ final readonly class FixtureTypeLoader
     /**
      * One record type, with what its lineage says of magic and constructors.
      *
-     * @param array<string, array{type: ?string, required: bool, line: int}> $fields
+     * @param array<string, array{type: ?string, required: bool, line: int, visibility?: string}> $fields
      */
     private static function type(TestFidelityGraph $graph, NodeFact $node, string $language, array $fields): FixtureType
     {

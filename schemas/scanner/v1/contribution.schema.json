@@ -168,7 +168,11 @@
             "description": "Whether a deserialiser needs the key.",
             "type": "boolean"
           },
-          "line": { "type": "integer", "minimum": 1 }
+          "line": { "type": "integer", "minimum": 1 },
+          "visibility": {
+            "description": "The field's declared visibility; absent means public. A non-public field is a known key but never required of a fixture.",
+            "enum": ["public", "protected", "private"]
+          }
         }
       }
     },

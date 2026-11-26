@@ -14,7 +14,8 @@ use PhpParser\Node\Stmt;
  * enum declares, for the test-fidelity fixture checks.
  *
  * Fields are the instance properties and the promoted constructor
- * properties. A field is required unless it has a default: an untyped
+ * properties, each private or protected one carrying its `visibility`. A
+ * field is required unless it has a default: an untyped
  * property defaults to null, and a nullable type alone does not make the key
  * optional. Inherited fields stay with the parent; the core composes them
  * along the inheritance edges, and a parent outside the scan leaves the whole
@@ -62,7 +63,7 @@ final class Fields
             }
             $open = $open || self::renames($property->attrGroups, $property);
             foreach ($property->props as $item) {
-                $fields[$item->name->toString()] = self::field($item->name->toString(), $property->type, $item->default !== null || $property->type === null, $item->getStartLine());
+                $fields[$item->name->toString()] = self::field($item->name->toString(), $property->type, $item->default !== null || $property->type === null, $item->getStartLine(), self::visibility($property->isPrivate(), $property->isProtected()));
             }
         }
         foreach ($node->getMethod('__construct')->params ?? [] as $param) {
@@ -70,7 +71,7 @@ final class Fields
                 continue;
             }
             $open = $open || self::renames($param->attrGroups, $param);
-            $fields[$param->var->name] = self::field($param->var->name, $param->type, $param->default !== null, $param->getStartLine());
+            $fields[$param->var->name] = self::field($param->var->name, $param->type, $param->default !== null, $param->getStartLine(), self::visibility($param->isPrivate(), $param->isProtected()));
         }
         ksort($fields, SORT_STRING);
 
@@ -79,15 +80,22 @@ final class Fields
 
     /**
      * One field: its name, its declared type with class names resolved, whether
-     * a deserialiser needs the key, and its line.
+     * a deserialiser needs the key, its line, and its visibility when it is
+     * not public.
      *
-     * @return array{name: string, type?: string, required: bool, line: int}
+     * @return array{name: string, type?: string, required: bool, line: int, visibility?: string}
      */
-    private static function field(string $name, ?Node $type, bool $defaulted, int $line): array
+    private static function field(string $name, ?Node $type, bool $defaulted, int $line, ?string $visibility): array
     {
         $text = self::typeText($type);
 
-        return ['name' => $name, ...($text === null ? [] : ['type' => $text]), 'required' => !$defaulted, 'line' => $line];
+        return ['name' => $name, ...($text === null ? [] : ['type' => $text]), 'required' => !$defaulted, 'line' => $line, ...($visibility === null ? [] : ['visibility' => $visibility])];
+    }
+
+    /** A field's read visibility as the protocol writes it: null for public. */
+    private static function visibility(bool $private, bool $protected): ?string
+    {
+        return $private ? 'private' : ($protected ? 'protected' : null);
     }
 
     /** A declared type as text, class names fully qualified; null for none. */

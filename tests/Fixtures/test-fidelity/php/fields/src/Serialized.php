@@ -98,6 +98,16 @@ class SymfonyDepth
     public array $children;
 }
 
+/** Visibility, declared and promoted. */
+class Guarded
+{
+    public string $id;
+    private string $hash;
+    protected array $cache;
+
+    public function __construct(private int $code, protected string $scope, public string $owner) {}
+}
+
 /** Tags that only end in a serializer's name. */
 class NotSerializerTags
 {

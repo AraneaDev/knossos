@@ -24,7 +24,7 @@ final readonly class FixtureType
      * @param string $name the type's name as written, the last segment of its canonical name
      * @param string $language the packaged language that declares it: `typescript`, `php`, `python` or `rust`
      * @param string $file the project-relative file that declares it
-     * @param array<string, array{type: ?string, required: bool, line: int}> $fields every field, inherited ones included
+     * @param array<string, array{type: ?string, required: bool, line: int, visibility?: string}> $fields every field, inherited ones included
      * @param list<string> $promoted the fields a constructor takes as its parameters
      */
     public function __construct(
@@ -39,10 +39,14 @@ final readonly class FixtureType
         public array $promoted = [],
     ) {}
 
-    /** Whether a fixture must hold `$field`: the type requires it, and nothing else may fill it. */
+    /**
+     * Whether a fixture must hold `$field`: the type requires it, it is
+     * public (a protected or private field is set by the type's own code,
+     * and is only a known key), and nothing else may fill it.
+     */
     public function requires(string $field): bool
     {
-        return ($this->fields[$field]['required'] ?? false) && !$this->keysRenamed && (!$this->constructed || in_array($field, $this->promoted, true));
+        return ($this->fields[$field]['required'] ?? false) && !isset($this->fields[$field]['visibility']) && !$this->keysRenamed && (!$this->constructed || in_array($field, $this->promoted, true));
     }
 
     /** Whether a key no field names is drift: the type neither answers to any name nor reads its keys under other names. */

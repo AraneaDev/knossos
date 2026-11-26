@@ -45,6 +45,21 @@ final class FieldListTest extends KnossosTestCase
         assertSame([], FieldList::ofNode(['fields' => []])?->fields());
     }
 
+    public function testAFieldCarriesItsVisibilityWhenNotPublic(): void
+    {
+        $list = FieldList::ofNode(['fields' => [
+            ['name' => 'id', 'required' => true, 'line' => 1, 'visibility' => 'public'],
+            ['name' => 'hash', 'required' => true, 'line' => 2, 'visibility' => 'private'],
+            ['name' => 'tag', 'required' => true, 'line' => 3, 'visibility' => 'protected'],
+        ]]);
+
+        assertSame([
+            'id' => ['type' => null, 'required' => true, 'line' => 1],
+            'hash' => ['type' => null, 'required' => true, 'line' => 2, 'visibility' => 'private'],
+            'tag' => ['type' => null, 'required' => true, 'line' => 3, 'visibility' => 'protected'],
+        ], $list?->fields());
+    }
+
     public function testAMalformedTruncatedOrOpenListReadsAsNull(): void
     {
         $lists = [
@@ -59,6 +74,8 @@ final class FieldListTest extends KnossosTestCase
             'line not an int' => ['fields' => [['name' => 'id', 'required' => true, 'line' => '1']]],
             'line below one' => ['fields' => [['name' => 'id', 'required' => true, 'line' => 0]]],
             'type not a string' => ['fields' => [['name' => 'id', 'type' => 4, 'required' => true, 'line' => 1]]],
+            'visibility unknown' => ['fields' => [['name' => 'id', 'required' => true, 'line' => 1, 'visibility' => 'internal']]],
+            'visibility not a string' => ['fields' => [['name' => 'id', 'required' => true, 'line' => 1, 'visibility' => true]]],
             'a name twice' => ['fields' => [self::FIELDS[0], self::FIELDS[0]]],
             'truncated' => ['fields' => self::FIELDS, 'fields_truncated' => true],
             'open' => ['fields' => self::FIELDS, 'fields_open' => true],

@@ -37,7 +37,7 @@ final class PhpFieldsTest extends KnossosTestCase
             ['name' => 'note', 'type' => '?string', 'required' => true, 'line' => 10],
             ['name' => 'other', 'type' => '?string', 'required' => true, 'line' => 13],
             ['name' => 'owner', 'type' => 'string', 'required' => true, 'line' => 16],
-            ['name' => 'priority', 'type' => 'int', 'required' => false, 'line' => 17],
+            ['name' => 'priority', 'type' => 'int', 'required' => false, 'line' => 17, 'visibility' => 'protected'],
         ], $order['fields']);
         assertSame([null, null], [$order['fields_open'] ?? null, $order['fields_truncated'] ?? null]);
     }
@@ -64,6 +64,16 @@ final class PhpFieldsTest extends KnossosTestCase
         assertSame(true, in_array('priority', $names, true));
         assertSame(false, in_array('notAProperty', $names, true));
         assertSame(false, in_array('table', $names, true));
+    }
+
+    public function testAPrivateOrProtectedFieldCarriesItsVisibility(): void
+    {
+        $fields = array_column($this->classLikes()['Fields\\Guarded']->attributes['fields'], null, 'name');
+
+        assertSame(
+            ['cache' => 'protected', 'code' => 'private', 'hash' => 'private', 'id' => null, 'owner' => null, 'scope' => 'protected'],
+            array_map(static fn(array $field): ?string => $field['visibility'] ?? null, $fields),
+        );
     }
 
     public function testATraitAndAnInterfaceSendTheirOwnLists(): void

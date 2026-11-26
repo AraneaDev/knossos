@@ -112,7 +112,21 @@ function fieldOf(property, node) {
         line:
             sourceFile.getLineAndCharacterOfPosition(at.getStart(sourceFile))
                 .line + 1,
+        ...visibilityOf(declaration),
     };
+}
+
+/** A class field's or parameter property's `private` or `protected`; nothing for a public one. */
+function visibilityOf(declaration) {
+    if (declaration === undefined) return {};
+    const flags = ts.getCombinedModifierFlags(declaration);
+    if ((flags & ts.ModifierFlags.Private) !== 0) {
+        return { visibility: "private" };
+    }
+    if ((flags & ts.ModifierFlags.Protected) !== 0) {
+        return { visibility: "protected" };
+    }
+    return {};
 }
 
 /** Whether a deserialiser needs the key: not `?`, not a union with `undefined`, not a class field or parameter with an initializer. */
