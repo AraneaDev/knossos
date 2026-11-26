@@ -8,23 +8,27 @@ use Closure;
 use Knossos\Query\QueryBounds;
 use Knossos\Scanner\PackagedLanguages;
 use Knossos\TestFidelity\Facts\Assertion;
+use Knossos\TestFidelity\Facts\StubbedMember;
 use Knossos\TestFidelity\OnRequest\OnRequestInput;
 use PDO;
 
 /**
  * Loads what the on-request rules read from a project's active graph: its
  * test files (a file holding a test double or a test case), what their
- * modules import, the target of each double, and the assertions of each test
- * case.
+ * modules import, the target of each double and the files that target lives
+ * in, and the assertions of each test case.
  *
- * Four queries, each capped by {@see QueryBounds} and each started only
- * before the deadline; a cap or the deadline cuts the whole load, so a rule
- * never judges a file with half its facts ({@see OnRequestInput::cutShort()}).
+ * Five queries, each capped by {@see QueryBounds} and each started only
+ * before the deadline: the deadline is checked between them, not within one.
+ * A cap or the deadline cuts the whole load, so a rule never judges a file
+ * with half its facts ({@see OnRequestInput::cutShort()}).
  *
- * An import counts as local when it sits within a function, method or class
- * of its file: the Python worker reports a function's own `from x import y`
- * as its module's import, and Momus reads module-level imports only
- * (`parser-python/src/index.ts:98-108`).
+ * A Python import counts as local when it sits within a function, method or
+ * class of its file: the Python worker reports a function's own
+ * `from x import y` as its module's import, and Momus reads module-level
+ * imports only (`parser-python/src/index.ts:98-108`). No other worker reports
+ * a nested import as its module's, so in another language (a Rust `use` in a
+ * `#[test] fn`) every import is the module's.
  */
 final readonly class OnRequestFindings
 {
@@ -34,6 +38,9 @@ final readonly class OnRequestFindings
     /** The kinds whose span makes an import inside it local. */
     private const SCOPES = "('function', 'method', 'class')";
 
+    /** How many `extends` and `uses_trait` steps up from a target its inherited members are looked for. */
+    private const ANCESTRY = 8;
+
     /**
      * @param ?Closure(): int $now the clock the deadline is read against, in nanoseconds; hrtime by default
      */
@@ -41,28 +48,39 @@ final readonly class OnRequestFindings
 
     /**
      * The project's test facts; empty and `partial` when a bound or `$deadline` (in the clock's nanoseconds) cut the load.
+     *
+     * @param ?list<string> $changed the files changed since the base ref, in scope `git-diff`; null outside it
      */
-    public function load(string $projectId, ?int $deadline = null): OnRequestInput
+    public function load(string $projectId, ?int $deadline = null, ?array $changed = null): OnRequestInput
     {
         $steps = [
-            fn(): ?array => $this->testFiles($projectId),
-            fn(): ?array => $this->imports($projectId),
-            fn(): ?array => $this->doubles($projectId),
-            fn(): ?array => $this->assertions($projectId),
+            'test_files' => fn(): ?array => $this->testFiles($projectId),
+            'imports' => fn(): ?array => $this->imports($projectId),
+            'doubles' => fn(): ?array => $this->doubleRows($projectId),
+            'assertions' => fn(): ?array => $this->assertions($projectId),
+            'members' => fn(): ?array => $this->targetMembers($projectId),
         ];
         $loaded = [];
-        foreach ($steps as $step) {
+        foreach ($steps as $name => $step) {
             if ($deadline !== null && $this->now() > $deadline) {
-                return OnRequestInput::cutShort();
+                return OnRequestInput::cutShort('timeout_ms');
             }
             $result = $step();
             if ($result === null) {
-                return OnRequestInput::cutShort();
+                return OnRequestInput::cutShort('row_cap');
             }
-            $loaded[] = $result;
+            $loaded[$name] = $result;
         }
+        /** @var array{test_files: array<string, string>, imports: array<string, list<array{module: string, name: string, local: bool}>>, doubles: list<array<string, mixed>>, assertions: array<string, list<Assertion>>, members: list<array<string, mixed>>} $loaded */
 
-        return new OnRequestInput(...$loaded);
+        return new OnRequestInput(
+            $loaded['test_files'],
+            $loaded['imports'],
+            self::doubles($loaded['doubles']),
+            $loaded['assertions'],
+            targets: self::targets($loaded['doubles'], $loaded['members']),
+            changed: $changed,
+        );
     }
 
     /**
@@ -99,6 +117,7 @@ final readonly class OnRequestFindings
     {
         $rows = $this->rows(
             'SELECT sf.relative_path AS file, t.kind, t.canonical_name, tf.relative_path AS target_file, '
+            . "s.language = '" . PackagedLanguages::prefixOf('knossos.python') . "' AND "
             . 'EXISTS (SELECT 1 FROM nodes l WHERE l.file_id = s.file_id AND l.project_id = e.project_id AND l.kind IN ' . self::SCOPES
             . ' AND e.start_line IS NOT NULL AND l.start_line <= e.start_line AND l.end_line >= e.start_line) AS local '
             . 'FROM edges e JOIN nodes s ON s.id = e.source_id JOIN files sf ON sf.id = s.file_id JOIN nodes t ON t.id = e.target_id LEFT JOIN files tf ON tf.id = t.file_id '
@@ -123,14 +142,15 @@ final readonly class OnRequestFindings
     }
 
     /**
-     * Each test file's doubles' targets; null past the cap.
+     * Each double of a test file, with its target when the graph has one; null past the cap.
      *
-     * @return array<string, list<array{module: ?string, name: ?string}>>|null
+     * @return list<array<string, mixed>>|null
      */
-    private function doubles(string $projectId): ?array
+    private function doubleRows(string $projectId): ?array
     {
-        $rows = $this->rows(
-            'SELECT df.relative_path AS file, t.kind, t.canonical_name, t.display_name, tf.relative_path AS target_file '
+        return $this->rows(
+            'SELECT df.relative_path AS file, d.display_name AS double_name, d.start_line, d.attributes_json, '
+            . 't.id AS target_id, t.kind, t.canonical_name, t.display_name, tf.relative_path AS target_file '
             . 'FROM nodes d JOIN files df ON df.id = d.file_id '
             . "LEFT JOIN edges e ON e.project_id = d.project_id AND e.source_id = d.id AND e.kind = 'doubles' "
             . 'LEFT JOIN nodes t ON t.id = e.target_id LEFT JOIN files tf ON tf.id = t.file_id '
@@ -139,9 +159,37 @@ final readonly class OnRequestFindings
             $projectId,
             QueryBounds::MAX_NODES,
         );
-        if ($rows === null) {
-            return null;
-        }
+    }
+
+    /**
+     * Each project file a double's target has a member in: one of its
+     * `contains` children's (depth 0), or one of a type's it extends or uses
+     * (depth 1 and up); null past the cap.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    private function targetMembers(string $projectId): ?array
+    {
+        return $this->rows(
+            'WITH RECURSIVE owners(target, owner, depth) AS ('
+            . "SELECT DISTINCT e.target_id, e.target_id, 0 FROM edges e JOIN nodes d ON d.id = e.source_id WHERE e.project_id = :project AND e.kind = 'doubles' AND d.kind = 'test_double' "
+            . "UNION SELECT o.target, h.target_id, o.depth + 1 FROM owners o JOIN edges h ON h.project_id = :project AND h.source_id = o.owner AND h.kind IN ('extends', 'uses_trait') WHERE o.depth < " . self::ANCESTRY
+            . ') SELECT o.target, MIN(o.depth) AS depth, c.display_name AS member, f.relative_path AS file FROM owners o '
+            . "JOIN edges e ON e.project_id = :project AND e.source_id = o.owner AND e.kind = 'contains' JOIN nodes c ON c.id = e.target_id JOIN files f ON f.id = c.file_id "
+            . 'GROUP BY o.target, c.display_name, f.relative_path ORDER BY o.target, f.relative_path, c.display_name',
+            $projectId,
+            QueryBounds::MAX_EDGES,
+        );
+    }
+
+    /**
+     * Each test file's doubles' targets: the module declaring each and its name.
+     *
+     * @param list<array<string, mixed>> $rows {@see self::doubleRows()}
+     * @return array<string, list<array{module: ?string, name: ?string}>>
+     */
+    private static function doubles(array $rows): array
+    {
         $doubles = [];
         foreach ($rows as $row) {
             $target = $row['kind'] === null ? null : self::module((string) $row['kind'], (string) $row['canonical_name'], $row['target_file'] === null ? null : (string) $row['target_file']);
@@ -149,6 +197,48 @@ final readonly class OnRequestFindings
         }
 
         return $doubles;
+    }
+
+    /**
+     * Each test file's doubles whose target the project declares, with the
+     * files the target lives in and the members the double stubs. A target
+     * outside the project (a package) lives in no project file, whichever
+     * file its node was filed under.
+     *
+     * @param list<array<string, mixed>> $rows {@see self::doubleRows()}
+     * @param list<array<string, mixed>> $members {@see self::targetMembers()}
+     * @return array<string, list<array{double: string, line: int, target: string, canonical: string, files: list<string>, inherited: array<string, list<string>>, members: list<string>}>>
+     */
+    private static function targets(array $rows, array $members): array
+    {
+        $own = [];
+        $inherited = [];
+        foreach ($members as $member) {
+            $target = (string) $member['target'];
+            if ((int) $member['depth'] === 0) {
+                $own[$target][] = (string) $member['file'];
+            } else {
+                $inherited[$target][(string) $member['member']][] = (string) $member['file'];
+            }
+        }
+        $targets = [];
+        foreach ($rows as $row) {
+            if ($row['kind'] === null || $row['target_file'] === null || str_starts_with(self::module((string) $row['kind'], (string) $row['canonical_name'], (string) $row['target_file']), 'external:')) {
+                continue;
+            }
+            $target = (string) $row['target_id'];
+            $targets[(string) $row['file']][] = [
+                'double' => (string) $row['double_name'],
+                'line' => (int) $row['start_line'],
+                'target' => (string) $row['display_name'],
+                'canonical' => (string) $row['canonical_name'],
+                'files' => array_values(array_unique([(string) $row['target_file'], ...$own[$target] ?? []])),
+                'inherited' => $inherited[$target] ?? [],
+                'members' => StubbedMember::namesIn(json_decode((string) $row['attributes_json'], true)),
+            ];
+        }
+
+        return $targets;
     }
 
     /**

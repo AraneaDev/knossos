@@ -15,6 +15,7 @@ use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertGreaterThanOrEqual;
 use function PHPUnit\Framework\assertNotSame;
 use function PHPUnit\Framework\assertSame;
+use function PHPUnit\Framework\assertStringContainsString;
 use function PHPUnit\Framework\assertTrue;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -53,7 +54,9 @@ final class AuditTestsToolTest extends KnossosTestCase
             assertSame(['GHOST_MEMBER', 'ARITY_MISMATCH', 'RETURN_DRIFT', 'VISIBILITY_BREACH', 'TAUTOLOGY', 'MOCKS_SUBJECT', 'OVER_MOCKING', 'STALE_SINCE', 'FIXTURE_DRIFT'], $properties['category']['enum']);
             assertSame(TestRuleCatalog::categories(), $properties['category']['enum']);
             assertSame([1, 200, 50], [$properties['limit']['minimum'], $properties['limit']['maximum'], $properties['limit']['default']]);
-            assertSame([['scan', 'on_request', 'all'], 'scan'], [$properties['tier']['enum'], $properties['tier']['default']]);
+            // No schema default: the tier left out is scan, or all in scope git-diff, which the description says.
+            assertSame([['scan', 'on_request', 'all'], false], [$properties['tier']['enum'], array_key_exists('default', $properties['tier'])]);
+            assertStringContainsString('scan (the default; all in scope git-diff)', $properties['tier']['description']);
             assertSame([['all', 'git-diff'], 'all'], [$properties['scope']['enum'], $properties['scope']['default']]);
             assertSame([1, 10000, 2000], [$properties['timeout_ms']['minimum'], $properties['timeout_ms']['maximum'], $properties['timeout_ms']['default']]);
             assertSame(['string', 1], [$properties['base_ref']['type'], $properties['base_ref']['minLength']]);

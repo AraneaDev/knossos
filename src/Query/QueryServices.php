@@ -8,6 +8,7 @@ use Closure;
 use Knossos\Git\{GitHistoryProvider, GitWorkingTreeProvider};
 use Knossos\Query\CreationBrief\CreationBriefQueryService;
 use Knossos\Query\Drift\DriftOracle;
+use Knossos\Query\TestFidelity\{DoublesOfSymbol, SymbolResolution};
 use PDO;
 
 /**
@@ -46,6 +47,7 @@ final readonly class QueryServices
         public CreationBriefQueryService $creationBriefQueries,
         public DiagnosticsQueryService $diagnosticsQueries,
         public TestFidelityQueryService $testFidelityQueries,
+        public DoublesOfSymbol $doublesOfSymbol,
         public RefreshPolicy $refreshPolicy,
     ) {}
 
@@ -57,7 +59,7 @@ final readonly class QueryServices
      * @param Closure|null $clock the monotonic clock the query services time their budgets by; null reads hrtime()
      * @param SemanticRanker|null $semanticRanker the optional ranker `suggest_location` may consult
      * @param GitHistoryProvider|null $gitHistory where change impact reads commit history; null reports none
-     * @param GitWorkingTreeProvider|null $gitWorkingTree where change impact reads the working tree; null makes that unavailable
+     * @param GitWorkingTreeProvider|null $gitWorkingTree where change impact and audit_tests scope git-diff read the working tree; null makes that unavailable
      * @param DriftOracle|null $driftOracle how the staleness probe measures drift; null uses the probe's default
      */
     public static function wire(
@@ -107,7 +109,8 @@ final readonly class QueryServices
             fileContextQueries: new FileContextQueryService($pdo, $clock),
             creationBriefQueries: new CreationBriefQueryService($pdo, $clock),
             diagnosticsQueries: new DiagnosticsQueryService($pdo, $clock),
-            testFidelityQueries: new TestFidelityQueryService($pdo, $clock),
+            testFidelityQueries: new TestFidelityQueryService($pdo, $clock, $gitWorkingTree),
+            doublesOfSymbol: new DoublesOfSymbol($pdo, $clock, new SymbolResolution($pdo, $componentQueries)),
             refreshPolicy: $refreshPolicy,
         );
     }

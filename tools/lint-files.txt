@@ -377,7 +377,10 @@ php	src/Query/StalenessProbe.php
 php	src/Query/StalenessSnapshot.php
 php	src/Query/StandInExpansion.php
 php	src/Query/SupertypeMethods.php
+php	src/Query/TestFidelity/DoublesOfSymbol.php
 php	src/Query/TestFidelity/OnRequestFindings.php
+php	src/Query/TestFidelity/ScanTierItems.php
+php	src/Query/TestFidelity/SymbolResolution.php
 php	src/Query/TestFidelityQueryService.php
 php	src/Query/TestFindingsDiff.php
 php	src/Query/TestReachSearch.php
@@ -555,6 +558,7 @@ php	src/TestFidelity/OnRequest/FrameworkModules.php
 php	src/TestFidelity/OnRequest/OnRequestFinding.php
 php	src/TestFidelity/OnRequest/OnRequestInput.php
 php	src/TestFidelity/OnRequest/OverMocking.php
+php	src/TestFidelity/OnRequest/StaleSince.php
 php	src/TestFidelity/OnRequestCategory.php
 php	src/TestFidelity/PhpTypeFit.php
 php	src/TestFidelity/PythonAnnotation.php
@@ -833,6 +837,7 @@ php	tests/phpunit/Mcp/ToolErrorMapperTest.php
 php	tests/phpunit/Mcp/ToolLengthAgreementTest.php
 php	tests/phpunit/Mcp/ToolServiceInputGuardsTest.php
 php	tests/phpunit/Mcp/TrimmedPaginationTest.php
+php	tests/phpunit/Mcp/VerifyTestDoublesToolTest.php
 php	tests/phpunit/NanoDtosTest.php
 php	tests/phpunit/NoCoverageTargetAttributesTest.php
 php	tests/phpunit/Notes/NotesFileTest.php
@@ -1316,6 +1321,7 @@ php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
 php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
 php	tests/phpunit/TestFidelity/MockedModulePathsTest.php
 php	tests/phpunit/TestFidelity/OnRequest/OverMockingTest.php
+php	tests/phpunit/TestFidelity/OnRequest/StaleSinceTest.php
 php	tests/phpunit/TestFidelity/OnRequestIsolationTest.php
 php	tests/phpunit/TestFidelity/PhpAcceptanceTest.php
 php	tests/phpunit/TestFidelity/PhpHealthyIdiomsTest.php
@@ -1341,6 +1347,7 @@ php	tests/phpunit/TestFidelity/RustSelfScanTest.php
 php	tests/phpunit/TestFidelity/ScansTypeScript.php
 php	tests/phpunit/TestFidelity/SnapshotTestFindingsTest.php
 php	tests/phpunit/TestFidelity/StaleCategoriesTest.php
+php	tests/phpunit/TestFidelity/StaleSinceGitTest.php
 php	tests/phpunit/TestFidelity/SurfacesEndToEndTest.php
 php	tests/phpunit/TestFidelity/TautologyEndToEndTest.php
 php	tests/phpunit/TestFidelity/TestFactsSearchTest.php

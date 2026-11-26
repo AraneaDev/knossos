@@ -41,6 +41,7 @@ final class QueryCommand implements CliCommand
         'dependency-cycles', 'architecture-health', 'check-architecture', 'suggest-location', 'change-impact',
         'changed-files-impact', 'test-impact', 'review-diff', 'architecture-context', 'export-diagram', 'export-agent-brief', 'list-boundaries',
         'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief', 'audit-tests', 'list-test-rules',
+        'verify-test-doubles',
     ];
 
     /**
@@ -183,6 +184,7 @@ final class QueryCommand implements CliCommand
             'untested-code' => self::untestedLines($result),
             'audit-tests' => self::auditLines($result),
             'list-test-rules' => self::ruleLines($result),
+            'verify-test-doubles' => self::doubleLines($result),
             'creation-brief' => $json ? '' : CreationBriefRenderer::lines($result->data, (new StalenessProbe($context->database()))->probe($result->projectId)),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],
@@ -243,6 +245,20 @@ final class QueryCommand implements CliCommand
         return implode("\n", $lines);
     }
 
+    /** verify-test-doubles' text: one line per double, naming its findings, then the summary. */
+    private static function doubleLines(ResultEnvelope $result): string
+    {
+        $lines = [];
+        foreach ($result->data['doubles'] as $double) {
+            $findings = array_map(static fn(array $item): string => $item['category'] . ' ' . $item['confidence'], $double['findings']);
+            $lines[] = sprintf('%s:%s  %s  %s%s', $double['file'] ?? '?', $double['line'] ?? '?', $double['double'], $double['valid'] ? 'valid' : 'invalid', $findings === [] ? '' : '  ' . implode(', ', $findings));
+        }
+        array_push($lines, ...$result->warnings);
+        $lines[] = $result->summary;
+
+        return implode("\n", $lines);
+    }
+
     /** list-test-rules' text: one line per rule, then where to suppress a finding, then the summary. */
     private static function ruleLines(ResultEnvelope $result): string
     {
@@ -296,7 +312,7 @@ final class QueryCommand implements CliCommand
         return ArchitectureQueryService::forDatabase(
             $context->database(),
             gitHistory: $command === 'change-impact' ? new ProcessGitHistoryProvider() : null,
-            gitWorkingTree: in_array($command, ['changed-files-impact', 'test-impact', 'review-diff'], true) ? new ProcessGitWorkingTreeProvider() : null,
+            gitWorkingTree: in_array($command, ['changed-files-impact', 'test-impact', 'review-diff', 'audit-tests'], true) ? new ProcessGitWorkingTreeProvider() : null,
         );
     }
 

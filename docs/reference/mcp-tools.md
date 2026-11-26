@@ -259,10 +259,10 @@ List test doubles that no longer match the code they replace and assertions that
 | `category` | string | no | enum=GHOST_MEMBER, ARITY_MISMATCH, RETURN_DRIFT, VISIBILITY_BREACH, TAUTOLOGY, MOCKS_SUBJECT, OVER_MOCKING, STALE_SINCE, FIXTURE_DRIFT | An on-request category implies its tier. |
 | `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 | `limit` | integer | no | minimum=1; maximum=200; default=50 | none |
-| `tier` | string | no | default="scan"; enum=scan, on_request, all | scan: stored findings; on_request: computed now (OVER_MOCKING), never stored; all: both. |
-| `scope` | string | no | default="all"; enum=all, git-diff | none |
-| `base_ref` | string | no | minLength=1; maxLength=200 | none |
-| `timeout_ms` | integer | no | minimum=1; maximum=10000; default=2000 | Bound on the on-request tier; past it the result is partial. |
+| `tier` | string | no | enum=scan, on_request, all | scan (the default; all in scope git-diff): stored findings; on_request: computed now (OVER_MOCKING, STALE_SINCE), never stored; all: both. |
+| `scope` | string | no | default="all"; enum=all, git-diff | git-diff: STALE_SINCE, and stored findings narrowed to those whose file or target file changed since base_ref (staged, unstaged and untracked). |
+| `base_ref` | string | no | minLength=1; maxLength=200 | The ref scope git-diff compares the working tree with; HEAD when omitted. |
+| `timeout_ms` | integer | no | minimum=1; maximum=10000; default=2000 | Bound on the on-request tier, checked between its phases (the git call, each graph read), not within one; past it the result is partial. The git call of scope git-diff is capped at 5000, and its timeout is an error. |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
@@ -276,6 +276,20 @@ List the rules audit_tests reports, with each one's category, tier (scan or on_r
 | `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
 
 Annotations: read-only `yes`; destructive `no`; idempotent `yes`; open-world `no`.
+
+## `verify_test_doubles`
+
+List every test double of one class, interface or trait, each with its stored findings and whether it is still valid (no definite finding). Use before changing a type that tests double.
+
+| Input | Type | Required | Constraints/default | Description |
+| --- | --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
+| `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
+| `project_id` | string | yes | minLength=1 | none |
+| `symbol` | string | yes | minLength=1; maxLength=500 | The canonical or display name, matched exactly; a name several types share is an error listing their canonical names. |
+
+Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
 ## `file_context`
 

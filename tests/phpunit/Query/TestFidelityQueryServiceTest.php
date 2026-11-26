@@ -206,8 +206,9 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
                 ['offset', -1, 'offset must be between 0 and 100000.'],
                 ['tier', 'both', 'tier must be one of: scan, on_request, all.'],
                 ['scope', 'staged', 'scope must be one of: all, git-diff.'],
-                ['scope', 'git-diff', 'scope git-diff arrives in Task 2'],
-                ['baseRef', 'HEAD', 'scope git-diff arrives in Task 2'],
+                // Without a git reader, git-diff is an error, never an empty answer.
+                ['scope', 'git-diff', 'scope git-diff is unavailable: this server reads no git working tree.'],
+                ['baseRef', 'HEAD', 'base_ref requires scope git-diff.'],
                 ['timeoutMs', 0, 'timeout_ms must be between 1 and 10000.'],
                 ['timeoutMs', 10_001, 'timeout_ms must be between 1 and 10000.'],
             ] as [$name, $value, $message]) {
@@ -241,7 +242,11 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
             assertSame(true, $partial->data['partial']);
             assertSame(['scan', 'scan', 'scan'], array_column($partial->data['items'], 'tier'));
             assertSame(3, $partial->data['total']);
-            assertSame(['On-request findings were cut short at timeout_ms 999; the list holds the stored findings only.'], $partial->warnings);
+            assertSame(['On-request findings were cut short by timeout_ms 999; the list holds the stored findings only.'], $partial->warnings);
+            // Under tier on_request no stored finding is listed, and the warning says so.
+            $none = $slow->auditTests($projectId, tier: 'on_request', timeoutMs: 999);
+            assertSame([[], 0, true], [$none->data['items'], $none->data['total'], $none->data['partial']]);
+            assertSame(['On-request findings were cut short by timeout_ms 999; the list holds none of them.'], $none->warnings);
 
             $within = $slow->auditTests($projectId, tier: 'all', timeoutMs: 10_000);
             assertSame(false, $within->data['partial']);
@@ -249,6 +254,32 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
             assertSame(4, $within->data['total']);
             // The stored tier reads no clock: it is never partial.
             assertSame(false, $slow->auditTests($projectId, timeoutMs: 1)->data['partial']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A graph read past its row cap cuts the load as the deadline does, and
+     * the warning names the cap, not a timeout that did not happen.
+     */
+    public function testARowCapIsPartialAndSaysSo(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
+        try {
+            // One test case more than QueryBounds::MAX_NODES lets the assertion read hold.
+            $pdo->exec(
+                'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i <= 200000) '
+                . 'INSERT INTO nodes (id, project_id, language, kind, canonical_name, display_name, file_id, start_line, end_line, origin, confidence, attributes_json, owner_key, last_scan_id) '
+                . "SELECT 'cap-' || i, c.project_id, c.language, c.kind, c.canonical_name || '#cap' || i, c.display_name, c.file_id, c.start_line, c.end_line, c.origin, c.confidence, '{}', c.owner_key, c.last_scan_id "
+                . "FROM n, (SELECT * FROM nodes WHERE kind = 'test_case' LIMIT 1) c",
+            );
+            $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
+
+            $all = $service->auditTests($projectId, tier: 'all');
+            assertSame([true, 3], [$all->data['partial'], $all->data['total']]);
+            assertSame(['On-request findings were cut short by the row cap on a graph read; the list holds the stored findings only.'], $all->warnings);
+            assertSame(['On-request findings were cut short by the row cap on a graph read; the list holds none of them.'], $service->auditTests($projectId, tier: 'on_request')->warnings);
         } finally {
             $this->removeTempTree($root);
         }

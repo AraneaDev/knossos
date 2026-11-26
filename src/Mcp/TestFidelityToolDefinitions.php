@@ -18,7 +18,7 @@ final readonly class TestFidelityToolDefinitions
      */
     public static function definitions(): array
     {
-        return [self::listTestRules()];
+        return [self::listTestRules(), self::verifyTestDoubles()];
     }
 
     /**
@@ -36,6 +36,31 @@ final readonly class TestFidelityToolDefinitions
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => ToolCatalog::commonReadProperties(withRefresh: false),
+                'additionalProperties' => false,
+            ],
+        ];
+    }
+
+    /**
+     * `verify_test_doubles`: every double of one class, interface or trait, with its stored findings.
+     *
+     * @return array<string, mixed>
+     */
+    private static function verifyTestDoubles(): array
+    {
+        return [
+            'name' => 'verify_test_doubles',
+            'title' => 'Verify test doubles',
+            'description' => 'List every test double of one class, interface or trait, each with its stored findings and whether it is still valid (no definite finding). Use before changing a type that tests double.',
+            'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    ...ToolCatalog::commonReadProperties(),
+                    'project_id' => ['type' => 'string', 'minLength' => 1],
+                    'symbol' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 500, 'description' => 'The canonical or display name, matched exactly; a name several types share is an error listing their canonical names.'],
+                ],
+                'required' => ['project_id', 'symbol'],
                 'additionalProperties' => false,
             ],
         ];

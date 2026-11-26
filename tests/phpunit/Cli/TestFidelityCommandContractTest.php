@@ -17,9 +17,9 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * The test-fidelity commands' CLI contract: `audit-tests` and
- * `list-test-rules`, their options against their tools' schemas, and the
- * text each prints. Kept apart from QueryCommandContractTest, which is at
+ * The test-fidelity commands' CLI contract: `audit-tests`,
+ * `list-test-rules` and `verify-test-doubles`, their options against their
+ * tools' schemas, and the text each prints. Kept apart from QueryCommandContractTest, which is at
  * its length cap (preflight F3).
  */
 #[Group('cli')]
@@ -27,7 +27,7 @@ use PHPUnit\Framework\Attributes\Group;
 final class TestFidelityCommandContractTest extends KnossosTestCase
 {
     /** The arguments each command takes as positionals rather than options. */
-    private const POSITIONAL_ARGUMENTS = ['audit-tests' => ['project_id'], 'list-test-rules' => []];
+    private const POSITIONAL_ARGUMENTS = ['audit-tests' => ['project_id'], 'list-test-rules' => [], 'verify-test-doubles' => ['project_id', 'symbol']];
 
     public function testEveryToolArgumentHasACliOptionOrPositional(): void
     {
@@ -78,17 +78,39 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
         });
     }
 
-    public function testAuditTestsRefusesGitDiffUntilItArrives(): void
+    public function testAuditTestsReadsGitDiff(): void
+    {
+        $this->withScannedAudit(function (\Closure $run, string $projectId, \PDO $pdo, string $root): void {
+            // Not yet a work tree: the CLI reads git, and git's failure is the error.
+            try {
+                $run('audit-tests', [$projectId], ['scope' => ['git-diff']]);
+                self::fail('git-diff answered outside a work tree.');
+            } catch (InvalidArgumentException $error) {
+                self::assertStringStartsWith('git-diff scope failed against HEAD: Git working-tree query unavailable: fatal: not a git repository', $error->getMessage());
+            }
+            foreach ([['init', '--quiet'], ['add', '-A'], ['commit', '--quiet', '-m', 'base']] as $args) {
+                $this->runFixtureCommand(['git', '-C', $root, '-c', 'user.name=Knossos Test', '-c', 'user.email=test@example.test', '-c', 'commit.gpgsign=false', ...$args]);
+            }
+            file_put_contents($root . '/src/UserService.ts', (string) file_get_contents($root . '/src/UserService.ts') . "// changed\n");
+
+            self::assertSame(implode("\n", [
+                'tests/ghost.test.ts:1  OVER_MOCKING warning  1/1 dependencies mocked, 1 production assertions: over-mocked',
+                'tests/ghost.test.ts:6  GHOST_MEMBER definite  vi.spyOn UserService.getProfil stubs getProfil, which UserService no longer has; did you mean getProfile?',
+                'tests/ghost.test.ts:6  STALE_SINCE warning  stale since HEAD: UserService changed, tests/ghost.test.ts untouched; review: getProfil',
+                '3 test-fidelity findings.',
+            ]) . "\n", $run('audit-tests', [$projectId], ['scope' => ['git-diff'], 'base-ref' => ['HEAD']]));
+        });
+    }
+
+    public function testVerifyTestDoublesText(): void
     {
         $this->withScannedAudit(function (\Closure $run, string $projectId): void {
-            foreach ([['scope' => ['git-diff']], ['base-ref' => ['HEAD']]] as $options) {
-                try {
-                    $run('audit-tests', [$projectId], $options);
-                    self::fail('git-diff answered before Task 2.');
-                } catch (InvalidArgumentException $error) {
-                    self::assertSame('scope git-diff arrives in Task 2', $error->getMessage());
-                }
-            }
+            self::assertSame(implode("\n", [
+                'tests/ghost.test.ts:6  vi.spyOn UserService.getProfil  invalid  GHOST_MEMBER definite',
+                '1 double of src/UserService.ts#UserService; 1 invalid.',
+            ]) . "\n", $run('verify-test-doubles', [$projectId, 'UserService'], []));
+            $json = json_decode($run('verify-test-doubles', [$projectId, 'UserService'], ['json' => ['true']]), true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame(['doubles' => 1, 'invalid' => 1], $json['data']['summary']);
         });
     }
 
@@ -112,7 +134,7 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
     /**
      * Run `$test` against a scanned copy of `ts-audit` and a command runner that returns what it printed.
      *
-     * @param \Closure(\Closure(string, list<string>, array<string, list<string>>): string, string, \PDO): void $test
+     * @param \Closure(\Closure(string, list<string>, array<string, list<string>>): string, string, \PDO, string): void $test
      */
     private function withScannedAudit(\Closure $test): void
     {
@@ -135,7 +157,7 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
                     ob_end_clean();
                 }
             };
-            $test($run, $projectId, $pdo);
+            $test($run, $projectId, $pdo, $root);
         } finally {
             $this->removeTempTree($base);
         }

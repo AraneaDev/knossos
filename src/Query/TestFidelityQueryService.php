@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Knossos\Query;
 
+use Closure;
 use InvalidArgumentException;
-use Knossos\Query\TestFidelity\OnRequestFindings;
+use Knossos\Git\GitWorkingTreeProvider;
+use Knossos\Query\TestFidelity\{OnRequestFindings, ScanTierItems};
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\PackagedLanguages;
-use Knossos\TestFidelity\{ActiveTestFindings, TestFindingSuppressions, TestRuleCatalog};
-use Knossos\TestFidelity\OnRequest\{OnRequestFinding, OverMocking};
+use Knossos\TestFidelity\{ActiveTestFindings, OnRequestCategory, TestFindingSuppressions, TestRuleCatalog};
+use Knossos\TestFidelity\OnRequest\{OnRequestFinding, OnRequestInput, OverMocking, StaleSince};
 use PDO;
+use Throwable;
 
 /**
  * The test-fidelity findings of the active graph: test doubles that no longer
@@ -22,7 +25,13 @@ use PDO;
  * other surface sees them. In `all`, they are merged with the stored ones in
  * file and line order, then paged in memory.
  *
- * @phpstan-type Item array{id: string, key: string, category: string, confidence: string, rule_id: string, sub_rule: string, message: string, file: ?string, line: ?int, double: ?string, target: ?string, tier: string}
+ * In scope `git-diff`, git names the files changed since `base_ref` (staged,
+ * unstaged and untracked; the working tree against `HEAD` when no ref is
+ * given), `STALE_SINCE` reads them, and the stored findings are narrowed to
+ * those whose own file or target's file changed, as Momus's `diffRelevant`
+ * narrows its drift rules. A git failure is an error, never an empty answer.
+ *
+ * @phpstan-import-type Item from ScanTierItems
  * @phpstan-type Filters array{path_prefix: ?string, confidence: ?string, category: ?string}
  */
 final readonly class TestFidelityQueryService extends AbstractArchitectureQueryService
@@ -33,12 +42,31 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
     /** The scopes `audit_tests` reads in. */
     public const SCOPES = ['all', 'git-diff'];
 
+    /** The ref a git-diff without `base_ref` is read against, as the result names it. */
+    private const DEFAULT_REF = 'HEAD';
+
+    /** How many changed files git may name; more is an error (the working-tree reader's own cap). */
+    private const MAX_CHANGED = 1000;
+
+    /** The longest a git call may take, the working-tree reader's own bound. */
+    private const GIT_TIMEOUT_MS = 5000;
+
+    /**
+     * @param ?GitWorkingTreeProvider $gitWorkingTree where scope `git-diff` reads the changed files; null makes that scope an error
+     */
+    public function __construct(PDO $pdo, ?Closure $clock = null, private ?GitWorkingTreeProvider $gitWorkingTree = null)
+    {
+        parent::__construct($pdo, $clock);
+    }
+
     /**
      * A page of the project's test-fidelity findings of the asked tier,
      * ordered by file, line, category, rule and id.
      *
-     * A category implies its tier. `scope: "git-diff"` and `base_ref` arrive
-     * with `STALE_SINCE`, in Task 2.
+     * A category implies its tier; scope `git-diff` implies tier `all`
+     * unless a tier is given. `timeout_ms` bounds the on-request tier, and is
+     * checked between its phases (the git call, then each graph read), not
+     * within one.
      */
     public function auditTests(
         string $projectId,
@@ -47,7 +75,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         ?string $category = null,
         int $limit = 50,
         int $offset = 0,
-        string $tier = TestRuleCatalog::SCAN,
+        ?string $tier = null,
         string $scope = 'all',
         ?string $baseRef = null,
         int $timeoutMs = 2000,
@@ -55,53 +83,39 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $project = $this->project($projectId);
         $tier = self::validated($limit, $offset, $confidence, $category, $tier, $scope, $baseRef, $timeoutMs);
         $deadline = $this->now() + $timeoutMs * 1_000_000;
+        $ref = $baseRef ?? self::DEFAULT_REF;
+        $changed = $scope === 'git-diff' ? $this->changed((string) $project['root_realpath'], $baseRef, $deadline) : null;
         $suppressions = ActiveTestFindings::suppressionsOf((string) $project['root_realpath']);
         $filters = ['path_prefix' => $pathPrefix, 'confidence' => $confidence, 'category' => $category];
         $scan = $tier !== TestRuleCatalog::ON_REQUEST;
-        $partial = false;
-        $onRequest = [];
-        $languages = [];
-        $silent = [];
-        if ($tier !== TestRuleCatalog::SCAN) {
-            $input = (new OnRequestFindings($this->pdo, fn(): int => $this->now()))->load($projectId, $deadline);
-            $partial = $input->partial;
-            $languages = $input->testFiles;
-            $silent = OverMocking::languagesWithoutImports($input);
-            $onRequest = array_values(array_filter(
-                OverMocking::findings($input),
-                static fn(OnRequestFinding $finding): bool => !$suppressions->suppresses($finding->ruleId, $finding->category->value, $finding->subRule, $finding->file),
-            ));
-        }
+        $input = $tier === TestRuleCatalog::SCAN ? new OnRequestInput([], [], [], []) : (new OnRequestFindings($this->pdo, fn(): int => $this->now()))->load($projectId, $deadline, $changed);
+        $onRequest = array_values(array_filter(
+            [...OverMocking::findings($input), ...StaleSince::findings($input, $ref)],
+            static fn(OnRequestFinding $finding): bool => !$suppressions->suppresses($finding->ruleId, $finding->category->value, $finding->subRule, $finding->file),
+        ));
         $findings = new ActiveTestFindings($this->pdo, $projectId, $suppressions);
         $matching = array_map(
             static fn(OnRequestFinding $finding): array => $finding->toItem(),
             array_values(array_filter($onRequest, static fn(OnRequestFinding $finding): bool => self::matches($finding, $filters))),
         );
-        $total = ($scan ? $findings->count($filters) : 0) + count($matching);
-        if ($matching === []) {
-            $items = $scan ? self::items($findings->find($filters, $limit, $offset)) : [];
-        } else {
-            // The stored findings that could fall on this page, merged with every on-request one.
-            $merged = [...($scan ? self::items($findings->find($filters, $offset + $limit)) : []), ...$matching];
-            usort($merged, self::order(...));
-            $items = array_slice($merged, $offset, $limit);
-        }
+        [$items, $total] = self::page($findings, $filters, $scan, $changed, $matching, $limit, $offset);
         $next = $offset + count($items) < $total ? $offset + count($items) : null;
+        $data = [
+            'items' => $items,
+            'total' => $total,
+            'partial' => $input->partial,
+            'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions, $scan, $onRequest, $input->testFiles, OverMocking::languagesWithoutImports($input))],
+            'suppressions_invalid' => $suppressions->invalid(),
+            'pagination' => ['offset' => $offset, 'next_offset' => $next],
+        ];
 
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
             sprintf('%d test-fidelity finding%s.', $total, $total === 1 ? '' : 's'),
-            [
-                'items' => $items,
-                'total' => $total,
-                'partial' => $partial,
-                'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions, $scan, $onRequest, $languages, $silent)],
-                'suppressions_invalid' => $suppressions->invalid(),
-                'pagination' => ['offset' => $offset, 'next_offset' => $next],
-            ],
+            $changed === null ? $data : $data + ['git' => ['base_ref' => $ref, 'changed_files' => count($changed)]],
             [],
-            $partial ? [sprintf('On-request findings were cut short at timeout_ms %d; the list holds the stored findings only.', $timeoutMs)] : [],
+            self::warnings($input, $scan, $timeoutMs, $category, $changed),
             $next !== null,
         );
     }
@@ -119,9 +133,10 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
 
     /**
      * Refuse an argument out of its bounds, and give the tier to list: the
-     * asked one, or the asked category's.
+     * asked category's, else the asked one, else `all` in scope `git-diff`
+     * and `scan` in any other.
      */
-    private static function validated(int $limit, int $offset, ?string $confidence, ?string $category, string $tier, string $scope, ?string $baseRef, int $timeoutMs): string
+    private static function validated(int $limit, int $offset, ?string $confidence, ?string $category, ?string $tier, string $scope, ?string $baseRef, int $timeoutMs): string
     {
         if ($limit < 1 || $limit > 200) {
             throw new InvalidArgumentException('limit must be between 1 and 200.');
@@ -140,14 +155,98 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
                 throw new InvalidArgumentException(sprintf('%s must be one of: %s.', $name, implode(', ', $allowed)));
             }
         }
-        if ($scope !== 'all' || $baseRef !== null) {
-            throw new InvalidArgumentException('scope git-diff arrives in Task 2');
+        if ($baseRef !== null && $scope !== 'git-diff') {
+            throw new InvalidArgumentException('base_ref requires scope git-diff.');
         }
         if ($timeoutMs < 1 || $timeoutMs > 10_000) {
             throw new InvalidArgumentException('timeout_ms must be between 1 and 10000.');
         }
 
-        return $category === null ? $tier : (string) TestRuleCatalog::tierOf($category);
+        return $category !== null ? (string) TestRuleCatalog::tierOf($category) : ($tier ?? ($scope === 'git-diff' ? 'all' : TestRuleCatalog::SCAN));
+    }
+
+    /**
+     * The project files changed since `$baseRef` (the working tree against
+     * `HEAD` when null), staged, unstaged and untracked alike. Every failure
+     * to read them is an error: an empty set would read as a clean diff.
+     *
+     * @return list<string>
+     */
+    private function changed(string $root, ?string $baseRef, int $deadline): array
+    {
+        if ($this->gitWorkingTree === null) {
+            throw new InvalidArgumentException('scope git-diff is unavailable: this server reads no git working tree.');
+        }
+        $remaining = intdiv($deadline - $this->now(), 1_000_000);
+        try {
+            $changes = $this->gitWorkingTree->changes($root, $baseRef, self::MAX_CHANGED, max(1, min(self::GIT_TIMEOUT_MS, $remaining)));
+        } catch (Throwable $error) {
+            throw new InvalidArgumentException(sprintf('git-diff scope failed against %s: %s', $baseRef ?? self::DEFAULT_REF, substr($error->getMessage(), 0, 500)), previous: $error);
+        }
+        if ($changes['truncated']) {
+            throw new InvalidArgumentException(sprintf('git-diff scope failed against %s: more than %d files changed; pick a nearer base_ref.', $baseRef ?? self::DEFAULT_REF, self::MAX_CHANGED));
+        }
+
+        return $changes['paths'];
+    }
+
+    /**
+     * The page of items and the total: the stored findings of the tier
+     * (narrowed to the changed files in scope `git-diff`) merged with every
+     * matching on-request one, in the stored order. With no on-request item
+     * outside `git-diff`, the page is read from the store as it is.
+     *
+     * @param Filters $filters
+     * @param ?list<string> $changed
+     * @param list<Item> $matching
+     * @return array{list<Item>, int}
+     */
+    private static function page(ActiveTestFindings $findings, array $filters, bool $scan, ?array $changed, array $matching, int $limit, int $offset): array
+    {
+        if (!$scan) {
+            $stored = [];
+        } elseif ($changed !== null) {
+            $relevant = array_fill_keys($changed, true);
+            $stored = ScanTierItems::of(array_values(array_filter(
+                $findings->find($filters),
+                static fn(array $finding): bool => isset($relevant[(string) $finding['file']]) || isset($relevant[(string) $finding['target_file']]),
+            )));
+        } elseif ($matching === []) {
+            return [ScanTierItems::of($findings->find($filters, $limit, $offset)), $findings->count($filters)];
+        } else {
+            // The stored findings that could fall on this page, merged with every on-request one.
+            $stored = ScanTierItems::of($findings->find($filters, $offset + $limit));
+        }
+        $total = ($scan && $changed === null ? $findings->count($filters) : count($stored)) + count($matching);
+        $merged = [...$stored, ...$matching];
+        usort($merged, self::order(...));
+
+        return [array_slice($merged, $offset, $limit), $total];
+    }
+
+    /**
+     * What the result could not hold, and why: a load cut short by the
+     * deadline or a row cap, and a `STALE_SINCE` asked for outside the one
+     * scope that computes it.
+     *
+     * @param ?list<string> $changed
+     * @return list<string>
+     */
+    private static function warnings(OnRequestInput $input, bool $scan, int $timeoutMs, ?string $category, ?array $changed): array
+    {
+        $warnings = [];
+        if ($input->partial) {
+            $warnings[] = sprintf(
+                'On-request findings were cut short by %s; the list holds %s.',
+                $input->cutBy === 'timeout_ms' ? sprintf('timeout_ms %d', $timeoutMs) : 'the row cap on a graph read',
+                $scan ? 'the stored findings only' : 'none of them',
+            );
+        }
+        if ($category === OnRequestCategory::StaleSince->value && $changed === null) {
+            $warnings[] = 'STALE_SINCE is computed only in scope git-diff.';
+        }
+
+        return $warnings;
     }
 
     /**
@@ -162,30 +261,6 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         return ($prefix === null || $prefix === '' || str_starts_with($finding->file, $prefix))
             && ($filters['confidence'] === null || $filters['confidence'] === $finding->confidence->value)
             && ($filters['category'] === null || $filters['category'] === $finding->category->value);
-    }
-
-    /**
-     * Stored findings as items of the scan tier.
-     *
-     * @param list<array<string, mixed>> $findings
-     * @return list<Item>
-     */
-    private static function items(array $findings): array
-    {
-        return array_map(static fn(array $finding): array => [
-            'id' => $finding['id'],
-            'key' => $finding['key'],
-            'category' => $finding['category'],
-            'confidence' => $finding['confidence'],
-            'rule_id' => $finding['rule_id'],
-            'sub_rule' => $finding['sub_rule'],
-            'message' => $finding['message'],
-            'file' => $finding['file'],
-            'line' => $finding['line'],
-            'double' => $finding['double_name'],
-            'target' => $finding['target_name'],
-            'tier' => TestRuleCatalog::SCAN,
-        ], $findings);
     }
 
     /**

@@ -320,6 +320,13 @@ final class ToolBindings
                 'call' => static fn(ArchitectureQueryService $q): ResultEnvelope => $q->services()->testFidelityQueries->listTestRules(),
                 'arguments' => [],
             ],
+            'verify_test_doubles' => [
+                'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->services()->doublesOfSymbol->verify(...$v),
+                'arguments' => [
+                    'project_id' => self::at('Usage: knossos verify-test-doubles <path|project-id> <symbol> [--json]'),
+                    'symbol' => self::at('A symbol is required.'),
+                ],
+            ],
             // MCP only: the CLI's file-context is the pane's, a different answer.
             'file_context' => [
                 'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->fileContext(...$v),

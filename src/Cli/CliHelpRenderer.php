@@ -91,6 +91,7 @@ Usage:
                       [--scope=all|git-diff] [--base-ref=REF] [--timeout-ms=N]
                       [--limit=N] [--offset=N] [--json]
   knossos list-test-rules [--db=PATH] [--json]
+  knossos verify-test-doubles <path|project-id> <symbol> [--json]
   knossos explain-flow <path|project-id> <from> <to> [--max-depth=N] [--max-paths=N]
                        [--edge-kind=KIND] [--min-confidence=LEVEL] [--timeout-ms=N]
                        [--both-directions] [--profile=NAME] [--json]

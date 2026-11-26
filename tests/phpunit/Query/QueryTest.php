@@ -486,10 +486,10 @@ final class QueryTest extends KnossosTestCase
             assertSame(7, count($lines));
             $responses = array_map(fn(string $line): array => json_decode($line, true, 512, JSON_THROW_ON_ERROR), $lines);
             assertSame('2025-11-25', $responses[0]['result']['protocolVersion']);
-            // 40 graph tools plus server_info and diagnose_runtime, which a real
+            // 41 graph tools plus server_info and diagnose_runtime, which a real
             // `serve` offers because it wires a ServerEnvironment.
             $toolNames = array_column($responses[1]['result']['tools'], 'name');
-            assertSame(42, count($toolNames));
+            assertSame(43, count($toolNames));
             assertArrayContains('server_info', $toolNames);
             assertArrayContains('diagnose_runtime', $toolNames);
             assertSame(true, $responses[2]['result']['isError']);
