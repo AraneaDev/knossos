@@ -59,7 +59,12 @@ describe("field lists", () => {
         });
 
         expect(nodes.User.fields).toEqual([
-            { name: "email", type: "string | undefined", required: false, line: 4 },
+            {
+                name: "email",
+                type: "string | undefined",
+                required: false,
+                line: 4,
+            },
             { name: "id", type: "string", required: true, line: 2 },
             { name: "nick", type: "string", required: false, line: 3 },
         ]);
@@ -126,7 +131,9 @@ describe("field lists", () => {
         ]);
         expect(nodes.Account.fields_open).toBeUndefined();
     });
+});
 
+describe("field lists that are open", () => {
     it("an_unresolved_base_opens_the_list", () => {
         const nodes = scan({
             "src/dto.ts":
@@ -189,7 +196,9 @@ describe("field lists", () => {
         expect(nodes.Child.fields_open).toBe(true);
         expect(nodes.Plain.fields_open).toBeUndefined();
     });
+});
 
+describe("field lists over a decorated class", () => {
     it("opens an alias that intersects a decorated class or its subclass", () => {
         const nodes = scan({
             "src/dto.ts":
@@ -240,6 +249,40 @@ describe("field lists", () => {
             { name: "x", type: "string", required: true, line: 11 },
         ]);
     });
+});
+
+describe("field lists from a mapped source", () => {
+    it("opens a mapped type whose source class is decorated, its fields declared in a base", () => {
+        const nodes = scan({
+            "src/dto.ts":
+                "declare function Exclude(): ClassDecorator;\n" +
+                "export class Base { id!: string; }\n" +
+                "@Exclude()\n" +
+                "export class DecSub extends Base {}\n" +
+                "export class Plain { id!: string; }\n" +
+                "type Mirror = { [K in keyof DecSub]: DecSub[K] };\n" +
+                "export type PSub = Partial<DecSub> & { x: string };\n" +
+                "export type Picked = Pick<DecSub, 'id'> & {};\n" +
+                "export type Twice = Partial<Readonly<DecSub>> & { x: string };\n" +
+                "export type Mirrored = Mirror & { x: string };\n" +
+                "export interface Extended extends Partial<DecSub> { x: string; }\n" +
+                "export type Clean = Partial<Readonly<Plain>> & { x: string };\n" +
+                "export interface CleanExtended extends Partial<Plain> { x: string; }\n",
+        });
+
+        for (const name of [
+            "PSub",
+            "Picked",
+            "Twice",
+            "Mirrored",
+            "Extended",
+        ]) {
+            expect([name, nodes[name].fields_open]).toEqual([name, true]);
+        }
+        expect(nodes.Clean.fields_open).toBeUndefined();
+        expect(nodes.CleanExtended.fields_open).toBeUndefined();
+        expect(nodes.Clean.fields.map((f) => f.name)).toEqual(["id", "x"]);
+    });
 
     it("opens a list holding a key no source declares", () => {
         const nodes = scan({
@@ -267,7 +310,9 @@ describe("field lists", () => {
         expect(nodes.Disc.fields).toBeUndefined();
         expect(nodes.Named.fields).toBeUndefined();
     });
+});
 
+describe("a long field list", () => {
     it("a_64_field_class_is_cut_and_marked", () => {
         const names = Array.from(
             { length: 70 },

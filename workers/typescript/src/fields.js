@@ -120,7 +120,8 @@ function isRequired(property, declaration) {
     if ((property.flags & ts.SymbolFlags.Optional) !== 0) return false;
     if (declaration === undefined) return true;
     if (
-        (ts.isPropertyDeclaration(declaration) || ts.isParameter(declaration)) &&
+        (ts.isPropertyDeclaration(declaration) ||
+            ts.isParameter(declaration)) &&
         declaration.initializer !== undefined
     ) {
         return false;
@@ -157,17 +158,114 @@ function isOpen(checker, node, type) {
         return true;
     }
     const parts = type.isIntersection() ? type.types : [type];
-    const classes = parts
-        .flatMap((part) => [part, ...baseClasses(checker, part)])
-        .flatMap((part) => part.symbol?.declarations ?? []);
+    const classes = [
+        ...parts
+            .flatMap((part) => [part, ...baseClasses(checker, part)])
+            .flatMap((part) => part.symbol?.declarations ?? []),
+        ...sourceDeclarations(checker, node, type),
+    ];
     return (
-        classes.some(
-            (declaration) =>
-                ts.isClassLike(declaration) && isDecorated(declaration),
-        ) ||
+        classes.some((declaration) => isDecoratedClass(checker, declaration)) ||
+        parts.some((part) => hasUnknownSource(part)) ||
         checker
             .getPropertiesOfType(type)
             .some((property) => isRenamable(checker, property))
+    );
+}
+
+/** Whether a declaration is a class that is decorated or extends a decorated class. */
+function isDecoratedClass(checker, declaration) {
+    if (!ts.isClassLike(declaration)) return false;
+    if (isDecorated(declaration)) return true;
+    const symbol =
+        declaration.name === undefined
+            ? undefined
+            : checker.getSymbolAtLocation(declaration.name);
+    return (
+        symbol !== undefined &&
+        baseClasses(checker, checker.getDeclaredTypeOfSymbol(symbol)).some(
+            (base) =>
+                (base.symbol?.declarations ?? []).some(
+                    (inherited) =>
+                        ts.isClassLike(inherited) && isDecorated(inherited),
+                ),
+        )
+    );
+}
+
+/**
+ * The declarations of every type a list is built from, beyond its own: the
+ * type arguments a mapped type such as `Partial<Sub>` was made from, at any
+ * depth, and every type the alias's right side or a heritage clause names,
+ * through the aliases it names. A class-level decorator on such a source
+ * may change which keys are serialised, though no field is declared there.
+ */
+function sourceDeclarations(checker, node, type) {
+    const found = new Set();
+    const seenTypes = new Set();
+    const visitType = (current) => {
+        if (current === undefined || seenTypes.has(current)) return;
+        seenTypes.add(current);
+        for (const declaration of current.symbol?.declarations ?? []) {
+            found.add(declaration);
+        }
+        for (const argument of current.aliasTypeArguments ?? [])
+            visitType(argument);
+        for (const part of current.isUnionOrIntersection()
+            ? current.types
+            : []) {
+            visitType(part);
+        }
+    };
+    visitType(type);
+    const seenAliases = new Set();
+    const visitNode = (written) => {
+        if (
+            ts.isTypeReferenceNode(written) ||
+            ts.isExpressionWithTypeArguments(written)
+        ) {
+            let symbol = checker.getSymbolAtLocation(
+                ts.isTypeReferenceNode(written)
+                    ? written.typeName
+                    : written.expression,
+            );
+            if (
+                symbol !== undefined &&
+                (symbol.flags & ts.SymbolFlags.Alias) !== 0
+            ) {
+                symbol = checker.getAliasedSymbol(symbol);
+            }
+            for (const declaration of symbol?.declarations ?? []) {
+                found.add(declaration);
+                if (
+                    ts.isTypeAliasDeclaration(declaration) &&
+                    !seenAliases.has(declaration)
+                ) {
+                    seenAliases.add(declaration);
+                    visitNode(declaration.type);
+                }
+            }
+        }
+        ts.forEachChild(written, visitNode);
+    };
+    if (ts.isTypeAliasDeclaration(node)) visitNode(node.type);
+    for (const clause of node.heritageClauses ?? []) {
+        for (const written of clause.types) visitNode(written);
+    }
+    return [...found];
+}
+
+/**
+ * Whether a part is a mapped type whose source cannot be named: it is no
+ * alias with type arguments (`Partial<T>`) and no alias whose right side can
+ * be read (`type M = { [K in keyof T]: … }`), so a decorator on what it maps
+ * cannot be looked for.
+ */
+function hasUnknownSource(part) {
+    if (((part.objectFlags ?? 0) & ts.ObjectFlags.Mapped) === 0) return false;
+    return (
+        (part.aliasTypeArguments ?? []).length === 0 &&
+        !(part.aliasSymbol?.declarations ?? []).some(ts.isTypeAliasDeclaration)
     );
 }
 
@@ -187,22 +285,7 @@ function isRenamable(checker, property) {
         const owner = ts.isParameter(declaration)
             ? declaration.parent?.parent
             : declaration.parent;
-        if (owner === undefined || !ts.isClassLike(owner)) return false;
-        if (isDecorated(owner)) return true;
-        const symbol =
-            owner.name === undefined
-                ? undefined
-                : checker.getSymbolAtLocation(owner.name);
-        return (
-            symbol !== undefined &&
-            baseClasses(checker, checker.getDeclaredTypeOfSymbol(symbol)).some(
-                (base) =>
-                    (base.symbol?.declarations ?? []).some(
-                        (inherited) =>
-                            ts.isClassLike(inherited) && isDecorated(inherited),
-                    ),
-            )
-        );
+        return owner !== undefined && isDecoratedClass(checker, owner);
     });
 }
 
@@ -266,11 +349,15 @@ function isDecorated(node) {
  * judged against a guess.
  */
 function enumCases(node) {
-    const values = node.members.map((member) => literalText(member.initializer));
+    const values = node.members.map((member) =>
+        literalText(member.initializer),
+    );
     const backed = values.every((value) => value !== null);
     const cases = node.members
         .map((member, index) => ({
-            name: member.name.getText(node.getSourceFile()).replace(/^(['"])(.*)\1$/s, "$2"),
+            name: member.name
+                .getText(node.getSourceFile())
+                .replace(/^(['"])(.*)\1$/s, "$2"),
             ...(backed ? { value: values[index] } : {}),
         }))
         .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
