@@ -244,6 +244,48 @@ final class MockMembersTest extends KnossosTestCase
         assertFalse($members->complete);
     }
 
+    public function testATraitImplsAssociatedItemsAreMembersOfItsBlock(): void
+    {
+        $producer = $this->type('rust:class:crate::Producer', 'class');
+        $impl = ['overrides' => true, 'impl_trait' => 'WithAssoc', 'impl_types' => [['name' => 'Output', 'type' => 'u8']], 'impl_consts' => [['name' => 'LIMIT', 'type' => 'usize', 'value' => '3'], ['name' => 'NAME', 'type' => '&str']]];
+        $this->method($producer, '<impl WithAssoc>::produce', [...$impl, 'signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'u8']]);
+        $this->method($producer, '<impl WithAssoc>::limit', [...$impl, 'signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'usize']]);
+
+        $members = $this->members($producer, 'rust');
+
+        // Once per impl, before its methods, each in the impl's block.
+        assertSame([['Output', 'type', 'u8', 'WithAssoc'], ['LIMIT', 'const', 'usize', 'WithAssoc'], ['NAME', 'const', '&str', 'WithAssoc'], ['<impl WithAssoc>::produce', 'method', null, 'WithAssoc'], ['<impl WithAssoc>::limit', 'method', null, 'WithAssoc']], array_map(static fn(MockMember $member): array => [$member->name, $member->kind, $member->type, $member->implTrait], $members->members));
+        assertSame(['3', null], [$members->members[1]->signature['value'] ?? null, $members->members[2]->signature['value'] ?? null]);
+        assertTrue($members->complete);
+    }
+
+    public function testOneMethodNameFromTwoImplsKeepsTheFirst(): void
+    {
+        // mockall makes one expect_into2() for a struct: a second impl of the name cannot be mocked beside it.
+        $conv = $this->type('rust:class:crate::Conv2', 'class');
+        $this->method($conv, '<impl Into2<Aa>>::into2', ['overrides' => true, 'impl_trait' => 'Into2<Aa>', 'signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'Aa']]);
+        $this->method($conv, '<impl Into2<Bb>>::into2', ['overrides' => true, 'impl_trait' => 'Into2<Bb>', 'signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'Bb']]);
+        $this->method($conv, 'into2', ['signature' => ['params' => [], 'receiver' => '&self']]);
+
+        $members = $this->members($conv, 'rust');
+
+        assertSame(['<impl Into2<Aa>>::into2'], self::names($members->members));
+        assertSame([
+            ['name' => '<impl Into2<Bb>>::into2', 'reason' => 'mockall cannot mock one method name from two impls'],
+            ['name' => 'into2', 'reason' => 'mockall cannot mock one method name from two impls'],
+        ], $members->omitted);
+        assertFalse($members->complete);
+    }
+
+    public function testAStructsTraitOutsideTheScanIsSaidSo(): void
+    {
+        $engine = $this->type('rust:class:crate::Engine', 'class');
+        $this->method($engine, 'start', ['signature' => ['params' => [], 'receiver' => '&self']]);
+        $this->edge('implements', $engine, 'rust:interface:std::fmt::Display');
+
+        assertSame(['Engine implements a trait outside the scan: its methods the impl does not write (defaults) are not listed.'], $this->members($engine, 'rust')->notes);
+    }
+
     public function testARustTraitsAssociatedItemsAreMembers(): void
     {
         $trait = $this->type('rust:interface:crate::WithAssoc', 'interface', ['associated_types' => ['Output', 'Item: Clone'], 'associated_consts' => [['name' => 'LIMIT', 'type' => 'usize']]]);

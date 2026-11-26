@@ -84,6 +84,7 @@ pub trait WithAssoc {
 
 pub trait Borrow {
     fn plain(&self) -> &str;
+    fn all(&self) -> &[u8];
 }
 
 pub enum Plain {
@@ -94,4 +95,38 @@ pub enum Plain {
 pub union Bits {
     a: u32,
     b: f32,
+}
+
+pub struct Producer;
+
+impl WithAssoc for Producer {
+    type Output = u8;
+    const LIMIT: usize = 3;
+    fn produce(&self) -> u8 {
+        0
+    }
+    fn limit(&self) -> usize {
+        Self::LIMIT
+    }
+}
+
+pub struct Aa;
+pub struct Bb;
+
+pub trait Into2<T> {
+    fn into2(&self) -> T;
+}
+
+pub struct Conv2;
+
+impl Into2<Aa> for Conv2 {
+    fn into2(&self) -> Aa {
+        Aa
+    }
+}
+
+impl Into2<Bb> for Conv2 {
+    fn into2(&self) -> Bb {
+        Bb
+    }
 }

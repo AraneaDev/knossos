@@ -113,7 +113,7 @@ final readonly class RustTemplate implements MockTemplate
     public function member(MockMembers $members, MockMember $member, string $framework, bool $values): array
     {
         if ($member->kind !== 'method') {
-            return ['rendered' => '        ' . self::associatedItem($member), 'unknown' => [self::associatedUnknown($member)], 'imports' => []];
+            return ['rendered' => '        ' . self::associatedItem($member), 'unknown' => self::associatedUnknown($member), 'imports' => []];
         }
         if ($framework === 'hand-written') {
             return $this->fake($member, $values);
@@ -122,10 +122,10 @@ final readonly class RustTemplate implements MockTemplate
         $returns = (string) $member->returns();
         if (!$member->associated && str_starts_with($returns, '&')) {
             // mockall gives a borrowed return through return_const, from the owned value it lends.
-            $placeholder = (new ExampleValue('rust', $this->lookup))->placeholder('the value ' . $returns . ' lends');
+            $owned = self::ownedZero($returns) ?? (new ExampleValue('rust', $this->lookup))->placeholder('the value ' . $returns . ' lends')['value'];
 
             return [
-                'rendered' => sprintf('    mock.expect_%s().return_const(%s);', $member->name, $values ? $placeholder['value'] : 'todo!()'),
+                'rendered' => sprintf('    mock.expect_%s().return_const(%s);', $member->name, $values ? $owned : 'todo!()'),
                 'unknown' => [...$unknown, 'returns a reference: return_const takes the owned value it lends'],
                 'imports' => [],
             ];
@@ -144,6 +144,18 @@ final readonly class RustTemplate implements MockTemplate
         }
 
         return ['rendered' => sprintf('    mock.expect_%s().returning(%s);', $member->name, $closure), 'unknown' => $unknown, 'imports' => $example['imports']];
+    }
+
+    /** The owned zero a borrowed return lends from: `String::new()` for `&str` or `&String`, `Vec::new()` for `&[T]` or `&Vec<T>`; null for any other. */
+    private static function ownedZero(string $returns): ?string
+    {
+        $lent = trim((string) preg_replace("/^&(?:'\\w+\\s+)?(?:mut\\s+)?/", '', $returns));
+
+        return match (true) {
+            $lent === 'str' || $lent === 'String' => 'String::new()',
+            str_starts_with($lent, '[') || str_starts_with($lent, 'Vec<') => 'Vec::new()',
+            default => null,
+        };
     }
 
     /** The block a member belongs in: its declaring trait, or for a struct `''` (inherent) or `#` and the trait it implements. */
@@ -166,19 +178,28 @@ final readonly class RustTemplate implements MockTemplate
     /** An associated type or const as an impl gives it, a placeholder: `type Output = ();`, `const LIMIT: usize = 0;`. */
     private static function associatedItem(MockMember $member): string
     {
+        // A struct's impl gives them as it writes them; a trait's mock needs a placeholder.
         if ($member->kind === 'type') {
-            return sprintf('type %s = ();', $member->name);
+            return sprintf('type %s = %s;', $member->name, $member->implTrait === null ? '()' : (string) $member->type);
+        }
+        if (is_string($member->signature['value'] ?? null)) {
+            return sprintf('const %s: %s = %s;', $member->name, (string) $member->type, $member->signature['value']);
         }
         $zero = (new ExampleValue('rust', static fn(): ?array => null))->of($member->type, '');
 
         return sprintf('const %s: %s = %s;', $member->name, (string) $member->type, $zero['value'] ?? 'todo!()');
     }
 
-    private static function associatedUnknown(MockMember $member): string
+    /** @return list<string> */
+    private static function associatedUnknown(MockMember $member): array
     {
-        return $member->kind === 'type'
+        if (($member->kind === 'type' && $member->implTrait !== null) || is_string($member->signature['value'] ?? null)) {
+            return [];
+        }
+
+        return [$member->kind === 'type'
             ? sprintf('type %s: () is a placeholder%s; choose the type a test needs', $member->name, $member->type === $member->name ? '' : ', and may not meet ' . (string) $member->type)
-            : sprintf('const %s: a placeholder value', $member->name);
+            : sprintf('const %s: a placeholder value', $member->name)];
     }
 
     /**
@@ -205,7 +226,7 @@ final readonly class RustTemplate implements MockTemplate
     private function fake(MockMember $member, bool $values): array
     {
         if ($member->kind !== 'method') {
-            return ['rendered' => '    ' . self::associatedItem($member), 'unknown' => [self::associatedUnknown($member)], 'imports' => []];
+            return ['rendered' => '    ' . self::associatedItem($member), 'unknown' => self::associatedUnknown($member), 'imports' => []];
         }
         $example = $this->example($member, $values);
         // A method returning nothing has an empty body when values are stubbed.

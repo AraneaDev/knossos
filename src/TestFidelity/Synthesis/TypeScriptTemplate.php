@@ -81,13 +81,13 @@ final readonly class TypeScriptTemplate implements MockTemplate
                 $unknown[] = sprintf('param %s: untyped', $name);
             }
             $unknown = [...$unknown, ...self::parametersNamed($written ?? '', $outer)];
-            $type = self::thisless(TypeText::substitute($written ?? ($variadic ? 'unknown[]' : 'unknown'), $outer, 'unknown'), $members);
+            $type = self::thisless(TypeText::substitute($written ?? ($variadic ? 'unknown[]' : 'unknown'), $outer, 'unknown'), $members, $unknown);
             $params[] = ($variadic ? '...' : '') . $name . (($param['optional'] ?? false) === true && !$variadic ? '?' : '') . ': ' . $type;
         }
         $written = $member->returns();
         $unknown = [...$unknown, ...self::parametersNamed($written ?? '', $outer)];
         // An untyped return is the one the type checker infers, which `unknown` would not fit: name it so.
-        $returns = $written === null ? sprintf("ReturnType<%s['%s']>", self::checked($members), $member->name) : self::thisless(TypeText::substitute($written, $outer, 'unknown'), $members);
+        $returns = $written === null ? sprintf("ReturnType<%s['%s']>", self::checked($members), $member->name) : self::thisless(TypeText::substitute($written, $outer, 'unknown'), $members, $unknown);
         $stub = sprintf('%s.fn<(%s) => %s>()', $framework === 'jest' ? 'jest' : 'vi', implode(', ', $params), $returns);
         $imports = [];
         if ($written === null) {
@@ -108,9 +108,15 @@ final readonly class TypeScriptTemplate implements MockTemplate
     }
 
     /** `$type` with `this`, which has no meaning in an object literal's stub (TS2526), as the checked type. */
-    private static function thisless(string $type, MockMembers $members): string
+    /** @param list<string> $unknown where the narrowing is listed */
+    private static function thisless(string $type, MockMembers $members, array &$unknown): string
     {
-        return TypeText::substitute($type, ['this'], self::checked($members));
+        $narrowed = TypeText::substitute($type, ['this'], self::checked($members));
+        if ($narrowed !== $type && !in_array('this narrowed to ' . self::checked($members), $unknown, true)) {
+            $unknown[] = 'this narrowed to ' . self::checked($members);
+        }
+
+        return $narrowed;
     }
 
     /** The type the mock is checked against: the target, each of its type parameters `unknown` (`Box<unknown>`). */

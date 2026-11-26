@@ -135,5 +135,11 @@
     },
     "rs-borrow": {
         "symbol": "Borrow"
+    },
+    "rs-producer": {
+        "symbol": "Producer"
+    },
+    "rs-conv2": {
+        "symbol": "Conv2"
     }
 }

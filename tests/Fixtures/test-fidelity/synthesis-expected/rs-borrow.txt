@@ -1,5 +1,5 @@
 // knossos synthesize_mock: synth::focus::Borrow (mockall), from rust/src/focus.rs:85
-// 1 member; complete
+// 2 members; complete
 use mockall::mock;
 use synth::focus::Borrow;
 
@@ -7,11 +7,13 @@ mock! {
     pub Borrow {}
     impl Borrow for Borrow {
         fn plain(&self) -> &str;
+        fn all(&self) -> &[u8];
     }
 }
 
 #[test]
 fn borrow_mock() {
     let mut mock = MockBorrow::new();
-    mock.expect_plain().return_const(todo!() /* knossos: fill in the value &str lends */);
+    mock.expect_plain().return_const(String::new());
+    mock.expect_all().return_const(Vec::new());
 }

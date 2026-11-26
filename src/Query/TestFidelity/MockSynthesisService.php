@@ -73,8 +73,8 @@ final readonly class MockSynthesisService extends AbstractArchitectureQueryServi
                 'name' => $member->name,
                 'signature' => match ($member->kind) {
                     'property' => $member->name . ($member->optional ? '?' : '') . ($member->type === null ? '' : ': ' . $member->type),
-                    'type' => 'type ' . (string) $member->type,
-                    'const' => sprintf('const %s: %s', $member->name, (string) $member->type),
+                    'type' => $member->implTrait === null ? 'type ' . (string) $member->type : sprintf('type %s = %s', $member->name, (string) $member->type),
+                    'const' => sprintf('const %s: %s', $member->name, (string) $member->type) . (is_string($member->signature['value'] ?? null) ? ' = ' . $member->signature['value'] : ''),
                     default => SignatureLine::of($member->signature, $member->name) ?? $member->name . '()',
                 },
                 'rendered' => $part['rendered'],

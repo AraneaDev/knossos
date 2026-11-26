@@ -83,6 +83,10 @@ final class SynthesisGoldenTest extends KnossosTestCase
         self::assertContains('Keyed is generic: MockKeyed::new() binds none of its parameters; name them where it is made.', $keyed['notes']);
         $assoc = $tools->call('synthesize_mock', ['project_id' => $projectId, 'symbol' => 'WithAssoc'])->data;
         assertSame([['type Output', ['type Output: () is a placeholder; choose the type a test needs']], ['const LIMIT: usize', ['const LIMIT: a placeholder value']]], array_map(static fn(array $member): array => [$member['signature'], $member['unknown']], array_slice($assoc['members'], 0, 2)));
+        $async = $tools->call('synthesize_mock', ['project_id' => $projectId, 'symbol' => 'Async'])->data;
+        assertSame(['this narrowed to Async', 'value of Async'], $async['members'][1]['unknown']);
+        $producer = $tools->call('synthesize_mock', ['project_id' => $projectId, 'symbol' => 'Producer'])->data;
+        assertSame([['type Output = u8', []], ['const LIMIT: usize = 3', []]], array_map(static fn(array $member): array => [$member['signature'], $member['unknown']], array_slice($producer['members'], 0, 2)));
         $borrow = $tools->call('synthesize_mock', ['project_id' => $projectId, 'symbol' => 'Borrow'])->data;
         assertSame(['returns a reference: return_const takes the owned value it lends'], $borrow['members'][0]['unknown']);
     }

@@ -1,0 +1,17 @@
+// knossos synthesize_mock: synth::focus::Conv2 (mockall), from rust/src/focus.rs:120
+// 1 member, 1 omitted; incomplete: see omitted and notes
+use mockall::mock;
+use synth::focus::Conv2;
+
+mock! {
+    pub Conv2 {}
+    impl Into2<Aa> for Conv2 {
+        fn into2(&self) -> Aa;
+    }
+}
+
+#[test]
+fn conv2_mock() {
+    let mut mock = MockConv2::new();
+    mock.expect_into2().returning(|| todo!() /* knossos: fill in Aa */);
+}

@@ -56,7 +56,7 @@ final readonly class MockMembers
     public static function of(TestFidelityGraph $graph, NodeFact $target, string $language, bool $cut = false): self
     {
         $members = $omitted = $notes = [];
-        $seen = [];
+        $seen = $impls = $mocked = [];
         $fields = $target->kind === 'interface' && $language === 'typescript' ? (FieldLists::of($graph, $target)?->fields() ?? []) : [];
         // A Rust struct inherits nothing: its trait impls are its own children, each naming its trait.
         $lineage = $language === 'rust' && $target->kind !== 'interface' ? [$target] : $graph->lineage($target);
@@ -81,6 +81,20 @@ final readonly class MockMembers
                 }
                 $seen[$key] = true;
                 $member = self::member($graph, $target, $declarer, $node, $language, $fields);
+                if ($member instanceof MockMember && $language === 'rust' && $target->kind !== 'interface') {
+                    // mockall makes one expect_name() per struct, whichever impl declares the name.
+                    $short = (string) preg_replace('/^.*::/', '', $member->name);
+                    if (isset($mocked[$short]) && $mocked[$short] !== $member->implTrait) {
+                        $member = 'mockall cannot mock one method name from two impls';
+                    } else {
+                        $mocked[$short] = $member->implTrait;
+                    }
+                }
+                if ($member instanceof MockMember && $member->implTrait !== null && !isset($impls[$member->implTrait])) {
+                    // An impl's associated items come once, before its first method.
+                    $impls[$member->implTrait] = true;
+                    $members = [...$members, ...self::implAssociated($node, $declarer, $member->implTrait)];
+                }
                 if (is_string($member)) {
                     $omitted[] = ['name' => $node->displayName, 'reason' => $member];
                 } elseif ($member !== null) {
@@ -216,6 +230,30 @@ final readonly class MockMembers
         return $members;
     }
 
+    /**
+     * A trait impl's own associated types and consts, as it writes them,
+     * from any of its methods (`impl_types`, `impl_consts`).
+     *
+     * @return list<MockMember>
+     */
+    private static function implAssociated(NodeFact $method, NodeFact $declarer, string $implTrait): array
+    {
+        $members = [];
+        foreach (is_array($method->attributes['impl_types'] ?? null) ? $method->attributes['impl_types'] : [] as $type) {
+            if (is_array($type) && is_string($type['name'] ?? null) && is_string($type['type'] ?? null)) {
+                $members[] = new MockMember($type['name'], 'type', $method, $declarer, type: $type['type'], implTrait: $implTrait);
+            }
+        }
+        foreach (is_array($method->attributes['impl_consts'] ?? null) ? $method->attributes['impl_consts'] : [] as $const) {
+            if (is_array($const) && is_string($const['name'] ?? null) && is_string($const['type'] ?? null)) {
+                $value = is_string($const['value'] ?? null) ? ['value' => $const['value']] : [];
+                $members[] = new MockMember($const['name'], 'const', $method, $declarer, $value, type: $const['type'], implTrait: $implTrait);
+            }
+        }
+
+        return $members;
+    }
+
     /** @param array<string, mixed> $attributes */
     private static function isConstructorOrStatic(string $name, array $attributes, string $language): bool
     {
@@ -324,7 +362,9 @@ final readonly class MockMembers
             : $graph->hasUnseenAncestor($target);
         if ($unseen) {
             $why[] = $language === 'rust'
-                ? sprintf('%s has a supertrait outside the scan: mock! needs its impl too, and its methods are not listed.', $target->displayName)
+                ? ($target->kind === 'interface'
+                    ? sprintf('%s has a supertrait outside the scan: mock! needs its impl too, and its methods are not listed.', $target->displayName)
+                    : sprintf('%s implements a trait outside the scan: its methods the impl does not write (defaults) are not listed.', $target->displayName))
                 : sprintf('%s inherits from a type outside the scan, whose members are not listed.', $target->displayName);
         }
         if ($language !== 'rust') {
