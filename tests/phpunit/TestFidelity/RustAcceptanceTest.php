@@ -160,6 +160,10 @@ final class RustAcceptanceTest extends KnossosTestCase
     /**
      * Every finding of the active scan as `category/sub_rule/confidence@file:line`, sorted.
      *
+     * It reads the database, so two calls around a rescan may differ.
+     *
+     * @phpstan-impure
+     *
      * @return list<string>
      */
     private static function findings(PDO $pdo): array
