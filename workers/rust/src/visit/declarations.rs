@@ -11,6 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::declaration_paths::merge_rename;
 use super::GeneratedMock;
 
+mod traits;
+
 /// Canonical name of every top-level and inline-module declaration of the
 /// project's Rust files, mapped to how many files declared it. The crate-wide
 /// view that lets an `impl` block attach to a type declared in another file
@@ -76,6 +78,8 @@ pub struct Declarations {
     /// path two files generate apart. Apart from `counts`: a generated
     /// name is no declaration (see [`Declarations::generated_mock`]).
     generated: BTreeMap<String, Option<GeneratedMock>>,
+    /// The project's traits, see [`traits`].
+    traits: traits::TraitIndex,
 }
 
 /// The package key of a file no package can be shown to own: what it

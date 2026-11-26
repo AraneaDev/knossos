@@ -54,13 +54,14 @@ pub(super) struct Rivals {
     /// `use` inside a body that leaves the standard crates may bring in any
     /// trait.
     opened: bool,
+    /// Whether a `use` inside a body leaves the standard crates.
+    body_use: bool,
 }
 
 impl Rivals {
     /// The rivals of the file `input` holds.
     pub(super) fn of(input: &TestInput<'_>) -> Self {
-        let mut modules = BTreeSet::new();
-        collect_modules(input.module, &input.file.items, &mut modules);
+        let modules = file_modules(input);
         let mut seen = Seen {
             rivals: Self::default(),
             containers: vec![input.module.to_owned()],
@@ -106,10 +107,31 @@ impl Rivals {
                 .iter()
                 .any(|(path, functions)| path != target && functions.contains(member))
     }
+
+    /// Whether something the file itself shows may take a call of `member`
+    /// on a mock of the traits `targets` (final review I1): a standard
+    /// blanket method, another trait the file declares with a method of
+    /// that name, or a `use` inside a body that leaves the standard crates.
+    /// What the file imports is [`super::trait_rivals`]'s.
+    pub(super) fn local_trait_rival(&self, targets: &[String], member: &str) -> bool {
+        STD_BLANKET.contains(&member)
+            || self.body_use
+            || self
+                .traits
+                .iter()
+                .any(|(path, functions)| !targets.contains(path) && functions.contains(member))
+    }
+}
+
+/// Every module the file `input` holds: its own and its inline ones.
+pub(super) fn file_modules(input: &TestInput<'_>) -> BTreeSet<String> {
+    let mut modules = BTreeSet::new();
+    collect_modules(input.module, &input.file.items, &mut modules);
+    modules
 }
 
 /// Whether `path` is in a standard crate.
-fn standard(path: &str) -> bool {
+pub(super) fn standard(path: &str) -> bool {
     let head = path.split("::").next().unwrap_or(path);
     STD_CRATES.contains(&head)
 }
@@ -202,6 +224,7 @@ impl Visit<'_> for Seen {
                 _ => true,
             };
             self.rivals.opened |= leaves_std;
+            self.rivals.body_use |= leaves_std;
         }
         syn::visit::visit_item_use(self, node);
     }

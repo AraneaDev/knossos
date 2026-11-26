@@ -45,12 +45,12 @@ pub use cfg::{
     collect_test_modules, is_test_module_path, is_test_support_module_path, ModuleGates,
 };
 pub(crate) use cfg::{is_cfg_test, is_test_attribute};
-pub use declaration_paths::{declaration_paths, declared_renames, indexed_item_paths};
+pub use declaration_paths::{declaration_paths, declared_renames, indexed_item_paths, trait_paths};
 pub use declarations::{
     Declarations, ExportAlternatives, ExportedNames, FieldType, FunctionReturns, GlobImports,
     StructFields, TypeAliases, ANY_PACKAGE,
 };
-pub use generated::{generated_mocks, GeneratedMock, AUTOMOCK, MOCK_MACRO};
+pub use generated::{generated_mocks, GeneratedMock, MockedTrait, AUTOMOCK, MOCK_MACRO};
 use labels::{path_label, type_label};
 use placement::mod_child;
 pub use placement::mod_declarations;
@@ -156,7 +156,11 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
         .cloned()
         .collect();
 
+    let (traits, opaque_modules) = trait_paths(module, items);
+
     IndexFacts {
+        traits,
+        opaque_modules,
         impl_methods,
         gated_impl_methods,
         private_exports,
@@ -173,6 +177,11 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
 /// What [`index_facts`] reads from one file for the declaration index.
 #[derive(Clone, Debug, Default)]
 pub struct IndexFacts {
+    /// The path of every trait the file declares, see [`trait_paths`].
+    pub traits: BTreeSet<String>,
+    /// The modules of the file where a macro stands where an item may, see
+    /// [`trait_paths`].
+    pub opaque_modules: BTreeSet<String>,
     /// The path of every method the file's `impl` blocks declare, under the
     /// type the file's own imports resolve the block's to (`impl
     /// BrokerState` beside `use super::BrokerState;` declares its methods on

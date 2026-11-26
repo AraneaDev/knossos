@@ -290,6 +290,46 @@ final class RustAcceptanceTest extends KnossosTestCase
         assertSame($service, (string) file_get_contents($root . '/src/service.rs'));
     }
 
+    /**
+     * Adding a blanket trait to `src/ext.rs`, which the test module of `src/service.rs` glob-imports, clears
+     * the echo there: the trait's by-value `now(self)` may take `clock.now()` before `Clock::now(&self)`.
+     * The edit never touches `service.rs`; removing the trait brings the echo back.
+     */
+    public function testAddingABlanketTraitToAGlobbedFileClearsTheEchoInAnUntouchedFile(): void
+    {
+        $root = self::scratchPath('rust-acceptance-trait-rival');
+        $clock = "use mockall::automock;\n\n#[automock]\npub trait Clock {\n    fn now(&self) -> u64;\n}\n";
+        $ext = "pub fn helper() -> u64 {\n    1\n}\n";
+        $rival = "pub trait Later: crate::clock::Clock + Sized {\n    fn now(self) -> u64 {\n        0\n    }\n}\n\n"
+            . "impl<T: crate::clock::Clock> Later for T {}\n";
+        $service = "#[cfg(test)]\nmod tests {\n    use crate::clock::{Clock, MockClock};\n    use crate::ext::*;\n\n"
+            . "    #[test]\n    fn echo() {\n        let mut clock = MockClock::new();\n        clock.expect_now().return_const(5u64);\n"
+            . "        assert_eq!(clock.now(), 5);\n    }\n}\n";
+        $this->writeTree($root, [
+            'Cargo.toml' => "[package]\nname = \"rival\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nmockall = \"0.13\"\n",
+            'src/lib.rs' => "pub mod clock;\npub mod ext;\npub mod service;\n",
+            'src/clock.rs' => $clock,
+            'src/ext.rs' => $ext,
+            'src/service.rs' => $service,
+        ]);
+        [$pdo, $scan] = $this->scannedAt($root);
+        $echo = 'TAUTOLOGY/mock_echo/definite@src/service.rs:10';
+        assertSame([$echo], self::findings($pdo));
+
+        file_put_contents($root . '/src/ext.rs', $ext . $rival);
+        $added = $scan->scan($root);
+
+        assertSame([], self::findings($pdo));
+        // The edited file and `service.rs`, which read it through its glob, are parsed again.
+        assertSame(2, $added->data['parsed_files']);
+
+        file_put_contents($root . '/src/ext.rs', $ext);
+        $scan->scan($root);
+
+        assertSame([$echo], self::findings($pdo));
+        assertSame($service, (string) file_get_contents($root . '/src/service.rs'));
+    }
+
     /** `audit_tests` counts the Rust findings for Rust rather than saying it has no test facts. */
     public function testAuditTestsCountsRust(): void
     {

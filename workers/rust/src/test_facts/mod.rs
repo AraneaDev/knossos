@@ -37,6 +37,7 @@ mod rivals;
 mod syntax;
 #[cfg(test)]
 mod tests;
+mod trait_rivals;
 
 use assertions::{assertion, AssertionShape};
 use cases::{helpers, test_functions, TestFunction};
@@ -51,6 +52,7 @@ use operands::OperandReader;
 use output::CaseFact;
 pub(crate) use output::TestFacts;
 use pass::{function_doubles, FunctionDoubles, Site};
+use trait_rivals::TraitRivals;
 
 /// The scope attributes a case takes from its function's node.
 const SCOPE_ATTRIBUTES: [&str; 3] = ["test", "test_support", "cfg"];
@@ -149,6 +151,7 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
     };
     let context = FrameworkContext::of(input.module, &input.file.items, input.scope, input.facts);
     let mut fakes = fakes::fakes(input, &consts.frozen);
+    let trait_rivals = TraitRivals::new(input);
     let mut doubles = Vec::new();
     let mut fake_invocations: BTreeMap<String, usize> = BTreeMap::new();
     let mut settle = |pass: &mut FunctionDoubles| {
@@ -167,6 +170,7 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
                 frozen: &consts.frozen,
                 frameworks: &context,
                 fakes: &fakes,
+                trait_rivals: &trait_rivals,
             };
             let function = case.function;
             let mut pass = function_doubles(&function.sig, &function.block, &site, &resolver);
@@ -184,6 +188,7 @@ pub(crate) fn collect(input: &TestInput<'_>) -> TestFacts {
             frozen: &consts.frozen,
             frameworks: &context,
             fakes: &fakes,
+            trait_rivals: &trait_rivals,
         };
         let mut pass = function_doubles(helper.signature, helper.block, &site, &resolver);
         settle(&mut pass);

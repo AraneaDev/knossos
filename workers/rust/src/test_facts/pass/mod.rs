@@ -25,6 +25,7 @@ use super::handles::{receiver_handle, start, Handles};
 use super::macros::Frozen;
 use super::mockall::{self, MockCall};
 use super::syntax::{strip_parens, BodyNames};
+use super::trait_rivals::TraitRivals;
 use crate::resolve::ident_name;
 use crate::visit::GeneratedMock;
 
@@ -60,6 +61,8 @@ pub(super) struct Site<'s> {
     pub(super) frameworks: &'s FrameworkContext<'s>,
     /// The file's fakes.
     pub(super) fakes: &'s [Fake],
+    /// What else may take a call on the file's trait mocks.
+    pub(super) trait_rivals: &'s TraitRivals<'s>,
 }
 
 /// The doubles of one function, with its signature and body.
@@ -92,6 +95,7 @@ pub(super) fn function_doubles(
         invoked_by: Vec::new(),
         path_calls: Vec::new(),
         static_made: BTreeMap::new(),
+        trait_mocks: BTreeMap::new(),
     };
     pass.bind_fakes();
     pass.visit_signature(signature);
@@ -147,6 +151,21 @@ struct Pass<'p> {
     path_calls: Vec<String>,
     /// Each static mock made, by mock and member.
     static_made: BTreeMap<(String, String), usize>,
+    /// Each double that is a trait mock, by position: the traits it
+    /// implements, and the members it gives them (`None` for all of them).
+    trait_mocks: BTreeMap<usize, TraitMock>,
+}
+
+/// The traits a trait mock implements, and the members it gives them: a
+/// call of one may be taken by another trait in scope (see
+/// [`TraitRivals`]). A member of the mock's own (an inherent `mock!`
+/// section) is no trait's.
+#[derive(Debug)]
+struct TraitMock {
+    /// Each trait, `None` when it could not be placed.
+    traits: Vec<Option<String>>,
+    /// The trait members, `None` for every member of the mock.
+    members: Option<BTreeSet<String>>,
 }
 
 impl<'p> Pass<'p> {
@@ -192,6 +211,12 @@ impl<'p> Pass<'p> {
             at.line,
             at.column + 1
         );
+        // A mock of a trait; a mockall mock's traits and members are the
+        // generator's, set after (see `make_mockall`).
+        let trait_target = match &made.target {
+            Some(("interface", path)) => Some(path.clone()),
+            _ => None,
+        };
         let fact = DoubleFact {
             canonical,
             mock: made.mock,
@@ -206,6 +231,13 @@ impl<'p> Pass<'p> {
             module: self.site.container.to_owned(),
         };
         let index = self.add(fact, made.framework);
+        if let Some(path) = trait_target {
+            let mock = TraitMock {
+                traits: vec![Some(path)],
+                members: None,
+            };
+            self.trait_mocks.insert(index, mock);
+        }
         if let Some((member, api)) = made.member {
             self.found.doubles[index].member(&member, api, at.line);
         }
@@ -229,7 +261,24 @@ impl<'p> Pass<'p> {
             member: None,
             invoked_by: None,
         };
-        self.make(node.span(), made)
+        let index = self.make(node.span(), made);
+        // A mock of inherent methods alone gives no member to a trait.
+        let mock = TraitMock {
+            traits: generated
+                .traits
+                .iter()
+                .map(|mocked| mocked.path.clone())
+                .collect(),
+            members: Some(
+                generated
+                    .traits
+                    .iter()
+                    .flat_map(|mocked| mocked.members.iter().cloned())
+                    .collect(),
+            ),
+        };
+        self.trait_mocks.insert(index, mock);
+        index
     }
 
     /// The double `expr` makes when it is a constructor or a mockall
@@ -349,8 +398,37 @@ impl<'p> Pass<'p> {
         }
     }
 
+    /// Note each configured member of a trait mock that another trait in
+    /// scope may take the call of (see [`TraitRivals`]), when a value would
+    /// otherwise be told.
+    fn settle_trait_rivals(&mut self) {
+        let handles = &self.found.handles;
+        let rivalled: Vec<(String, String)> = handles
+            .chains
+            .iter()
+            .filter(|(_, chains)| {
+                matches!(chains.as_slice(), [chain] if matches!(chain.values.as_slice(), [Some(_)]))
+            })
+            .filter_map(|((handle, member), _)| {
+                let index = handles
+                    .member_doubles
+                    .get(&(handle.clone(), member.clone()))
+                    .or_else(|| handles.bound.get(handle))?;
+                let mock = self.trait_mocks.get(index)?;
+                let mocked = mock
+                    .members
+                    .as_ref()
+                    .is_none_or(|members| members.contains(member));
+                (mocked && self.site.trait_rivals.rival(&mock.traits, member))
+                    .then(|| (handle.clone(), member.clone()))
+            })
+            .collect();
+        self.found.handles.rivalled.extend(rivalled);
+    }
+
     /// Settle the static calls and the fakes, and hand over.
     fn finish(mut self) -> FunctionDoubles {
+        self.settle_trait_rivals();
         for (at, mock, member) in std::mem::take(&mut self.statics) {
             let context = self.found.doubles.iter().position(|double| {
                 double.members.first().is_some_and(|first| {

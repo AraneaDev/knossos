@@ -62,6 +62,9 @@ struct FileIndex {
     macro_shadows: crate::test_facts::MacroShadows,
     /// The mocks the file generates, see [`crate::visit::GeneratedMock`].
     generated_mocks: BTreeMap<String, crate::visit::GeneratedMock>,
+    /// The traits the file declares, and its modules a macro may declare
+    /// one in, see [`crate::visit::trait_paths`].
+    traits: (BTreeSet<String>, BTreeSet<String>),
 }
 
 impl FileIndex {
@@ -74,6 +77,8 @@ impl FileIndex {
         crate::visit::collect_test_modules(relative, module, items, layout, &mut test_modules);
         let indexed = layout.is_indexed(relative, module);
         let crate::visit::IndexFacts {
+            traits,
+            opaque_modules,
             impl_methods,
             gated_impl_methods,
             private_exports,
@@ -114,6 +119,7 @@ impl FileIndex {
             private_exports,
             macro_shadows: crate::test_facts::MacroShadows::of(items),
             generated_mocks,
+            traits: (traits, opaque_modules),
         }
     }
 }
@@ -448,6 +454,7 @@ impl Declarations {
         self.add_globs(&index.globs);
         self.add_private_exports(&index.private_exports);
         self.add_generated_mocks(&index.generated_mocks);
+        self.add_traits(&index.traits.0, &index.traits.1);
     }
 }
 
