@@ -38,6 +38,7 @@ final class DigQuestionToolsTest extends KnossosTestCase
         'list_test_rules' => 'catalog',
         'verify_test_doubles' => 'diagnostics',
         'check_fixtures' => 'diagnostics',
+        'synthesize_mock' => 'creation',
     ];
 
     #[Group('mcp')]

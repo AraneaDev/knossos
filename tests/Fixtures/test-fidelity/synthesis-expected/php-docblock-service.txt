@@ -1,0 +1,11 @@
+// knossos synthesize_mock: App\DocblockService (phpunit), from php/src/DocblockService.php:6
+// 4 members; complete
+$mock = $this->createMock(\App\DocblockService::class);
+// findById(mixed $id): mixed
+$mock->method('findById')->willReturn(null);
+// fetchIds(): mixed
+$mock->method('fetchIds')->willReturn(null);
+// tag(mixed $label): mixed
+$mock->method('tag')->willReturn(null);
+// publish(): mixed
+$mock->method('publish')->willReturn(null);

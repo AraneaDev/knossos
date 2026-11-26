@@ -1,0 +1,8 @@
+// knossos synthesize_mock: typescript/src/focus.ts#NumGen (vitest), from typescript/src/focus.ts:9
+// 1 member, 1 omitted; incomplete: see omitted and notes
+import { vi } from 'vitest';
+
+const numGenMock = {
+  // name(): string
+  name: vi.fn<() => string>().mockReturnValue(''),
+} satisfies Partial<NumGen>;

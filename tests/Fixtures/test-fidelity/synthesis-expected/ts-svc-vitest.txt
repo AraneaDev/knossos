@@ -1,0 +1,8 @@
+// knossos synthesize_mock: typescript/src/svc.ts#Svc (vitest), from typescript/src/svc.ts:2
+// 1 member, 1 omitted; incomplete: see omitted and notes
+import { vi } from 'vitest';
+
+const svcMock = {
+  // totalFor(id: string, opts?: number): number
+  totalFor: vi.fn<(id: string, opts?: number) => number>().mockReturnValue(0),
+} satisfies Partial<Svc>;

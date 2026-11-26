@@ -1,0 +1,10 @@
+// knossos synthesize_mock: typescript/src/gen.ts#Box (vitest), from typescript/src/gen.ts:2
+// 2 members, 1 omitted; incomplete: see omitted and notes
+import { vi } from 'vitest';
+
+const boxMock = {
+  // get(): T
+  get: vi.fn<() => unknown>().mockReturnValue(undefined),
+  // put(v: T): void
+  put: vi.fn<(v: unknown) => void>().mockReturnValue(undefined),
+} satisfies Partial<Box<unknown>>;

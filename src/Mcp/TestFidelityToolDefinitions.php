@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Mcp;
 
+use Knossos\Scanner\PackagedLanguages;
+use Knossos\TestFidelity\Synthesis\FrameworkChoice;
+
 /**
  * The test-fidelity tools' definitions beside `audit_tests`, kept out of
  * {@see ToolCatalog}, which is at its length cap. The catalogue spreads every
@@ -18,7 +21,7 @@ final readonly class TestFidelityToolDefinitions
      */
     public static function definitions(): array
     {
-        return [self::listTestRules(), self::verifyTestDoubles(), self::checkFixtures()];
+        return [self::listTestRules(), self::verifyTestDoubles(), self::checkFixtures(), self::synthesizeMock()];
     }
 
     /**
@@ -88,6 +91,34 @@ final readonly class TestFidelityToolDefinitions
                     'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 200, 'default' => 50],
                 ],
                 'required' => ['project_id'],
+                'additionalProperties' => false,
+            ],
+        ];
+    }
+
+    /**
+     * `synthesize_mock`: a mock template of one class, interface or trait for a test framework.
+     *
+     * @return array<string, mixed>
+     */
+    private static function synthesizeMock(): array
+    {
+        return [
+            'name' => 'synthesize_mock',
+            'title' => 'Synthesize mock',
+            'description' => 'Write a mock template of one class, interface or trait from its stored signatures, for vitest, jest, phpunit, mockery, prophecy, unittest.mock, pytest-mock, mockall or a hand-written Rust fake. Members it cannot render faithfully are listed under omitted, complete says whether the member list is whole, and each member lists its untyped parts and placeholders under unknown. Use before writing a test double.',
+            'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    ...ToolCatalog::commonReadProperties(),
+                    'project_id' => ['type' => 'string', 'minLength' => 1],
+                    'symbol' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 500, 'description' => 'The canonical or display name, matched exactly; a name several types share is an error listing their canonical names.'],
+                    'framework' => ['type' => 'string', 'enum' => FrameworkChoice::all(), 'description' => "The framework to write for, of the symbol's language. Omitted: the one the project's own doubles use most, else a dev dependency of the nearest manifest, else the language's default (vitest, phpunit, unittest.mock, mockall)."],
+                    'language' => ['type' => 'string', 'enum' => PackagedLanguages::languages(), 'description' => 'Settles a name several languages declare.'],
+                    'include_values' => ['type' => 'boolean', 'default' => true, 'description' => 'Stub each return with an example value: a zero value, a literal of a project record whose fields are known, else a marked placeholder.'],
+                ],
+                'required' => ['project_id', 'symbol'],
                 'additionalProperties' => false,
             ],
         ];

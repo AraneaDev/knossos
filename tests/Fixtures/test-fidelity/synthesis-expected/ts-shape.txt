@@ -1,0 +1,10 @@
+// knossos synthesize_mock: typescript/src/shape.ts#Shape (vitest), from typescript/src/shape.ts:2
+// 2 members; complete
+import { vi } from 'vitest';
+
+const shapeMock = {
+  // build(label: string, n?: number): { ok: boolean; count: number }
+  build: vi.fn<(label: string, n?: number) => { ok: boolean; count: number }>().mockReturnValue({ ok: false, count: 0 }),
+  // pair(): [string, number]
+  pair: vi.fn<() => [string, number]>().mockReturnValue(['', 0]),
+} satisfies Partial<Shape>;

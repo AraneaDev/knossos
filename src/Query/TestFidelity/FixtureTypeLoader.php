@@ -7,11 +7,7 @@ namespace Knossos\Query\TestFidelity;
 use Knossos\Query\QueryBounds;
 use Knossos\Query\ReportableComponent;
 use Knossos\Scanner\PackagedLanguages;
-use Knossos\Scanner\Protocol\Confidence;
-use Knossos\Scanner\Protocol\EdgeFact;
-use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
-use Knossos\Scanner\Protocol\Origin;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\TestFidelity\Facts\EnumCases;
 use Knossos\TestFidelity\Facts\FieldLists;
@@ -26,10 +22,8 @@ use PDO;
  * whole field list composed over its lineage ({@see FieldLists}), and what
  * its lineage says of magic members and constructors.
  *
- * The graph is rebuilt from the stored nodes under the references the
- * workers emitted (`scanner_local_id`), so it answers as the scan's own
- * {@see TestFidelityGraph} does. A node the scan left unresolved is no node
- * here: an edge to it names an ancestor the scan does not hold. Only the
+ * The graph is rebuilt from the stored nodes ({@see StoredNodeFacts}), so
+ * it answers as the scan's own {@see TestFidelityGraph} does. Only the
  * members the check reads are loaded: the magic and constructor methods, and
  * PHP's promoted properties.
  *
@@ -88,13 +82,13 @@ final readonly class FixtureTypeLoader
         }
         $typeNodes = [];
         foreach ($types as $row) {
-            $node = self::node($row);
+            $node = StoredNodeFacts::node($row);
             if ($node !== null) {
                 $typeNodes[] = [$node, PackagedLanguages::languageOf((string) $row['language']), (bool) $row['test']];
             }
         }
-        $memberNodes = array_values(array_filter(array_map(self::node(...), $members)));
-        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.fixtures:graph', [...array_column($typeNodes, 0), ...$memberNodes], self::edges($edges))]);
+        $memberNodes = array_values(array_filter(array_map(StoredNodeFacts::node(...), $members)));
+        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.fixtures:graph', [...array_column($typeNodes, 0), ...$memberNodes], StoredNodeFacts::edges($edges))]);
 
         return self::index($graph, $typeNodes);
     }
@@ -156,55 +150,6 @@ final readonly class FixtureTypeLoader
         }
 
         return new FixtureType($node->displayName, $node->canonicalName, $language, $node->evidence->relativePath, $fields, $magic, $constructor !== null, $renamed, $promoted);
-    }
-
-    /**
-     * A stored node as the worker emitted it; null for one the scan left unresolved.
-     *
-     * @param array<string, mixed> $row
-     */
-    private static function node(array $row): ?NodeFact
-    {
-        $attributes = json_decode((string) $row['attributes_json'], true);
-        $attributes = is_array($attributes) ? $attributes : [];
-        $reference = $attributes['scanner_local_id'] ?? null;
-        if (!is_string($reference) || $reference === '' || ($attributes['unresolved'] ?? false) === true) {
-            return null;
-        }
-        $start = max(1, (int) ($row['start_line'] ?? 1));
-
-        return new NodeFact($reference, (string) $row['kind'], (string) $row['canonical_name'], (string) $row['display_name'], Origin::Ast, Confidence::Certain, new Evidence((string) $row['relative_path'], $start, max($start, (int) ($row['end_line'] ?? $start))), $attributes);
-    }
-
-    /**
-     * Stored edges under the references the worker emitted: a resolved
-     * node's `scanner_local_id`, or the reference an unresolved one keeps.
-     *
-     * @param list<array<string, mixed>> $rows
-     * @return list<EdgeFact>
-     */
-    private static function edges(array $rows): array
-    {
-        $edges = [];
-        foreach ($rows as $row) {
-            $source = self::reference((string) $row['source']);
-            $target = self::reference((string) $row['target']);
-            if ($source !== null && $target !== null) {
-                $line = max(1, (int) ($row['start_line'] ?? 1));
-                $edges[] = new EdgeFact((string) $row['kind'], $source, $target, Origin::Ast, Confidence::Certain, new Evidence((string) $row['relative_path'], $line, $line));
-            }
-        }
-
-        return $edges;
-    }
-
-    /** The reference a stored node is known by to the worker that emitted or named it. */
-    private static function reference(string $attributesJson): ?string
-    {
-        $attributes = json_decode($attributesJson, true);
-        $reference = is_array($attributes) ? ($attributes['scanner_local_id'] ?? $attributes['reference'] ?? null) : null;
-
-        return is_string($reference) && $reference !== '' ? $reference : null;
     }
 
     /**

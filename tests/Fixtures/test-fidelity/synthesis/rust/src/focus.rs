@@ -1,0 +1,52 @@
+//! Receivers, visibility and async, and what a mock cannot know.
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct Payload {
+    pub id: u32,
+    pub label: String,
+}
+
+pub trait Store {
+    fn get(&self, key: &str) -> Option<Payload>;
+    fn put(&mut self, key: String, value: Payload);
+    fn into_keys(self) -> Vec<String>;
+    fn boxed(self: Box<Self>) -> usize;
+    fn open(path: &str) -> Self;
+    async fn sync(&self) -> Result<(), String>;
+    unsafe fn raw(&self) -> *const u8;
+    fn convert<T: From<u32>>(&self, value: u32) -> T;
+    fn payload(&self) -> Payload;
+}
+
+pub trait Named: std::fmt::Display {
+    fn name(&self) -> String;
+}
+
+pub trait Audited: crate::repo::Repo {
+    fn audit(&self) -> bool;
+}
+
+pub struct Engine;
+
+impl Engine {
+    pub fn new() -> Self {
+        Engine
+    }
+
+    pub fn start(&mut self) -> bool {
+        true
+    }
+
+    pub(crate) fn tune(&self) {}
+
+    fn hidden(&self) {}
+}
+
+#[derive(Deserialize)]
+pub enum Mode {
+    Fast,
+    Safe,
+}
+
+pub fn helper() {}

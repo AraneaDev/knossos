@@ -1,0 +1,15 @@
+// knossos synthesize_mock: App\Repo (phpunit), from php/src/Repo.php:7
+// 6 members; complete
+$mock = $this->createMock(\App\Repo::class);
+// save(\App\Invoice $invoice): void
+$mock->method('save');
+// count(): int
+$mock->method('count')->willReturn(0);
+// lane(\App\FixturesEnum\Lane $lane): \App\FixturesEnum\Lane
+$mock->method('lane')->willReturn(\App\FixturesEnum\Lane::Road);
+// rates(): array|float|null
+$mock->method('rates')->willReturn([]);
+// fail(): never
+$mock->method('fail')->willThrowException(new \RuntimeException('never returns'));
+// find(int $id): ?\App\Invoice
+$mock->method('find')->willReturn(new \App\Invoice(id: 0, lane: \App\FixturesEnum\Lane::Road, label: ''));

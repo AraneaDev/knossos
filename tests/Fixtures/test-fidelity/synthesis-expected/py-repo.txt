@@ -1,0 +1,13 @@
+# knossos synthesize_mock: python.app.repo.Repo (unittest.mock), from python/app/repo.py:2
+# 3 members; complete
+from unittest.mock import create_autospec
+
+from python.app.repo import Repo
+
+repo_mock = create_autospec(Repo, spec_set=True, instance=True)
+# save(item: 'Item') -> int
+repo_mock.save.return_value = 0
+# price() -> int
+repo_mock.price.return_value = 0
+# count() -> Any
+repo_mock.count.return_value = None

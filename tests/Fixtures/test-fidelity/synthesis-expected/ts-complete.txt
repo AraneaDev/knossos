@@ -1,0 +1,10 @@
+// knossos synthesize_mock: typescript/src/focus.ts#Complete (vitest), from typescript/src/focus.ts:32
+// 2 members; complete
+import { vi } from 'vitest';
+
+const completeMock = {
+  // id: number
+  id: 0,
+  // save(id: number): Promise<void>
+  save: vi.fn<(id: number) => Promise<void>>().mockResolvedValue(undefined),
+} satisfies Complete;

@@ -1,0 +1,18 @@
+# knossos synthesize_mock: python.app.focus.Store (unittest.mock), from python/app/focus.py:11
+# 5 members, 3 omitted; incomplete: see omitted and notes
+from unittest.mock import create_autospec
+
+from python.app.focus import Store
+from python.app.models import Item
+
+store_mock = create_autospec(Store, spec_set=True, instance=True)
+# get(key: str, default: Optional[int] = …) -> Optional[int]
+store_mock.get.return_value = 0
+# _refresh() -> None  (protected: kept, as create_autospec allows it)
+store_mock._refresh.return_value = None
+# fetch(item_id: int) -> Item  (async: create_autospec makes it an AsyncMock, and awaiting it gives return_value)
+store_mock.fetch.return_value = Item(id=0, name='', tags=[])
+# find(*ids: int, strict: bool = …) -> list[Item]
+store_mock.find.return_value = []
+# pair() -> tuple[Item, 'Ledger', int]
+store_mock.pair.return_value = (Item(id=0, name='', tags=[]), None, 0)  # knossos: fill in Ledger

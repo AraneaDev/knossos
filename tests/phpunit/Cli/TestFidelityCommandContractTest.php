@@ -18,7 +18,7 @@ use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The test-fidelity commands' CLI contract: `audit-tests`,
- * `list-test-rules`, `verify-test-doubles` and `check-fixtures`, their options against their
+ * `list-test-rules`, `verify-test-doubles`, `check-fixtures` and `synthesize-mock`, their options against their
  * tools' schemas, and the text each prints. Kept apart from QueryCommandContractTest, which is at
  * its length cap (preflight F3).
  */
@@ -27,7 +27,7 @@ use PHPUnit\Framework\Attributes\Group;
 final class TestFidelityCommandContractTest extends KnossosTestCase
 {
     /** The arguments each command takes as positionals rather than options. */
-    private const POSITIONAL_ARGUMENTS = ['audit-tests' => ['project_id'], 'list-test-rules' => [], 'verify-test-doubles' => ['project_id', 'symbol'], 'check-fixtures' => ['project_id', 'paths']];
+    private const POSITIONAL_ARGUMENTS = ['audit-tests' => ['project_id'], 'list-test-rules' => [], 'verify-test-doubles' => ['project_id', 'symbol'], 'check-fixtures' => ['project_id', 'paths'], 'synthesize-mock' => ['project_id', 'symbol']];
 
     public function testEveryToolArgumentHasACliOptionOrPositional(): void
     {
@@ -100,6 +100,20 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
                 '3 test-fidelity findings.',
             ]) . "\n", $run('audit-tests', [$projectId], ['scope' => ['git-diff'], 'base-ref' => ['HEAD']]));
         });
+    }
+
+    public function testSynthesizeMockPrintsTheTemplate(): void
+    {
+        $this->withScannedAudit(function (\Closure $run, string $projectId): void {
+            $golden = (string) file_get_contents(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/synthesis-expected/ts-typed.txt');
+            // The text is the template alone, as the golden holds it.
+            self::assertSame($golden, $run('synthesize-mock', [$projectId, 'Typed'], []));
+            self::assertSame((string) file_get_contents(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/synthesis-expected/ts-typed-no-values.txt'), $run('synthesize-mock', [$projectId, 'Typed'], ['no-values' => ['true']]));
+            self::assertSame((string) file_get_contents(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/synthesis-expected/rs-store-hand-written.txt'), $run('synthesize-mock', [$projectId, 'Store'], ['language' => ['rust'], 'framework' => ['hand-written']]));
+            $json = json_decode($run('synthesize-mock', [$projectId, 'Typed'], ['json' => ['true']]), true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame([$golden, 'vitest', 'default', true], [$json['data']['template'], $json['data']['framework'], $json['data']['framework_source'], $json['data']['complete']]);
+        }, 'synthesis');
+        self::assertSame(['framework' => 'framework', 'language' => 'language', 'no-values' => 'include_values'], QueryCommand::optionArguments('synthesize-mock'));
     }
 
     public function testVerifyTestDoublesText(): void

@@ -334,6 +334,14 @@ final class ToolBindings
                     'paths' => self::rest(), 'limit' => [], 'offset' => [],
                 ],
             ],
+            'synthesize_mock' => [
+                'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->services()->mockSynthesis->synthesize(...$v),
+                'arguments' => [
+                    'project_id' => self::at('Usage: knossos synthesize-mock <path|project-id> <symbol> [--framework=F] [--language=L] [--no-values] [--json]'),
+                    'symbol' => self::at('A symbol is required.'),
+                    'framework' => [], 'language' => [], 'include_values' => self::as('no-values'),
+                ],
+            ],
             // MCP only: the CLI's file-context is the pane's, a different answer.
             'file_context' => [
                 'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->fileContext(...$v),

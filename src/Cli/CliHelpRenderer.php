@@ -93,6 +93,8 @@ Usage:
   knossos list-test-rules [--db=PATH] [--json]
   knossos verify-test-doubles <path|project-id> <symbol> [--json]
   knossos check-fixtures <path|project-id> [PATH...] [--limit=N] [--offset=N] [--json]
+  knossos synthesize-mock <path|project-id> <symbol> [--framework=F] [--language=L]
+                          [--no-values] [--json]
   knossos explain-flow <path|project-id> <from> <to> [--max-depth=N] [--max-paths=N]
                        [--edge-kind=KIND] [--min-confidence=LEVEL] [--timeout-ms=N]
                        [--both-directions] [--profile=NAME] [--json]

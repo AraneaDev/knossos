@@ -1,0 +1,8 @@
+// knossos synthesize_mock: typescript/src/svc.ts#Other (jest), from typescript/src/svc.ts:7
+// 1 member; complete
+import { jest } from '@jest/globals';
+
+const otherMock = {
+  // ping(): void
+  ping: jest.fn<() => void>().mockReturnValue(undefined),
+} satisfies Partial<Other>;

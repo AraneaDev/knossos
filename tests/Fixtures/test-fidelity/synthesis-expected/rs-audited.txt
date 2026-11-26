@@ -1,0 +1,26 @@
+// knossos synthesize_mock: synth::focus::Audited (mockall), from rust/src/focus.rs:26
+// 4 members; complete
+use mockall::mock;
+use synth::focus::Audited;
+use synth::repo::Repo;
+
+mock! {
+    pub Audited {}
+    impl Audited for Audited {
+        fn audit(&self) -> bool;
+    }
+    impl Repo for Audited {
+        fn find(&self, id: u32) -> u32;
+        fn save(&self, value: u32) -> bool;
+        fn record(&self) -> Record;
+    }
+}
+
+#[test]
+fn audited_mock() {
+    let mut mock = MockAudited::new();
+    mock.expect_audit().returning(|| false);
+    mock.expect_find().returning(|_id| 0);
+    mock.expect_save().returning(|_value| false);
+    mock.expect_record().returning(|| todo!() /* knossos: fill in Record */);
+}

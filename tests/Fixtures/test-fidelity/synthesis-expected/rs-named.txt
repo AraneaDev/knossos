@@ -1,0 +1,17 @@
+// knossos synthesize_mock: synth::focus::Named (mockall), from rust/src/focus.rs:22
+// 1 member; incomplete: see omitted and notes
+use mockall::mock;
+use synth::focus::Named;
+
+mock! {
+    pub Named {}
+    impl Named for Named {
+        fn name(&self) -> String;
+    }
+}
+
+#[test]
+fn named_mock() {
+    let mut mock = MockNamed::new();
+    mock.expect_name().returning(|| String::from(""));
+}

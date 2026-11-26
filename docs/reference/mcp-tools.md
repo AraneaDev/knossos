@@ -307,6 +307,23 @@ Check the JSON and YAML fixture files under test and fixture directories against
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
+## `synthesize_mock`
+
+Write a mock template of one class, interface or trait from its stored signatures, for vitest, jest, phpunit, mockery, prophecy, unittest.mock, pytest-mock, mockall or a hand-written Rust fake. Members it cannot render faithfully are listed under omitted, complete says whether the member list is whole, and each member lists its untyped parts and placeholders under unknown. Use before writing a test double.
+
+| Input | Type | Required | Constraints/default | Description |
+| --- | --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
+| `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
+| `project_id` | string | yes | minLength=1 | none |
+| `symbol` | string | yes | minLength=1; maxLength=500 | The canonical or display name, matched exactly; a name several types share is an error listing their canonical names. |
+| `framework` | string | no | enum=vitest, jest, phpunit, mockery, prophecy, unittest.mock, pytest-mock, mockall, hand-written | The framework to write for, of the symbol's language. Omitted: the one the project's own doubles use most, else a dev dependency of the nearest manifest, else the language's default (vitest, phpunit, unittest.mock, mockall). |
+| `language` | string | no | enum=php, python, rust, typescript | Settles a name several languages declare. |
+| `include_values` | boolean | no | default=true | Stub each return with an example value: a zero value, a literal of a project record whose fields are known, else a marked placeholder. |
+
+Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
+
 ## `file_context`
 
 One file's architectural context in one short answer: its boundary and the declared rules that bind it, how many files depend on it (and the closest few), the tests that reach it, and its latest commits. Call it before editing a file you have not read about, instead of grepping for its callers.

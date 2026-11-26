@@ -1,0 +1,10 @@
+// knossos synthesize_mock: typescript/src/param.ts#P (vitest), from typescript/src/param.ts:2
+// 2 members; complete
+import { vi } from 'vitest';
+
+const pMock = {
+  // configure(name: string, timeoutMs?, label?, flag?, items?: string[], env?: Record<string, string>): void
+  configure: vi.fn<(name: string, timeoutMs?: unknown, label?: unknown, flag?: unknown, items?: string[], env?: Record<string, string>) => void>().mockReturnValue(undefined),
+  // raw(x: number)
+  raw: vi.fn<(x: number) => ReturnType<P['raw']>>(),
+} satisfies Partial<P>;

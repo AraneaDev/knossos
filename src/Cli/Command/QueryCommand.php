@@ -41,7 +41,7 @@ final class QueryCommand implements CliCommand
         'dependency-cycles', 'architecture-health', 'check-architecture', 'suggest-location', 'change-impact',
         'changed-files-impact', 'test-impact', 'review-diff', 'architecture-context', 'export-diagram', 'export-agent-brief', 'list-boundaries',
         'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief', 'audit-tests', 'list-test-rules',
-        'verify-test-doubles', 'check-fixtures',
+        'verify-test-doubles', 'check-fixtures', 'synthesize-mock',
     ];
 
     /**
@@ -163,7 +163,8 @@ final class QueryCommand implements CliCommand
 
         return match ($type) {
             'integer' => $context->options->integer($options, $option, ...array_values($spec->bounds($argument))),
-            'boolean' => $context->options->flag($options, $option, $spec->booleanDefault($argument)),
+            // `--no-values` sets `include_values` false: a `no-` option says the opposite of its argument.
+            'boolean' => str_starts_with($option, 'no-') ? !$context->options->flag($options, $option) : $context->options->flag($options, $option, $spec->booleanDefault($argument)),
             'array' => $context->options->values($options, $option),
             default => $context->options->single($options, $option),
         };
@@ -186,6 +187,7 @@ final class QueryCommand implements CliCommand
             'list-test-rules' => self::ruleLines($result),
             'verify-test-doubles' => self::doubleLines($result),
             'check-fixtures' => self::fixtureLines($result),
+            'synthesize-mock' => rtrim($result->data['template'], "\n"),
             'creation-brief' => $json ? '' : CreationBriefRenderer::lines($result->data, (new StalenessProbe($context->database()))->probe($result->projectId)),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],

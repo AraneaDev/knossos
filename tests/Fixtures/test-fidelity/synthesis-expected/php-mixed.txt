@@ -1,0 +1,7 @@
+// knossos synthesize_mock: App\Mixed (phpunit), from php/src/Mixed.php:5
+// 2 members; complete
+$mock = $this->createMock(\App\Mixed::class);
+// open(): bool
+$mock->method('open')->willReturn(false);
+// self(): self
+$mock->method('self')->willReturnSelf();

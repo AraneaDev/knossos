@@ -1,0 +1,14 @@
+// knossos synthesize_mock: typescript/src/union.ts#Union (vitest), from typescript/src/union.ts:4
+// 4 members; complete
+import { vi } from 'vitest';
+
+const unionMock = {
+  // lang(): Language
+  lang: vi.fn<() => Language>().mockReturnValue(undefined as unknown as Language /* knossos: fill in Language */),
+  // sev(): Severity
+  sev: vi.fn<() => Severity>().mockReturnValue(undefined as unknown as Severity /* knossos: fill in Severity */),
+  // both(): { lang: Language; sev: Severity }
+  both: vi.fn<() => { lang: Language; sev: Severity }>().mockReturnValue({ lang: undefined as unknown as Language /* knossos: fill in Language */, sev: undefined as unknown as Severity /* knossos: fill in Severity */ }),
+  // inline(): 'on' | 'off'
+  inline: vi.fn<() => 'on' | 'off'>().mockReturnValue("on"),
+} satisfies Partial<Union>;

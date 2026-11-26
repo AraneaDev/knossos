@@ -397,6 +397,17 @@ final readonly class TestFidelityGraph
     }
 
     /**
+     * The nodes `$type` itself declares (its `contains` children the scan
+     * holds), in edge order.
+     *
+     * @return list<NodeFact>
+     */
+    public function children(NodeFact $type): array
+    {
+        return array_values(array_filter(array_map(fn(string $reference): ?NodeFact => $this->nodes[$reference] ?? null, $this->children[$type->localId] ?? [])));
+    }
+
+    /**
      * Every name `$owner` declares or inherits, sorted, for a suggestion.
      *
      * @return list<string>
