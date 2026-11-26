@@ -319,12 +319,18 @@ Config`, a field call with `init`, `metadata` or `**`, an `InitVar`, a
 constructor or a pydantic hook that may reread the input
 (`model_validator`, `computed_field`), a decorator other than `dataclass`, a
 class keyword (but a TypedDict's `total`), a base outside the project or that
-the file cannot read, and the causes that open `member_names`, but for
-`__getattr__` and `__getattribute__`. An `Enum` sends `cases`, with `value`
-when every case is a string or integer literal and no `_missing_` or `__new__`
-may give another; an Enum whose members its body may not show sends none.
+the file cannot read, a name in an annotation or a bare-name value that may
+hold an alias (a module binding that is no class, `TypeVar` or `NewType`, a
+non-class symbol of another project module, or an unresolved name that is no
+builtin), and the causes that open `member_names`, but for `__getattr__` and
+`__getattribute__`. An `Enum` sends `cases`, with `value`
+when every case is a string or integer literal and no `_missing_`, `__new__`,
+`__init__` or `_generate_next_value_` in its same-file lineage may give another; an Enum whose members its body may not show sends none.
 
-A Rust named-field struct sends its fields, `type` as written. A field is not
+A Rust named-field struct that derives `Deserialize` (directly or through
+`cfg_attr`) sends its fields, `type` as written; one without the derive sends
+none, and a reader gives no list for a type with an `implements` edge to
+`Deserialize`, whose hand-written impl may read another shape. A field is not
 required when it is an `Option`, a bare type parameter, or `#[serde(default)]`,
 `skip` or `skip_deserializing` on the field (`default` also on the struct). A
 field read `with` or `deserialize_with` sends no `type`. `fields_open` is set
@@ -334,8 +340,8 @@ derive other than `Clone`, `Copy`, `Debug`, `Default`, `Eq`, `Hash`, `Ord`,
 `PartialEq`, `PartialOrd`, `Serialize` and `Deserialize`, any other attribute
 that may be a macro, a `cfg` on a field, a `cfg_attr` applying any of these,
 and a second declaration of the same path. A Rust struct inherits no field, so
-its list is taken as sent. A unit-only enum with no serde attribute on it or a
-variant sends `cases`, each `value` the variant's name; any other enum, a
+its list is taken as sent. A unit-only enum deriving `Deserialize`, with no serde attribute on it or a
+variant, sends `cases`, each `value` the variant's name; any other enum, a
 tuple or unit struct and a union send none.
 
 #### Repeated edges
