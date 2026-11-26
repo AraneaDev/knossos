@@ -141,5 +141,11 @@
     },
     "rs-conv2": {
         "symbol": "Conv2"
+    },
+    "rs-mk3": {
+        "symbol": "Mk3"
+    },
+    "rs-mf": {
+        "symbol": "Mf"
     }
 }

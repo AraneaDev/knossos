@@ -130,3 +130,35 @@ impl Into2<Bb> for Conv2 {
         Bb
     }
 }
+
+pub trait Tag {}
+
+pub trait Marker {
+    type Kind;
+}
+
+pub struct Mk3;
+
+impl Mk3 {
+    pub fn go(&self) -> bool {
+        true
+    }
+}
+
+impl Tag for Mk3 {}
+
+impl Marker for Mk3 {
+    type Kind = u8;
+}
+
+pub trait Make {
+    fn make() -> Self;
+}
+
+pub struct Mf;
+
+impl Make for Mf {
+    fn make() -> Self {
+        Mf
+    }
+}

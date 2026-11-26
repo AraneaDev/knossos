@@ -83,4 +83,31 @@ final readonly class MockGraphLoader
             'cut' => $cut,
         ];
     }
+
+    /**
+     * Every trait impl the Rust worker saw for the type `$canonical`, from
+     * each file's module `trait_impls`, in file then source order: an impl
+     * may be written in any file of the crate.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function traitImpls(string $projectId, string $canonical): array
+    {
+        $statement = $this->pdo->prepare(
+            "SELECT n.attributes_json FROM nodes n LEFT JOIN files f ON f.id = n.file_id WHERE n.project_id = ? AND n.kind = 'module' "
+            . "AND json_extract(n.attributes_json, '$.trait_impls') IS NOT NULL ORDER BY f.relative_path, n.id",
+        );
+        $statement->execute([$projectId]);
+        $impls = [];
+        foreach ($statement->fetchAll(PDO::FETCH_COLUMN) as $json) {
+            $attributes = json_decode((string) $json, true);
+            foreach (is_array($attributes['trait_impls'] ?? null) ? $attributes['trait_impls'] : [] as $entry) {
+                if (is_array($entry) && ($entry['type'] ?? null) === $canonical) {
+                    $impls[] = $entry;
+                }
+            }
+        }
+
+        return $impls;
+    }
 }

@@ -37,6 +37,7 @@ final readonly class MockMembers
      * @param list<MockMember> $members
      * @param list<array{name: string, reason: string}> $omitted
      * @param list<string> $notes
+     * @param list<array{trait: string, unsafe: bool}> $impls a Rust struct's trait impls the template gives, in source order, method-less ones included
      */
     private function __construct(
         public NodeFact $target,
@@ -46,17 +47,25 @@ final readonly class MockMembers
         public bool $complete,
         public array $notes,
         public TestFidelityGraph $graph,
+        public array $impls = [],
     ) {}
+
+    /** The auto and marker traits a mock has, or needs no impl of, by name. */
+    private const MARKER_TRAITS = ['Send', 'Sync', 'Unpin', 'Sized', 'UnwindSafe', 'RefUnwindSafe'];
 
     /**
      * The members of `$target` over `$graph`, which holds its lineage.
      *
      * @param bool $cut the lineage was cut at a bound, so it may hold more
+     * @param list<array<string, mixed>> $impls a Rust struct's `trait_impls` entries, every impl the scan saw for it
      */
-    public static function of(TestFidelityGraph $graph, NodeFact $target, string $language, bool $cut = false): self
+    public static function of(TestFidelityGraph $graph, NodeFact $target, string $language, bool $cut = false, array $impls = []): self
     {
+        $implList = $impls;
         $members = $omitted = $notes = [];
         $seen = $impls = $mocked = [];
+        $struct = $language === 'rust' && $target->kind !== 'interface';
+        [$blocks, $entries, $implNotes, $implOmitted, $external] = $struct ? self::implBlocks($graph, $target, $implList) : [[], [], [], [], false];
         $fields = $target->kind === 'interface' && $language === 'typescript' ? (FieldLists::of($graph, $target)?->fields() ?? []) : [];
         // A Rust struct inherits nothing: its trait impls are its own children, each naming its trait.
         $lineage = $language === 'rust' && $target->kind !== 'interface' ? [$target] : $graph->lineage($target);
@@ -93,7 +102,9 @@ final readonly class MockMembers
                 if ($member instanceof MockMember && $member->implTrait !== null && !isset($impls[$member->implTrait])) {
                     // An impl's associated items come once, before its first method.
                     $impls[$member->implTrait] = true;
-                    $members = [...$members, ...self::implAssociated($node, $declarer, $member->implTrait)];
+                    $members = [...$members, ...(isset($entries[$member->implTrait])
+                        ? self::implAssociated($entries[$member->implTrait]['types'] ?? [], $entries[$member->implTrait]['consts'] ?? [], $declarer, $member->implTrait)
+                        : self::implAssociated($node->attributes['impl_types'] ?? [], $node->attributes['impl_consts'] ?? [], $declarer, $member->implTrait))];
                 }
                 if (is_string($member)) {
                     $omitted[] = ['name' => $node->displayName, 'reason' => $member];
@@ -105,16 +116,31 @@ final readonly class MockMembers
                 }
             }
         }
+        // An impl without a method gives its associated items all the same.
+        foreach ($entries as $trait => $entry) {
+            if (!isset($impls[$trait])) {
+                $members = [...$members, ...self::implAssociated($entry['types'] ?? [], $entry['consts'] ?? [], $target, (string) $trait)];
+            }
+        }
+        $omitted = [...$omitted, ...$implOmitted];
+        // An impl a method of which was left out is not given at all: a block missing it would not compile.
+        $blocks = array_values(array_filter($blocks, static function (array $block) use ($entries, $members): bool {
+            $given = array_map(static fn(MockMember $member): string => (string) preg_replace('/^.*::/', '', $member->name), array_filter($members, static fn(MockMember $member): bool => $member->kind === 'method' && $member->implTrait === $block['trait']));
+            $listed = $entries[$block['trait']]['methods'] ?? [];
+
+            return array_diff(is_array($listed) ? $listed : [], $given) === [];
+        }));
         foreach (self::unseenNames($graph, $target, $language, $seen, $fields) as $name) {
             $omitted[] = ['name' => $name, 'reason' => 'no signature recorded: an accessor, a docblock @method, or a member the scan gives no node'];
         }
-        $open = self::openness($graph, $target, $language, $cut);
-        $notes = [...$notes, ...$open];
-        if ($members === []) {
+        // A struct's impls, when the worker lists them, say what is outside the scan, impl by impl.
+        $open = $struct && $implList !== [] ? ($cut ? self::openness($graph, $target, $language, true) : []) : self::openness($graph, $target, $language, $cut);
+        $notes = [...$notes, ...$open, ...$implNotes];
+        if ($members === [] && $blocks === []) {
             $notes[] = sprintf('%s has no member a mock can stand in for.', $target->displayName);
         }
 
-        return new self($target, $language, $members, $omitted, $open === [] && $omitted === [], $notes, $graph);
+        return new self($target, $language, $members, $omitted, $open === [] && $omitted === [] && !$external, $notes, $graph, $blocks);
     }
 
     /**
@@ -188,7 +214,8 @@ final readonly class MockMembers
             return "a trait impl's method, whose trait the scan does not record: mock that trait instead";
         }
         $associated = $language === 'rust' && !isset($signature['receiver']);
-        if ($associated && $declarer->kind !== 'interface') {
+        // An inherent associated function (`new`) is the mock's own; a trait impl's is its impl's.
+        if ($associated && $declarer->kind !== 'interface' && $implTrait === null) {
             return null;
         }
         if ($language === 'typescript' && is_array($signature['type_params'] ?? null) && $signature['type_params'] !== []) {
@@ -231,23 +258,74 @@ final readonly class MockMembers
     }
 
     /**
-     * A trait impl's own associated types and consts, as it writes them,
-     * from any of its methods (`impl_types`, `impl_consts`).
+     * The blocks a struct's mock gives, one per trait impl the worker saw,
+     * and what is said of the others: an auto or marker trait (`Send`,
+     * `Sync`) needs none, `Copy` cannot be mocked, an `impl<T>` cannot be
+     * written without its parameters, and a trait outside the scan may have
+     * default methods the impl does not write, so the list is not whole.
      *
-     * @return list<MockMember>
+     * @param list<array<string, mixed>> $implList
+     * @return array{list<array{trait: string, unsafe: bool}>, array<string, array<string, mixed>>, list<string>, list<array{name: string, reason: string}>, bool}
      */
-    private static function implAssociated(NodeFact $method, NodeFact $declarer, string $implTrait): array
+    private static function implBlocks(TestFidelityGraph $graph, NodeFact $target, array $implList): array
     {
-        $members = [];
-        foreach (is_array($method->attributes['impl_types'] ?? null) ? $method->attributes['impl_types'] : [] as $type) {
-            if (is_array($type) && is_string($type['name'] ?? null) && is_string($type['type'] ?? null)) {
-                $members[] = new MockMember($type['name'], 'type', $method, $declarer, type: $type['type'], implTrait: $implTrait);
+        $inScan = [];
+        foreach ($graph->lineageThrough($target, static fn(): bool => true)[0] as $type) {
+            if ($type->kind === 'interface') {
+                $inScan[$type->displayName] = true;
             }
         }
-        foreach (is_array($method->attributes['impl_consts'] ?? null) ? $method->attributes['impl_consts'] : [] as $const) {
+        $blocks = $entries = $notes = $omitted = [];
+        $external = false;
+        foreach ($implList as $entry) {
+            $trait = is_string($entry['trait'] ?? null) ? $entry['trait'] : null;
+            if ($trait === null || isset($entries[$trait])) {
+                continue;
+            }
+            $name = (string) preg_replace('/^.*::/', '', (string) preg_replace('/<.*$/s', '', $trait));
+            if (in_array($name, self::MARKER_TRAITS, true)) {
+                continue;
+            }
+            if ($name === 'Copy') {
+                $notes[] = sprintf('%s implements Copy: a mock cannot be Copy, so that impl is left out.', $target->displayName);
+                continue;
+            }
+            if (($entry['generics'] ?? false) === true) {
+                $omitted[] = ['name' => 'impl ' . $trait, 'reason' => 'a generic impl (impl<T>): its parameters are not recorded'];
+                continue;
+            }
+            if (!isset($inScan[$name])) {
+                $external = true;
+                $notes[] = sprintf('%s implements %s, a trait outside the scan: its methods the impl does not write (defaults) are not listed.', $target->displayName, $trait);
+            }
+            $entries[$trait] = $entry;
+            $blocks[] = ['trait' => $trait, 'unsafe' => ($entry['unsafe'] ?? false) === true];
+        }
+
+        return [$blocks, $entries, $notes, $omitted, $external];
+    }
+
+    /**
+     * A trait impl's own associated types and consts, as it writes them:
+     * its `trait_impls` entry's `types` and `consts`, or a method's
+     * `impl_types` and `impl_consts` from a worker that sends no entry.
+     *
+     * @param mixed $types
+     * @param mixed $consts
+     * @return list<MockMember>
+     */
+    private static function implAssociated(mixed $types, mixed $consts, NodeFact $declarer, string $implTrait): array
+    {
+        $members = [];
+        foreach (is_array($types) ? $types : [] as $type) {
+            if (is_array($type) && is_string($type['name'] ?? null) && is_string($type['type'] ?? null)) {
+                $members[] = new MockMember($type['name'], 'type', $declarer, $declarer, type: $type['type'], implTrait: $implTrait);
+            }
+        }
+        foreach (is_array($consts) ? $consts : [] as $const) {
             if (is_array($const) && is_string($const['name'] ?? null) && is_string($const['type'] ?? null)) {
                 $value = is_string($const['value'] ?? null) ? ['value' => $const['value']] : [];
-                $members[] = new MockMember($const['name'], 'const', $method, $declarer, $value, type: $const['type'], implTrait: $implTrait);
+                $members[] = new MockMember($const['name'], 'const', $declarer, $declarer, $value, type: $const['type'], implTrait: $implTrait);
             }
         }
 

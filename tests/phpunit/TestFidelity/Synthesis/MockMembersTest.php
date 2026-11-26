@@ -61,9 +61,31 @@ final class MockMembersTest extends KnossosTestCase
         $this->edges[] = new EdgeFact($kind, $source->localId, $target, Origin::Ast, Confidence::Certain, $source->evidence);
     }
 
-    private function members(NodeFact $target, string $language): MockMembers
+    /** @param list<array<string, mixed>> $impls the target's `trait_impls` entries */
+    private function members(NodeFact $target, string $language, array $impls = []): MockMembers
     {
-        return MockMembers::of(TestFidelityGraph::fromContributions([new ScanContribution('knossos.test:file:src/a', $this->nodes, $this->edges)]), $target, $language);
+        return MockMembers::of(TestFidelityGraph::fromContributions([new ScanContribution('knossos.test:file:src/a', $this->nodes, $this->edges)]), $target, $language, impls: $impls);
+    }
+
+    /** A struct `$name` with an inherent `go`, implementing each of `$traits` that the scan holds. */
+    private function struct(string $name, string ...$traits): NodeFact
+    {
+        $struct = $this->type('rust:class:crate::' . $name, 'class');
+        $this->method($struct, 'go', ['signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'bool']]);
+        foreach ($traits as $trait) {
+            $this->edge('implements', $struct, $this->type('rust:interface:crate::' . $trait, 'interface')->localId);
+        }
+
+        return $struct;
+    }
+
+    /**
+     * @param list<MockMember> $members
+     * @return list<array{string, string, ?string, bool}>
+     */
+    private static function shapes(array $members): array
+    {
+        return array_map(static fn(MockMember $member): array => [$member->name, $member->kind, $member->implTrait, $member->associated], $members);
     }
 
     /**
@@ -284,6 +306,84 @@ final class MockMembersTest extends KnossosTestCase
         $this->edge('implements', $engine, 'rust:interface:std::fmt::Display');
 
         assertSame(['Engine implements a trait outside the scan: its methods the impl does not write (defaults) are not listed.'], $this->members($engine, 'rust')->notes);
+    }
+
+    public function testMethodLessImplsAreBlocksOfTheMock(): void
+    {
+        // Mk3: `impl Tag for Mk3 {}` and `impl Marker for Mk3 { type Kind = u8; }`, both traits in the scan.
+        $mk3 = $this->struct('Mk3', 'Tag', 'Marker');
+        $members = $this->members($mk3, 'rust', [
+            ['type' => 'crate::Mk3', 'trait' => 'Tag'],
+            ['type' => 'crate::Mk3', 'trait' => 'Marker', 'types' => [['name' => 'Kind', 'type' => 'u8']]],
+        ]);
+
+        assertSame([['go', 'method', null, false], ['Kind', 'type', 'Marker', false]], self::shapes($members->members));
+        assertSame([['trait' => 'Tag', 'unsafe' => false], ['trait' => 'Marker', 'unsafe' => false]], $members->impls);
+        assertTrue($members->complete);
+        assertSame([], $members->notes);
+    }
+
+    public function testATraitImplsAssociatedFunctionIsKept(): void
+    {
+        // Mf: `impl Make for Mf { fn make() -> Self }`, `impl Both for Mf { fn new_one() -> Self; fn id(&self) }`; an inherent `new` is the mock's own.
+        $mf = $this->struct('Mf', 'Make', 'Both');
+        $this->method($mf, 'new', ['signature' => ['params' => [], 'returns' => 'Self']]);
+        $this->method($mf, 'make', ['overrides' => true, 'impl_trait' => 'Make', 'signature' => ['params' => [], 'returns' => 'Self']]);
+        $this->method($mf, 'new_one', ['overrides' => true, 'impl_trait' => 'Both', 'signature' => ['params' => [], 'returns' => 'Self']]);
+        $this->method($mf, 'id', ['overrides' => true, 'impl_trait' => 'Both', 'signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'u32']]);
+        $members = $this->members($mf, 'rust', [
+            ['type' => 'crate::Mf', 'trait' => 'Make', 'methods' => ['make']],
+            ['type' => 'crate::Mf', 'trait' => 'Both', 'methods' => ['new_one', 'id']],
+        ]);
+
+        assertSame([['go', 'method', null, false], ['make', 'method', 'Make', true], ['new_one', 'method', 'Both', true], ['id', 'method', 'Both', false]], self::shapes($members->members));
+        assertTrue($members->complete);
+    }
+
+    public function testAnImplOfATraitOutsideTheScanIsIncompleteAndMarkersAreNot(): void
+    {
+        // Mk: in-scan method-less impls, an external Default, and the auto traits.
+        $mk = $this->struct('Mk', 'Tag');
+        $this->method($mk, 'default', ['overrides' => true, 'impl_trait' => 'Default', 'signature' => ['params' => [], 'returns' => 'Self']]);
+        $this->edge('implements', $mk, 'rust:interface:crate::Default');
+        $members = $this->members($mk, 'rust', [
+            ['type' => 'crate::Mk', 'trait' => 'Tag'],
+            ['type' => 'crate::Mk', 'trait' => 'Default', 'methods' => ['default']],
+            ['type' => 'crate::Mk', 'trait' => 'Send', 'unsafe' => true],
+            ['type' => 'crate::Mk', 'trait' => 'Sync', 'unsafe' => true],
+        ]);
+        assertSame(['Tag', 'Default'], array_column($members->impls, 'trait'));
+        assertFalse($members->complete);
+        assertSame(['Mk implements Default, a trait outside the scan: its methods the impl does not write (defaults) are not listed.'], $members->notes);
+
+        // Mk2: marker traits only, which every mock has or needs no impl of.
+        $mk2 = $this->struct('Mk2');
+        $this->edge('implements', $mk2, 'rust:interface:crate::Send');
+        $plain = $this->members($mk2, 'rust', [
+            ['type' => 'crate::Mk2', 'trait' => 'Send', 'unsafe' => true],
+            ['type' => 'crate::Mk2', 'trait' => 'Sync', 'unsafe' => true],
+            ['type' => 'crate::Mk2', 'trait' => 'Unpin'],
+        ]);
+        assertSame([[], [], true], [$plain->impls, $plain->notes, $plain->complete]);
+
+        // Mk4: Clone, Copy and Debug: Copy cannot be mocked, the others are outside the scan.
+        $mk4 = $this->struct('Mk4');
+        $this->method($mk4, 'clone', ['overrides' => true, 'impl_trait' => 'Clone', 'signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'Self']]);
+        $copy = $this->members($mk4, 'rust', [
+            ['type' => 'crate::Mk4', 'trait' => 'Clone', 'methods' => ['clone']],
+            ['type' => 'crate::Mk4', 'trait' => 'Copy'],
+            ['type' => 'crate::Mk4', 'trait' => 'std::fmt::Debug', 'methods' => ['fmt']],
+        ]);
+        assertFalse($copy->complete);
+        assertSame([
+            'Mk4 implements Clone, a trait outside the scan: its methods the impl does not write (defaults) are not listed.',
+            'Mk4 implements Copy: a mock cannot be Copy, so that impl is left out.',
+            'Mk4 implements std::fmt::Debug, a trait outside the scan: its methods the impl does not write (defaults) are not listed.',
+        ], $copy->notes);
+        // An impl<T> cannot be written without its parameters.
+        $generic = $this->members($this->struct('Gen'), 'rust', [['type' => 'crate::Gen', 'trait' => 'From<T>', 'methods' => ['from'], 'generics' => true]]);
+        assertSame([[], false], [$generic->impls, $generic->complete]);
+        assertSame([['name' => 'impl From<T>', 'reason' => 'a generic impl (impl<T>): its parameters are not recorded']], $generic->omitted);
     }
 
     public function testARustTraitsAssociatedItemsAreMembers(): void

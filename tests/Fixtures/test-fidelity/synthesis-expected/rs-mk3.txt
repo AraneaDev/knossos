@@ -1,0 +1,20 @@
+// knossos synthesize_mock: synth::focus::Mk3 (mockall), from rust/src/focus.rs:140
+// 2 members; complete
+use mockall::mock;
+use synth::focus::Mk3;
+
+mock! {
+    pub Mk3 {
+        fn go(&self) -> bool;
+    }
+    impl Tag for Mk3 {}
+    impl Marker for Mk3 {
+        type Kind = u8;
+    }
+}
+
+#[test]
+fn mk3_mock() {
+    let mut mock = MockMk3::new();
+    mock.expect_go().returning(|| false);
+}

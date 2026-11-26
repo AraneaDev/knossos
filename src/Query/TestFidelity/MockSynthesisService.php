@@ -62,7 +62,8 @@ final readonly class MockSynthesisService extends AbstractArchitectureQueryServi
         $language = $resolved['language'];
         self::refuse($target, $language);
         $choice = FrameworkChoice::choose($language, $framework, $this->doubleFrameworks($projectId, $language), ManifestFrameworks::near((string) $project['root_realpath'], $target->evidence->relativePath, $language));
-        $members = MockMembers::of($loaded['graph'], $target, $language, $loaded['cut']);
+        $impls = $language === 'rust' && $target->kind !== 'interface' ? $loader->traitImpls($projectId, $target->canonicalName) : [];
+        $members = MockMembers::of($loaded['graph'], $target, $language, $loaded['cut'], $impls);
         $types = new MockValueTypes($this->pdo, $loader, $projectId, $language);
         $template = $this->template($language, $types, $resolved['id'], $target);
         $text = $template->render($members, $choice['framework'], $includeValues);

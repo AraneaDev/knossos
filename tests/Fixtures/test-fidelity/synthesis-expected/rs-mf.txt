@@ -1,0 +1,18 @@
+// knossos synthesize_mock: synth::focus::Mf (mockall), from rust/src/focus.rs:158
+// 1 member; complete
+use mockall::mock;
+use synth::focus::Mf;
+
+mock! {
+    pub Mf {}
+    impl Make for Mf {
+        fn make() -> Self;
+    }
+}
+
+#[test]
+fn mf_mock() {
+    let mut mock = MockMf::new();
+    let make_context = MockMf::make_context();
+    make_context.expect().returning(|| todo!() /* knossos: fill in Self */);
+}

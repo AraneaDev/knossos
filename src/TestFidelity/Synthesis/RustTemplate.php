@@ -93,10 +93,17 @@ final readonly class RustTemplate implements MockTemplate
             // A struct's inherent methods go in its own block; each trait it implements gets the impl it writes.
             $inherent = self::declarations($groups[''] ?? []);
             $lines = [...$lines, ...($inherent === [] ? [sprintf('    pub %s%s {}', $name, $generics)] : [sprintf('    pub %s%s {', $name, $generics), ...$inherent, '    }'])];
-            foreach ($groups as $key => $group) {
-                if ($key !== '') {
-                    $lines = [...$lines, sprintf('    impl %s for %s%s {', substr((string) $key, 1), $name, $arguments), ...self::declarations($group), '    }'];
+            // Every impl the worker saw is given, a method-less one as an empty block; then any a worker without the list implies.
+            $blocks = $members->impls;
+            foreach (array_keys($groups) as $key) {
+                if ($key !== '' && !in_array(substr((string) $key, 1), array_column($blocks, 'trait'), true)) {
+                    $blocks[] = ['trait' => substr((string) $key, 1), 'unsafe' => false];
                 }
+            }
+            foreach ($blocks as $block) {
+                $body = self::declarations($groups['#' . $block['trait']] ?? []);
+                $header = sprintf('    %simpl %s for %s%s {', $block['unsafe'] ? 'unsafe ' : '', $block['trait'], $name, $arguments);
+                $lines = [...$lines, ...($body === [] ? [$header . '}'] : [$header, ...$body, '    }'])];
             }
         }
         $lines = [...$lines, '}', '', '#[test]', sprintf('fn %s_mock() {', TypeText::snake($name)), sprintf('    let mut mock = Mock%s::new();', $name)];
