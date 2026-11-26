@@ -61,7 +61,7 @@ pub(super) struct Site<'s> {
     pub(super) frameworks: &'s FrameworkContext<'s>,
     /// The file's fakes.
     pub(super) fakes: &'s [Fake],
-    /// What else may take a call on the file's trait mocks.
+    /// What else may take a call on the file's mocks.
     pub(super) trait_rivals: &'s TraitRivals<'s>,
 }
 
@@ -95,7 +95,7 @@ pub(super) fn function_doubles(
         invoked_by: Vec::new(),
         path_calls: Vec::new(),
         static_made: BTreeMap::new(),
-        trait_mocks: BTreeMap::new(),
+        mock_traits: BTreeMap::new(),
     };
     pass.bind_fakes();
     pass.visit_signature(signature);
@@ -151,21 +151,11 @@ struct Pass<'p> {
     path_calls: Vec<String>,
     /// Each static mock made, by mock and member.
     static_made: BTreeMap<(String, String), usize>,
-    /// Each double that is a trait mock, by position: the traits it
-    /// implements, and the members it gives them (`None` for all of them).
-    trait_mocks: BTreeMap<usize, TraitMock>,
-}
-
-/// The traits a trait mock implements, and the members it gives them: a
-/// call of one may be taken by another trait in scope (see
-/// [`TraitRivals`]). A member of the mock's own (an inherent `mock!`
-/// section) is no trait's.
-#[derive(Debug)]
-struct TraitMock {
-    /// Each trait, `None` when it could not be placed.
-    traits: Vec<Option<String>>,
-    /// The trait members, `None` for every member of the mock.
-    members: Option<BTreeSet<String>>,
+    /// The traits each mock a framework makes implements, by position
+    /// (`None` for one that could not be placed): a call of any member,
+    /// the mock's own or a trait's, may be taken by another trait in scope
+    /// (see [`TraitRivals`]). A hand-written fake's pins are its own rule's.
+    mock_traits: BTreeMap<usize, Vec<Option<String>>>,
 }
 
 impl<'p> Pass<'p> {
@@ -211,11 +201,11 @@ impl<'p> Pass<'p> {
             at.line,
             at.column + 1
         );
-        // A mock of a trait; a mockall mock's traits and members are the
+        // The trait a mock stands in for; a mockall mock's are the
         // generator's, set after (see `make_mockall`).
-        let trait_target = match &made.target {
-            Some(("interface", path)) => Some(path.clone()),
-            _ => None,
+        let traits = match &made.target {
+            Some(("interface", path)) => vec![Some(path.clone())],
+            _ => Vec::new(),
         };
         let fact = DoubleFact {
             canonical,
@@ -231,13 +221,7 @@ impl<'p> Pass<'p> {
             module: self.site.container.to_owned(),
         };
         let index = self.add(fact, made.framework);
-        if let Some(path) = trait_target {
-            let mock = TraitMock {
-                traits: vec![Some(path)],
-                members: None,
-            };
-            self.trait_mocks.insert(index, mock);
-        }
+        self.mock_traits.insert(index, traits);
         if let Some((member, api)) = made.member {
             self.found.doubles[index].member(&member, api, at.line);
         }
@@ -262,22 +246,7 @@ impl<'p> Pass<'p> {
             invoked_by: None,
         };
         let index = self.make(node.span(), made);
-        // A mock of inherent methods alone gives no member to a trait.
-        let mock = TraitMock {
-            traits: generated
-                .traits
-                .iter()
-                .map(|mocked| mocked.path.clone())
-                .collect(),
-            members: Some(
-                generated
-                    .traits
-                    .iter()
-                    .flat_map(|mocked| mocked.members.iter().cloned())
-                    .collect(),
-            ),
-        };
-        self.trait_mocks.insert(index, mock);
+        self.mock_traits.insert(index, generated.traits.clone());
         index
     }
 
@@ -398,9 +367,9 @@ impl<'p> Pass<'p> {
         }
     }
 
-    /// Note each configured member of a trait mock that another trait in
-    /// scope may take the call of (see [`TraitRivals`]), when a value would
-    /// otherwise be told.
+    /// Note each configured member of a mock whose call another trait in
+    /// scope may take (see [`TraitRivals`]), when a value would otherwise
+    /// be told.
     fn settle_trait_rivals(&mut self) {
         let handles = &self.found.handles;
         let rivalled: Vec<(String, String)> = handles
@@ -414,12 +383,10 @@ impl<'p> Pass<'p> {
                     .member_doubles
                     .get(&(handle.clone(), member.clone()))
                     .or_else(|| handles.bound.get(handle))?;
-                let mock = self.trait_mocks.get(index)?;
-                let mocked = mock
-                    .members
-                    .as_ref()
-                    .is_none_or(|members| members.contains(member));
-                (mocked && self.site.trait_rivals.rival(&mock.traits, member))
+                let traits = self.mock_traits.get(index)?;
+                self.site
+                    .trait_rivals
+                    .rival(traits, member)
                     .then(|| (handle.clone(), member.clone()))
             })
             .collect();

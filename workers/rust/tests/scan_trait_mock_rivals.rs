@@ -276,12 +276,14 @@ fn mock_macro(name: &str, uses: &str) -> std::collections::BTreeMap<String, Valu
 }
 
 #[test]
-fn a_member_of_a_mock_macro_trait_section_is_a_trait_mocks() {
+fn both_sections_of_a_mock_macro_may_lose_the_call() {
     let rivalled = mock_macro("trait-rival-mock-macro", "use probe::ext::Limits;\n");
     assert_eq!("mock-config", rivalled["of_the_trait"]["source"]);
     assert_eq!(Value::Null, rivalled["of_the_trait"]["value"]);
-    // The struct section's member is an inherent method, left as it was.
-    assert_eq!(json!("2"), rivalled["inherent"]["value"]);
+    // A by-value blanket method takes the call before an inherent
+    // `size(&self)` is tried, too.
+    assert_eq!("mock-config", rivalled["inherent"]["source"]);
+    assert_eq!(Value::Null, rivalled["inherent"]["value"]);
     let healthy = mock_macro("trait-rival-mock-macro-healthy", "");
     assert_eq!(json!("3"), healthy["of_the_trait"]["value"]);
     assert_eq!(json!("2"), healthy["inherent"]["value"]);
@@ -443,4 +445,58 @@ fn an_automock_trait_impl_is_a_trait_mock() {
     let rivalled = single("trait-rival-automock-impl", &format!("{rival}{mocked}"));
     assert_eq!("mock-config", rivalled["source"]);
     assert_eq!(Value::Null, rivalled["value"]);
+}
+
+/// The rustc probe: `impl<T> Ext for T` with `fn get(self)` takes `s.get()`
+/// before the inherent `get(&self)` is tried, and the call returns 2.
+const BY_VALUE: &str = "pub trait Ext: Sized {\n    fn get(self) -> u32 {\n        2\n    }\n}\nimpl<T> Ext for T {}\n";
+
+#[test]
+fn a_blanket_by_value_method_takes_an_inherent_mocks_call() {
+    let faux = "#[faux::create]\npub struct S {\n    a: u32,\n}\n#[faux::methods]\nimpl S {\n    \
+        pub fn get(&self) -> u32 {\n        self.a\n    }\n}\n\
+        #[test]\nfn case() {\n    let mut s = S::faux();\n    faux::when!(s.get).then_return(1);\n    \
+        assert_eq!(s.get(), 1);\n}\n";
+    let automock = "pub struct S;\n#[mockall::automock]\nimpl S {\n    pub fn get(&self) -> u32 {\n        1\n    }\n}\n\
+        #[test]\nfn case() {\n    let mut s = MockS::new();\n    s.expect_get().return_const(1u32);\n    \
+        assert_eq!(s.get(), 1);\n}\n";
+    for (name, source) in [("faux", faux), ("automock-inherent", automock)] {
+        let healthy = single(&format!("inherent-rival-{name}-healthy"), source);
+        assert_eq!("mock-config", healthy["source"], "{name}");
+        assert_eq!(json!("1"), healthy["value"], "{name}");
+        let rivalled = single(
+            &format!("inherent-rival-{name}"),
+            &format!("{BY_VALUE}{source}"),
+        );
+        assert_eq!("mock-config", rivalled["source"], "{name}");
+        assert_eq!(Value::Null, rivalled["value"], "{name}");
+    }
+}
+
+#[test]
+fn an_imported_trait_may_take_an_inherent_mocks_call() {
+    // A struct mock implements no trait to rule out: any trait the file
+    // brings in may be one.
+    let faux = "#[cfg(test)]\nmod tests {\n    use crate::ext::Limits;\n\n    #[faux::create]\n    pub struct S {\n        a: u32,\n    }\n    \
+        #[faux::methods]\n    impl S {\n        pub fn limit(&self) -> u32 {\n            self.a\n        }\n    }\n\n    \
+        #[test]\n    fn t() {\n        let mut s = S::faux();\n        faux::when!(s.limit).then_return(5);\n        \
+        assert_eq!(s.limit(), 5);\n    }\n}\n";
+    let contributions = scan_fixture_with(
+        "inherent-rival-import",
+        &[
+            ("Cargo.toml", "[package]\nname = \"probe\"\n"),
+            (
+                "src/lib.rs",
+                "pub mod ext;\npub mod repo;\npub mod service;\n",
+            ),
+            ("src/repo.rs", REPO),
+            ("src/ext.rs", LIMITS),
+            ("src/service.rs", faux),
+        ],
+        &json!({ "config_files": ["Cargo.toml"] }),
+    );
+    let cases = nodes_of(&contributions, "test_case");
+    let operand = &cases.values().next().unwrap()["attributes"]["assertions"][0]["operands"][0];
+    assert_eq!("mock-config", operand["source"]);
+    assert_eq!(Value::Null, operand["value"]);
 }

@@ -1,5 +1,5 @@
 //! The project's traits in the declaration index, and what a glob import of
-//! a module may bring into scope: what may take a call on a trait mock
+//! a module may bring into scope: what may take a call on a mock
 //! before the mocked trait does (see `crate::test_facts`).
 
 use std::collections::BTreeSet;

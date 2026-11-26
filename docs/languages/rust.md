@@ -469,28 +469,31 @@ assignment, a move, a closure capture, a shared borrow handed on or a clone
 the handle, `checkpoint()`, a call of a member it did not configure, an
 `unsafe` block, or a macro in item or statement position.
 
-A mock that implements a trait (an `#[automock]` trait or trait impl, a
-`mock!` `impl T for S` section, a mockiato or an mry trait mock) gives no value
-for a member of that trait when another trait in scope may take the call. A
-blanket `impl<X: T> Ext for X` with `fn m(self)` takes `mock.m()` by value
-before `T::m(&self)` is tried, so the assertion checks `Ext::m`, not the stub.
-The value is dropped when any of these holds:
+A framework's mock gives no value for a member when another trait in scope may
+take the call. A blanket `impl<X> Ext for X` with `fn m(self)` takes `mock.m()`
+by value before any `m(&self)` is tried, the mocked trait's or an inherent one
+alike, so the assertion checks `Ext::m`, not the stub. This holds for every
+mock: an `#[automock]` trait, trait impl or inherent impl, both sections of a
+`mock!`, faux, mry and mockiato. The traits the mock implements are ruled out;
+a mock of inherent methods (faux, an mry struct, an `#[automock] impl S`)
+implements none to rule out. The value is dropped when any of these holds:
 
 - the member is named like a standard blanket method (`into`, `to_string`,
   `borrow`, …);
 - the file declares another trait with a method of that name;
 - a `use` inside a function body leaves the standard crates;
 - the file imports a name the declaration index holds as a trait other than
-  the mocked one, or one outside the standard crates the index cannot place;
+  a mocked one, or one outside the standard crates the index cannot place;
 - it globs a module, other than one of its own, that declares or re-exports
   such a trait, or that the index does not know, or where a macro stands
   where an item may.
 
 mockall's macros, `Sequence` and predicate module, `mockiato::mockable`,
-`mry::mry`, `mry::Any` and `async_trait::async_trait` are known to be no
-trait. Each lookup is a read of the file that could declare the name, so
-adding a trait to an imported file judges the value again. A member of the
-mock's own (a `mock!` struct section) keeps the rules above.
+`mry::mry`, `mry::new`, `mry::m`, `mry::Any`, faux's `create`, `methods` and
+`when`, and `async_trait::async_trait` are known to be no trait. Each lookup is
+a read of the file that could declare the name, so adding a trait to an
+imported file judges the value again. A hand-written fake has its own rule (see
+[Test doubles](#test-doubles)).
 
 A call counts as production when the walk resolved it to a project declaration
 outside test code, or when it is a method call on a receiver the walk could not
@@ -551,14 +554,8 @@ each is accepted as contrived. The IDs are the deferred-gaps tracker's:
 - **A renamed assertion crate** (G5-07). `extern crate x as
 pretty_assertions`, or a Cargo `package =` rename to `pretty_assertions`,
   is trusted as `pretty_assertions`, whose `assert_eq!` compares. A crate
-  renamed to `mockall`, `mockiato`, `mry` or `async_trait` is trusted in the
-  same way, as holding no trait that could take a mock's call.
-- **An inherent method lost to a blanket trait.** A blanket
-  `impl<X> Ext for X` with `fn m(self)` takes `mock.m()` by value before an
-  inherent `fn m(&self)` is tried, as it does a trait mock's call. The trait
-  mocks are guarded (see [Test cases](#test-cases)). A mock of inherent
-  methods (faux, an mry struct, a `mock!` struct section, an
-  `#[automock] impl S`) is not.
+  renamed to `mockall`, `mockiato`, `mry`, `faux` or `async_trait` is trusted
+  in the same way, as holding no trait that could take a mock's call.
 - **A trait the file shows only through a macro.** A trait whose methods a
   macro inside its body declares, or one a macro in a body declares, is not
   read as a rival.
@@ -601,12 +598,13 @@ the deferred-gaps tracker's:
   or other double that is neither mockall's nor a hand-written fake, drops its
   value, and so does `(&mock).get()`. A hand-written fake keeps its pins when
   borrowed: they are its own code.
-- **Trait mocks near other traits.** A trait mock's member gives no value in a
-  file that brings in any trait other than the mocked one, whatever that
-  trait's methods are called: the index holds no trait's methods. A test that
-  imports two mocked traits gives neither mock a value, and so does a test
-  with `use mockall::*;` or an import from a crate other than the standard
-  and mocking ones.
+- **Mocks near other traits.** A mock gives no value in a file that brings in
+  any trait other than the ones it implements, whatever that trait's methods
+  are called: the index holds no trait's methods. A test that imports two
+  mocked traits gives neither mock a value, a faux or mry struct mock gives
+  none beside any imported trait, and neither does a mock in a test with
+  `use mockall::*;` or an import from a crate other than the standard and
+  mocking ones.
 - **Frameworks that pin no value.** mockers, mock_derive and galvanic give a
   double's identity and pins only, never a `mock-config` value, and mocktopus
   gives a pin with no value: each configures through a second handle or a

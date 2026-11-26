@@ -10,7 +10,7 @@
 //! - the function has exactly one `expect_m` chain on `h`, a top-level
 //!   statement before the call, with exactly one value verb whose value is
 //!   a literal;
-//! - no other trait in scope may take the call, for a trait mock (see
+//! - no other trait in scope may take the call, for a framework's mock (see
 //!   `super::trait_rivals`);
 //! - nothing defeats it: `&mut h`, an assignment to `h`, a move of `h`, a
 //!   closure or a macro (other than an assertion) naming it,
@@ -97,7 +97,7 @@ pub(super) struct Handles {
     /// `Cat::mock_meow(…)`): which configuration answers a handle's call of
     /// one is not told.
     pub(super) static_members: BTreeSet<String>,
-    /// Each configured member of a trait mock, by handle, whose call
+    /// Each configured member of a framework's mock, by handle, whose call
     /// another trait in scope may take (see `super::trait_rivals`).
     pub(super) rivalled: BTreeSet<(String, String)>,
 }

@@ -1,9 +1,9 @@
-//! What else may take a call on a trait mock (final review I1): a call
-//! `mock.m()` on a mock of the trait `T` is `T::m(&self)`'s only when no
-//! other trait in scope has a method `m` that the probe reaches first. A
-//! blanket `impl<X: T> Limits for X` with `fn m(self)` takes the call by
-//! value before `T::m(&self)` is tried, so the assertion checks that
-//! method, not the stub.
+//! What else may take a call on a mock (final review I1): a call
+//! `mock.m()` is the stubbed `m(&self)`'s only when no other trait in scope
+//! has a method `m` that the probe reaches first. A blanket
+//! `impl<X> Limits for X` with `fn m(self)` takes the call by value before
+//! any `m(&self)` is tried, a trait's or an inherent one alike, so the
+//! assertion checks that method, not the stub.
 //!
 //! What the file itself shows is [`Rivals::local_trait_rival`]'s. Beyond it,
 //! any trait the file brings in from elsewhere may be one: a name it
@@ -24,7 +24,7 @@ use crate::visit::Declarations;
 /// The items of the mock frameworks a test imports that are no trait, so
 /// take no call on a mock: macros, functions and types. mockall's
 /// predicate module is [`PREDICATES`].
-const FRAMEWORK_ITEMS: [&str; 8] = [
+const FRAMEWORK_ITEMS: [&str; 13] = [
     "mockall::automock",
     "mockall::mock",
     "mockall::concretize",
@@ -32,6 +32,11 @@ const FRAMEWORK_ITEMS: [&str; 8] = [
     "mockiato::mockable",
     "mry::mry",
     "mry::Any",
+    "mry::new",
+    "mry::m",
+    "faux::create",
+    "faux::methods",
+    "faux::when",
     "async_trait::async_trait",
 ];
 
@@ -42,7 +47,7 @@ const PREDICATES: &str = "mockall::predicate";
 /// unknown.
 const HOPS: usize = 4;
 
-/// What may take a call on the file's trait mocks, read once, when first
+/// What may take a call on the file's mocks, read once, when first
 /// asked.
 pub(super) struct TraitRivals<'i> {
     /// The file.
@@ -64,7 +69,8 @@ impl<'i> TraitRivals<'i> {
     }
 
     /// Whether a trait other than `targets`, the traits the mock
-    /// implements, may take a call of `member` on it. A trait the
+    /// implements (none for a mock of inherent methods), may take a call of
+    /// `member` on it. A trait the
     /// generating file could not place may be any of them.
     pub(super) fn rival(&self, targets: &[Option<String>], member: &str) -> bool {
         let Some(targets) = targets.iter().cloned().collect::<Option<Vec<String>>>() else {

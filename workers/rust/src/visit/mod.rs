@@ -50,7 +50,7 @@ pub use declarations::{
     Declarations, ExportAlternatives, ExportedNames, FieldType, FunctionReturns, GlobImports,
     StructFields, TypeAliases, ANY_PACKAGE,
 };
-pub use generated::{generated_mocks, GeneratedMock, MockedTrait, AUTOMOCK, MOCK_MACRO};
+pub use generated::{generated_mocks, GeneratedMock, AUTOMOCK, MOCK_MACRO};
 use labels::{path_label, type_label};
 use placement::mod_child;
 pub use placement::mod_declarations;

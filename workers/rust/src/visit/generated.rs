@@ -8,7 +8,7 @@
 //! names never enter the declaration index's name index, so nothing the
 //! walk resolves changes because a file generates a mock.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use proc_macro2::{Delimiter, TokenTree};
 use syn::Item;
@@ -53,20 +53,10 @@ pub struct GeneratedMock {
     /// The project-relative path of the generating file, whose crate a
     /// test gate keeps the mock to.
     pub file: String,
-    /// Each trait the mock implements, with the members it mocks there:
-    /// none for a mock of inherent methods alone.
-    pub traits: Vec<MockedTrait>,
-}
-
-/// One trait a generated mock implements (an `#[automock]` trait, an
-/// `#[automock] impl T for S`, a `mock!` `impl T for S` section).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct MockedTrait {
-    /// The trait's canonical path, `None` when the generating file's own
-    /// imports cannot place it.
-    pub path: Option<String>,
-    /// The members the mock gives the trait.
-    pub members: BTreeSet<String>,
+    /// The canonical path of each trait the mock implements, `None` for
+    /// one the generating file's own imports cannot place: none for a
+    /// mock of inherent methods alone.
+    pub traits: Vec<Option<String>>,
 }
 
 /// The mocks the items of the file `relative`, placed in `module`,
@@ -106,16 +96,6 @@ impl Walk<'_> {
                 Item::Trait(node) => {
                     if let Some(test_gated) = automock(&node.attrs) {
                         let name = ident_name(&node.ident);
-                        let members = node
-                            .items
-                            .iter()
-                            .filter_map(|item| match item {
-                                syn::TraitItem::Fn(function) => {
-                                    Some(ident_name(&function.sig.ident))
-                                }
-                                _ => None,
-                            })
-                            .collect();
                         let mock = GeneratedMock {
                             target: Some(format!("{container}::{name}")),
                             target_kind: "interface",
@@ -129,10 +109,7 @@ impl Walk<'_> {
                                 },
                             )),
                             file: self.relative.clone(),
-                            traits: vec![MockedTrait {
-                                path: Some(format!("{container}::{name}")),
-                                members,
-                            }],
+                            traits: vec![Some(format!("{container}::{name}"))],
                         };
                         out.insert(format!("{container}::Mock{name}"), mock);
                     }
@@ -147,23 +124,6 @@ impl Walk<'_> {
                     let Some(last) = self_type.path.segments.last() else {
                         continue;
                     };
-                    let traits = node
-                        .trait_
-                        .iter()
-                        .map(|(path, _)| MockedTrait {
-                            path: self.path_target(container, path),
-                            members: node
-                                .items
-                                .iter()
-                                .filter_map(|item| match item {
-                                    syn::ImplItem::Fn(function) => {
-                                        Some(ident_name(&function.sig.ident))
-                                    }
-                                    _ => None,
-                                })
-                                .collect(),
-                        })
-                        .collect();
                     let mock = GeneratedMock {
                         target: self.path_target(container, &self_type.path),
                         target_kind: "class",
@@ -177,7 +137,11 @@ impl Walk<'_> {
                             }
                         })),
                         file: self.relative.clone(),
-                        traits,
+                        traits: node
+                            .trait_
+                            .iter()
+                            .map(|(path, _)| self.path_target(container, path))
+                            .collect(),
                     };
                     out.insert(
                         format!("{container}::Mock{}", ident_name(&last.ident)),
@@ -210,17 +174,9 @@ impl Walk<'_> {
                         continue;
                     };
                     let target = match shape.traits.as_slice() {
-                        [(only, _)] => self.path_target(container, only),
+                        [only] => self.path_target(container, only),
                         _ => None,
                     };
-                    let traits = shape
-                        .traits
-                        .iter()
-                        .map(|(path, members)| MockedTrait {
-                            path: self.path_target(container, path),
-                            members: members.clone(),
-                        })
-                        .collect();
                     let mock = GeneratedMock {
                         target_kind: if target.is_some() {
                             "interface"
@@ -233,7 +189,11 @@ impl Walk<'_> {
                         contexts_only: false,
                         mocked_constructors: shape.constructors,
                         file: self.relative.clone(),
-                        traits,
+                        traits: shape
+                            .traits
+                            .iter()
+                            .map(|path| self.path_target(container, path))
+                            .collect(),
                     };
                     out.insert(format!("{container}::Mock{}", shape.name), mock);
                 }
@@ -343,9 +303,8 @@ fn is_mock_macro(path: &syn::Path) -> bool {
 struct MockMacro {
     /// The mocked struct's name; the mock is `Mock<name>`.
     name: String,
-    /// The trait of each `impl … for` section, as written, with the
-    /// functions the section declares.
-    traits: Vec<(syn::Path, BTreeSet<String>)>,
+    /// The trait of each `impl … for` section, as written.
+    traits: Vec<syn::Path>,
     /// Which of `new` and `default` the body declares (see
     /// [`GeneratedMock::mocked_constructors`]).
     constructors: Vec<String>,
@@ -394,16 +353,8 @@ impl MockMacro {
                 if at < trees.len() {
                     let written: proc_macro2::TokenStream =
                         trees[start..at].iter().cloned().collect();
-                    // The section's body is the first braced group past
-                    // `for`; a function it declares belongs to the trait.
-                    let mut members = Vec::new();
-                    if let Some(TokenTree::Group(body)) = trees[at..].iter().find(|tree| {
-                        matches!(tree, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace)
-                    }) {
-                        declared_fns(body.stream(), &mut members);
-                    }
                     if let Ok(path) = syn::parse2::<syn::Path>(written) {
-                        traits.push((path, members.into_iter().collect()));
+                        traits.push(path);
                     }
                 }
             }
