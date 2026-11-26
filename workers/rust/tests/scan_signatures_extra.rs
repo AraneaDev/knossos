@@ -251,3 +251,39 @@ fn a_trait_impls_associated_items_ride_on_its_methods() {
     assert!(plain.get("impl_types").is_none());
     assert!(plain.get("impl_consts").is_none());
 }
+
+#[test]
+fn a_files_trait_impls_are_listed_on_its_module_whatever_they_hold() {
+    let contributions = scan_fixture(
+        "signatures-extra-impls",
+        &[
+            (
+                "src/lib.rs",
+                "pub mod other;\npub trait Tag {}\npub trait Marker { type Kind; const N: u8; }\npub struct Mk;\n\
+                 impl Mk { pub fn run(&self) {} }\n\
+                 impl Tag for Mk {}\n\
+                 impl Marker for Mk { type Kind = u8; const N: u8 = 1; }\n\
+                 unsafe impl Send for Mk {}\n\
+                 impl<T> From<T> for Mk where T: Copy { fn from(_: T) -> Self { Mk } }\n\
+                 #[cfg(test)]\nmod tests { impl super::Tag for u8 {} }\n",
+            ),
+            ("src/other.rs", "impl Default for crate::Mk { fn default() -> Self { crate::Mk } }\n"),
+        ],
+    );
+    let modules = nodes_of(&contributions, "module");
+
+    assert_eq!(
+        json!([
+            {"type": "crate::Mk", "trait": "Tag"},
+            {"type": "crate::Mk", "trait": "Marker", "types": [{"name": "Kind", "type": "u8"}], "consts": [{"name": "N", "type": "u8", "value": "1"}]},
+            {"type": "crate::Mk", "trait": "Send", "unsafe": true},
+            {"type": "crate::Mk", "trait": "From<T>", "methods": ["from"], "generics": true},
+        ]),
+        modules["crate"]["attributes"]["trait_impls"]
+    );
+    // An impl in another file is listed on that file's module.
+    assert_eq!(
+        json!([{"type": "crate::Mk", "trait": "Default", "methods": ["default"]}]),
+        modules["crate::other"]["attributes"]["trait_impls"]
+    );
+}

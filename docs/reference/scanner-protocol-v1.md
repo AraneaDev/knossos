@@ -227,6 +227,14 @@ carries `impl_trait`, the trait path as the `impl` writes it (`Repo<String>`),
 and the impl's own associated items: `impl_types`, each `{name, type}` as
 written, and `impl_consts`, each `{name, type, value?}`, `value` sent only for
 a literal; each list only when there is one, on every method of the impl.
+A Rust module node carries `trait_impls`, every trait impl its file writes for
+a project type, method-less ones and those of traits outside the project
+included: each `{type, trait, types?, consts?, methods?, unsafe?, generics?}`,
+`type` the canonical name of the type implemented for, `trait` as written,
+`types` and `consts` as above, `methods` the names its functions declare,
+`unsafe` and `generics` (an `impl<T>`) only when true. The worker reads one
+file at a time, so an impl of a type another file declares is listed on its
+own file's module, and a reader gathers them by `type`.
 A mock template reads them all; the drift rules read none of them, and a
 Rust double stays compile-checked, so `VISIBILITY_BREACH` stays silent for it.
 

@@ -306,6 +306,7 @@ impl Walk<'_> {
         // export, the public methods and the constructor, and nothing
         // in Rust has to.
         let exported_impl = node.attrs.iter().any(is_wasm_bindgen);
+        self.note_trait_impl(target, node);
         let outer = self.enter_type_params(&node.generics);
         // A block `impl_target` declared for a trait impl with no project
         // type (`<impl Matcher for &M>`) already names the impl.

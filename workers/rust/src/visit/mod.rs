@@ -92,6 +92,7 @@ pub fn walk(
     walker.walk_items(module, "module", &file.items);
     field_facts::attach(walker.facts, module, &file.items);
     walker.flush_routes();
+    walker.flush_trait_impls();
     let placed = std::mem::take(&mut walker.placed);
     let scope = walker.take_scope();
     facts.exit_support_scope(file_support);
@@ -260,6 +261,7 @@ impl<'a> Walk<'a> {
             public_exports: BTreeSet::new(),
             own_declarations: BTreeSet::new(),
             implemented_types: BTreeSet::new(),
+            trait_impls: Vec::new(),
             type_aliases: BTreeMap::new(),
         }
     }

@@ -194,27 +194,7 @@ impl super::Walk<'_> {
             "impl_trait",
             Value::String(type_text(path, &mut false)),
         );
-        let mut types = Vec::new();
-        let mut consts = Vec::new();
-        for item in &node.items {
-            match item {
-                syn::ImplItem::Type(declared) => types.push(json!({
-                    "name": declared.ident.to_string(),
-                    "type": type_text(&declared.ty, &mut false),
-                })),
-                syn::ImplItem::Const(declared) => {
-                    let mut entry = json!({
-                        "name": declared.ident.to_string(),
-                        "type": type_text(&declared.ty, &mut false),
-                    });
-                    if literal(&declared.expr) {
-                        entry["value"] = Value::String(type_text(&declared.expr, &mut false));
-                    }
-                    consts.push(entry);
-                }
-                _ => {}
-            }
-        }
+        let (types, consts) = impl_items(node);
         if !types.is_empty() {
             self.facts
                 .node_attribute(canonical, "impl_types", Value::Array(types));
@@ -222,6 +202,56 @@ impl super::Walk<'_> {
         if !consts.is_empty() {
             self.facts
                 .node_attribute(canonical, "impl_consts", Value::Array(consts));
+        }
+    }
+
+    /// Note one trait impl of the project type `target`, method-less or
+    /// not, of a project trait or another: `trait` as written, its `types`,
+    /// `consts` and `methods`, `unsafe` and `generics` (an `impl<T>`) when
+    /// so, each only when there is one. A mock of the type must give every
+    /// impl, so a reader needs those that declare no method too.
+    pub(super) fn note_trait_impl(&mut self, target: &str, node: &syn::ItemImpl) {
+        // A block with no project type names itself (`<impl Tag for u8>`): no type to mock.
+        let Some((path, _)) = node.trait_.as_ref().filter(|_| !target.contains("<impl ")) else {
+            return;
+        };
+        let mut entry = Map::new();
+        entry.insert("type".to_owned(), Value::String(target.to_owned()));
+        entry.insert(
+            "trait".to_owned(),
+            Value::String(type_text(path, &mut false)),
+        );
+        let (types, consts) = impl_items(node);
+        let methods: Vec<Value> = node
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                syn::ImplItem::Fn(method) => Some(Value::String(method.sig.ident.to_string())),
+                _ => None,
+            })
+            .collect();
+        for (key, list) in [("types", types), ("consts", consts), ("methods", methods)] {
+            if !list.is_empty() {
+                entry.insert(key.to_owned(), Value::Array(list));
+            }
+        }
+        if node.unsafety.is_some() {
+            entry.insert("unsafe".to_owned(), Value::Bool(true));
+        }
+        if !node.generics.params.is_empty() {
+            entry.insert("generics".to_owned(), Value::Bool(true));
+        }
+        self.trait_impls.push(Value::Object(entry));
+    }
+
+    /// Put the file's trait impls on its module node, as `trait_impls`:
+    /// the walk reads one file, so an impl of a type another file declares
+    /// lands here, and a reader gathers them by `type`.
+    pub(super) fn flush_trait_impls(&mut self) {
+        if !self.trait_impls.is_empty() {
+            let impls = std::mem::take(&mut self.trait_impls);
+            self.facts
+                .node_attribute(&self.module, "trait_impls", Value::Array(impls));
         }
     }
 
@@ -233,6 +263,33 @@ impl super::Walk<'_> {
             self.facts.node_attribute(canonical, key, value);
         }
     }
+}
+
+/// An impl's associated types, each `{name, type}`, and consts, each
+/// `{name, type, value?}`, `value` only for a literal.
+fn impl_items(node: &syn::ItemImpl) -> (Vec<Value>, Vec<Value>) {
+    let mut types = Vec::new();
+    let mut consts = Vec::new();
+    for item in &node.items {
+        match item {
+            syn::ImplItem::Type(declared) => types.push(json!({
+                "name": declared.ident.to_string(),
+                "type": type_text(&declared.ty, &mut false),
+            })),
+            syn::ImplItem::Const(declared) => {
+                let mut entry = json!({
+                    "name": declared.ident.to_string(),
+                    "type": type_text(&declared.ty, &mut false),
+                });
+                if literal(&declared.expr) {
+                    entry["value"] = Value::String(type_text(&declared.expr, &mut false));
+                }
+                consts.push(entry);
+            }
+            _ => {}
+        }
+    }
+    (types, consts)
 }
 
 /// Whether an expression is a literal, or a negated one (`3`, `"a"`, `-1`).
