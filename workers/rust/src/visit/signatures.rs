@@ -142,6 +142,51 @@ impl super::Walk<'_> {
         }
     }
 
+    /// Record on a trait node what its `impl` must give besides methods:
+    /// `associated_types`, each name with its bounds as written
+    /// (`Item: Clone`), and `associated_consts`, each `{name, type}`, each
+    /// list only when there is one.
+    pub(super) fn record_associated(&mut self, canonical: &str, items: &[syn::TraitItem]) {
+        let mut types = Vec::new();
+        let mut consts = Vec::new();
+        for item in items {
+            match item {
+                syn::TraitItem::Type(declared) if declared.bounds.is_empty() => {
+                    types.push(Value::String(declared.ident.to_string()));
+                }
+                syn::TraitItem::Type(declared) => types.push(Value::String(format!(
+                    "{}: {}",
+                    declared.ident,
+                    type_text(&declared.bounds, &mut false)
+                ))),
+                syn::TraitItem::Const(declared) => consts.push(json!({
+                    "name": declared.ident.to_string(),
+                    "type": type_text(&declared.ty, &mut false),
+                })),
+                _ => {}
+            }
+        }
+        if !types.is_empty() {
+            self.facts
+                .node_attribute(canonical, "associated_types", Value::Array(types));
+        }
+        if !consts.is_empty() {
+            self.facts
+                .node_attribute(canonical, "associated_consts", Value::Array(consts));
+        }
+    }
+
+    /// Record on a trait impl's method `canonical` the trait it implements,
+    /// as the `impl` writes it (`Repo<String>`), so a mock of the type can
+    /// give that impl of its own.
+    pub(super) fn record_impl_trait(&mut self, canonical: &str, path: &syn::Path) {
+        self.facts.node_attribute(
+            canonical,
+            "impl_trait",
+            Value::String(type_text(path, &mut false)),
+        );
+    }
+
     /// Record on the trait, struct or enum node `canonical` its type
     /// parameters and where clause, as [`generics_of`] gives them. A text
     /// cut to the length kept ends in `…`, which no written one does.

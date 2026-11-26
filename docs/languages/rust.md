@@ -137,7 +137,9 @@ function or an inherent method also carries `visibility`, `private` without
 `pub`, a trait's items and a trait impl's send none. `async: true` and
 `unsafe: true` mark the ones so declared. A `struct`, `enum` or
 `trait` with type parameters carries `type_params`, and `where` for a where
-clause. `synthesize_mock` reads them; the drift rules do not, since a Rust
+clause. An enum or union carries `rust_item`, a trait its
+`associated_types` and `associated_consts`, and a trait impl's method the
+trait it implements as written (`impl_trait`). `synthesize_mock` reads them; the drift rules do not, since a Rust
 double is compile-checked.
 
 A node's `local_id` and both ends of an edge are written

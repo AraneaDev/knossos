@@ -323,6 +323,9 @@ impl Walk<'_> {
                     item.span(),
                 );
                 self.record_generics(&canonical, &node.generics);
+                // An enum carries `cases` only when it derives Deserialize: mark it either way.
+                self.facts
+                    .node_attribute(&canonical, "rust_item", "enum".into());
                 let fields: Vec<&syn::Fields> = node.variants.iter().map(|v| &v.fields).collect();
                 let variant_attrs: Vec<&[syn::Attribute]> =
                     node.variants.iter().map(|v| v.attrs.as_slice()).collect();
@@ -341,13 +344,15 @@ impl Walk<'_> {
                 self.walk_module_value(container, &node.ty, &node.expr);
             }
             Item::Union(node) => {
-                self.declare(
+                let canonical = self.declare(
                     container,
                     container_kind,
                     &ident_name(&node.ident),
                     "class",
                     item.span(),
                 );
+                self.facts
+                    .node_attribute(&canonical, "rust_item", "union".into());
             }
             Item::Fn(node) => self.walk_fn(container, container_kind, node, item.span()),
             Item::Trait(node) => self.walk_trait(container, container_kind, node, item.span()),
@@ -436,6 +441,7 @@ impl Walk<'_> {
             span,
         );
         self.record_generics(&canonical, &node.generics);
+        self.record_associated(&canonical, &node.items);
         // A supertrait bound (`trait Named: Display`) names a trait the
         // declared trait extends. Only a plain trait bound is handled;
         // a lifetime bound (`trait Named: 'static`) names no node.

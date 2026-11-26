@@ -162,3 +162,63 @@ fn type_parameters_and_where_clauses_are_recorded_as_written() {
         extra(&nodes, "crate::Holder")
     );
 }
+
+#[test]
+fn enums_and_unions_are_marked_apart_from_cases() {
+    let nodes = scan(
+        "pub enum Mode { A, B }\n\
+         pub union Bits { a: u32, b: f32 }\n\
+         pub struct Plain;\n",
+    );
+
+    assert_eq!(
+        json!("enum"),
+        nodes["crate::Mode"]["attributes"]["rust_item"]
+    );
+    assert_eq!(
+        json!("union"),
+        nodes["crate::Bits"]["attributes"]["rust_item"]
+    );
+    assert!(nodes["crate::Plain"]["attributes"]
+        .get("rust_item")
+        .is_none());
+}
+
+#[test]
+fn a_trait_impl_method_names_the_trait_as_written() {
+    let nodes = scan(
+        "pub trait Repo<T> { fn get(&self) -> Option<T>; }\n\
+         pub struct Store;\n\
+         impl Store { pub fn own(&self) {} }\n\
+         impl Repo<String> for Store { fn get(&self) -> Option<String> { None } }\n",
+    );
+
+    assert_eq!(
+        json!("Repo<String>"),
+        nodes["crate::Store::<impl Repo<String>>::get"]["attributes"]["impl_trait"]
+    );
+    assert!(nodes["crate::Store::own"]["attributes"]
+        .get("impl_trait")
+        .is_none());
+}
+
+#[test]
+fn a_traits_associated_types_and_consts_are_listed() {
+    let nodes = scan(
+        "pub trait WithAssoc {\n    type Output;\n    type Item: Clone;\n    const LIMIT: usize;\n    fn produce(&self) -> Self::Output;\n}\n\
+         pub trait Bare { fn f(&self); }\n",
+    );
+    let attributes = &nodes["crate::WithAssoc"]["attributes"];
+
+    assert_eq!(
+        json!(["Output", "Item: Clone"]),
+        attributes["associated_types"]
+    );
+    assert_eq!(
+        json!([{"name": "LIMIT", "type": "usize"}]),
+        attributes["associated_consts"]
+    );
+    assert!(nodes["crate::Bare"]["attributes"]
+        .get("associated_types")
+        .is_none());
+}

@@ -219,7 +219,12 @@ items and a trait impl's methods send none, so an absent `visibility` means
 public from every worker. A TypeScript class or interface, and a Rust
 struct, enum or trait, with type parameters carries `type_params`, and
 a Rust one with a where clause `where`; a text cut to 80 characters ends in
-`…`. A mock template reads them all; the drift rules read none of them, and a
+`…`. A Rust enum or union node carries `rust_item: "enum"` or `"union"`,
+whether or not it sends `cases`. A Rust trait node carries `associated_types`,
+each name with its bounds as written (`Item: Clone`), and `associated_consts`,
+each `{name, type}`, each only when there is one. A Rust trait impl's method
+carries `impl_trait`, the trait path as the `impl` writes it (`Repo<String>`).
+A mock template reads them all; the drift rules read none of them, and a
 Rust double stays compile-checked, so `VISIBILITY_BREACH` stays silent for it.
 
 #### Complete name lists

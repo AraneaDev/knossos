@@ -349,12 +349,13 @@ impl Walk<'_> {
                         // trait declares, and is reached through the trait,
                         // which may be a dependency's (`Default`, a visitor)
                         // whose members the graph cannot see.
-                        if node.trait_.is_some() {
+                        if let Some((trait_path, _)) = &node.trait_ {
                             this.facts.node_attribute(
                                 method_canonical,
                                 "overrides",
                                 serde_json::Value::Bool(true),
                             );
+                            this.record_impl_trait(method_canonical, trait_path);
                         }
                         if (drop_impl && name == "drop")
                             || (exported_impl && matches!(method.vis, syn::Visibility::Public(_)))
