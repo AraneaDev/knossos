@@ -1,0 +1,19 @@
+// knossos synthesize_mock: synth::focus::Keyed (mockall), from rust/src/focus.rs:64
+// 2 members; complete
+use mockall::mock;
+use synth::focus::Keyed;
+
+mock! {
+    pub Keyed<T> {}
+    impl<T> Keyed<T> for Keyed<T> {
+        fn get(&self, id: u64) -> Option<T>;
+        fn put(&mut self, value: T);
+    }
+}
+
+#[test]
+fn keyed_mock() {
+    let mut mock = MockKeyed::new();
+    mock.expect_get().returning(|_id| None);
+    mock.expect_put().returning(|_value| ());
+}

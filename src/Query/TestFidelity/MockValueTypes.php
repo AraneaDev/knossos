@@ -25,7 +25,8 @@ use PDO;
  * and 4: a whole, closed list):
  *
  * - TypeScript: an interface, type alias or class without type parameters,
- *   every field public, and every other name it lists a method (a stub);
+ *   every field public, and every other name it lists an interface's
+ *   method (a stub); a class with a method gives none;
  * - PHP: a concrete class whose public constructor takes only its fields
  *   and every required one, written `new \X(name: …)`;
  * - Python: a class with a field list, called with keywords;
@@ -139,7 +140,9 @@ final class MockValueTypes
                 }
                 $methods = [];
                 foreach (array_diff(array_filter($listed, is_string(...)), array_keys($fields)) as $name) {
-                    if ($graph->member($node, $name)?->kind !== 'method') {
+                    // A class's methods are its prototype's, and a static one is no instance member: only an interface's are stubbed.
+                    $method = $graph->member($node, $name);
+                    if ($method?->kind !== 'method' || $node->kind === 'class' || ($method->attributes['static'] ?? false) === true) {
                         return null;
                     }
                     $methods[] = $name;

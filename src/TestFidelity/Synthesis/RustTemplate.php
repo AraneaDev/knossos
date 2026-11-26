@@ -16,9 +16,14 @@ use Knossos\Scanner\Protocol\NodeFact;
  * Each method keeps its real receiver (`&self`, `&mut self`, `self`,
  * `self: Box<Self>`), its `async` and `unsafe`, and its type parameters and
  * where clause as written; a trait's associated function is declared and
- * set through its context. A supertrait in the project gets an `impl` of
- * its own; one outside the scan leaves the template incomplete. A generic
- * trait keeps its parameters on the mock, its bounds as written.
+ * set through its context, a borrowed return through `return_const`, and an
+ * associated type or const gets a placeholder (`type Output = ();`), listed
+ * in `unknown`. A supertrait in the project gets an `impl` of its own; one
+ * outside the scan leaves the template incomplete. A struct's inherent
+ * methods go in its own block, and each trait it implements gets the `impl`
+ * the source writes (`impl Repo<String> for Store`). A generic trait keeps
+ * its parameters on the mock, its bounds as written, and each method naming
+ * one lists it in `unknown`.
  *
  * A hand-written fake of a struct, or of a generic trait, is refused: a
  * struct has no trait to implement, and a fake of a generic trait needs a
@@ -49,7 +54,7 @@ final readonly class RustTemplate implements MockTemplate
         $imports = [];
         foreach ($members->members as $member) {
             $declarers[$member->declarer->localId] = $member->declarer;
-            $groups[$member->declarer->localId][] = $member;
+            $groups[self::group($member)][] = $member;
             $imports = [...$imports, ...$this->member($members, $member, $framework, $values)['imports']];
         }
         $uses = [...($framework === 'mockall' ? ['use mockall::mock;'] : []), ...array_map(static fn(NodeFact $declarer): string => sprintf('use %s;', $declarer->canonicalName), $declarers), ...$imports];
@@ -81,18 +86,24 @@ final readonly class RustTemplate implements MockTemplate
             foreach ($declarers as $id => $declarer) {
                 $own = $declarer->localId === $target->localId;
                 $lines[] = sprintf('    impl%s %s%s for %s%s%s {', $own ? $generics : '', $declarer->displayName, $own ? $arguments : '', $name, $arguments, $own ? $where : '');
-                foreach ($groups[$id] ?? [] as $member) {
-                    $lines[] = '        ' . self::declaration($member) . ';';
-                }
+                $lines = [...$lines, ...self::declarations($groups[$id] ?? [])];
                 $lines[] = '    }';
             }
         } else {
-            $methods = array_map(static fn(MockMember $member): string => '        ' . self::declaration($member) . ';', $members->members);
-            $lines = [...$lines, ...($methods === [] ? [sprintf('    pub %s%s {}', $name, $generics)] : [sprintf('    pub %s%s {', $name, $generics), ...$methods, '    }'])];
+            // A struct's inherent methods go in its own block; each trait it implements gets the impl it writes.
+            $inherent = self::declarations($groups[''] ?? []);
+            $lines = [...$lines, ...($inherent === [] ? [sprintf('    pub %s%s {}', $name, $generics)] : [sprintf('    pub %s%s {', $name, $generics), ...$inherent, '    }'])];
+            foreach ($groups as $key => $group) {
+                if ($key !== '') {
+                    $lines = [...$lines, sprintf('    impl %s for %s%s {', substr((string) $key, 1), $name, $arguments), ...self::declarations($group), '    }'];
+                }
+            }
         }
         $lines = [...$lines, '}', '', '#[test]', sprintf('fn %s_mock() {', TypeText::snake($name)), sprintf('    let mut mock = Mock%s::new();', $name)];
         foreach ($members->members as $member) {
-            $lines[] = $this->member($members, $member, $framework, $values)['rendered'];
+            if ($member->kind === 'method') {
+                $lines[] = $this->member($members, $member, $framework, $values)['rendered'];
+            }
         }
         $lines[] = '}';
 
@@ -101,12 +112,27 @@ final readonly class RustTemplate implements MockTemplate
 
     public function member(MockMembers $members, MockMember $member, string $framework, bool $values): array
     {
+        if ($member->kind !== 'method') {
+            return ['rendered' => '        ' . self::associatedItem($member), 'unknown' => [self::associatedUnknown($member)], 'imports' => []];
+        }
         if ($framework === 'hand-written') {
             return $this->fake($member, $values);
         }
+        $unknown = [...self::typeParameterUnknowns($member), ...self::traitParameterUnknowns($members, $member)];
+        $returns = (string) $member->returns();
+        if (!$member->associated && str_starts_with($returns, '&')) {
+            // mockall gives a borrowed return through return_const, from the owned value it lends.
+            $placeholder = (new ExampleValue('rust', $this->lookup))->placeholder('the value ' . $returns . ' lends');
+
+            return [
+                'rendered' => sprintf('    mock.expect_%s().return_const(%s);', $member->name, $values ? $placeholder['value'] : 'todo!()'),
+                'unknown' => [...$unknown, 'returns a reference: return_const takes the owned value it lends'],
+                'imports' => [],
+            ];
+        }
         $example = $this->example($member, $values);
+        $unknown = [...$unknown, ...$example['unknown']];
         $closure = sprintf('|%s| %s', implode(', ', self::closureParams($member)), $example['value']);
-        $unknown = [...self::typeParameterUnknowns($member), ...$example['unknown']];
         if ($member->associated) {
             $context = sprintf('%s_context', $member->name);
 
@@ -120,6 +146,57 @@ final readonly class RustTemplate implements MockTemplate
         return ['rendered' => sprintf('    mock.expect_%s().returning(%s);', $member->name, $closure), 'unknown' => $unknown, 'imports' => $example['imports']];
     }
 
+    /** The block a member belongs in: its declaring trait, or for a struct `''` (inherent) or `#` and the trait it implements. */
+    private static function group(MockMember $member): string
+    {
+        return $member->declarer->kind === 'interface' ? $member->declarer->localId : ($member->implTrait === null ? '' : '#' . $member->implTrait);
+    }
+
+    /**
+     * Each member's line in a `mock!` block.
+     *
+     * @param list<MockMember> $members
+     * @return list<string>
+     */
+    private static function declarations(array $members): array
+    {
+        return array_map(static fn(MockMember $member): string => '        ' . ($member->kind === 'method' ? self::declaration($member) . ';' : self::associatedItem($member)), $members);
+    }
+
+    /** An associated type or const as an impl gives it, a placeholder: `type Output = ();`, `const LIMIT: usize = 0;`. */
+    private static function associatedItem(MockMember $member): string
+    {
+        if ($member->kind === 'type') {
+            return sprintf('type %s = ();', $member->name);
+        }
+        $zero = (new ExampleValue('rust', static fn(): ?array => null))->of($member->type, '');
+
+        return sprintf('const %s: %s = %s;', $member->name, (string) $member->type, $zero['value'] ?? 'todo!()');
+    }
+
+    private static function associatedUnknown(MockMember $member): string
+    {
+        return $member->kind === 'type'
+            ? sprintf('type %s: () is a placeholder%s; choose the type a test needs', $member->name, $member->type === $member->name ? '' : ', and may not meet ' . (string) $member->type)
+            : sprintf('const %s: a placeholder value', $member->name);
+    }
+
+    /**
+     * The generic trait's parameters a method names, which the mock's `new()` cannot bind.
+     *
+     * @return list<string>
+     */
+    private static function traitParameterUnknowns(MockMembers $members, MockMember $member): array
+    {
+        $texts = [(string) $member->returns(), ...array_map(static fn(array $param): string => (string) ($param['type'] ?? ''), $member->params())];
+        $names = array_map(TypeText::parameterName(...), array_values(array_filter($members->typeParams(), static fn(string $param): bool => !str_starts_with($param, "'"))));
+
+        return array_map(
+            static fn(string $name): string => sprintf('type parameter %s of %s: bind it, Mock%s::<…>::new()', $name, $members->target->displayName, $members->target->displayName),
+            array_values(array_filter($names, static fn(string $name): bool => TypeText::mentions(implode(' ', $texts), [$name]))),
+        );
+    }
+
     /**
      * A hand-written fake's method, its body the example value.
      *
@@ -127,6 +204,9 @@ final readonly class RustTemplate implements MockTemplate
      */
     private function fake(MockMember $member, bool $values): array
     {
+        if ($member->kind !== 'method') {
+            return ['rendered' => '    ' . self::associatedItem($member), 'unknown' => [self::associatedUnknown($member)], 'imports' => []];
+        }
         $example = $this->example($member, $values);
         // A method returning nothing has an empty body when values are stubbed.
         $body = $values && $member->returns() === null ? ' {}' : sprintf(" {\n        %s\n    }", $example['value']);

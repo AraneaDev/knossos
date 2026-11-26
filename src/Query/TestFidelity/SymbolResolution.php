@@ -19,7 +19,8 @@ use PDO;
  * `User` ambiguous with `UserService`. No match is an error that suggests
  * `find_component`'s own candidates of those kinds; several is an error that
  * lists them by canonical name, which names one exactly. An enum (a node with
- * `cases`) has nothing to double, and is refused.
+ * `cases`, or a Rust `rust_item` enum) or a Rust union has nothing to
+ * double, and is refused.
  *
  * @phpstan-type Node array{id: string, kind: string, canonical_name: string, display_name: string, language: string, file: ?string, line: ?int, attributes: array<string, mixed>}
  */
@@ -58,8 +59,10 @@ final readonly class SymbolResolution
                 $matches,
             ))));
         }
-        if (array_key_exists('cases', $matches[0]['attributes'])) {
-            throw new InvalidArgumentException(sprintf('"%s" names an enum, which is no %s.', $symbol, $described));
+        // A Rust enum sends `cases` only when it derives Deserialize; its `rust_item` marks it either way.
+        $item = $matches[0]['attributes']['rust_item'] ?? null;
+        if (array_key_exists('cases', $matches[0]['attributes']) || $item === 'enum' || $item === 'union') {
+            throw new InvalidArgumentException(sprintf('"%s" names %s, which is no %s.', $symbol, $item === 'union' ? 'a union' : 'an enum', $described));
         }
 
         return ['node' => $matches[0], 'candidates' => $candidates];

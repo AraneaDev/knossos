@@ -71,9 +71,12 @@ final readonly class MockSynthesisService extends AbstractArchitectureQueryServi
 
             return [
                 'name' => $member->name,
-                'signature' => $member->kind === 'property'
-                    ? $member->name . ($member->optional ? '?' : '') . ($member->type === null ? '' : ': ' . $member->type)
-                    : (SignatureLine::of($member->signature, $member->name) ?? $member->name . '()'),
+                'signature' => match ($member->kind) {
+                    'property' => $member->name . ($member->optional ? '?' : '') . ($member->type === null ? '' : ': ' . $member->type),
+                    'type' => 'type ' . (string) $member->type,
+                    'const' => sprintf('const %s: %s', $member->name, (string) $member->type),
+                    default => SignatureLine::of($member->signature, $member->name) ?? $member->name . '()',
+                },
                 'rendered' => $part['rendered'],
                 'unknown' => array_values(array_unique($part['unknown'])),
             ];
@@ -132,7 +135,10 @@ final readonly class MockSynthesisService extends AbstractArchitectureQueryServi
 
         return match ($language) {
             'typescript' => [sprintf('Import %s, and the types its members name, from %s.', $target->displayName, $file)],
-            'rust' => [sprintf('The signatures name types as %s does: bring them into scope as it does.', $file)],
+            'rust' => [
+                sprintf('The signatures name types as %s does: bring them into scope as it does.', $file),
+                ...(MockMembers::typeParamsOf($target) === [] ? [] : [sprintf('%s is generic: Mock%s::new() binds none of its parameters; name them where it is made.', $target->displayName, $target->displayName)]),
+            ],
             default => [],
         };
     }

@@ -26,6 +26,7 @@ export class FromElsewhere extends Remote {
 
 export class Async {
   async untyped(id: string) { return id; }
+  again(): this { return this; }
   static make(): Async { return new Async(); }
 }
 

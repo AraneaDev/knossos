@@ -1,0 +1,19 @@
+// knossos synthesize_mock: synth::focus::KeyStore (mockall), from rust/src/focus.rs:69
+// 2 members; complete
+use mockall::mock;
+use synth::focus::KeyStore;
+
+mock! {
+    pub KeyStore {}
+    impl Keyed<String> for KeyStore {
+        fn get(&self, _id: u64) -> Option<String>;
+        fn put(&mut self, _value: String);
+    }
+}
+
+#[test]
+fn key_store_mock() {
+    let mut mock = MockKeyStore::new();
+    mock.expect_get().returning(|_id| None);
+    mock.expect_put().returning(|_value| ());
+}

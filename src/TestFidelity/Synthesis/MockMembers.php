@@ -58,14 +58,24 @@ final readonly class MockMembers
         $members = $omitted = $notes = [];
         $seen = [];
         $fields = $target->kind === 'interface' && $language === 'typescript' ? (FieldLists::of($graph, $target)?->fields() ?? []) : [];
-        foreach ($graph->lineage($target) as $declarer) {
+        // A Rust struct inherits nothing: its trait impls are its own children, each naming its trait.
+        $lineage = $language === 'rust' && $target->kind !== 'interface' ? [$target] : $graph->lineage($target);
+        foreach ($lineage as $declarer) {
+            if ($language === 'rust' && $declarer->kind === 'interface') {
+                $members = [...$members, ...self::associated($declarer)];
+            }
             $children = $graph->children($declarer);
             usort($children, static fn(NodeFact $a, NodeFact $b): int => [$a->evidence->startLine, $a->displayName] <=> [$b->evidence->startLine, $b->displayName]);
             foreach ($children as $node) {
                 if (!in_array($node->kind, ['method', 'property'], true)) {
                     continue;
                 }
-                $key = $language === 'php' ? strtolower($node->displayName) : $node->displayName;
+                // A Rust struct's trait impls each declare their own names.
+                $key = match ($language) {
+                    'php' => strtolower($node->displayName),
+                    'rust' => (is_string($node->attributes['impl_trait'] ?? null) ? $node->attributes['impl_trait'] : '') . '#' . $node->displayName,
+                    default => $node->displayName,
+                };
                 if (isset($seen[$key])) {
                     continue;
                 }
@@ -159,6 +169,10 @@ final readonly class MockMembers
         if (($attributes['decorated'] ?? false) === true) {
             return 'decorated: a decorator or a rebinding may change its signature';
         }
+        $implTrait = $language === 'rust' && is_string($attributes['impl_trait'] ?? null) ? $attributes['impl_trait'] : null;
+        if ($language === 'rust' && $implTrait === null && (($attributes['overrides'] ?? false) === true || str_contains($node->canonicalName, '::<impl '))) {
+            return "a trait impl's method, whose trait the scan does not record: mock that trait instead";
+        }
         $associated = $language === 'rust' && !isset($signature['receiver']);
         if ($associated && $declarer->kind !== 'interface') {
             return null;
@@ -176,7 +190,30 @@ final readonly class MockMembers
             default => null,
         };
 
-        return new MockMember($name, 'method', $node, $declarer, $signature, associated: $associated, note: $note);
+        return new MockMember($name, 'method', $node, $declarer, $signature, associated: $associated, note: $note, implTrait: $implTrait);
+    }
+
+    /**
+     * A Rust trait's associated types and consts, which every impl must
+     * give: as members a template renders with a placeholder.
+     *
+     * @return list<MockMember>
+     */
+    private static function associated(NodeFact $trait): array
+    {
+        $members = [];
+        foreach (is_array($trait->attributes['associated_types'] ?? null) ? $trait->attributes['associated_types'] : [] as $written) {
+            if (is_string($written)) {
+                $members[] = new MockMember(TypeText::parameterName($written), 'type', $trait, $trait, type: $written);
+            }
+        }
+        foreach (is_array($trait->attributes['associated_consts'] ?? null) ? $trait->attributes['associated_consts'] : [] as $const) {
+            if (is_array($const) && is_string($const['name'] ?? null) && is_string($const['type'] ?? null)) {
+                $members[] = new MockMember($const['name'], 'const', $trait, $trait, type: $const['type']);
+            }
+        }
+
+        return $members;
     }
 
     /** @param array<string, mixed> $attributes */
@@ -186,7 +223,8 @@ final readonly class MockMembers
 
         return match ($language) {
             'typescript' => $name === 'constructor' || ($attributes['static'] ?? false) === true,
-            'php' => strcasecmp($name, '__construct') === 0 || ($attributes['static'] ?? false) === true,
+            // A magic method (`__call`, `__get`, `__toString`) is no stub of a member; `__call` makes the list open.
+            'php' => str_starts_with($name, '__') || ($attributes['static'] ?? false) === true,
             'python' => preg_match('/^__\w+__$/', $name) === 1 || array_intersect($decorators, ['staticmethod', 'classmethod']) !== [],
             default => false,
         };

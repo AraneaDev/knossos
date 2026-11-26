@@ -50,3 +50,48 @@ pub enum Mode {
 }
 
 pub fn helper() {}
+
+pub trait Base {
+    fn base(&self) -> u8;
+}
+
+impl Base for Engine {
+    fn base(&self) -> u8 {
+        0
+    }
+}
+
+pub trait Keyed<T> {
+    fn get(&self, id: u64) -> Option<T>;
+    fn put(&mut self, value: T);
+}
+
+pub struct KeyStore;
+
+impl Keyed<String> for KeyStore {
+    fn get(&self, _id: u64) -> Option<String> {
+        None
+    }
+    fn put(&mut self, _value: String) {}
+}
+
+pub trait WithAssoc {
+    type Output;
+    const LIMIT: usize;
+    fn produce(&self) -> Self::Output;
+    fn limit(&self) -> usize;
+}
+
+pub trait Borrow {
+    fn plain(&self) -> &str;
+}
+
+pub enum Plain {
+    A,
+    B,
+}
+
+pub union Bits {
+    a: u32,
+    b: f32,
+}

@@ -64,6 +64,9 @@ final class SynthesizeMockToolTest extends KnossosTestCase
                 [['symbol' => 'App\FixturesEnum\Lane'], 'No class, interface or trait is named "App\FixturesEnum\Lane".'],
                 // A Rust or Python enum is a class node; its `cases` make it one (preflight F7).
                 [['symbol' => 'synth::focus::Mode'], '"synth::focus::Mode" names an enum, which is no class, interface or trait.'],
+                // A Rust enum that derives nothing sends no `cases`; its `rust_item` marks it, as it marks a union.
+                [['symbol' => 'synth::focus::Plain'], '"synth::focus::Plain" names an enum, which is no class, interface or trait.'],
+                [['symbol' => 'synth::focus::Bits'], '"synth::focus::Bits" names a union, which is no class, interface or trait.'],
                 [['symbol' => 'python.app.models.Color'], '"python.app.models.Color" names an enum, which is no class, interface or trait.'],
                 [['symbol' => 'App\Loggable'], 'App\Loggable is a PHP trait: PHPUnit 12 cannot double a trait, and a template would fail when run; mock a class that uses it.'],
                 [['symbol' => 'App\FinalService'], 'App\FinalService is final: PHPUnit, Mockery and Prophecy cannot double a final class; mock an interface it implements.'],

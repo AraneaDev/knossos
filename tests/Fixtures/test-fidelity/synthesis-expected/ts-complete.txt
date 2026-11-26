@@ -1,4 +1,4 @@
-// knossos synthesize_mock: typescript/src/focus.ts#Complete (vitest), from typescript/src/focus.ts:32
+// knossos synthesize_mock: typescript/src/focus.ts#Complete (vitest), from typescript/src/focus.ts:33
 // 2 members; complete
 import { vi } from 'vitest';
 

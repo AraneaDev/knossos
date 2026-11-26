@@ -13,11 +13,12 @@ use Knossos\Scanner\Protocol\NodeFact;
 final readonly class MockMember
 {
     /**
-     * @param 'method'|'property' $kind
+     * @param 'method'|'property'|'type'|'const' $kind a Rust trait's associated type or const is `type` or `const`, its bounds or type in `$type`
      * @param array<string, mixed> $signature a method's stored `signature`; empty for a property
      * @param ?string $type a property's type as written, null when it has none
      * @param bool $associated a Rust function without a receiver, which a trait still declares
      * @param ?string $note what a reader should know of it (a Python `_x`)
+     * @param ?string $implTrait for a Rust struct's method, the trait whose impl declares it, as written (`Repo<String>`); null for an inherent one
      */
     public function __construct(
         public string $name,
@@ -29,6 +30,7 @@ final readonly class MockMember
         public bool $optional = false,
         public bool $associated = false,
         public ?string $note = null,
+        public ?string $implTrait = null,
     ) {}
 
     /** Whether the method is declared `async`. */

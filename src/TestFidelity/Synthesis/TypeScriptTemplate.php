@@ -81,13 +81,13 @@ final readonly class TypeScriptTemplate implements MockTemplate
                 $unknown[] = sprintf('param %s: untyped', $name);
             }
             $unknown = [...$unknown, ...self::parametersNamed($written ?? '', $outer)];
-            $type = TypeText::substitute($written ?? ($variadic ? 'unknown[]' : 'unknown'), $outer, 'unknown');
+            $type = self::thisless(TypeText::substitute($written ?? ($variadic ? 'unknown[]' : 'unknown'), $outer, 'unknown'), $members);
             $params[] = ($variadic ? '...' : '') . $name . (($param['optional'] ?? false) === true && !$variadic ? '?' : '') . ': ' . $type;
         }
         $written = $member->returns();
         $unknown = [...$unknown, ...self::parametersNamed($written ?? '', $outer)];
         // An untyped return is the one the type checker infers, which `unknown` would not fit: name it so.
-        $returns = $written === null ? sprintf("ReturnType<%s['%s']>", self::checked($members), $member->name) : TypeText::substitute($written, $outer, 'unknown');
+        $returns = $written === null ? sprintf("ReturnType<%s['%s']>", self::checked($members), $member->name) : self::thisless(TypeText::substitute($written, $outer, 'unknown'), $members);
         $stub = sprintf('%s.fn<(%s) => %s>()', $framework === 'jest' ? 'jest' : 'vi', implode(', ', $params), $returns);
         $imports = [];
         if ($written === null) {
@@ -105,6 +105,12 @@ final readonly class TypeScriptTemplate implements MockTemplate
         }
 
         return ['rendered' => sprintf("  // %s\n  %s: %s,", self::methodLine($member), $key, $stub), 'unknown' => $unknown, 'imports' => $imports];
+    }
+
+    /** `$type` with `this`, which has no meaning in an object literal's stub (TS2526), as the checked type. */
+    private static function thisless(string $type, MockMembers $members): string
+    {
+        return TypeText::substitute($type, ['this'], self::checked($members));
     }
 
     /** The type the mock is checked against: the target, each of its type parameters `unknown` (`Box<unknown>`). */

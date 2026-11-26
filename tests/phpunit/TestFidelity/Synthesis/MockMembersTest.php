@@ -223,6 +223,49 @@ final class MockMembersTest extends KnossosTestCase
         assertSame(['Empty has no member a mock can stand in for.'], $this->members($empty, 'rust')->notes);
     }
 
+    public function testARustStructsTraitImplsKeepTheirTrait(): void
+    {
+        // `impl Repo<String> for Store`: each method names its impl, so the mock can give that impl.
+        $trait = $this->type('rust:interface:crate::Repo', 'interface', ['type_params' => ['T']]);
+        $this->method($trait, 'get', ['signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'Option<T>']]);
+        $store = $this->type('rust:class:crate::Store', 'class');
+        $this->method($store, 'own', ['signature' => ['params' => [], 'receiver' => '&self']]);
+        $this->method($store, '<impl Repo<String>>::get', ['overrides' => true, 'impl_trait' => 'Repo<String>', 'signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'Option<String>']]);
+        // A trait impl's method from a worker that does not say which trait: no faithful block.
+        $this->method($store, '<impl Base>::base', ['overrides' => true, 'signature' => ['params' => [], 'receiver' => '&self']]);
+        $this->edge('implements', $store, $trait->localId);
+
+        $members = $this->members($store, 'rust');
+
+        // The trait's own declaration is not walked into: the struct's impl says what it gives.
+        assertSame(['own', '<impl Repo<String>>::get'], self::names($members->members));
+        assertSame([null, 'Repo<String>'], array_map(static fn(MockMember $member): ?string => $member->implTrait, $members->members));
+        assertSame([['name' => '<impl Base>::base', 'reason' => "a trait impl's method, whose trait the scan does not record: mock that trait instead"]], $members->omitted);
+        assertFalse($members->complete);
+    }
+
+    public function testARustTraitsAssociatedItemsAreMembers(): void
+    {
+        $trait = $this->type('rust:interface:crate::WithAssoc', 'interface', ['associated_types' => ['Output', 'Item: Clone'], 'associated_consts' => [['name' => 'LIMIT', 'type' => 'usize']]]);
+        $this->method($trait, 'produce', ['signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'Self::Output']]);
+
+        $members = $this->members($trait, 'rust');
+
+        assertSame([['Output', 'type', 'Output'], ['Item', 'type', 'Item: Clone'], ['LIMIT', 'const', 'usize'], ['produce', 'method', null]], array_map(static fn(MockMember $member): array => [$member->name, $member->kind, $member->type], $members->members));
+        assertTrue($members->complete);
+    }
+
+    public function testPhpMagicMethodsAreNoMembers(): void
+    {
+        $class = $this->type('php:class:App\Magic', 'class', ['member_names' => ['__call', '__get', '__toString', 'open']]);
+        $this->method($class, '__call', ['visibility' => 'public', 'signature' => ['params' => []]]);
+        $this->method($class, '__get', ['visibility' => 'public', 'signature' => ['params' => []]]);
+        $this->method($class, '__toString', ['visibility' => 'public', 'signature' => ['params' => [], 'returns' => 'string']]);
+        $this->method($class, 'open', ['visibility' => 'public', 'signature' => ['params' => []]]);
+
+        assertSame(['open'], self::names($this->members($class, 'php')->members));
+    }
+
     public function testAnInheritedGenericMemberIsOmittedAndAnOwnOneKept(): void
     {
         // `NumGen extends Gen<number>`: the scan does not record the argument, so `get(): T` is not NumGen's shape.

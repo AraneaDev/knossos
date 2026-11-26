@@ -1,8 +1,10 @@
 // knossos synthesize_mock: typescript/src/focus.ts#Async (vitest), from typescript/src/focus.ts:27
-// 1 member; complete
+// 2 members; complete
 import { vi } from 'vitest';
 
 const asyncMock = {
   // async untyped(id: string)
   untyped: vi.fn<(id: string) => ReturnType<Async['untyped']>>(),
+  // again(): this
+  again: vi.fn<() => Async>().mockReturnValue(undefined as unknown as Async /* knossos: fill in Async */),
 } satisfies Partial<Async>;
