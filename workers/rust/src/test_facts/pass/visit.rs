@@ -68,6 +68,10 @@ impl<'ast> Visit<'ast> for Pass<'_> {
             if func.qself.is_none() {
                 self.path_calls.push(frameworks::written(&func.path));
             }
+        } else {
+            // A callee that is no path, such as a closure called where it
+            // stands, runs its body here.
+            self.visit_expr(&node.func);
         }
         if let Some(index) = self.constructed(&whole) {
             // Made and not bound: handed on where it stands.

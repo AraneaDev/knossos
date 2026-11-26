@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 fn framework_values_need_every_condition() {
     let config = "    faux::when!(mock.get).then_return(10);\n";
     let assert = "    assert_eq!(mock.get(), 10);\n";
-    let variants: [(&str, String); 24] = [
+    let variants: [(&str, String); 25] = [
         (
             "two configurations",
             format!("{config}    faux::when!(mock.get).then_return(11);\n"),
@@ -88,6 +88,10 @@ fn framework_values_need_every_condition() {
             format!("    let _ = dup(&mock);\n{config}"),
         ),
         (
+            "a borrow handed on in a called closure",
+            format!("    let _ = (|| dup(&mock))();\n{config}"),
+        ),
+        (
             "ToOwned::to_owned",
             format!("    let _ = ToOwned::to_owned(&mock);\n{config}"),
         ),
@@ -129,11 +133,12 @@ fn framework_values_need_every_condition() {
         json!("10"),
         faux_value("framework-defeats-control", &format!("{config}{assert}"))
     );
-    // The clone twin: cloning something else, a separate mock, and a member
-    // call made through a shared borrow of the mock leave it.
+    // The clone twin: cloning something else, a separate mock, a member
+    // call made through a shared borrow of the mock and a called closure
+    // that names no mock leave it.
     let apart = format!(
         "    let name = String::new().clone();\n    let other = Foo::faux();\n    let _ = Clone::clone(&name);\n    let _ = (&mock).get();\n    \
-         let _ = (other, name);\n{config}{assert}"
+         let _ = (|| touch())();\n    let _ = (other, name);\n{config}{assert}"
     );
     assert_eq!(
         json!("10"),

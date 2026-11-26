@@ -84,6 +84,9 @@ fn every_literal_form_of_a_value_verb_is_traced() {
     // A shared borrow handed on changes nothing.
     let body = "    clock.expect_now().return_const(5u64);\n    read(&clock);\n    assert_eq!(clock.now(), 5);";
     assert_eq!(config(Some("5")), echoed(body));
+    // A called closure that names no handle changes nothing.
+    let body = "    clock.expect_now().return_const(5u64);\n    (|| touch())();\n    assert_eq!(clock.now(), 5);";
+    assert_eq!(config(Some("5")), echoed(body));
 }
 
 #[test]
@@ -107,6 +110,15 @@ fn each_defeat_drops_the_value() {
             format!("{pinned}    configure(&mut clock);"),
         ),
         ("checkpoint", format!("{pinned}    clock.checkpoint();")),
+        // A closure called where it stands is a callee, not an argument.
+        (
+            "a checkpoint in a called closure",
+            format!("{pinned}    (|| clock.checkpoint())();"),
+        ),
+        (
+            "&mut to a helper in a called closure",
+            format!("{pinned}    (|| configure(&mut clock))();"),
+        ),
         (
             "a macro handed the handle",
             format!("{pinned}    configure!(clock);"),
