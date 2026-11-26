@@ -31,6 +31,7 @@ final class TestFactsSearchTest extends KnossosTestCase
         'src/base.ts' => "export class Base {\n    purgeEverything(): void {}\n}\n",
         'src/child.ts' => "import { Base } from './base';\nexport class Child extends Base {}\n",
         'src/zoo.ts' => "export function zebraCount(): number { return 1; }\n",
+        'src/order.ts' => "export class Order {\n    quantityOrdered!: number;\n}\nexport class BigOrder extends Order {}\nexport enum Lane { Fast = 'fastLaneValue' }\n",
         'tests/base.test.ts' => "import { it, vi } from 'vitest';\nimport { Base } from '../src/base';\n"
             . "it('purges', () => {\n    vi.spyOn(new Base(), 'purgeEverything');\n});\n",
     ];
@@ -59,6 +60,14 @@ final class TestFactsSearchTest extends KnossosTestCase
         // Base lists purgeEverything among its member names, Child inherits
         // it and the base module exports Base: only the method itself matches.
         assertSame([['method', 'src/base.ts#Base::purgeEverything']], $this->found('purgeEverything'));
+    }
+
+    public function testAFieldOrCaseListMatchesNoSearchTerm(): void
+    {
+        // Order and BigOrder list quantityOrdered among their fields, and Lane
+        // lists its case's value: only the property itself matches.
+        assertSame([['property', 'src/order.ts#Order::quantityOrdered']], $this->found('quantityOrdered'));
+        assertSame([], $this->found('fastLaneValue'));
     }
 
     public function testAModulesExportsMatchNoSearchTerm(): void

@@ -431,6 +431,20 @@ final readonly class TestFidelityGraph
     }
 
     /**
+     * `lineage()` through only the parent references `$follows` accepts, and
+     * whether one of those it reaches is unseen or outside the project.
+     *
+     * @param \Closure(string): bool $follows
+     * @return array{list<NodeFact>, bool}
+     */
+    public function lineageThrough(NodeFact $owner, \Closure $follows): array
+    {
+        [$references, $unseen] = $this->reachable($owner, $follows);
+
+        return [array_values(array_filter(array_map(fn(string $reference): ?NodeFact => $this->nodes[$reference] ?? null, $references))), $unseen];
+    }
+
+    /**
      * Whether `$owner` has an ancestor, or a re-exported module, that the scan
      * does not hold or that lies outside the project: a name it lacks may
      * still be inherited from there, so its absence proves nothing.

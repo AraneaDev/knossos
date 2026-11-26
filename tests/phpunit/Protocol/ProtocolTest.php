@@ -471,4 +471,31 @@ final class ProtocolTest extends KnossosTestCase
 
         assertSame(1, count($this->nodeSchemaErrors($double)));
     }
+
+    #[Group('protocol')]
+    public function testContributionSchemaAcceptsFieldLists(): void
+    {
+        $dto = self::wireNode('class', [
+            'fields' => [['name' => 'id', 'type' => 'string', 'required' => true, 'line' => 3], ['name' => 'note', 'required' => false, 'line' => 4]],
+            'fields_open' => true,
+            'fields_truncated' => true,
+        ]);
+        $enum = self::wireNode('enum', ['cases' => [['name' => 'Fast', 'value' => 'fast'], ['name' => 'Slow']], 'cases_truncated' => true]);
+        $bad = [
+            ['fields' => [['name' => 'id', 'line' => 3]]],
+            ['fields' => [['name' => 'id', 'required' => 'yes', 'line' => 3]]],
+            ['fields' => [['name' => 'id', 'required' => true, 'line' => 0]]],
+            ['fields' => [['name' => 'id', 'required' => true, 'line' => 3, 'rename' => 'x']]],
+            ['fields_open' => 'yes'],
+            ['cases' => [['name' => 'Fast', 'value' => 1]]],
+            ['cases' => [['value' => 'fast']]],
+            ['cases_truncated' => 1],
+        ];
+
+        assertSame([], $this->nodeSchemaErrors($dto));
+        assertSame([], $this->nodeSchemaErrors($enum));
+        foreach ($bad as $attributes) {
+            assertSame(1, count($this->nodeSchemaErrors(self::wireNode('class', $attributes))), (string) json_encode($attributes));
+        }
+    }
 }

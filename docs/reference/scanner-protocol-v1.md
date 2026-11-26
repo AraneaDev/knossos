@@ -36,7 +36,7 @@ working under a host that sends no list. The one name so far is `read_table`
 ```json
 {
     "id": "knossos.typescript",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "protocol_version": "1.0",
     "output_schema_version": "1.0",
     "languages": ["typescript", "javascript"],
@@ -256,6 +256,52 @@ and `uses_trait` edges. A `uses_trait` edge may carry `visibility_changed`, the
 method names whose visibility the trait use changes in place
 (`use T { load as public; }`), omitted when there are none; a reader takes
 those members' visibility as unknown.
+
+#### Field lists
+
+All of it optional. A class, interface, trait, type alias or Rust struct node
+may carry `fields`: the fields a deserialiser fills, sorted by name, each
+`{name, type?, required, line}`. `type` is the type as the source writes it
+and is absent when it writes none; `required` says whether a deserialiser
+needs the key. A node that declares an enum (`enum` for TypeScript and PHP,
+`class` for Rust and Python) may carry `cases` instead, each `{name, value?}`
+sorted by name, where `value` is the backing literal as text, sent for every
+case or for none. A node carrying `cases` is an enum, whatever its kind.
+
+A list holds at most 64 entries. Past that it is cut and carries
+`fields_truncated: true` or `cases_truncated: true`, and a reader never judges
+it. `fields_open: true` says a wire name may differ from a field's name or a
+field may come from elsewhere, and a reader then says nothing about the list.
+A reader judges against a list only when it is present, well formed, whole and
+not open; a node without one says nothing, and a worker that sends none stays
+valid.
+
+A TypeScript class, interface or object-literal type alias lists what its type
+checker reads, inherited fields and those of a resolved intersection included;
+methods, accessors, static members and `#private` fields are left out. A field
+is not required when it is written `?`, its type is a union with `undefined`,
+or a class field or constructor parameter property has an initializer.
+`fields_open` is set for a base, heritage clause or intersection part the
+checker cannot read or that is a type parameter, an index signature, or a
+decorator on the class, any of its members or a class it extends. A
+TypeScript enum sends a case's `value` when every member has a string or
+number literal initializer (`-1` included), and no values otherwise. An
+inherited field's `line` is the line of the declaration that inherits it.
+
+A PHP class, interface or trait lists the fields it declares itself: its
+instance properties and its promoted constructor properties, with class names
+in `type` fully qualified. A field is not required when it has a default; an
+untyped property defaults to null, and a nullable type alone does not make the
+key optional. Inherited fields come from its `extends` and `uses_trait` edges,
+as `member_names` do: a reader takes a list as whole only when every such
+ancestor is in the scan, inside the project, with a list that is whole and not
+open. An `implements` edge adds no field. `fields_open` is set for an
+attribute or docblock tag from Symfony Serializer, JMS Serializer or Spatie
+Data on the class or a field (`SerializedName`, `SerializedPath`, `Groups`,
+`MapInputName`, `MapName` under any namespace). `__get` and `__set` leave the
+list closed: a reader finds them as the type's own methods. A backed enum's
+cases carry `value` when every case is a string or integer literal; a pure
+enum's carry none.
 
 #### Repeated edges
 

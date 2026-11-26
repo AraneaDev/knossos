@@ -546,6 +546,9 @@ php	src/TestFidelity/ActiveTestFindings.php
 php	src/TestFidelity/DashboardTestFindings.php
 php	src/TestFidelity/Facts/Assertion.php
 php	src/TestFidelity/Facts/CallMatcher.php
+php	src/TestFidelity/Facts/EnumCases.php
+php	src/TestFidelity/Facts/FieldList.php
+php	src/TestFidelity/Facts/FieldLists.php
 php	src/TestFidelity/Facts/Operand.php
 php	src/TestFidelity/Facts/PinnedValue.php
 php	src/TestFidelity/Facts/StubbedMember.php
@@ -1168,11 +1171,13 @@ php	tests/phpunit/Scanner/CommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/ComponentWorkerTest.php
 php	tests/phpunit/Scanner/ContributionDecoderGuardsTest.php
 php	tests/phpunit/Scanner/ContributionParamsTest.php
+php	tests/phpunit/Scanner/FieldFactsSchemaTest.php
 php	tests/phpunit/Scanner/LaravelExecutionFactsTest.php
 php	tests/phpunit/Scanner/LimitsTest.php
 php	tests/phpunit/Scanner/PackagedWorkerConformanceTest.php
 php	tests/phpunit/Scanner/PhpAuditFixturesTest.php
 php	tests/phpunit/Scanner/PhpCommandDispatchFactsTest.php
+php	tests/phpunit/Scanner/PhpFieldsTest.php
 php	tests/phpunit/Scanner/PhpLivewireBladeTest.php
 php	tests/phpunit/Scanner/PhpMemberNamesTest.php
 php	tests/phpunit/Scanner/PhpScannerReceiverFactsTest.php
@@ -1317,6 +1322,8 @@ php	tests/phpunit/Support/TempTrees.php
 php	tests/phpunit/Support/WorkerClients.php
 php	tests/phpunit/TestFidelity/DashboardTestFindingsTest.php
 php	tests/phpunit/TestFidelity/DriftEndToEndTest.php
+php	tests/phpunit/TestFidelity/Facts/FieldListTest.php
+php	tests/phpunit/TestFidelity/Facts/FieldListsTest.php
 php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
 php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
 php	tests/phpunit/TestFidelity/MockedModulePathsTest.php
@@ -1414,6 +1421,7 @@ php	workers/php/bin/worker
 php	workers/php/src/AstDepth.php
 php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
+php	workers/php/src/Fields.php
 php	workers/php/src/FrameworkFactStore.php
 php	workers/php/src/LaravelContainerFactCollector.php
 php	workers/php/src/LaravelDispatchFactCollector.php
@@ -1426,6 +1434,7 @@ php	workers/php/src/LaravelTestRequestFactCollector.php
 php	workers/php/src/LaravelTraversalContext.php
 php	workers/php/src/LivewireBladeFactCollector.php
 php	workers/php/src/MemberNames.php
+php	workers/php/src/MethodConventions.php
 php	workers/php/src/PhpScanner.php
 php	workers/php/src/ReceiverTypeInference.php
 php	workers/php/src/RefusedAfterReadException.php
@@ -1783,6 +1792,7 @@ js	workers/typescript/src/__tests__/declaration-names.test.js
 js	workers/typescript/src/__tests__/declaration-over-cap.test.js
 js	workers/typescript/src/__tests__/exclusions.test.js
 js	workers/typescript/src/__tests__/fact-accumulator.test.js
+js	workers/typescript/src/__tests__/fields.test.js
 js	workers/typescript/src/__tests__/framework-roles.test.js
 js	workers/typescript/src/__tests__/function-property-assignments.test.js
 js	workers/typescript/src/__tests__/iife-functions.test.js
@@ -1842,6 +1852,7 @@ js	workers/typescript/src/errors.js
 js	workers/typescript/src/exclusions.js
 js	workers/typescript/src/fact-accumulator.js
 js	workers/typescript/src/fallback-groups.js
+js	workers/typescript/src/fields.js
 js	workers/typescript/src/file-facts.js
 js	workers/typescript/src/injection-sites.js
 js	workers/typescript/src/input-hashes-parts.js

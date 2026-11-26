@@ -14,11 +14,12 @@ use Knossos\Store\SnapshotFacts;
 final class SearchExclusions
 {
     /**
-     * The attributes that list the names a node's members or exports declare
-     * (inherited ones included), which search never matches: every subclass
-     * of a class would otherwise match each name its parent declares.
+     * The attributes that list the names a node's members, exports, fields or
+     * enum cases declare (inherited ones included), which search never
+     * matches: every subclass of a class would otherwise match each name its
+     * parent declares.
      */
-    private const NAME_LIST_ATTRIBUTES = ['exports', 'exports_open', 'member_names', 'member_names_open'];
+    private const NAME_LIST_ATTRIBUTES = ['exports', 'exports_open', 'member_names', 'member_names_open', 'fields', 'fields_open', 'fields_truncated', 'cases', 'cases_truncated'];
 
     private function __construct() {}
 
