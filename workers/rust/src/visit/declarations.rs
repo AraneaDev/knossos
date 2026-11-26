@@ -34,6 +34,11 @@ pub struct Declarations {
     /// Every file an answer depended on since the last
     /// [`Declarations::take_file_reads`], by its path rather than a module.
     file_reads: RefCell<BTreeSet<String>>,
+    /// Each `(file, macro)` whose frozen answer has put its reads in
+    /// `lookups` and `file_reads` since either was last taken: asked
+    /// again, it would only insert them again (see
+    /// [`Declarations::may_shadow_macro`]).
+    macro_reads_recorded: RefCell<BTreeSet<(String, String)>>,
     /// Each `mod name;` whose module is not the path it is declared at
     /// (`#[path]`, a binary root's children), by that declared path; `None`
     /// when two declarations send one path to two modules. See
@@ -231,7 +236,15 @@ impl Declarations {
         let shadowed = asked
             .iter()
             .any(|shadows| shadows.opens_all || shadows.names.contains(name));
-        if !shadowed {
+        // A file asks of one macro name once per call of it; its reads are
+        // the same each time, and a package's are every module and file of
+        // it, so they are recorded once until they are taken.
+        if !shadowed
+            && self
+                .macro_reads_recorded
+                .borrow_mut()
+                .insert((relative.to_owned(), name.to_owned()))
+        {
             let mut lookups = self.lookups.borrow_mut();
             for module in asked.iter().flat_map(|shadows| &shadows.modules) {
                 lookups.insert(format!("{module}::{name}!"));
@@ -250,6 +263,7 @@ impl Declarations {
     /// leaving the set empty: the files [`Declarations::take_lookups`]
     /// cannot name through a module.
     pub fn take_file_reads(&self) -> BTreeSet<String> {
+        self.macro_reads_recorded.borrow_mut().clear();
         std::mem::take(&mut *self.file_reads.borrow_mut())
     }
 
@@ -538,6 +552,7 @@ impl Declarations {
 
     /// Every name asked about since the last call, leaving the set empty.
     pub fn take_lookups(&self) -> BTreeSet<String> {
+        self.macro_reads_recorded.borrow_mut().clear();
         std::mem::take(&mut *self.lookups.borrow_mut())
     }
 }

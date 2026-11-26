@@ -1,6 +1,6 @@
 //! Unit tests of the test-facts pass that need its private seams.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::{collect, collect_with, settle, TestFacts, TestInput};
 use crate::facts::Facts;
@@ -178,4 +178,31 @@ fn a_generated_mock_found_through_the_index_is_a_read() {
     let lookups = declarations.take_lookups();
     assert!(lookups.contains("crate::clock::MockClock"), "{lookups:?}");
     assert!(!lookups.iter().any(|lookup| lookup.contains("Helper")));
+}
+
+#[test]
+fn a_frozen_macro_answer_reads_the_same_however_often_it_is_asked() {
+    let mut declarations = Declarations::new();
+    let modules = BTreeSet::from(["crate".to_owned()]);
+    for file in ["src/lib.rs", "src/other.rs"] {
+        declarations.add_macro_shadows(file, "", &modules, &BTreeSet::new(), false);
+    }
+    let reads = |asks: usize| {
+        for _ in 0..asks {
+            assert!(!declarations.may_shadow_macro("src/lib.rs", "assert_eq"));
+        }
+        (declarations.take_lookups(), declarations.take_file_reads())
+    };
+    let once = reads(1);
+    assert_eq!(BTreeSet::from(["crate::assert_eq!".to_owned()]), once.0);
+    assert_eq!(
+        BTreeSet::from(["src/lib.rs".to_owned(), "src/other.rs".to_owned()]),
+        once.1
+    );
+    // Once taken, the reads are recorded again, whichever set went first.
+    assert_eq!(once, reads(3));
+    assert!(!declarations.may_shadow_macro("src/lib.rs", "assert_eq"));
+    assert_eq!(once.1, declarations.take_file_reads());
+    assert!(!declarations.may_shadow_macro("src/lib.rs", "assert_eq"));
+    assert_eq!(once.0, declarations.take_lookups());
 }
