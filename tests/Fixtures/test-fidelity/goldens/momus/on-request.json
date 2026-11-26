@@ -14,7 +14,7 @@
         "tests/InvoiceTest.php: append \"// reviewed\\n\"",
         ".momusrc: written after the commit, untracked"
       ],
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000 --git-diff --base HEAD",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000 --git-diff --base HEAD",
       "momusrc": {
         "languages": {
           "php": true

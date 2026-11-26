@@ -408,13 +408,13 @@ describe('cutting a hunk to the element', () => {
   })
 
   it('keeps a prefix that ends exactly at the limit, and not the line after it', () => {
-    const head = '@@ -1,0 +1,51 @@'
     // Fifty lines of 199 characters and the header take 16 + 50 * 200 = 10,016 characters: one too many.
     // With the last of them shortened by 16 and the header counting fifty, they land on 10,000 exactly.
     const lines = [...Array.from({ length: 49 }, () => `+${'x'.repeat(198)}`), `+${'y'.repeat(182)}`, `+${'z'.repeat(10)}`]
     const hunk: Hunk = { oldStart: 1, newStart: 1, heading: '', lines }
     const source = hunkSource(hunk, lines)
-    expect(head.length).toBe(16)
+    const [head] = source.split('\n')
+    expect(head).toBe('@@ -1,0 +1,50 @@')
     expect(source.length).toBe(10_000)
     expect(source.split('\n')).toHaveLength(51)
     expect(source).not.toContain('z')

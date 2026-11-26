@@ -40,7 +40,10 @@ The other four test tools belong at fixed points of a change:
   from memory. The template is built from the symbol's real signatures, in the
   framework the project's own doubles use. Members it could not render from a
   full signature are listed under `omitted`, and `complete: false` says the
-  template needs a look before it is trusted.
+  template needs a look before it is trusted. `complete: true` says only that no
+  member was left out: a parameter or return the source gives no type is still
+  rendered with a placeholder value, and each member lists those parts under its
+  `unknown`, so check them before relying on the values.
 - **After changing a type that fixtures hold**, such as a DTO renamed or given a
   field, call `check_fixtures`. It reads the JSON and YAML fixtures that match
   the type and lists each missing, unknown or mistyped key, and each value that

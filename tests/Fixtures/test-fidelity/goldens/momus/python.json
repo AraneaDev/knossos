@@ -9,7 +9,7 @@
         "python/momus-drift": ""
       },
       "fixture_sha256": "dce26b845bf29c914f4f3c5ea8f29f3ee58bc5d9f85d845452a1a9aa42d7001d",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -170,7 +170,7 @@
         "python/momus-src-layout": ""
       },
       "fixture_sha256": "4fdcef0006b0f31965e5a843e2de00dfa99416631fcfad703cac9c347ef68a77",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -254,7 +254,7 @@
         "python/nemesis": ""
       },
       "fixture_sha256": "2e1056fe81aca8bfc2240724ed545acfe7d2b5c8ec5c03369906ad2a285ba9cd",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -308,7 +308,7 @@
         "python/tautology": ""
       },
       "fixture_sha256": "94309c59e2fa2f1474e2bd30c272da55bc7bdc48ab47e00c2a7ec2566b8e4fe0",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -467,7 +467,7 @@
         "python/nemesis-experiments/autospec": ""
       },
       "fixture_sha256": "d2021fdab794216079fb7debd217b8ca198c6fc1c24691d7f0816b37cafba7df",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -521,7 +521,7 @@
         "python/nemesis-experiments/inherited-collision": ""
       },
       "fixture_sha256": "46a49020719baf8a5fd3c8dbfd3c8dcd82bbfa8376f7a8dad6fe9aa9c670f218",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -563,7 +563,7 @@
         "python/nemesis-experiments/kwargs": ""
       },
       "fixture_sha256": "19d7fc27d8259237cdeda27d4017c996a8a3d359105ca65d25803506bb6ac6f1",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -647,7 +647,7 @@
         "python/nemesis-experiments/module-drift": ""
       },
       "fixture_sha256": "e792f97c141618e918c71e32a8397dbb8bee70268df3cb10a553576e45fedd19",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -716,7 +716,7 @@
         "python/nemesis-experiments/patch": ""
       },
       "fixture_sha256": "275da4657675ac3d61e34194d6aa959d83ca5347f6795a00b15e53c3ce26b55f",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -758,7 +758,7 @@
         "python/nemesis-experiments/patch-multiple": ""
       },
       "fixture_sha256": "691a8a74f3edfe7f8e11ee7fbaf909a1322ef75e29a3885cd0de1265dc7f09fc",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -838,7 +838,7 @@
         "python/nemesis-experiments/property": ""
       },
       "fixture_sha256": "93bc55dadfbfb284011c4f6e7de7331dc0e2796deeff53661d60c920a080afad",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -880,7 +880,7 @@
         "python/nemesis-experiments/side-effect": ""
       },
       "fixture_sha256": "3d93cda37827575dbaa0fa12ebab77566540f1fc095cd2affc88d2f508122605",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true
@@ -938,7 +938,7 @@
         "python/nemesis-experiments/spec": ""
       },
       "fixture_sha256": "af03cf2f4506b17ddd213df78dac501f70e70b8c4bd6342dba55c9a518c8dffa",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "python": true

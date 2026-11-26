@@ -9,7 +9,7 @@
         "typescript/momus": ""
       },
       "fixture_sha256": "9fb856204e72c7ff6e57b5f9c5ace8744cd59b8cd9dc675f230fc0bdaa9aedfc",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "cache": {
           "enabled": false
@@ -211,7 +211,7 @@
         "typescript/nemesis/tests": "tests"
       },
       "fixture_sha256": "b2f7305f5187bc9f33cfc4cd517f8d99d4ecfc5581f0969b862b323a66f0ebcc",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "cache": {
           "enabled": false
@@ -304,7 +304,7 @@
         "typescript/nemesis/dogfood-clean": ""
       },
       "fixture_sha256": "7e6f2adc01e5e463c12114568aebdf45023d3517b97bf909026268e0ed67fbcd",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "cache": {
           "enabled": false

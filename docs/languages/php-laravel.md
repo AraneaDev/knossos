@@ -156,6 +156,14 @@ has an unknown prefix, because a service provider may load it with one. A
 templates and Ziggy's `route()` are not read.
 See [from request to handler](../concepts/request-to-handler.md).
 
+## Field facts
+
+Laravel classes send the same field facts as any PHP class, and `check_fixtures`
+reads them the same way. A Spatie Data attribute that may rename a field opens
+the class's field list, and `__get` and `__set` along a class's lineage answer
+any key, so fixtures are not judged on missing or unknown keys there. See
+[field facts](php.md#field-facts) for the full rules.
+
 ## Limits
 
 A route whose URI is not a literal is skipped with `LARAVEL_DYNAMIC_ROUTE_URI`.

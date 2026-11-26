@@ -9,7 +9,7 @@
         "rust/momus-drift": ""
       },
       "fixture_sha256": "367f7af285a7c6c36797d8a509f5736ae7bfc8c2d4b702312692749bc36de93a",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "typescript": false,
@@ -154,7 +154,7 @@
         "rust/nemesis": ""
       },
       "fixture_sha256": "37b29ecdf1be4d127deca3c4f3670c550e241197e70eca895105f9d23b0f1b40",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "typescript": false,
@@ -199,7 +199,7 @@
         "rust/tautology": ""
       },
       "fixture_sha256": "42b999ced56abcbde9d49af79d417594a54a3a4d6d75c9ec5889704c148473c5",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "typescript": false,
@@ -346,7 +346,7 @@
         "rust/nemesis-experiments/automock": ""
       },
       "fixture_sha256": "2c90a64960ffac0040edf17333ae2b736025babd66f92f8f8dea9ef7706bc8d7",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "typescript": false,
@@ -391,7 +391,7 @@
         "rust/nemesis-experiments/automock-drift": ""
       },
       "fixture_sha256": "e64eea674bbe5051bee504cd25f8890d14888e438cbf9c872340c7cb9fac3737",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "typescript": false,
@@ -485,7 +485,7 @@
         "rust/nemesis-experiments/mock-block": ""
       },
       "fixture_sha256": "16830f88eae21b4805e1959dc92de0baa5edd753a1bdde529126b9f0ece45b74",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "typescript": false,
@@ -530,7 +530,7 @@
         "rust/nemesis-experiments/mock-macro": ""
       },
       "fixture_sha256": "dc34300e8963cfc1a73766845d9dda9ff442819767a89834804f5b078ceb1999",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "typescript": false,
@@ -575,7 +575,7 @@
         "rust/nemesis-experiments/trait-shapes": ""
       },
       "fixture_sha256": "73e932e5a9b147dccc58cccac673855576b4749eb954d12e2aafaa09e72d1c53",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "typescript": false,

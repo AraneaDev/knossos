@@ -9,7 +9,7 @@
         "php/momus": ""
       },
       "fixture_sha256": "66a04b9991568c4adf9ad9e247e6bd6c9eecc588917343dab5fb280c968058a9",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true
@@ -347,7 +347,7 @@
         "php/nemesis": ""
       },
       "fixture_sha256": "1c108a373c194ff2a1637221ac754368c030066d87f2f31820dbba0402dcf4d2",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true
@@ -423,7 +423,7 @@
         "php/nemesis-magic": ""
       },
       "fixture_sha256": "f2762be4c76405f6353beab33298cb2891895e352ef3fe8655725f1791cb372a",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true
@@ -488,7 +488,7 @@
         "php/nemesis-experiments/callback": ""
       },
       "fixture_sha256": "91b08f34f836603a445ab4d50b23a84c12be28832a4a8b4236ac3a0c65a3dbb9",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true
@@ -542,7 +542,7 @@
         "php/nemesis-experiments/final": ""
       },
       "fixture_sha256": "3c691c3b6383a707d69f46e2d4d98b8405e5106f2ce663a62a97a3a4ab77db48",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true
@@ -607,7 +607,7 @@
         "php/nemesis-experiments/fluent": ""
       },
       "fixture_sha256": "25074ed4ae2c6f8ce1d9cfabdfbc3b7f0812542b77f5efba324c419f9289ad53",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true
@@ -661,7 +661,7 @@
         "php/nemesis-experiments/mockery": ""
       },
       "fixture_sha256": "df3d2c5d979b037499e55c962d2dd4846772fa1158610dcdff19ddfb71334c0d",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true
@@ -715,7 +715,7 @@
         "php/nemesis-experiments/partial-mock": ""
       },
       "fixture_sha256": "d7119c99e14fe11fee102afb0d81af3840eb9748adcfbe2ac16ac02b93efd02e",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true
@@ -813,7 +813,7 @@
         "php/nemesis-experiments/pest": ""
       },
       "fixture_sha256": "c57990a77487957bce004e967a0654a90c0734c958126791903a967bfa13c8e8",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true
@@ -893,7 +893,7 @@
         "php/nemesis-experiments/phpunit-stub": ""
       },
       "fixture_sha256": "3803dd63301f3c206e871a7b6a22170b4e77efdf60e81020a259d816324d7cf2",
-      "command": "npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
       "momusrc": {
         "languages": {
           "php": true

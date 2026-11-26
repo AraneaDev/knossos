@@ -19,13 +19,18 @@ use PHPUnit\Framework\Attributes\Group;
  * `tests/Fixtures/test-fidelity/goldens/` ({@see FrozenGoldens}).
  *
  * Commands (Momus-MCP 9fe7283, Nemesis-MCP bf9be27, Nemesis 0.4.1), each on
- * a scratchpad copy:
+ * a scratchpad copy, exactly as each golden's `command` records them
+ * (`<momus>` is the Momus-MCP checkout, run from source):
  * - Momus over every fixture of the four language suites, with a `.momusrc`
- *   enabling the suite's language (`cache.enabled: false`):
- *   `npx tsx packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000`;
+ *   enabling the suite's language (`cache.enabled: false`), from inside the copy:
+ *   `cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000`;
  * - Momus in diff mode over Task 2's scratch git copy of `php/momus` (committed,
  *   then `archive()` added to `src/InvoiceRepository.php` and `// reviewed`
  *   appended to `tests/InvoiceTest.php`): the same, plus `--git-diff --base HEAD`;
+ * - Momus `contract` over a copy of `synthesis/`, with every language enabled,
+ *   for 14 samples (`goldens/momus/synthesis.json`): the same prefix, then
+ *   `contract <file> --framework F --symbol NAME --root <copy>`. These are the
+ *   samples behind departures 29-34;
  * - Nemesis over each `fixtures/nemesis-*` dir, from inside the copy:
  *   `node dist/cli/main.js fixtures --strictness=all --json`, and once without
  *   `--strictness` (its default `breaking_only`) over `nemesis-data`. Its
@@ -34,8 +39,15 @@ use PHPUnit\Framework\Attributes\Group;
  * - Nemesis `audit . --strictness=all --json` over every language fixture,
  *   frozen for the language suites.
  *
- * Templates have no Momus golden: `SynthesisGoldenTest` holds Task 6's ported
- * inline expectations instead.
+ * Templates have no Momus golden list: `SynthesisGoldenTest` holds Task 6's
+ * ported inline expectations instead, and the `contract` samples above only
+ * stand behind the template departures.
+ *
+ * No MOCK-001 case depends on an HTTP mock (G5-12): each of the 13 files in
+ * `MOMUS_MOCK_001` doubles a project class, trait or module (`mock()`,
+ * `vi.spyOn`, `patch`, mockall), and none uses nock, msw, `Http::fake`,
+ * `responses`, `respx`, wiremock, mockito or httpmock, so OVER_MOCKING's
+ * counting of targeted doubles only loses no Momus case.
  *
  * Mapping: MOCK-001 is `OVER_MOCKING/saturation`, DRIFT-006 `STALE_SINCE/stale_mock`;
  * Nemesis's fixture GHOST_METHOD (a missing field) is `FIXTURE_DRIFT/missing_required`,
@@ -361,7 +373,7 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
     public function testFrozenGoldensMatchTheToolRuns(): void
     {
         $files = glob(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/goldens/*/*.json') ?: [];
-        self::assertCount(10, $files);
+        self::assertCount(11, $files);
         foreach ($files as $path) {
             $tool = basename(dirname($path));
             $suite = basename($path, '.json');
@@ -373,16 +385,66 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
                 $trees = $run['trees'];
                 self::assertSame(self::fixtureHash($trees), $run['fixture_sha256'], $path . ' ' . $run['fixture'] . ': the fixture changed since the tool ran on it');
                 $output = $run['output'];
-                $count = $tool === 'momus' ? [$output['result']['summary']['issues'], count($output['result']['issues'])] : [$output['summary']['violations_count'] ?? null, count($output['violations'])];
-                self::assertSame($count[1], $count[0], $path . ' ' . $run['fixture']);
-                self::assertStringNotContainsString('/tmp/', (string) json_encode($run));
+                if ($suite !== 'synthesis') {
+                    $count = $tool === 'momus' ? [$output['result']['summary']['issues'], count($output['result']['issues'])] : [$output['summary']['violations_count'] ?? null, count($output['violations'])];
+                    self::assertSame($count[1], $count[0], $path . ' ' . $run['fixture']);
+                }
+                self::assertNoScratchPath($path . ' ' . $run['fixture'], $run);
             }
-            if ($suite !== 'on-request') {
+            if (!in_array($suite, ['on-request', 'synthesis'], true)) {
                 $fixtures = array_column($golden['runs'], 'fixture');
                 sort($fixtures);
                 self::assertSame(self::suiteFixtures($suite), $fixtures, $path);
             }
         }
+    }
+
+    /**
+     * The Momus `contract` samples frozen in `goldens/momus/synthesis.json`
+     * still show what departures 29-34 say Momus does.
+     */
+    public function testTheFrozenContractSamplesShowTheTemplateDepartures(): void
+    {
+        $samples = [];
+        foreach (self::golden('momus', 'synthesis')['runs'] as $run) {
+            /** @var array{stdout: string, stderr: string} $output */
+            $output = $run['output'];
+            $samples[substr((string) $run['fixture'], strlen('synthesis '))] = [$run['exit'], $output['stdout'], $output['stderr']];
+        }
+        self::assertCount(14, $samples);
+        // 29: Momus refuses a PHP interface, Knossos renders it.
+        self::assertSame([2, '', 'error: no class found in php/src/Repo.php'], $samples['php-repo']);
+        // 30: Momus takes a framework of another language and renders the class anyway, here as Mockery.
+        self::assertSame([2, '', 'error: no class found in php/src/Repo.php'], $samples['php-repo-as-vitest']);
+        self::assertStringContainsString('— Svc (vitest)', $samples['php-svc-as-vitest'][1]);
+        self::assertStringContainsString("\$mock->shouldReceive('totalFor')->andReturn(0);", $samples['php-svc-as-vitest'][1]);
+        // 31: Momus's removed vitest generic form and `Partial<…>` for a complete interface.
+        self::assertStringContainsString('vi.fn<[opts: string], void>()', $samples['ts-iface'][1]);
+        self::assertStringContainsString('} satisfies Partial<Widget>;', $samples['ts-iface'][1]);
+        // 32: short names, Pest's `mock()`, and `willReturn(null)` on a `void` method.
+        self::assertStringContainsString('$mock = mock(InvoiceRepository::class);', $samples['php-invoice-mockery'][1]);
+        self::assertStringContainsString("\$mock->method('ping')->willReturn(null);", $samples['php-svc'][1]);
+        // 33: `patch.object` per method, and an inferred `int` for the untyped `count()`.
+        self::assertStringContainsString("with patch.object(Repo, 'count', return_value=0):", $samples['py-repo'][1]);
+        self::assertSame($samples['py-repo'][1], str_replace('(pytest)', '(unittest)', $samples['py-repo-pytest'][1]));
+        // 34: `pub MockRepo {}`, which makes `MockMockRepo`, and closure parameters without `_`.
+        self::assertStringContainsString('    pub MockRepo {}', $samples['rs-repo'][1]);
+        self::assertStringContainsString('mock.expect_find().returning(|id| 0);', $samples['rs-repo'][1]);
+        foreach ($samples as $name => [$exit, $stdout]) {
+            self::assertSame($exit === 0, $stdout !== '', $name);
+        }
+    }
+
+    /**
+     * No golden holds a path of the machine it was run on.
+     *
+     * @param array<string, mixed> $run
+     */
+    private static function assertNoScratchPath(string $message, array $run): void
+    {
+        $text = (string) json_encode($run, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        self::assertStringNotContainsString('/tmp/', $text, $message);
+        self::assertStringNotContainsString('/home/', $text, $message);
     }
 
     /** Every on-request tool answers twice alike over a non-empty answer. */
