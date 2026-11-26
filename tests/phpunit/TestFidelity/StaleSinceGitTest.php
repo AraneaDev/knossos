@@ -129,7 +129,12 @@ final class StaleSinceGitTest extends KnossosTestCase
         $repo = $this->repository();
         file_put_contents($repo . '/src/UserService.ts', self::SERVICE);
 
-        self::assertSame([], self::stale($this->audit($repo, tier: 'all')));
+        $all = $this->audit($repo, tier: 'all');
+        self::assertSame([[], ['STALE_SINCE is computed only in scope git-diff.']], [self::stale($all), $all->warnings]);
+        // The scan tier alone lists no STALE_SINCE, so it has nothing to say about one.
+        self::assertSame([], $this->audit($repo)->warnings);
+        // Another on-request category asked for by name is not about STALE_SINCE either.
+        self::assertSame([], $this->audit($repo, category: 'OVER_MOCKING')->warnings);
         $asked = $this->audit($repo, category: 'STALE_SINCE');
         self::assertSame([[], ['STALE_SINCE is computed only in scope git-diff.']], [$asked->data['items'], $asked->warnings]);
         self::assertArrayNotHasKey('git', $asked->data);

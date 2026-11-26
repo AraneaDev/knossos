@@ -255,6 +255,27 @@ final class CheckFixturesToolTest extends KnossosTestCase
      *
      * @param \Closure(ToolService, string, string): void $test
      */
+    /**
+     * A language whose worker sent no field list matches nothing, and both
+     * tools say why its zero is the worker's: a Rust type without a derived
+     * `Deserialize` holds the only record type here.
+     */
+    #[Group('rust-scanner')]
+    public function testAWorkerWithoutFieldFactsIsNamedNotSilent(): void
+    {
+        $this->withScan('factless-rust', function (ToolService $tools, string $projectId): void {
+            $note = ['FIXTURE_DRIFT: no field facts from worker knossos.rust'];
+            $checked = $tools->call('check_fixtures', ['project_id' => $projectId]);
+            self::assertSame([0, 1, ['fixtures/order.json']], [$checked->data['total'], $checked->data['scanned'], array_column($checked->data['unmatched'], 'file')]);
+            self::assertSame($note, $checked->data['summary']['by_language']['rust']['notes']);
+            $audited = $tools->call('audit_tests', ['project_id' => $projectId, 'tier' => 'on_request']);
+            self::assertSame(0, $audited->data['total']);
+            self::assertSame($note, $audited->data['summary']['by_language']['rust']['notes']);
+            // The scan tier walks no fixture, so it says nothing about field facts.
+            self::assertArrayNotHasKey('notes', $tools->call('audit_tests', ['project_id' => $projectId])->data['summary']['by_language']['rust']);
+        });
+    }
+
     private function withScan(string $dir, \Closure $test): void
     {
         [$tools, $projectId, $root] = $this->buildToolServiceWithScan(self::FIXTURES . $dir);

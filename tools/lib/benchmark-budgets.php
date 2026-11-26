@@ -25,6 +25,41 @@ const BENCHMARK_METRICS = ['cold_scan_seconds', 'incremental_scan_seconds', 'que
 const BENCHMARK_SCENARIOS = ['test_fidelity_rescan_one_file' => 'typescript', 'test_fidelity_rescan_one_file_php' => 'php', 'test_fidelity_rescan_one_file_python' => 'python', 'test_fidelity_rescan_one_file_rust' => 'rust'];
 
 /**
+ * The on-request scenarios, each with the one limit it declares: the median
+ * of one on-request query over a size profile's corpus with what that tool
+ * reads added (`generate-on-request-corpus.php`). Each names its profile's
+ * file count, the corpus options, the command and its arguments, and how
+ * many items, and fixture files checked, a run must report for it to measure
+ * the work it is for. The `audit_tests` corpus is committed to git and its
+ * first two services edited, so `STALE_SINCE` reads a git-diff too; it gives
+ * 14 `OVER_MOCKING` (the first and every fifth TypeScript and Python test),
+ * 9 `STALE_SINCE` (the three tests per language doubling an edited service)
+ * and one scan-tier `MOCKS_SUBJECT` (PHP's first test doubles its own
+ * subject), 24 in all. The fixtures corpus gives one `FIXTURE_DRIFT` per
+ * tenth file, 50 in all.
+ */
+const BENCHMARK_QUERY_SCENARIOS = [
+    'audit_tests_on_request_medium' => [
+        'files_per_language' => 30,
+        'corpus' => ['--tests'],
+        'git' => true,
+        'command' => 'audit-tests',
+        'arguments' => ['--tier=all', '--scope=git-diff', '--base-ref=HEAD', '--limit=200'],
+        'least_items' => 24,
+        'fixtures_checked' => null,
+    ],
+    'check_fixtures_medium' => [
+        'files_per_language' => 30,
+        'corpus' => ['--fixtures=500'],
+        'git' => false,
+        'command' => 'check-fixtures',
+        'arguments' => ['--limit=200'],
+        'least_items' => 50,
+        'fixtures_checked' => 500,
+    ],
+];
+
+/**
  * Why the benchmark budgets cannot be enforced as they stand; empty when they can.
  *
  * @return list<string>
@@ -67,11 +102,12 @@ function benchmarkScenarioErrors(mixed $scenarios): array
     }
     $errors = [];
     foreach ($scenarios as $name => $limits) {
-        if (!isset(BENCHMARK_SCENARIOS[$name])) {
-            $errors[] = sprintf('scenarios.%s is not a scenario the benchmark runs (%s).', (string) $name, implode(', ', array_keys(BENCHMARK_SCENARIOS)));
+        if (!isset(BENCHMARK_SCENARIOS[$name]) && !isset(BENCHMARK_QUERY_SCENARIOS[$name])) {
+            $errors[] = sprintf('scenarios.%s is not a scenario the benchmark runs (%s).', (string) $name, implode(', ', [...array_keys(BENCHMARK_SCENARIOS), ...array_keys(BENCHMARK_QUERY_SCENARIOS)]));
             continue;
         }
-        $error = budgetNumberError(sprintf('scenarios.%s.incremental_scan_seconds', $name), is_array($limits) ? ($limits['incremental_scan_seconds'] ?? null) : null, 0.0);
+        $metric = isset(BENCHMARK_SCENARIOS[$name]) ? 'incremental_scan_seconds' : 'query_seconds';
+        $error = budgetNumberError(sprintf('scenarios.%s.%s', $name, $metric), is_array($limits) ? ($limits[$metric] ?? null) : null, 0.0);
         if ($error !== null) {
             $errors[] = $error;
         }
@@ -109,9 +145,28 @@ function benchmarkViolations(string $size, array $limits, array $actual, bool $m
  *
  * @return list<string>
  */
-function benchmarkScenarioViolations(string $scenario, float $limit, float $seconds): array
+function benchmarkScenarioViolations(string $scenario, float $limit, float $seconds, string $metric = 'incremental_scan_seconds'): array
 {
-    return $seconds > $limit ? [sprintf('scenarios.%s.incremental_scan_seconds %.2f exceeds %.2f', $scenario, $seconds, $limit)] : [];
+    return $seconds > $limit ? [sprintf('scenarios.%s.%s %.2f exceeds %.2f', $scenario, $metric, $seconds, $limit)] : [];
+}
+
+/**
+ * Why an on-request scenario's query does not measure what it is for, or
+ * null when it does: a run that reported no item, or checked other than the
+ * fixture files its corpus holds, would time a cheaper answer and pass for
+ * the wrong reason.
+ */
+function benchmarkQueryScenarioError(string $scenario, int $round, mixed $items, mixed $checked): ?string
+{
+    $expected = BENCHMARK_QUERY_SCENARIOS[$scenario];
+    if (!is_int($items) || $items < $expected['least_items']) {
+        return sprintf('scenarios.%s round %d reported %s items, fewer than the %d its corpus gives; it would not measure the query it is for.', $scenario, $round + 1, is_int($items) ? (string) $items : 'an unknown number of', $expected['least_items']);
+    }
+    if ($expected['fixtures_checked'] !== null && $checked !== $expected['fixtures_checked']) {
+        return sprintf('scenarios.%s round %d checked %s fixture files, not the %d its corpus holds; it would not measure the query it is for.', $scenario, $round + 1, is_int($checked) ? (string) $checked : 'an unknown number of', $expected['fixtures_checked']);
+    }
+
+    return null;
 }
 
 /**

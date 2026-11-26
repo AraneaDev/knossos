@@ -48,6 +48,7 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
             self::assertSame(implode("\n", [
                 'tests/ghost.test.ts:1  OVER_MOCKING warning  1/1 dependencies mocked, 1 production assertions: over-mocked',
                 'tests/ghost.test.ts:6  GHOST_MEMBER definite  vi.spyOn UserService.getProfil stubs getProfil, which UserService no longer has; did you mean getProfile?',
+                'STALE_SINCE is computed only in scope git-diff.',
                 '4 test-fidelity findings.',
             ]) . "\n", $run('audit-tests', [$projectId], ['tier' => ['all'], 'limit' => ['2']]));
             // The default tier is the stored one, printed as before.
@@ -73,6 +74,7 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
             $pdo->exec("DELETE FROM edges WHERE kind = 'imports' AND source_id IN (SELECT id FROM nodes WHERE file_id = '{$file}')");
             self::assertSame(implode("\n", [
                 'php: OVER_MOCKING: no imports from worker knossos.php',
+                'STALE_SINCE is computed only in scope git-diff.',
                 '0 test-fidelity findings.',
             ]) . "\n", $run('audit-tests', [$projectId], ['tier' => ['on_request']]));
         });

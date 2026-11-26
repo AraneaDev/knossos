@@ -181,6 +181,68 @@ function runTestFidelityScenario(string $scenario, string $directory, float $lim
     ];
 }
 
+/**
+ * Run an on-request scenario under `$directory`: generate its corpus (and,
+ * for `audit_tests`, commit it to git and edit its first two services in
+ * every language), scan it cold, then time the scenario's query five times.
+ * A round whose answer holds no item, or checked other fixture files than
+ * the corpus holds, fails the run; the median round is the measurement.
+ *
+ * @return array<string, mixed>
+ */
+function runQueryScenario(string $scenario, string $directory, float $limit): array
+{
+    $spec = BENCHMARK_QUERY_SCENARIOS[$scenario];
+    $corpus = $directory . '/corpus';
+    $database = $directory . '/knossos.sqlite';
+    $generation = jsonObject(runMeasured([PHP_BINARY, __DIR__ . '/generate-on-request-corpus.php', $corpus, (string) $spec['files_per_language'], ...$spec['corpus']], 60));
+    if ($spec['git']) {
+        $git = static fn(string ...$arguments): array => runMeasured(['git', '-C', $corpus, '-c', 'user.name=benchmark', '-c', 'user.email=benchmark@example.invalid', '-c', 'commit.gpgsign=false', ...$arguments], 30);
+        foreach ([['init', '--quiet'], ['add', '--all'], ['commit', '--quiet', '-m', 'benchmark corpus']] as $arguments) {
+            if ($git(...$arguments)['exit_code'] !== 0) {
+                throw new RuntimeException('Unable to commit the on-request benchmark corpus to git.');
+            }
+        }
+        foreach (['php/src/Service%04d.php', 'typescript/src/service-%04d.ts', 'python/app/service_%04d.py'] as $pattern) {
+            foreach ([0, 1] as $index) {
+                $file = $corpus . '/' . sprintf($pattern, $index);
+                file_put_contents($file, (string) file_get_contents($file) . (str_ends_with($file, '.py') ? "\n\nBENCHMARK_CHANGE = True\n" : "\n// benchmark change\n"));
+            }
+        }
+    }
+    $cold = runMeasured([
+        PHP_BINARY, BENCHMARK_ROOT . '/bin/knossos', 'scan', $corpus,
+        '--mode=full', '--snapshot-retention=2', '--db=' . $database, '--json',
+    ], 120);
+    $scan = jsonObject($cold);
+    $rounds = [];
+    $answer = [];
+    for ($round = 0; $round < SCENARIO_ROUNDS; ++$round) {
+        $query = runMeasured([
+            PHP_BINARY, BENCHMARK_ROOT . '/bin/knossos', $spec['command'], (string) $scan['project_id'],
+            ...$spec['arguments'], '--db=' . $database, '--json',
+        ], $limit * 1.5 + 30);
+        $answer = jsonObject($query)['data'] ?? [];
+        $error = benchmarkQueryScenarioError($scenario, $round, $answer['total'] ?? null, $answer['scanned'] ?? null);
+        if ($error !== null) {
+            throw new RuntimeException($error);
+        }
+        $rounds[] = $query['seconds'];
+    }
+    $sorted = $rounds;
+    sort($sorted);
+
+    return [
+        'corpus_sha256' => $generation['corpus_sha256'],
+        'cold_scan_seconds' => $cold['seconds'],
+        'query_seconds' => $sorted[intdiv(count($sorted), 2)],
+        'query_rounds_seconds' => $rounds,
+        'items' => $answer['total'],
+        'partial' => $answer['partial'] ?? null,
+        'categories' => array_count_values(array_column($answer['items'] ?? [], 'category')),
+    ];
+}
+
 $budgetPath = BENCHMARK_ROOT . '/benchmarks/budgets.json';
 $reportPath = BENCHMARK_ROOT . '/coverage/benchmarks/report.json';
 $positional = [];
@@ -282,6 +344,14 @@ try {
 
     $scenarios = [];
     foreach ($budgets['scenarios'] ?? [] as $scenario => $limits) {
+        if (isset(BENCHMARK_QUERY_SCENARIOS[$scenario])) {
+            $limit = (float) $limits['query_seconds'];
+            $actual = runQueryScenario((string) $scenario, $temporaryRoot . '/scenario-' . $scenario, $limit);
+            $scenarios[$scenario] = ['limits' => $limits, 'actual' => $actual];
+            $violations = [...$violations, ...benchmarkScenarioViolations((string) $scenario, $limit, $actual['query_seconds'], 'query_seconds')];
+            fwrite(STDOUT, sprintf("%s: cold=%.2fs query=%.2fs (median of %d, %d items)\n", $scenario, $actual['cold_scan_seconds'], $actual['query_seconds'], SCENARIO_ROUNDS, $actual['items']));
+            continue;
+        }
         $limit = (float) $limits['incremental_scan_seconds'];
         $actual = runTestFidelityScenario((string) $scenario, $temporaryRoot . '/scenario-' . $scenario, $limit);
         $scenarios[$scenario] = ['limits' => $limits, 'actual' => $actual];

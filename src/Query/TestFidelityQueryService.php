@@ -92,7 +92,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $scan = $tier !== TestRuleCatalog::ON_REQUEST;
         $input = $tier === TestRuleCatalog::SCAN ? new OnRequestInput([], [], [], []) : (new OnRequestFindings($this->pdo, fn(): int => $this->now()))->load($projectId, $deadline, $changed);
         // The fixture walk reads files, so it runs only when its category may be listed.
-        $fixtures = $tier === TestRuleCatalog::SCAN || ($category !== null && $category !== OnRequestCategory::FixtureDrift->value) ? ['findings' => [], 'languages' => [], 'partial' => false]
+        $fixtures = $tier === TestRuleCatalog::SCAN || ($category !== null && $category !== OnRequestCategory::FixtureDrift->value) ? ['findings' => [], 'languages' => [], 'partial' => false, 'factless' => []]
             : ($this->fixtures ?? new FixtureCheckService($this->pdo, $this->clock))->findings($projectId, (string) $project['root_realpath'], $deadline);
         $onRequest = array_values(array_filter(
             [...OverMocking::findings($input), ...StaleSince::findings($input, $ref), ...$fixtures['findings']],
@@ -109,7 +109,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
             'items' => $items,
             'total' => $total,
             'partial' => $input->partial || $fixtures['partial'],
-            'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions, $scan, $onRequest, $input->testFiles + $fixtures['languages'], OverMocking::languagesWithoutImports($input))],
+            'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions, $scan, $onRequest, $input->testFiles + $fixtures['languages'], OverMocking::languagesWithoutImports($input), $fixtures['factless'])],
             'suppressions_invalid' => $suppressions->invalid(),
             'pagination' => ['offset' => $offset, 'next_offset' => $next],
         ];
@@ -120,7 +120,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
             sprintf('%d test-fidelity finding%s.', $total, $total === 1 ? '' : 's'),
             $changed === null ? $data : $data + ['git' => ['base_ref' => $ref, 'changed_files' => count($changed)]],
             [],
-            [...self::warnings($input, $scan, $timeoutMs, $category, $changed), ...($fixtures['partial'] ? [sprintf('FIXTURE_DRIFT was cut short by timeout_ms %d or a bound on the walk; the list holds what was checked by then.', $timeoutMs)] : [])],
+            [...self::warnings($input, $scan, $tier !== TestRuleCatalog::SCAN, $timeoutMs, $category, $changed), ...($fixtures['partial'] ? [sprintf('FIXTURE_DRIFT was cut short by timeout_ms %d or a bound on the walk; the list holds what was checked by then.', $timeoutMs)] : [])],
             $next !== null,
         );
     }
@@ -231,13 +231,14 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
 
     /**
      * What the result could not hold, and why: a load cut short by the
-     * deadline or a row cap, and a `STALE_SINCE` asked for outside the one
-     * scope that computes it.
+     * deadline or a row cap, and a `STALE_SINCE` the on-request tier would
+     * list, asked for by name or by no category, outside the one scope that
+     * computes it: its zero is the scope's, not the project's.
      *
      * @param ?list<string> $changed
      * @return list<string>
      */
-    private static function warnings(OnRequestInput $input, bool $scan, int $timeoutMs, ?string $category, ?array $changed): array
+    private static function warnings(OnRequestInput $input, bool $scan, bool $onRequest, int $timeoutMs, ?string $category, ?array $changed): array
     {
         $warnings = [];
         if ($input->partial) {
@@ -247,7 +248,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
                 $scan ? 'the stored findings only' : 'none of them',
             );
         }
-        if ($category === OnRequestCategory::StaleSince->value && $changed === null) {
+        if ($onRequest && $changed === null && ($category === null || $category === OnRequestCategory::StaleSince->value)) {
             $warnings[] = 'STALE_SINCE is computed only in scope git-diff.';
         }
 
@@ -293,9 +294,10 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
      * @param list<OnRequestFinding> $onRequest the on-request findings the project holds
      * @param array<string, string> $languages each test file's language
      * @param list<string> $silent the languages `OVER_MOCKING` could not judge
+     * @param list<string> $factless the languages whose worker sent `FIXTURE_DRIFT` no field facts
      * @return array<string, array<string, int|list<string>>>
      */
-    private function byLanguage(string $projectId, TestFindingSuppressions $suppressions, bool $scan, array $onRequest, array $languages, array $silent): array
+    private function byLanguage(string $projectId, TestFindingSuppressions $suppressions, bool $scan, array $onRequest, array $languages, array $silent, array $factless = []): array
     {
         $zeros = array_fill_keys(TestRuleCatalog::confidences(), 0);
         $byLanguage = array_fill_keys(PackagedLanguages::languages(), $zeros);
@@ -311,6 +313,10 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         foreach ($silent as $language) {
             $byLanguage[$language] ??= $zeros;
             $byLanguage[$language]['notes'] = ['OVER_MOCKING: no imports from worker ' . PackagedLanguages::scannerOf($language)];
+        }
+        foreach ($factless as $language) {
+            $byLanguage[$language] ??= $zeros;
+            $byLanguage[$language]['notes'] = [...($byLanguage[$language]['notes'] ?? []), 'FIXTURE_DRIFT: no field facts from worker ' . PackagedLanguages::scannerOf($language)];
         }
         ksort($byLanguage);
 

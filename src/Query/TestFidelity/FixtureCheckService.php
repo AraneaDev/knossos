@@ -92,15 +92,16 @@ final readonly class FixtureCheckService extends AbstractArchitectureQueryServic
      * Every fixture drift finding of the project, for `audit_tests`'s
      * on-request tier: the findings, each fixture file's language (its
      * type's), and whether `$deadline` (in the clock's nanoseconds) or a
-     * bound cut the walk short.
+     * bound cut the walk short; and the languages whose worker sent no field
+     * facts, so their zero is said to be the worker's.
      *
-     * @return array{findings: list<OnRequestFinding>, languages: array<string, string>, partial: bool}
+     * @return array{findings: list<OnRequestFinding>, languages: array<string, string>, partial: bool, factless: list<string>}
      */
     public function findings(string $projectId, string $root, ?int $deadline): array
     {
         $run = $this->run($projectId, $root, [], $deadline);
 
-        return ['findings' => $run['findings'], 'languages' => $run['languages'], 'partial' => $run['partial'] || $run['truncated']];
+        return ['findings' => $run['findings'], 'languages' => $run['languages'], 'partial' => $run['partial'] || $run['truncated'], 'factless' => $run['factless']];
     }
 
     /**

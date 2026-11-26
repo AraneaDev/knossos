@@ -1432,6 +1432,7 @@ php	tools/eval/annotations.php
 php	tools/file-length-check.php
 php	tools/gate-report.php
 php	tools/generate-benchmark-corpus.php
+php	tools/generate-on-request-corpus.php
 php	tools/generate-reference.php
 php	tools/generate-test-fidelity-corpus.php
 php	tools/inspector-tools-check.php

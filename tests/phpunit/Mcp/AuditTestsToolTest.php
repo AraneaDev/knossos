@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\Mcp;
 
 use Knossos\Mcp\ToolService;
+use Knossos\TestFidelity\OnRequestCategory;
 use Knossos\TestFidelity\TestRuleCatalog;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
@@ -57,6 +58,10 @@ final class AuditTestsToolTest extends KnossosTestCase
             // No schema default: the tier left out is scan, or all in scope git-diff, which the description says.
             assertSame([['scan', 'on_request', 'all'], false], [$properties['tier']['enum'], array_key_exists('default', $properties['tier'])]);
             assertStringContainsString('scan (the default; all in scope git-diff)', $properties['tier']['description']);
+            // The tier text names every on-request category, so a new one cannot be added without saying where it is computed.
+            foreach (OnRequestCategory::cases() as $onRequest) {
+                assertStringContainsString($onRequest->value, $properties['tier']['description']);
+            }
             assertSame([['all', 'git-diff'], 'all'], [$properties['scope']['enum'], $properties['scope']['default']]);
             assertSame([1, 10000, 2000], [$properties['timeout_ms']['minimum'], $properties['timeout_ms']['maximum'], $properties['timeout_ms']['default']]);
             assertSame(['string', 1], [$properties['base_ref']['type'], $properties['base_ref']['minLength']]);

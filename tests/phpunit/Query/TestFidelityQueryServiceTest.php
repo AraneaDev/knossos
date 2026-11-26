@@ -242,15 +242,15 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
             assertSame(true, $partial->data['partial']);
             assertSame(['scan', 'scan', 'scan'], array_column($partial->data['items'], 'tier'));
             assertSame(3, $partial->data['total']);
-            assertSame(['On-request findings were cut short by timeout_ms 999; the list holds the stored findings only.'], $partial->warnings);
+            assertSame(['On-request findings were cut short by timeout_ms 999; the list holds the stored findings only.', 'STALE_SINCE is computed only in scope git-diff.'], $partial->warnings);
             // Under tier on_request no stored finding is listed, and the warning says so.
             $none = $slow->auditTests($projectId, tier: 'on_request', timeoutMs: 999);
             assertSame([[], 0, true], [$none->data['items'], $none->data['total'], $none->data['partial']]);
-            assertSame(['On-request findings were cut short by timeout_ms 999; the list holds none of them.'], $none->warnings);
+            assertSame(['On-request findings were cut short by timeout_ms 999; the list holds none of them.', 'STALE_SINCE is computed only in scope git-diff.'], $none->warnings);
 
             $within = $slow->auditTests($projectId, tier: 'all', timeoutMs: 10_000);
             assertSame(false, $within->data['partial']);
-            assertSame([], $within->warnings);
+            assertSame(['STALE_SINCE is computed only in scope git-diff.'], $within->warnings);
             assertSame(4, $within->data['total']);
             // The stored tier reads no clock: it is never partial.
             assertSame(false, $slow->auditTests($projectId, timeoutMs: 1)->data['partial']);
@@ -278,8 +278,8 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
 
             $all = $service->auditTests($projectId, tier: 'all');
             assertSame([true, 3], [$all->data['partial'], $all->data['total']]);
-            assertSame(['On-request findings were cut short by the row cap on a graph read; the list holds the stored findings only.'], $all->warnings);
-            assertSame(['On-request findings were cut short by the row cap on a graph read; the list holds none of them.'], $service->auditTests($projectId, tier: 'on_request')->warnings);
+            assertSame(['On-request findings were cut short by the row cap on a graph read; the list holds the stored findings only.', 'STALE_SINCE is computed only in scope git-diff.'], $all->warnings);
+            assertSame(['On-request findings were cut short by the row cap on a graph read; the list holds none of them.', 'STALE_SINCE is computed only in scope git-diff.'], $service->auditTests($projectId, tier: 'on_request')->warnings);
         } finally {
             $this->removeTempTree($root);
         }
