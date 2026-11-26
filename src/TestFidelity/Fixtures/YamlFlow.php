@@ -30,6 +30,9 @@ final class YamlFlow
     /** The character before the next one fed. */
     private string $previous = '';
 
+    /** Whether the next character is escaped by a backslash inside a double-quoted scalar. */
+    private bool $escaped = false;
+
     private int $at = 0;
 
     public function __construct(string $first)
@@ -45,7 +48,9 @@ final class YamlFlow
         for ($i = $start, $length = strlen($this->text); $i < $length; ++$i) {
             $character = $this->text[$i];
             if ($this->quote !== null) {
-                $this->quote = $character === $this->quote && ($this->quote === "'" || $this->previous !== '\\') ? null : $this->quote;
+                $closes = $character === $this->quote && !$this->escaped;
+                $this->escaped = $this->quote === '"' && $character === '\\' && !$this->escaped;
+                $this->quote = $closes ? null : $this->quote;
             } elseif (($character === '"' || $character === "'") && ($this->previous === '' || str_contains(' [{,:', $this->previous))) {
                 $this->quote = $character;
             } elseif ($character === '[' || $character === '{') {

@@ -100,7 +100,8 @@ final readonly class DtoMatch
                 array_push($records, ...$value->objects());
             }
         }
-        $carriesFields = array_intersect($root->keys(), array_map(strval(...), array_keys($type->fields))) !== [];
+        // A key spelling a field in another case style counts, as the drift check takes it as that field.
+        $carriesFields = array_filter($root->keys(), $type->hasFieldSpelled(...)) !== [];
         if ($records === [] && !$carriesFields && $root->children !== [] && count(array_filter($root->children, static fn(Value $value): bool => !$value->isDict())) === 0) {
             // A map of id to record (`{"a1": {...}, "a2": {...}}`): its keys are data, its values the records. A departure: Nemesis reads the map itself as the record.
             return array_values($root->children);

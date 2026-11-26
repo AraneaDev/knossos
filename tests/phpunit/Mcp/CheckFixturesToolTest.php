@@ -115,7 +115,7 @@ final class CheckFixturesToolTest extends KnossosTestCase
             self::assertSame([], $data['items']);
             self::assertSame(0, $data['total']);
             // Every other fixture was matched to its type and found to fit it.
-            self::assertSame(31, $data['scanned']);
+            self::assertSame(32, $data['scanned']);
             self::assertSame(self::OPEN, array_column($data['unmatched'], 'file'));
             self::assertSame(self::UNPARSABLE, $data['unparsable']);
             self::assertSame([4, false], [$data['skipped'], $data['truncated']]);
@@ -214,7 +214,7 @@ final class CheckFixturesToolTest extends KnossosTestCase
             // A file outside any fixture directory is no fixture, unless it is named: then it is taken at its word.
             mkdir($root . '/data');
             file_put_contents($root . '/data/trips.json', '{"trips": [{"id": "T", "speed": "warp", "priority": 1}]}');
-            self::assertSame(31, $tools->call('check_fixtures', ['project_id' => $projectId])->data['scanned']);
+            self::assertSame(32, $tools->call('check_fixtures', ['project_id' => $projectId])->data['scanned']);
             $named = $tools->call('check_fixtures', ['project_id' => $projectId, 'paths' => ['data']])->data;
             self::assertSame([['not_a_case', 'data/trips.json', 1, 'TripRecord.speed']], self::findings($named['items']));
         });

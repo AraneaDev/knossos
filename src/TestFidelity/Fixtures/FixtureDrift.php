@@ -159,23 +159,17 @@ final class FixtureDrift
     {
         $byStyle = [];
         foreach (array_keys($owner->fields) as $field) {
-            $byStyle[self::styleless((string) $field)][] = (string) $field;
+            $byStyle[FixtureType::styleless((string) $field)][] = (string) $field;
         }
         $aliases = [];
         foreach ($record->keys() as $key) {
-            $fields = $byStyle[self::styleless($key)] ?? [];
+            $fields = $byStyle[FixtureType::styleless($key)] ?? [];
             if (!isset($owner->fields[$key]) && count($fields) === 1 && !$record->has($fields[0])) {
                 $aliases[$fields[0]] = $key;
             }
         }
 
         return $aliases;
-    }
-
-    /** A name without its case style: lower case, no `_` or `-`. */
-    private static function styleless(string $name): string
-    {
-        return str_replace(['_', '-'], '', strtolower($name));
     }
 
     /**

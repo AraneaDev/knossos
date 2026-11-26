@@ -68,6 +68,8 @@ final class YamlDocumentTest extends KnossosTestCase
 
     public function testFlowCollections(): void
     {
+        // An escaped backslash does not escape the quote after it.
+        self::assertSame(['a\\', 'b', 'c"d'], self::plain(YamlDocument::parse('["a\\\\", b, "c\\"d"]')?->root));
         $yaml = "point: {x: 1, y: -2.5, label: 'a, b'}\nlist: [one, \"two\", [3], {k: v}, ]\nempty: []\nmulti: [a,\n  b]\nkeyonly: {a}\n";
 
         self::assertSame([

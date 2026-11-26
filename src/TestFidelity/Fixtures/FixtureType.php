@@ -50,6 +50,30 @@ final readonly class FixtureType
         return ($this->fields[$field]['required'] ?? false) && !isset($this->fields[$field]['visibility']) && !$this->keysRenamed && (!$this->constructed || in_array($field, $this->promoted, true));
     }
 
+    /**
+     * Whether `$key` names one of the type's fields, by its own name or in
+     * another case style (`billingAddress` for `billing_address`).
+     */
+    public function hasFieldSpelled(string $key): bool
+    {
+        if (isset($this->fields[$key])) {
+            return true;
+        }
+        foreach (array_keys($this->fields) as $field) {
+            if (self::styleless((string) $field) === self::styleless($key)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** A name without its case style: lower case, no `_` or `-`. */
+    public static function styleless(string $name): string
+    {
+        return str_replace(['_', '-'], '', strtolower($name));
+    }
+
     /** Whether a key no field names is drift: the type neither answers to any name nor reads its keys under other names. */
     public function refusesUnknownKeys(): bool
     {

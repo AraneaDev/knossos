@@ -48,3 +48,15 @@ class Settings:
 
     def __getattr__(self, item: str) -> str:
         return ""
+
+
+@dataclass
+class PostalAddress:
+    street_name: str
+    city_name: str
+
+
+@dataclass
+class Consignment:
+    billing_address: PostalAddress
+    shipping_address: PostalAddress

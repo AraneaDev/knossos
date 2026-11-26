@@ -149,6 +149,9 @@ final class DtoMatchTest extends KnossosTestCase
         // A map of id to record: every value an object, and none of the type's fields at the top.
         $account = self::type('Account', 'accountId', 'name');
         self::assertSame([[1, ['accountId', 'name']], [2, ['accountId']]], self::records('{"a1": {"accountId": "a1", "name": "A"},' . "\n" . '"a2": {"accountId": "a2"}}', $account));
+        // A record whose fields are all objects, written in another case style, is the record, not a map.
+        $consignment = self::type('Consignment', 'billing_address', 'shipping_address');
+        self::assertSame([[1, ['billingAddress', 'shippingAddress']]], self::records('{"billingAddress": {"streetName": "a"}, "shippingAddress": {"streetName": "b"}}', $consignment));
         // A map with a scalar among its values, or one carrying a field, is still read as before.
         self::assertSame([[1, ['a1', 'n']]], self::records('{"a1": {"accountId": "a1"}, "n": 2}', $account));
         self::assertSame([[1, ['name', 'a1']]], self::records('{"name": "x", "a1": {"accountId": "a1"}}', $account));
