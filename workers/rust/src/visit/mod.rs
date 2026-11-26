@@ -20,6 +20,7 @@ mod calls;
 mod cfg;
 mod declaration_paths;
 mod declarations;
+mod field_facts;
 mod fields;
 mod generated;
 mod generated_mock;
@@ -89,6 +90,7 @@ pub fn walk(
     walker.collect_struct_fields(module, &file.items);
     walker.collect_function_returns(module, &file.items);
     walker.walk_items(module, "module", &file.items);
+    field_facts::attach(walker.facts, module, &file.items);
     walker.flush_routes();
     let placed = std::mem::take(&mut walker.placed);
     let scope = walker.take_scope();

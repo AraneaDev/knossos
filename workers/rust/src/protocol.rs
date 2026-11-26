@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 /// This worker's own semantic version, independent of the core's `version.txt`.
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = "0.3.0";
 
 /// The core protocol version this worker speaks.
 pub const PROTOCOL_VERSION: &str = "1.0";

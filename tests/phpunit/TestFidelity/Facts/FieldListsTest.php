@@ -58,6 +58,44 @@ final class FieldListsTest extends KnossosTestCase
         assertSame(['id', 'name'], array_keys(FieldLists::of($graph, $child)?->fields() ?? []));
     }
 
+    public function testARustListIsTakenAsSentThroughItsTraitImpls(): void
+    {
+        $user = self::node('rust:class:crate::User', self::fields('id'));
+        $graph = self::graph([$user], [['implements', $user, 'rust:interface:std::fmt::Display']]);
+
+        assertSame(['id'], array_keys(FieldLists::of($graph, $user)?->fields() ?? []));
+    }
+
+    public function testAPythonModelComposesItsBasesAndStopsAtTheRootOutsideTheProject(): void
+    {
+        $base = self::node('py:class:app.Base', self::fields('id'));
+        $child = self::node('py:class:app.User', self::fields('name'));
+        $graph = self::graph([$base, $child], [
+            ['extends', $base, 'py:external_symbol:pydantic.BaseModel'],
+            ['extends', $child, 'py:class:app.Base'],
+        ]);
+
+        assertSame(['id', 'name'], array_keys(FieldLists::of($graph, $child)?->fields() ?? []));
+    }
+
+    public function testAPythonRootTheScanHoldsIsWalkedAsAnyAncestor(): void
+    {
+        // A project module named `pydantic` is the project's own class, without a list here.
+        $root = self::node('py:class:pydantic.BaseModel', []);
+        $child = self::node('py:class:app.User', self::fields('name'));
+        $graph = self::graph([$root, $child], [['extends', $child, 'py:class:pydantic.BaseModel']]);
+
+        assertSame(null, FieldLists::of($graph, $child));
+    }
+
+    public function testAPythonBaseOutsideTheProjectThatIsNoRootLeavesTheWholeUnknown(): void
+    {
+        $child = self::node('py:class:app.User', self::fields('name'));
+        $graph = self::graph([$child], [['extends', $child, 'py:external_symbol:pydantic_settings.BaseSettings']]);
+
+        assertSame(null, FieldLists::of($graph, $child));
+    }
+
     public function testANodeWithoutAListSaysNothing(): void
     {
         $plain = self::node('php:class:App\\Plain', []);

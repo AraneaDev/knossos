@@ -291,7 +291,9 @@ class _ClassScan:
         body = list(scope_nodes(node.body))
         self.names, _ = scope_bindings(body)
         self.written: set[str] = set()
-        self.opened = bool(self.names & OPENING_HOOKS)
+        # A hook opens the names; only `__init_subclass__` of them may also add a field (Ruling F8).
+        self.hooked = bool(self.names & OPENING_HOOKS)
+        self.opened = "__init_subclass__" in self.names
         for item in body:
             self.body_node(item)
         for item in body:
@@ -417,7 +419,7 @@ class ClassMembers:
         """
         scan = _ClassScan(node)
         names = scan.names | {name for name in (mangled(node.name, each) for each in scan.names) if name}
-        opened = scan.opened or unseen_base or bool(node.keywords) or self.dynamic
+        opened = scan.opened or scan.hooked or unseen_base or bool(node.keywords) or self.dynamic
         opened = opened or not all(self.closed_decorator(decorator) for decorator in node.decorator_list)
         opened = opened or node.name in self.written_names()
         return (
@@ -425,6 +427,16 @@ class ClassMembers:
             | ({"member_names_open": True} if opened else {})
             | ({"methods_rewritable": True} if self.methods_rewritable(node) else {})
         )
+
+    def opens_fields(self, node: ast.ClassDef) -> bool:
+        """Whether a field may come from outside the class body, by the causes that open :meth:`attributes`.
+
+        Those of the body and the module count, ``__init_subclass__``
+        included. A ``__getattr__`` or ``__getattribute__`` answers names no
+        field holds, so it leaves the fields as they are (Ruling F8), and the
+        header (bases, keywords, decorators) is the field list's own to judge.
+        """
+        return _ClassScan(node).opened or self.dynamic or node.name in self.written_names()
 
     def methods_rewritable(self, node: ast.ClassDef) -> bool:
         """Whether the class's methods, or a subclass's, may not keep the signature their ``def`` writes (Ruling P21).

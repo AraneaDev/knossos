@@ -496,7 +496,7 @@ final class DoctorServiceTest extends KnossosTestCase
         $rust = $this->findCheck($result, 'worker.rust');
 
         assertSame('warning', $rust['status']);
-        self::assertStringContainsString('knossos.rust@0.2.0 protocol 1.0', $rust['detail']);
+        self::assertStringContainsString('knossos.rust@0.3.0 protocol 1.0', $rust['detail']);
         self::assertStringContainsString('not built from the source in workers/rust', $rust['detail']);
         self::assertStringContainsString('tools/install', $rust['detail']);
         self::assertStringContainsString('cargo build --release --locked', $rust['detail']);
@@ -512,7 +512,7 @@ final class DoctorServiceTest extends KnossosTestCase
         $rust = $this->findCheck((new DoctorService($this->pdo, $this->installationRoot, ':memory:'))->run(), 'worker.rust');
 
         assertSame('ok', $rust['status']);
-        assertSame('knossos.rust@0.2.0 protocol 1.0', $rust['detail']);
+        assertSame('knossos.rust@0.3.0 protocol 1.0', $rust['detail']);
         assertSame(0, (new DoctorService($this->pdo, $this->installationRoot, ':memory:'))->run()['warnings']);
     }
 

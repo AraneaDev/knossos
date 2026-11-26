@@ -52,7 +52,7 @@ final class DoctorInstallation
         file_put_contents($worker . '/src/main.rs', "fn main() {}\n");
         $sourceHash ??= WorkerSourceHash::of($worker);
         $manifest = [
-            'id' => 'knossos.rust', 'version' => '0.2.0', 'protocol_version' => '1.0', 'output_schema_version' => '1.0',
+            'id' => 'knossos.rust', 'version' => '0.3.0', 'protocol_version' => '1.0', 'output_schema_version' => '1.0',
             'languages' => ['rust'], 'file_extensions' => ['rs'], 'capabilities' => ['partial_ast'],
         ] + ($sourceHash === '' ? [] : ['source_hash' => $sourceHash]);
         $script = <<<'PHP'

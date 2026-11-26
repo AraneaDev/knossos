@@ -303,6 +303,41 @@ list closed: a reader finds them as the type's own methods. A backed enum's
 cases carry `value` when every case is a string or integer literal; a pure
 enum's carry none.
 
+A Python class sends a list only when its file shows what makes its
+annotations fields: the `dataclasses.dataclass` decorator, or a base that is
+pydantic's `BaseModel`, a `TypedDict`, or a class of the same file that is one.
+A plain class, and a subclass of a class in another file, sends none. The list
+holds the class's own annotated fields, `ClassVar`, `KW_ONLY` and a pydantic
+`_private` name left out; inherited fields come from its `extends` edges as
+for PHP, a `BaseModel` or `TypedDict` outside the project ending the walk. A
+field is not required when it has a default; a pydantic `Field(...)` or
+`Field()` with no `default` or `default_factory`, and `= ...`, stay required,
+as does `Optional[X]` without a default. A TypedDict key follows `total`,
+`Required` and `NotRequired`. `fields_open` is set for an `alias`,
+`validation_alias` or `serialization_alias`, a `model_config` or `class
+Config`, a field call with `init`, `metadata` or `**`, an `InitVar`, a
+constructor or a pydantic hook that may reread the input
+(`model_validator`, `computed_field`), a decorator other than `dataclass`, a
+class keyword (but a TypedDict's `total`), a base outside the project or that
+the file cannot read, and the causes that open `member_names`, but for
+`__getattr__` and `__getattribute__`. An `Enum` sends `cases`, with `value`
+when every case is a string or integer literal and no `_missing_` or `__new__`
+may give another; an Enum whose members its body may not show sends none.
+
+A Rust named-field struct sends its fields, `type` as written. A field is not
+required when it is an `Option`, a bare type parameter, or `#[serde(default)]`,
+`skip` or `skip_deserializing` on the field (`default` also on the struct). A
+field read `with` or `deserialize_with` sends no `type`. `fields_open` is set
+for any `serde` key not known to keep the field names (`rename`, `rename_all`,
+`alias`, `flatten`, `tag`, `untagged`, `transparent`, `from` and the rest), a
+derive other than `Clone`, `Copy`, `Debug`, `Default`, `Eq`, `Hash`, `Ord`,
+`PartialEq`, `PartialOrd`, `Serialize` and `Deserialize`, any other attribute
+that may be a macro, a `cfg` on a field, a `cfg_attr` applying any of these,
+and a second declaration of the same path. A Rust struct inherits no field, so
+its list is taken as sent. A unit-only enum with no serde attribute on it or a
+variant sends `cases`, each `value` the variant's name; any other enum, a
+tuple or unit struct and a union send none.
+
 #### Repeated edges
 
 A worker reports an edge once per site it saw: `helper(); helper();` is two

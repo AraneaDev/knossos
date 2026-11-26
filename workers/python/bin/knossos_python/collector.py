@@ -18,6 +18,7 @@ from .ast_helpers import (
     superseded_definitions,
 )
 from .class_members import ClassMembers, assigned_self_attributes, merge_member_names, module_exports, visibility
+from .fields import FieldFacts, merge_field_facts
 from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnricher, PythonFrameworkRoleEnricher
 from .launches import LaunchRecorder
 from .module_index import ProjectModuleIndex
@@ -151,6 +152,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
         self.superseded = superseded_definitions(tree)
         self.overloaded = overloaded_definitions(tree)
         self.members = ClassMembers(tree, self.resolve_name)
+        self.fields = FieldFacts(tree, self.name, self.resolve_name, self.members)
         self.aliases: dict[str, str] = {}
         self.containers: list[tuple[str, str, str]] = []
         self.local_function_scopes: list[dict[str, str]] = []
@@ -433,6 +435,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
                 self.facts.add_edge("extends", local_id, target, base)
                 if target.startswith("py:class:"):
                     bases.append(target.removeprefix("py:class:"))
+        merge_field_facts(self.facts.nodes[local_id]["attributes"], self.fields.of(node))
         merge_member_names(self.facts.nodes[local_id]["attributes"], self.members.attributes(node, unseen_base))
         if any(is_protocol_base(base) for base in node.bases):
             self.protocols.add(canonical)

@@ -17,22 +17,32 @@ use Knossos\TestFidelity\TestFidelityGraph;
  * project, with a list that is present and closed; otherwise it is null and
  * the caller stays silent. A PHP interface declares no field, so an
  * `implements` edge is not walked, and an interface outside the scan
- * (`JsonSerializable`) costs nothing. A TypeScript worker merges what its
- * type checker resolves, a base in `node_modules` included, and marks the
- * rest open, so its list is taken as sent.
+ * (`JsonSerializable`) costs nothing. A Python model's root outside the
+ * project (`pydantic.BaseModel`, `TypedDict`) declares no field either, so
+ * reaching it ends the walk, unless the scan holds a class of that name. A
+ * TypeScript worker merges what its type checker resolves, a base in
+ * `node_modules` included, and marks the rest open, and a Rust struct
+ * inherits no field (its `implements` edges name traits), so their lists are
+ * taken as sent.
  */
 final class FieldLists
 {
+    /** The Python bases outside the project whose subclasses' annotations are fields, and which declare none. */
+    private const PYTHON_ROOTS = ['pydantic.BaseModel', 'pydantic.main.BaseModel', 'typing.TypedDict', 'typing_extensions.TypedDict'];
+
+    /** A Python reference to a class outside the project, the name captured. */
+    private const PYTHON_REFERENCE = '/^py:(?:external_symbol|class):(.+)$/sD';
+
     private function __construct() {}
 
     /** The fields `$type` declares or inherits, nearest declaration first; null when that cannot be known. */
     public static function of(TestFidelityGraph $graph, NodeFact $type): ?FieldList
     {
         $own = FieldList::ofNode($type);
-        if ($own === null || str_starts_with($type->localId, 'ts:')) {
+        if ($own === null || str_starts_with($type->localId, 'ts:') || str_starts_with($type->localId, 'rust:')) {
             return $own;
         }
-        [$lineage, $unseen] = $graph->lineageThrough($type, static fn(string $parent): bool => !str_starts_with($parent, 'php:interface:'));
+        [$lineage, $unseen] = $graph->lineageThrough($type, static fn(string $parent): bool => !str_starts_with($parent, 'php:interface:') && !self::isPythonRoot($graph, $parent));
         if ($unseen) {
             return null;
         }
@@ -47,5 +57,11 @@ final class FieldLists
         ksort($fields, SORT_STRING);
 
         return new FieldList($fields);
+    }
+
+    /** Whether a parent reference names a Python root the scan does not hold. */
+    private static function isPythonRoot(TestFidelityGraph $graph, string $parent): bool
+    {
+        return !$graph->has($parent) && preg_match(self::PYTHON_REFERENCE, $parent, $match) === 1 && in_array($match[1], self::PYTHON_ROOTS, true);
     }
 }
