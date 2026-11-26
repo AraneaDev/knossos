@@ -34,7 +34,8 @@ export function fieldFacts(checker, node) {
         return {};
     }
     const type = declaredType(checker, node);
-    if (type === undefined) return {};
+    // A union keeps only the members every variant shares, so its list would be neither whole nor typed right.
+    if (type === undefined || type.isUnion()) return {};
     const fields = checker
         .getPropertiesOfType(type)
         .filter(isField)
@@ -142,7 +143,11 @@ function admitsUndefined(type) {
     );
 }
 
-/** Whether the list may miss or misname a key. */
+/**
+ * Whether the list may miss or misname a key. A decorator is looked for on
+ * the declaration itself, on each class an alias intersects, and on every
+ * class those extend.
+ */
 function isOpen(checker, node, type) {
     if (
         checker.getIndexInfosOfType(type).length > 0 ||
@@ -151,12 +156,15 @@ function isOpen(checker, node, type) {
     ) {
         return true;
     }
-    return baseClasses(checker, type).some((base) =>
-        (base.symbol?.declarations ?? []).some(
-            (declaration) =>
-                ts.isClassLike(declaration) && isDecorated(declaration),
-        ),
-    );
+    const parts = type.isIntersection() ? type.types : [type];
+    return parts
+        .flatMap((part) => [part, ...baseClasses(checker, part)])
+        .some((part) =>
+            (part.symbol?.declarations ?? []).some(
+                (declaration) =>
+                    ts.isClassLike(declaration) && isDecorated(declaration),
+            ),
+        );
 }
 
 /** Whether a heritage clause, an intersection part or a base type is one the checker could not read. */

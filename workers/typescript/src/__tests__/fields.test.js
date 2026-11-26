@@ -190,6 +190,42 @@ describe("field lists", () => {
         expect(nodes.Plain.fields_open).toBeUndefined();
     });
 
+    it("opens an alias that intersects a decorated class or its subclass", () => {
+        const nodes = scan({
+            "src/dto.ts":
+                "declare function Expose(o?: object): PropertyDecorator;\n" +
+                "export class OneDecorated {\n" +
+                "  @Expose({ name: 'user_name' }) userName!: string;\n" +
+                "  plain!: string;\n" +
+                "}\n" +
+                "export class Sub extends OneDecorated {}\n" +
+                "export class Clean { id!: string; }\n" +
+                "export type AliasOfDecorated = OneDecorated & { extra: string };\n" +
+                "export type AliasOfSub = { extra: string } & Sub;\n" +
+                "export type AliasOfClean = Clean & { extra: string };\n",
+        });
+
+        expect(nodes.AliasOfDecorated.fields_open).toBe(true);
+        expect(nodes.AliasOfSub.fields_open).toBe(true);
+        expect(nodes.AliasOfClean.fields_open).toBeUndefined();
+        expect(nodes.AliasOfClean.fields.map((f) => f.name)).toEqual([
+            "extra",
+            "id",
+        ]);
+    });
+
+    it("sends no list for an intersection that resolves to a union", () => {
+        const nodes = scan({
+            "src/dto.ts":
+                "export type Disc = { id: string } & ({ kind: 'a'; x: string } | { kind: 'b'; y: string });\n" +
+                "type Variant = { kind: 'a'; x: string } | { kind: 'b'; y: string };\n" +
+                "export type Named = { id: string } & Variant;\n",
+        });
+
+        expect(nodes.Disc.fields).toBeUndefined();
+        expect(nodes.Named.fields).toBeUndefined();
+    });
+
     it("a_64_field_class_is_cut_and_marked", () => {
         const names = Array.from(
             { length: 70 },
