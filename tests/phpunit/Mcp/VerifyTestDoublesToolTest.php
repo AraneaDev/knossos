@@ -100,8 +100,14 @@ final class VerifyTestDoublesToolTest extends KnossosTestCase
 
     public function testUnknownNameSuggests(): void
     {
-        $this->withNemesis(function (ToolService $tools, string $projectId): void {
+        $this->withNemesis(function (ToolService $tools, string $projectId, string $root): void {
+            // A class only test code declares: never a candidate, so never suggested either.
+            file_put_contents($root . '/tests/fakes.spec.ts', "export class FakeLedger {}\n");
+            $tools->call('scan_project', ['path' => $root]);
             foreach ([
+                // Neither by its name nor by its canonical name is a test class offered back.
+                'FakeLedger' => 'No class, interface or trait is named "FakeLedger".',
+                'tests/fakes.spec.ts#FakeLedger' => 'No class, interface or trait is named "tests/fakes.spec.ts#FakeLedger".',
                 // A prefix: find_component's candidates of a doubled kind, a substring match of its canonical name included.
                 'UserServ' => 'No class, interface or trait is named "UserServ"; did you mean: src/UserService.ts#UserService, src/UserService.ts#UserProfile?',
                 // A method is not a type to double.

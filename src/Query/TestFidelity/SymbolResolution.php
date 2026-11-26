@@ -108,7 +108,7 @@ final readonly class SymbolResolution
     {
         $names = [];
         foreach ($this->components->findComponent($projectId, $symbol, self::SUGGESTIONS)->data['components'] as $component) {
-            if (in_array($component['kind'], $kinds, true) && !in_array(ReportableComponent::TEST_ROLE, $component['roles'], true)) {
+            if (in_array($component['kind'], $kinds, true) && !in_array(ReportableComponent::TEST_ROLE, array_column($component['roles'], 'role'), true)) {
                 $names[] = (string) $component['canonical_name'];
             }
         }
