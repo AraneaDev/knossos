@@ -397,6 +397,27 @@ cases and doubles of a `conftest.py` at the project root, which is no test
 module (its fixtures are read); and frameworks other than these, such as
 `responses` or `freezegun`.
 
+## Field facts
+
+A class sends its fields only when its file shows what makes its annotations
+fields: `@dataclass`, or a base that is pydantic's `BaseModel`, a `TypedDict`
+or a class of the same file that is one. A plain class, a `NamedTuple`, an
+attrs class, a pydantic dataclass and a subclass of a class in another file
+send none, which leaves most real pydantic hierarchies unjudged. A field with
+a default is optional; `Field(...)`, `= ...` and `Optional[X]` without a
+default stay required, as pydantic v2 reads them. An `Enum` sends its cases
+and is never a fixture's type.
+
+The list is open for an alias (`alias`, `validation_alias`,
+`serialization_alias`), a `model_config` or `class Config`, a field call with
+`init`, `metadata` or `**`, an `InitVar`, a constructor or a pydantic hook
+that may reread the input, a decorator other than `dataclass`, a class
+keyword, a base the scan cannot read, a name that may hold an alias, and the
+causes that open a class's member list. A pydantic model passed to any call,
+and a default naming a module constant, open it too. An Enum whose `_missing_`,
+`__new__`, `__init__` or `_generate_next_value_` may give other values sends
+no values. The full rules are in the [scanner protocol](../reference/scanner-protocol-v1.md#field-lists).
+
 ## Limits
 
 - Dynamic imports, monkey-patching, runtime decorator effects, metaclass

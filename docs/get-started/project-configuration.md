@@ -347,6 +347,9 @@ or a full rule id (`test.fidelity.ghost_member.v1`), matched case-sensitively. A
 a scan.
 
 The same entries put aside on-request findings, which `audit_tests` computes
-only when asked (`tier: "on_request"` or `"all"`). For `OVER_MOCKING`, a finding
-about a whole test file, `path` is a prefix of that test file. `list_test_rules`
-lists every rule id, category and sub-rule an entry can name.
+only when asked (`tier: "on_request"` or `"all"`) and `check_fixtures` lists.
+For `OVER_MOCKING`, a finding about a whole test file, and `STALE_SINCE`, `path`
+is a prefix of the test file; for `FIXTURE_DRIFT` it is a prefix of the fixture
+file. An entry is the only way to silence an on-request finding, as no rescan
+changes one. `list_test_rules` lists every rule id, category and sub-rule an
+entry can name.

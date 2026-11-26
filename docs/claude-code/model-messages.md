@@ -138,6 +138,10 @@ knossos: this turn introduced 1 test finding. Fix it before finishing:
 ```
 
 The message lists at most ten, then `- …and 2 more (run audit_tests)`.
+Only stored findings reach it. The on-request findings (`OVER_MOCKING`,
+`STALE_SINCE` and `FIXTURE_DRIFT`), which `audit_tests` and `check_fixtures`
+compute when asked, are never in a turn message, the session brief, a snapshot
+or a trend.
 When the live watcher scanned the edit before the turn ended, the brief compares
 with the findings the edited file touched before the watcher's scan, which the
 scan ledger keeps. When the ledger has no such record, the part is left out.

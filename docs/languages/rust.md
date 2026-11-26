@@ -636,6 +636,25 @@ crate`, a local `mod core` or an unseen `#[path]` leaves every assertion of
   package to know that no macro shadows a standard assertion, so an edit to
   any file of the package rescans its test files.
 
+## Field facts
+
+A named-field struct that derives `Deserialize` sends its fields, `type` as
+written, and a unit-only enum that derives it sends its variants as cases. A
+struct with a hand-written `impl Deserialize` sends none, as its impl may read
+another shape. An `Option` field is optional, as serde reads it (and a `Box`,
+`Rc` or `Arc` of one, or a bare type parameter), and so is one with
+`#[serde(default)]`, `skip` or `skip_deserializing`. A field read `with` or
+`deserialize_with` sends no type. A type alias of `Option`
+(`type Maybe<T> = Option<T>`) is read as required, a known gap.
+
+The list is open for any `serde` key not known to keep the field names
+(`rename`, `rename_all`, `alias`, `flatten`, `tag`, `untagged` and the rest),
+a derive outside the standard set and `Serialize`/`Deserialize`, an attribute
+that may be a macro, a `cfg` on a field, and a second declaration of the same
+path. Any serde attribute on an enum drops its cases. A derive named
+`Deserialize` but imported from another crate is trusted. The full rules are
+in the [scanner protocol](../reference/scanner-protocol-v1.md#field-lists).
+
 ## Limits
 
 - Macro bodies are not expanded. A path written as a call in a `macro_rules!`

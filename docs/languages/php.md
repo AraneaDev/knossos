@@ -214,3 +214,19 @@ own semantics:
 - A class the scan does not hold, or a relation that could live in `vendor/` or
   PHP itself, makes drift a warning at most. A facade double names no class,
   so nothing it stubs is held against one.
+
+## Field facts
+
+A class, interface or trait sends the fields it declares, instance properties
+and promoted constructor properties alike, and a backed enum sends its cases
+with their values. `type` holds the class name fully qualified, as the scanner
+resolves it. A field with a default is optional, and so is an untyped one,
+which defaults to null; a nullable type alone keeps the key required.
+Inherited fields come from `extends` and `uses_trait`, so a list is whole only
+when every such ancestor is in the scan with a whole list of its own.
+
+The list is open when a Symfony Serializer, JMS Serializer or Spatie Data
+attribute or docblock tag may rename a field. `check_fixtures` also leaves alone
+the missing and unknown keys of a type whose constructor is not public, since a
+factory may fill it from another shape, and reads `__get` and `__set` along the
+lineage as answering any key. The full rules are in the [scanner protocol](../reference/scanner-protocol-v1.md#field-lists).

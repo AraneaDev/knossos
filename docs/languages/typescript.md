@@ -324,6 +324,22 @@ Not handled: Nuxt auto-imported components and file-based routing, globally
 registered components, Vue template type semantics (slot props, `$emit` names,
 `v-model` modifiers), `.mdx` and Markdown pages.
 
+## Field facts
+
+A class, interface or object-literal type alias sends the fields its type
+checker reads, inherited ones and those of a resolved intersection included,
+and an enum sends its cases. `check_fixtures` holds a JSON or YAML fixture
+against them, and `synthesize_mock` builds an example value from them. A field
+is optional when it is written `?`, its type admits `undefined`, or it has an
+initializer. Enum values are sent for every member or for none.
+
+The list is open, so neither tool judges it, when a wire name may differ or a
+field may come from elsewhere: a base, heritage clause or intersection part the
+checker cannot read or that is a type parameter, an index signature, or a
+decorator on the class, on any member or on a class it extends (judged property
+by property, and on a mapped type's source class). A type that resolves to a
+union sends no list. The full rules are in the [scanner protocol](../reference/scanner-protocol-v1.md#field-lists).
+
 ## Limits
 
 Dynamic route segments stay in their source spelling, a request URL that is
