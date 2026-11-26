@@ -144,9 +144,9 @@ function admitsUndefined(type) {
 }
 
 /**
- * Whether the list may miss or misname a key. A decorator is looked for on
- * the declaration itself, on each class an alias intersects, and on every
- * class those extend.
+ * Whether the list may miss or misname a key: an index signature, a part the
+ * checker cannot read, a decorator on the declaration or on a class an alias
+ * intersects (or one it extends), or a property that is not plainly declared.
  */
 function isOpen(checker, node, type) {
     if (
@@ -157,14 +157,53 @@ function isOpen(checker, node, type) {
         return true;
     }
     const parts = type.isIntersection() ? type.types : [type];
-    return parts
+    const classes = parts
         .flatMap((part) => [part, ...baseClasses(checker, part)])
-        .some((part) =>
-            (part.symbol?.declarations ?? []).some(
-                (declaration) =>
-                    ts.isClassLike(declaration) && isDecorated(declaration),
-            ),
+        .flatMap((part) => part.symbol?.declarations ?? []);
+    return (
+        classes.some(
+            (declaration) =>
+                ts.isClassLike(declaration) && isDecorated(declaration),
+        ) ||
+        checker
+            .getPropertiesOfType(type)
+            .some((property) => isRenamable(checker, property))
+    );
+}
+
+/**
+ * Whether a property's key may differ from its name or come from nowhere a
+ * reader can see: it has no declaration in source (a key a mapped type makes
+ * up, from `Record<"a" | "b", T>` or a template literal), or one of its
+ * declarations sits in a class that is decorated or extends a decorated one.
+ * A homomorphic mapped type (`Partial`, `Pick`, `Omit`, `Readonly`) keeps the
+ * declarations of the property it maps, which is how a decorator under it is
+ * found.
+ */
+function isRenamable(checker, property) {
+    const declarations = property.declarations ?? [];
+    if (declarations.length === 0) return true;
+    return declarations.some((declaration) => {
+        const owner = ts.isParameter(declaration)
+            ? declaration.parent?.parent
+            : declaration.parent;
+        if (owner === undefined || !ts.isClassLike(owner)) return false;
+        if (isDecorated(owner)) return true;
+        const symbol =
+            owner.name === undefined
+                ? undefined
+                : checker.getSymbolAtLocation(owner.name);
+        return (
+            symbol !== undefined &&
+            baseClasses(checker, checker.getDeclaredTypeOfSymbol(symbol)).some(
+                (base) =>
+                    (base.symbol?.declarations ?? []).some(
+                        (inherited) =>
+                            ts.isClassLike(inherited) && isDecorated(inherited),
+                    ),
+            )
         );
+    });
 }
 
 /** Whether a heritage clause, an intersection part or a base type is one the checker could not read. */

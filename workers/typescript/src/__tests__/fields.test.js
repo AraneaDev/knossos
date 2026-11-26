@@ -214,6 +214,48 @@ describe("field lists", () => {
         ]);
     });
 
+    it("opens a mapped type over a decorated class, whatever wraps it", () => {
+        const nodes = scan({
+            "src/dto.ts":
+                "declare function Expose(o?: object): PropertyDecorator;\n" +
+                "export class DecP {\n" +
+                "  @Expose({ name: 'user_name' }) userName!: string;\n" +
+                "  plain!: string;\n" +
+                "}\n" +
+                "export class Plain { id!: string; note?: string; }\n" +
+                "export type WithOmit = { extra: string } & Omit<DecP, 'plain'>;\n" +
+                "export type WithPartial = { extra: string } & Partial<DecP>;\n" +
+                "export type WithPick = Pick<DecP, 'userName'> & { x: string };\n" +
+                "export type Frozen = Readonly<DecP> & {};\n" +
+                "export type Clean = Partial<Plain> & { x: string };\n",
+        });
+
+        for (const name of ["WithOmit", "WithPartial", "WithPick", "Frozen"]) {
+            expect([name, nodes[name].fields_open]).toEqual([name, true]);
+        }
+        expect(nodes.Clean.fields_open).toBeUndefined();
+        expect(nodes.Clean.fields).toEqual([
+            { name: "id", type: "string", required: false, line: 6 },
+            { name: "note", type: "string", required: false, line: 6 },
+            { name: "x", type: "string", required: true, line: 11 },
+        ]);
+    });
+
+    it("opens a list holding a key no source declares", () => {
+        const nodes = scan({
+            "src/dto.ts":
+                "export type Keys = Record<'a' | 'b', string> & { id: string };\n" +
+                "type Handlers = { [K in `on${'Click' | 'Hover'}`]: () => void };\n" +
+                "export type Templated = Handlers & { id: string };\n" +
+                "export type Inline = { [K in 'a' | 'b']: string } & { id: string };\n",
+        });
+
+        expect(nodes.Keys.fields_open).toBe(true);
+        expect(nodes.Templated.fields_open).toBe(true);
+        // A mapped type written in place is not an object shape: no list at all.
+        expect(nodes.Inline.fields).toBeUndefined();
+    });
+
     it("sends no list for an intersection that resolves to a union", () => {
         const nodes = scan({
             "src/dto.ts":
