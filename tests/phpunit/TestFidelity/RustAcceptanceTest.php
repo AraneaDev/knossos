@@ -91,7 +91,7 @@ use PHPUnit\Framework\Attributes\Group;
  *    `purge`. The `mock!` block declares the member itself, so it compiles;
  *    judging it needs a complete member list for a Rust type. `Store` does
  *    not resolve in the test file either.
- * 7. A gap (G5-02): MOCK-002 (info) at `generic_test.rs:36` and `:43`.
+ * 7. A gap (G5-11): MOCK-002 (info) at `generic_test.rs:36` and `:43`.
  *    `MOCKS_SUBJECT` is silent for Rust (Decision 10).
  * 8. On request in phase 6: Momus's MOCK-001 (`automock-drift`
  *    `tests/gateway_mock.rs:1`, and the `tautology` mock files) is an
