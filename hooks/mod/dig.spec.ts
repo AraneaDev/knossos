@@ -95,6 +95,9 @@ const NOT_QUESTIONS: Record<string, string> = {
   annotate_component: 'records what a dig found: it ends a dig rather than starting one',
   creation_brief: 'briefs a file about to be written, before there is anything to check an answer against',
   audit_tests: "the scan's own findings about the tests, a report rather than a lookup",
+  check_fixtures: "the fixtures' drift from their types, a report rather than a lookup",
+  list_test_rules: 'lists the test-fidelity rules, nothing about the code',
+  synthesize_mock: 'writes a test double to paste, an export rather than an answer',
 }
 
 describe('the server catalog', () => {
