@@ -18,11 +18,8 @@ use PDO;
  */
 final readonly class TestFidelityQueryService extends AbstractArchitectureQueryService
 {
-    /** What `by_language` says of a packaged language whose worker emits no test facts. */
-    private const NO_TEST_FACTS = 'no test facts';
-
-    /** Every language with a packaged worker, and whether that worker emits test facts yet. */
-    private const PACKAGED_LANGUAGES = ['php' => true, 'python' => true, 'rust' => false, 'typescript' => true];
+    /** Every language with a packaged worker; each worker emits test facts, so each is counted, if only as zeros. */
+    private const PACKAGED_LANGUAGES = ['php', 'python', 'rust', 'typescript'];
 
     /** The language a node's local-id prefix names, where it differs from the language's name here. */
     private const LANGUAGE_OF_PREFIX = ['py' => 'python', 'rs' => 'rust', 'ts' => 'typescript'];
@@ -88,12 +85,11 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
     }
 
     /**
-     * The project's finding counts per confidence for each language whose worker
-     * emits test facts, and a note for each packaged language whose worker does
-     * not. A filter narrows the items, not what the project holds; what the
-     * project suppresses is not held.
+     * The project's finding counts per confidence for each packaged language,
+     * and for any other language a finding's node names. A filter narrows the
+     * items, not what the project holds; what the project suppresses is not held.
      *
-     * @return array<string, array<string, int>|string>
+     * @return array<string, array<string, int>>
      */
     private function byLanguage(string $projectId, TestFindingSuppressions $suppressions): array
     {
@@ -103,15 +99,9 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $statement = $this->pdo->prepare("SELECT n.language, tf.confidence, COUNT(*) AS findings FROM test_findings tf JOIN nodes n ON n.id = tf.node_id WHERE tf.project_id = :project AND {$condition} GROUP BY n.language, tf.confidence");
         $statement->execute($parameters + ['project' => $projectId]);
         $zeros = array_fill_keys(array_map(static fn(FindingConfidence $case): string => $case->value, FindingConfidence::cases()), 0);
-        $byLanguage = [];
-        foreach (self::PACKAGED_LANGUAGES as $language => $emitsTestFacts) {
-            $byLanguage[$language] = $emitsTestFacts ? $zeros : self::NO_TEST_FACTS;
-        }
+        $byLanguage = array_fill_keys(self::PACKAGED_LANGUAGES, $zeros);
         foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $language = self::LANGUAGE_OF_PREFIX[(string) $row['language']] ?? (string) $row['language'];
-            if (!is_array($byLanguage[$language] ?? $zeros)) {
-                continue;
-            }
             $byLanguage[$language] ??= $zeros;
             $byLanguage[$language][(string) $row['confidence']] += (int) $row['findings'];
         }
