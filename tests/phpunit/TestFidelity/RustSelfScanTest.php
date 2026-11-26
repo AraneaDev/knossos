@@ -66,6 +66,8 @@ final class RustSelfScanTest extends KnossosTestCase
         // The scan read the suite's test facts, so the empty list is a verdict on them.
         assertGreaterThan(350, (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE language = 'rust' AND kind = 'test_case'")->fetchColumn());
         assertGreaterThan(900, $assertions);
+        // Its mockall and fake sources are string fixtures, so no double is read.
+        assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM nodes WHERE language = 'rust' AND kind = 'test_double'")->fetchColumn());
     }
 
     /** Copy the worker's sources, without the build output beside them. */
@@ -78,8 +80,13 @@ final class RustSelfScanTest extends KnossosTestCase
         );
         foreach (new \RecursiveIteratorIterator($filter) as $item) {
             $destination = $to . '/' . substr($item->getPathname(), strlen($from) + 1);
-            @mkdir(dirname($destination), 0o777, true);
-            copy($item->getPathname(), $destination);
+            $directory = dirname($destination);
+            if (!is_dir($directory) && !mkdir($directory, 0o777, true) && !is_dir($directory)) {
+                self::fail('Could not create ' . $directory);
+            }
+            if (!copy($item->getPathname(), $destination)) {
+                self::fail('Could not copy ' . $item->getPathname());
+            }
         }
     }
 }
