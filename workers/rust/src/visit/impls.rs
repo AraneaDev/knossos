@@ -355,7 +355,7 @@ impl Walk<'_> {
                                 "overrides",
                                 serde_json::Value::Bool(true),
                             );
-                            this.record_impl_trait(method_canonical, trait_path);
+                            this.record_impl_trait(method_canonical, trait_path, node);
                         }
                         if (drop_impl && name == "drop")
                             || (exported_impl && matches!(method.vis, syn::Visibility::Public(_)))

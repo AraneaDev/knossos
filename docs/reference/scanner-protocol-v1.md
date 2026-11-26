@@ -223,7 +223,10 @@ a Rust one with a where clause `where`; a text cut to 80 characters ends in
 whether or not it sends `cases`. A Rust trait node carries `associated_types`,
 each name with its bounds as written (`Item: Clone`), and `associated_consts`,
 each `{name, type}`, each only when there is one. A Rust trait impl's method
-carries `impl_trait`, the trait path as the `impl` writes it (`Repo<String>`).
+carries `impl_trait`, the trait path as the `impl` writes it (`Repo<String>`),
+and the impl's own associated items: `impl_types`, each `{name, type}` as
+written, and `impl_consts`, each `{name, type, value?}`, `value` sent only for
+a literal; each list only when there is one, on every method of the impl.
 A mock template reads them all; the drift rules read none of them, and a
 Rust double stays compile-checked, so `VISIBILITY_BREACH` stays silent for it.
 

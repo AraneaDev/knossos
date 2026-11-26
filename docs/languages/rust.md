@@ -139,7 +139,8 @@ function or an inherent method also carries `visibility`, `private` without
 `trait` with type parameters carries `type_params`, and `where` for a where
 clause. An enum or union carries `rust_item`, a trait its
 `associated_types` and `associated_consts`, and a trait impl's method the
-trait it implements as written (`impl_trait`). `synthesize_mock` reads them; the drift rules do not, since a Rust
+trait it implements as written (`impl_trait`), with the impl's associated
+types and consts (`impl_types`, `impl_consts`). `synthesize_mock` reads them; the drift rules do not, since a Rust
 double is compile-checked.
 
 A node's `local_id` and both ends of an edge are written

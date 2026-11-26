@@ -222,3 +222,32 @@ fn a_traits_associated_types_and_consts_are_listed() {
         .get("associated_types")
         .is_none());
 }
+
+#[test]
+fn a_trait_impls_associated_items_ride_on_its_methods() {
+    let nodes = scan(
+        "pub trait WithAssoc { type Output; const LIMIT: usize; const NAME: &'static str; fn produce(&self) -> Self::Output; fn limit(&self) -> usize; }\n\
+         pub struct Producer;\n\
+         impl WithAssoc for Producer {\n    type Output = u8;\n    const LIMIT: usize = 3;\n    const NAME: &'static str = concat!(\"a\", \"b\");\n    fn produce(&self) -> u8 { 0 }\n    fn limit(&self) -> usize { 3 }\n}\n\
+         pub trait Plain { fn f(&self); }\n\
+         impl Plain for Producer { fn f(&self) {} }\n",
+    );
+    let produce = &nodes["crate::Producer::<impl WithAssoc>::produce"]["attributes"];
+
+    assert_eq!(
+        json!([{"name": "Output", "type": "u8"}]),
+        produce["impl_types"]
+    );
+    // A literal value is sent; any other expression is not.
+    assert_eq!(
+        json!([{"name": "LIMIT", "type": "usize", "value": "3"}, {"name": "NAME", "type": "&'static str"}]),
+        produce["impl_consts"]
+    );
+    assert_eq!(
+        produce["impl_types"],
+        nodes["crate::Producer::<impl WithAssoc>::limit"]["attributes"]["impl_types"]
+    );
+    let plain = &nodes["crate::Producer::<impl Plain>::f"]["attributes"];
+    assert!(plain.get("impl_types").is_none());
+    assert!(plain.get("impl_consts").is_none());
+}

@@ -178,13 +178,51 @@ impl super::Walk<'_> {
 
     /// Record on a trait impl's method `canonical` the trait it implements,
     /// as the `impl` writes it (`Repo<String>`), so a mock of the type can
-    /// give that impl of its own.
-    pub(super) fn record_impl_trait(&mut self, canonical: &str, path: &syn::Path) {
+    /// give that impl of its own, and the impl's associated items, which
+    /// that impl must give too: `impl_types`, each `{name, type}` as
+    /// written, and `impl_consts`, each `{name, type, value?}`, `value` the
+    /// written text of a literal and absent for any other expression. Each
+    /// list is sent only when there is one, on every method of the impl.
+    pub(super) fn record_impl_trait(
+        &mut self,
+        canonical: &str,
+        path: &syn::Path,
+        node: &syn::ItemImpl,
+    ) {
         self.facts.node_attribute(
             canonical,
             "impl_trait",
             Value::String(type_text(path, &mut false)),
         );
+        let mut types = Vec::new();
+        let mut consts = Vec::new();
+        for item in &node.items {
+            match item {
+                syn::ImplItem::Type(declared) => types.push(json!({
+                    "name": declared.ident.to_string(),
+                    "type": type_text(&declared.ty, &mut false),
+                })),
+                syn::ImplItem::Const(declared) => {
+                    let mut entry = json!({
+                        "name": declared.ident.to_string(),
+                        "type": type_text(&declared.ty, &mut false),
+                    });
+                    if literal(&declared.expr) {
+                        entry["value"] = Value::String(type_text(&declared.expr, &mut false));
+                    }
+                    consts.push(entry);
+                }
+                _ => {}
+            }
+        }
+        if !types.is_empty() {
+            self.facts
+                .node_attribute(canonical, "impl_types", Value::Array(types));
+        }
+        if !consts.is_empty() {
+            self.facts
+                .node_attribute(canonical, "impl_consts", Value::Array(consts));
+        }
     }
 
     /// Record on the trait, struct or enum node `canonical` its type
@@ -194,6 +232,18 @@ impl super::Walk<'_> {
         for (key, value) in generics_of(generics, &mut false) {
             self.facts.node_attribute(canonical, key, value);
         }
+    }
+}
+
+/// Whether an expression is a literal, or a negated one (`3`, `"a"`, `-1`).
+fn literal(expr: &syn::Expr) -> bool {
+    match expr {
+        syn::Expr::Lit(_) => true,
+        syn::Expr::Unary(unary) => {
+            matches!(unary.op, syn::UnOp::Neg(_))
+                && matches!(unary.expr.as_ref(), syn::Expr::Lit(_))
+        }
+        _ => false,
     }
 }
 
