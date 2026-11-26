@@ -10,8 +10,9 @@ use UnexpectedValueException;
  * A reader for the subset of YAML fixtures are written in (Q4(A)): block
  * mappings and sequences (compact forms included), flow `[...]` and `{...}`
  * collections, plain, single- and double-quoted scalars, literal and folded
- * block scalars, and comments. Plain scalars resolve as YAML 1.2's core
- * schema has them, as Nemesis's `yaml` package does: `yes` is a string.
+ * block scalars, and comments. Scalars are {@see YamlScalar}'s (YAML 1.2's
+ * core schema, a version-dependent plain scalar ambiguous), flow collections
+ * {@see YamlFlow}'s.
  *
  * What it does not read makes the file unparsable, never a guess: an anchor,
  * an alias or a tag (none is ever expanded), a merge key, a complex key, a
@@ -23,10 +24,7 @@ use UnexpectedValueException;
 final class YamlDocument
 {
     /** The deepest a collection may nest. */
-    public const MAX_DEPTH = 128;
-
-    /** Double-quoted escapes, each with what it stands for. */
-    private const ESCAPES = ['0' => "\0", 'a' => "\x07", 'b' => "\x08", 't' => "\t", "\t" => "\t", 'n' => "\n", 'v' => "\x0b", 'f' => "\x0c", 'r' => "\r", 'e' => "\x1b", ' ' => ' ', '"' => '"', '/' => '/', '\\' => '\\', 'N' => "\u{85}", '_' => "\u{a0}", 'L' => "\u{2028}", 'P' => "\u{2029}"];
+    public const MAX_DEPTH = YamlFlow::MAX_DEPTH;
 
     /** @var list<string> */
     private array $lines;
@@ -39,11 +37,6 @@ final class YamlDocument
 
     /** Whether the document's start is behind the cursor, so a marker ends it. */
     private bool $body = false;
-
-    /** Flow text being read, and where in it. */
-    private string $flow = '';
-
-    private int $flowAt = 0;
 
     private function __construct(string $text)
     {
@@ -229,120 +222,25 @@ final class YamlDocument
     private function inline(string $text, int $index, int $depth): Value
     {
         if ($text[0] === '[' || $text[0] === '{') {
-            $this->flow = $text;
-            while (!self::balanced($this->flow)) {
+            $flow = new YamlFlow($text);
+            while (!$flow->closed()) {
                 $more = $this->next();
                 if ($more === null) {
                     throw new UnexpectedValueException('unclosed flow collection');
                 }
-                $this->flow .= ' ' . trim(self::uncommented($this->lines[$more]));
+                $flow->feed(trim(self::uncommented($this->lines[$more])));
                 $this->at = $more + 1;
             }
-            $this->flowAt = 0;
-            $value = $this->flowValue($index + 1, $depth + 1);
-            $this->flowSpace();
-            if ($this->flowAt !== strlen($this->flow)) {
-                throw new UnexpectedValueException('unexpected content');
-            }
 
-            return $value;
+            return $flow->value($index + 1, $depth + 1);
         }
-        $value = self::scalarOf($text, $index + 1);
+        $value = YamlScalar::of($text, $index + 1);
         $below = $this->next();
         if ($below !== null && $this->column($below) > $this->column($index)) {
             throw new UnexpectedValueException('multi-line scalar');
         }
 
         return $value;
-    }
-
-    /** One scalar written whole: quoted, or plain and resolved by the core schema. */
-    private static function scalarOf(string $text, int $line): Value
-    {
-        if (str_contains('&*!', $text[0])) {
-            throw new UnexpectedValueException('anchor, alias or tag');
-        }
-        if ($text[0] === '"' || $text[0] === "'") {
-            [$scalar, $length] = self::quoted($text);
-            if (trim(substr($text, $length)) !== '') {
-                throw new UnexpectedValueException('unexpected content');
-            }
-
-            return Value::scalar($scalar, $line);
-        }
-        if (str_contains($text, ': ') || str_starts_with($text, '? ') || str_starts_with($text, '- ') || $text[0] === '@' || $text[0] === '`' || $text[0] === '%') {
-            throw new UnexpectedValueException('unsupported plain scalar');
-        }
-
-        return Value::scalar(self::resolved($text), $line);
-    }
-
-    /** A plain scalar's value under YAML 1.2's core schema. */
-    private static function resolved(string $text): int|float|string|bool|null
-    {
-        return match (true) {
-            in_array($text, ['~', 'null', 'Null', 'NULL', ''], true) => null,
-            in_array($text, ['true', 'True', 'TRUE'], true) => true,
-            in_array($text, ['false', 'False', 'FALSE'], true) => false,
-            preg_match('/^[-+]?[0-9]+$/D', $text) === 1 => abs((float) $text) < 9.2e18 ? (int) $text : (float) $text,
-            preg_match('/^0o[0-7]+$/D', $text) === 1 => (int) octdec(substr($text, 2)),
-            preg_match('/^0x[0-9a-fA-F]+$/D', $text) === 1 => (int) hexdec(substr($text, 2)),
-            preg_match('/^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?$/D', $text) === 1 => (float) $text,
-            preg_match('/^[-+]?\.(?:inf|Inf|INF)$/D', $text) === 1 => $text[0] === '-' ? -INF : INF,
-            in_array($text, ['.nan', '.NaN', '.NAN'], true) => NAN,
-            default => $text,
-        };
-    }
-
-    /**
-     * A quoted scalar at the start of `$text`, and how many bytes it took.
-     *
-     * @return array{string, int}
-     */
-    private static function quoted(string $text): array
-    {
-        $quote = $text[0];
-        $value = '';
-        for ($i = 1, $length = strlen($text); $i < $length; ++$i) {
-            $character = $text[$i];
-            if ($quote === "'" && $character === "'") {
-                if (($text[$i + 1] ?? '') !== "'") {
-                    return [$value, $i + 1];
-                }
-                $value .= "'";
-                ++$i;
-            } elseif ($quote === '"' && $character === '"') {
-                return [$value, $i + 1];
-            } elseif ($quote === '"' && $character === '\\') {
-                [$decoded, $taken] = self::escape($text, $i + 1);
-                $value .= $decoded;
-                $i += $taken;
-            } else {
-                $value .= $character;
-            }
-        }
-
-        throw new UnexpectedValueException('multi-line scalar');
-    }
-
-    /**
-     * The escape after a backslash at `$at`: what it stands for, and how many bytes it took.
-     *
-     * @return array{string, int}
-     */
-    private static function escape(string $text, int $at): array
-    {
-        $code = $text[$at] ?? '';
-        if (isset(self::ESCAPES[$code])) {
-            return [self::ESCAPES[$code], 1];
-        }
-        $digits = ['x' => 2, 'u' => 4, 'U' => 8][$code] ?? null;
-        $hex = $digits === null ? '' : substr($text, $at + 1, $digits);
-        if ($digits === null || strlen($hex) !== $digits || !ctype_xdigit($hex) || ($character = mb_chr((int) hexdec($hex), 'UTF-8')) === false) {
-            throw new UnexpectedValueException('invalid escape');
-        }
-
-        return [$character, 1 + $digits];
     }
 
     /** A literal (`|`) or folded (`>`) block scalar whose header is on line `$index`, under a node at column `$indent`. */
@@ -413,113 +311,6 @@ final class YamlDocument
         return $text;
     }
 
-    /** The flow value at the flow cursor, on line `$line`. */
-    private function flowValue(int $line, int $depth): Value
-    {
-        $this->flowSpace();
-        $character = $this->flow[$this->flowAt] ?? '';
-        if ($character !== '[' && $character !== '{') {
-            $text = $this->flowScalar();
-
-            return $text === '' ? throw new UnexpectedValueException('unexpected content') : self::scalarOf($text, $line);
-        }
-        if ($depth > self::MAX_DEPTH) {
-            throw new UnexpectedValueException('nested too deep');
-        }
-        ++$this->flowAt;
-        $close = $character === '[' ? ']' : '}';
-        $children = [];
-        while (true) {
-            $this->flowSpace();
-            if (($this->flow[$this->flowAt] ?? '') === $close) {
-                ++$this->flowAt;
-
-                return new Value($close === ']' ? Value::LIST : Value::DICT, null, $children, $line);
-            }
-            if ($close === ']') {
-                $children[] = $this->flowValue($line, $depth + 1);
-            } else {
-                $key = $this->flowKey();
-                if (array_key_exists($key, $children)) {
-                    throw new UnexpectedValueException('duplicate key');
-                }
-                $this->flowSpace();
-                $children[$key] = ($this->flow[$this->flowAt] ?? '') === ':' ? $this->flowMember($line, $depth) : Value::scalar(null, $line);
-            }
-            $this->flowSpace();
-            $next = $this->flow[$this->flowAt] ?? '';
-            if ($next === ',') {
-                ++$this->flowAt;
-            } elseif ($next !== $close) {
-                throw new UnexpectedValueException('unclosed flow collection');
-            }
-        }
-    }
-
-    /** A flow mapping's value after its colon. */
-    private function flowMember(int $line, int $depth): Value
-    {
-        ++$this->flowAt;
-        $this->flowSpace();
-        $next = $this->flow[$this->flowAt] ?? '';
-
-        return $next === ',' || $next === '}' ? Value::scalar(null, $line) : $this->flowValue($line, $depth + 1);
-    }
-
-    /** A flow mapping's key: quoted, or plain up to its colon. */
-    private function flowKey(): string
-    {
-        $text = $this->flowScalar(true);
-        if ($text === '' || $text === '<<' || str_contains('&*!?', $text[0])) {
-            throw new UnexpectedValueException($text === '<<' ? 'merge key' : 'anchor, alias or tag');
-        }
-
-        return $text[0] === '"' || $text[0] === "'" ? self::quoted($text)[0] : $text;
-    }
-
-    /** The text of one flow scalar at the flow cursor, which moves past it. */
-    private function flowScalar(bool $key = false): string
-    {
-        $rest = substr($this->flow, $this->flowAt);
-        if ($rest !== '' && ($rest[0] === '"' || $rest[0] === "'")) {
-            $length = self::quoted($rest)[1];
-        } else {
-            $length = preg_match($key ? '/^[^,\[\]{}]*?(?=:(?:\s|[,\[\]{}]|$)|[,\]}]|$)/' : '/^[^,\[\]{}]*/', $rest, $match) === 1 ? strlen($match[0]) : 0;
-        }
-        $this->flowAt += $length;
-
-        return trim(substr($rest, 0, $length));
-    }
-
-    /** Skip spaces in flow text. */
-    private function flowSpace(): void
-    {
-        $this->flowAt += strspn($this->flow, ' ', $this->flowAt);
-    }
-
-    /** Whether a flow collection's brackets close, outside quotes. */
-    private static function balanced(string $text): bool
-    {
-        $depth = 0;
-        $quote = null;
-        for ($i = 0, $length = strlen($text); $i < $length; ++$i) {
-            $character = $text[$i];
-            if ($quote !== null) {
-                $quote = $character === $quote && ($quote === "'" || $text[$i - 1] !== '\\') ? null : $quote;
-            } elseif (($character === '"' || $character === "'") && ($i === 0 || str_contains(' [{,:', $text[$i - 1]))) {
-                $quote = $character;
-            } else {
-                $depth += match ($character) {
-                    '[', '{' => 1,
-                    ']', '}' => -1,
-                    default => 0,
-                };
-            }
-        }
-
-        return $depth <= 0;
-    }
-
     /**
      * A mapping entry's key and what follows its colon; null when `$text` is
      * no entry. A merge key, a complex key and an anchored, aliased or tagged
@@ -536,7 +327,7 @@ final class YamlDocument
             throw new UnexpectedValueException('complex key');
         }
         if ($text[0] === '"' || $text[0] === "'") {
-            [$key, $length] = self::quoted($text);
+            [$key, $length] = YamlScalar::quoted($text, 0);
             $after = ltrim(substr($text, $length), ' ');
 
             return $after !== '' && $after[0] === ':' && (strlen($after) === 1 || $after[1] === ' ') ? [$key, trim(substr($after, 1))] : null;

@@ -122,7 +122,7 @@ final class FixtureDrift
 
             return;
         }
-        if (KindLattice::namesOnly($declared) || $this->types->fits($value->kind, $declared, $owner->language) !== false) {
+        if ($value->kind === Value::AMBIGUOUS || KindLattice::namesOnly($declared) || $this->types->fits($value->kind, $declared, $owner->language) !== false) {
             return;
         }
         $this->add('kind_mismatch', $value->line, $owner, $field, sprintf("has '%s' as %s but %s declares '%s'.", $label, $value->kind, $owner->name, $declared));

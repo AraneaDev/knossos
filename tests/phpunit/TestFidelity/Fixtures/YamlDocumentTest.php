@@ -85,13 +85,43 @@ final class YamlDocumentTest extends KnossosTestCase
 
         $root = YamlDocument::parse($yaml)?->root;
         self::assertSame(
-            ['a' => null, 'b' => null, 'c' => null, 'd' => true, 'e' => false, 'f' => 12, 'g' => -3, 'h' => 31, 'i' => 15, 'j' => 1.5, 'k' => INF, 'l' => 'yes', 'm' => '2026-11-26', 'n' => '12', 'o' => "tab\there", 'p' => "it's fine", 'q' => 'http://example.com:80/x', 'r' => 7, 's' => 1000.0, 't' => "it's"],
+            ['a' => null, 'b' => null, 'c' => null, 'd' => true, 'e' => false, 'f' => 12, 'g' => -3, 'h' => 31, 'i' => '0o17', 'j' => 1.5, 'k' => INF, 'l' => 'yes', 'm' => '2026-11-26', 'n' => '12', 'o' => "tab\there", 'p' => "it's fine", 'q' => 'http://example.com:80/x', 'r' => 7, 's' => 1000.0, 't' => "it's"],
             self::plain($root),
         );
         self::assertSame([Value::NULL, Value::INT, Value::FLOAT, Value::STRING, Value::BOOL], [
             $root?->get('c')?->kind, $root?->get('f')?->kind, $root?->get('j')?->kind, $root?->get('n')?->kind, $root?->get('e')?->kind,
         ]);
         self::assertTrue(is_nan((float) YamlDocument::parse('x: .nan')?->root->get('x')?->scalar));
+    }
+
+    public function testAScalarWhoseKindDependsOnTheYamlVersionIsAmbiguous(): void
+    {
+        $words = ['yes', 'No', 'ON', 'off', 'y', 'N', '1_000', '-1_000.5', '0b101', '0o17', '010', '08', '1:30', '12:30:00'];
+        $root = YamlDocument::parse(implode("\n", array_map(static fn(int $at, string $word): string => 'k' . $at . ': ' . $word, array_keys($words), $words)) . "\n")?->root;
+
+        foreach ($words as $at => $word) {
+            self::assertSame([Value::AMBIGUOUS, $word], [$root?->get('k' . $at)?->kind, $root?->get('k' . $at)?->scalar], $word);
+        }
+        // In a flow collection too; and the core schema's own kinds stay as they were.
+        self::assertSame([Value::AMBIGUOUS, Value::AMBIGUOUS], array_column(array_map(static fn(Value $item): array => ['kind' => $item->kind], YamlDocument::parse('[yes, 1_000]')?->root->items() ?? []), 'kind'));
+        $plain = YamlDocument::parse("a: 0\nb: 10\nc: true\nd: 0x1F\ne: yesterday\nf: '010'\ng: 1.5\n")?->root;
+        self::assertSame([Value::INT, Value::INT, Value::BOOL, Value::INT, Value::STRING, Value::STRING, Value::FLOAT], array_map(static fn(string $key): ?string => $plain?->get($key)?->kind, ['a', 'b', 'c', 'd', 'e', 'f', 'g']));
+    }
+
+    public function testALongFlowCollectionIsReadInLinearTime(): void
+    {
+        // A flow sequence over 30,000 lines: each line's brackets are scanned once, not all the text so far.
+        $yaml = "[\n" . str_repeat("1,\n", 30_000) . "1]\n";
+        $started = hrtime(true);
+        $root = YamlDocument::parse($yaml)?->root;
+        $seconds = (hrtime(true) - $started) / 1e9;
+
+        self::assertSame(30_001, count($root?->items() ?? []));
+        self::assertLessThan(1.0, $seconds);
+        $map = "{\n" . implode(",\n", array_map(static fn(int $at): string => "'k" . $at . "': \"v\"", range(1, 30_000))) . "}\n";
+        $started = hrtime(true);
+        self::assertSame(30_000, count(YamlDocument::parse($map)?->root->keys() ?? []));
+        self::assertLessThan(1.0, (hrtime(true) - $started) / 1e9);
     }
 
     public function testBlockScalars(): void

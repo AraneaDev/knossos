@@ -569,6 +569,8 @@ php	src/TestFidelity/Fixtures/JsonDocument.php
 php	src/TestFidelity/Fixtures/KindLattice.php
 php	src/TestFidelity/Fixtures/Value.php
 php	src/TestFidelity/Fixtures/YamlDocument.php
+php	src/TestFidelity/Fixtures/YamlFlow.php
+php	src/TestFidelity/Fixtures/YamlScalar.php
 php	src/TestFidelity/MockedModulePaths.php
 php	src/TestFidelity/OnRequest/FrameworkModules.php
 php	src/TestFidelity/OnRequest/OnRequestFinding.php

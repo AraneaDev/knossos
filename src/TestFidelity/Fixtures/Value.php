@@ -29,6 +29,9 @@ final readonly class Value
 
     public const DICT = 'dict';
 
+    /** A YAML plain scalar whose kind depends on the YAML version a loader follows (`yes`, `1_000`, `010`): never judged. */
+    public const AMBIGUOUS = 'ambiguous';
+
     /**
      * @param array<array-key, Value> $children a `dict`'s members by key, in file order, or a `list`'s items; empty for a scalar
      */
