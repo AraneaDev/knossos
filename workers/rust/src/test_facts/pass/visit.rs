@@ -30,12 +30,6 @@ impl<'ast> Visit<'ast> for Pass<'_> {
     }
 
     fn visit_local(&mut self, node: &'ast syn::Local) {
-        if let Some(init) = node.init.as_ref() {
-            if let syn::Expr::Reference(reference) = strip_parens(&init.expr) {
-                // A second name for the handle: unseen, it may be cloned.
-                self.shared(&reference.expr);
-            }
-        }
         let made = node.init.as_ref().and_then(|init| {
             if init.diverge.is_some() {
                 return None;
@@ -69,11 +63,6 @@ impl<'ast> Visit<'ast> for Pass<'_> {
     }
 
     fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
-        if is_clone(&node.func) {
-            for argument in &node.args {
-                self.shared(argument);
-            }
-        }
         let whole = syn::Expr::Call(node.clone());
         if let syn::Expr::Path(func) = node.func.as_ref() {
             if func.qself.is_none() {
@@ -106,9 +95,6 @@ impl<'ast> Visit<'ast> for Pass<'_> {
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
-        if node.method == "clone" {
-            self.shared(&node.receiver);
-        }
         if self.mocked_function(node) {
             return;
         }
@@ -119,7 +105,7 @@ impl<'ast> Visit<'ast> for Pass<'_> {
             receiver = inner.receiver.as_ref();
         }
         let handles = &self.found.handles;
-        let handle = receiver_handle(receiver).filter(|name| {
+        let handle = receiver_handle(through_borrow(receiver)).filter(|name| {
             handles.bound.contains_key(name) || handles.config_of.contains_key(name)
         });
         let configured = match (handle, strip_parens(receiver)) {
@@ -151,8 +137,11 @@ impl<'ast> Visit<'ast> for Pass<'_> {
     fn visit_expr_reference(&mut self, node: &'ast syn::ExprReference) {
         if let syn::Expr::Path(path) = strip_parens(&node.expr) {
             if let Some(name) = handle_name(path) {
-                if self.found.handles.bound.contains_key(&name) {
-                    self.hand_on(&name, node.mutability.is_some());
+                if let Some(index) = self.found.handles.bound.get(&name).copied() {
+                    // A borrow handed anywhere may be cloned out of sight,
+                    // and a framework's clone may share the configuration.
+                    let defeats = node.mutability.is_some() || self.shares_clones(index);
+                    self.hand_on(&name, defeats);
                     return;
                 }
             }
@@ -240,37 +229,25 @@ impl<'ast> Visit<'ast> for Pass<'_> {
 }
 
 impl Pass<'_> {
-    /// Defeat the handle `expr` is, through `&`, `&mut` and parentheses,
-    /// when its framework's clones may share its configuration: a clone is
-    /// a second handle, configured under another name out of sight. A
-    /// mockall mock clones only by a mocked `clone`, a fresh mock, and a
-    /// fake's pins are its own code.
-    fn shared(&mut self, expr: &syn::Expr) {
-        let mut inner = strip_parens(expr);
-        while let syn::Expr::Reference(reference) = inner {
-            inner = strip_parens(&reference.expr);
-        }
-        let syn::Expr::Path(path) = inner else {
-            return;
-        };
-        let Some(name) = handle_name(path) else {
-            return;
-        };
-        let Some(index) = self.found.handles.bound.get(&name).copied() else {
-            return;
-        };
-        if !matches!(
+    /// Whether the double at `index` is of a framework whose clones may
+    /// share its configuration: every one but mockall, whose mock clones
+    /// only by a mocked `clone` (a fresh mock), and a fake, whose pins are
+    /// its own code.
+    fn shares_clones(&self, index: usize) -> bool {
+        !matches!(
             self.kinds[index],
             Framework::Mockall | Framework::HandWritten
-        ) {
-            self.found.handles.defeated.insert(name);
-        }
+        )
     }
 }
 
-/// Whether a call's function is a `clone` (`Foo::clone`, `Clone::clone`,
-/// `<Foo as Clone>::clone`).
-fn is_clone(func: &syn::Expr) -> bool {
-    matches!(func, syn::Expr::Path(path)
-        if path.path.segments.last().is_some_and(|last| last.ident == "clone"))
+/// A method call's receiver, through parentheses and a shared borrow: a
+/// member call made through `&h` is one on the handle.
+fn through_borrow(receiver: &syn::Expr) -> &syn::Expr {
+    match strip_parens(receiver) {
+        syn::Expr::Reference(reference) if reference.mutability.is_none() => {
+            strip_parens(&reference.expr)
+        }
+        other => other,
+    }
 }

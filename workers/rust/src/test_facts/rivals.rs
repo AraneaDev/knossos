@@ -196,11 +196,9 @@ impl Visit<'_> for Seen {
         // A body's imports are not in the walk's scope: any that leaves the
         // standard crates may bring in a trait.
         if self.in_body > 0 {
+            // `::std::…` and `std::…` alike; `::dep::…` leaves them.
             let leaves_std = match &node.tree {
-                syn::UseTree::Path(path) => {
-                    node.leading_colon.is_none()
-                        && !STD_CRATES.iter().any(|name| path.ident == name)
-                }
+                syn::UseTree::Path(path) => !STD_CRATES.iter().any(|name| path.ident == name),
                 _ => true,
             };
             self.rivals.opened |= leaves_std;

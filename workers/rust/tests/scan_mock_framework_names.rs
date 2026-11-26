@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 fn framework_values_need_every_condition() {
     let config = "    faux::when!(mock.get).then_return(10);\n";
     let assert = "    assert_eq!(mock.get(), 10);\n";
-    let variants: [(&str, String); 16] = [
+    let variants: [(&str, String); 24] = [
         (
             "two configurations",
             format!("{config}    faux::when!(mock.get).then_return(11);\n"),
@@ -73,6 +73,40 @@ fn framework_values_need_every_condition() {
             "a clone of a borrow",
             format!("    let other = (&mock).clone();\n    let _ = other;\n{config}"),
         ),
+        // Any borrow handed anywhere but to a member call on the mock may be
+        // cloned out of sight.
+        (
+            "a clone of the mock",
+            format!("    let other = mock.clone();\n    let _ = other;\n{config}"),
+        ),
+        (
+            "a member call through a mutable borrow",
+            format!("    let _ = (&mut mock).get();\n{config}"),
+        ),
+        (
+            "a borrow handed to a helper",
+            format!("    let _ = dup(&mock);\n{config}"),
+        ),
+        (
+            "ToOwned::to_owned",
+            format!("    let _ = ToOwned::to_owned(&mock);\n{config}"),
+        ),
+        (
+            "a borrow wrapped in Some",
+            format!("    let _ = Some(&mock).cloned();\n{config}"),
+        ),
+        (
+            "a borrow in an array",
+            format!("    let _ = [&mock].map(Clone::clone);\n{config}"),
+        ),
+        (
+            "a borrow in a struct field",
+            format!("    let h = Holder {{ r: &mock }};\n    let _ = h.r.clone();\n{config}"),
+        ),
+        (
+            "a borrow in a tuple",
+            format!("    let pair = (&mock, 1);\n    let _ = pair;\n{config}"),
+        ),
         (
             "a clone through a bound reference",
             format!("    let r = &mock;\n    let other = r.clone();\n    let _ = other;\n{config}"),
@@ -95,10 +129,10 @@ fn framework_values_need_every_condition() {
         json!("10"),
         faux_value("framework-defeats-control", &format!("{config}{assert}"))
     );
-    // The clone twin: cloning something else, a separate mock, and a call
-    // that is no clone handed a borrow of the mock leave it.
+    // The clone twin: cloning something else, a separate mock, and a member
+    // call made through a shared borrow of the mock leave it.
     let apart = format!(
-        "    let name = String::new().clone();\n    let other = Foo::faux();\n    let _ = Clone::clone(&name);\n    let _ = std::convert::identity(&mock);\n    \
+        "    let name = String::new().clone();\n    let other = Foo::faux();\n    let _ = Clone::clone(&name);\n    let _ = (&mock).get();\n    \
          let _ = (other, name);\n{config}{assert}"
     );
     assert_eq!(
@@ -120,6 +154,23 @@ fn a_clone_of_a_mry_mock_hides_its_value() {
     let operand = &operands(&contributions, 13)[0][0];
     assert_eq!("mock-config", operand["source"]);
     assert_eq!(Value::Null, operand["value"]);
+
+    // A helper handed a borrow may clone it; a member call through one may
+    // not.
+    let helper = |name: &str, handing: &str| {
+        let source = format!(
+            "#[mry::mry]\n#[derive(Default, Clone)]\npub struct Cat {{\n    name: String,\n}}\n\
+             #[mry::mry]\nimpl Cat {{\n    pub fn meow(&self) -> usize {{\n        1\n    }}\n}}\n\
+             #[test]\nfn t() {{\n    let mut cat = Cat::default();\n    cat.mock_meow().returns(42);\n{handing}    \
+             assert_eq!(cat.meow(), 42);\n}}\n"
+        );
+        operands(&scan(name, &source), 13)[0][0]["value"].clone()
+    };
+    assert_eq!(Value::Null, helper("mry-dup", "    let _ = dup(&cat);\n"));
+    assert_eq!(
+        json!("42"),
+        helper("mry-dup-twin", "    let _ = (&cat).meow();\n")
+    );
 }
 
 #[test]

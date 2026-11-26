@@ -113,7 +113,7 @@ type Variant<'a> = (&'a str, String, Vec<(&'a str, &'a str)>);
 
 #[test]
 fn fake_pins_need_every_condition() {
-    let variants: [Variant<'_>; 23] = [
+    let variants: [Variant<'_>; 24] = [
         (
             "a pub fake",
             FAKE.replace("struct FakeClock", "pub(crate) struct FakeClock"),
@@ -196,6 +196,11 @@ fn fake_pins_need_every_condition() {
                 "{FAKE}fn helper() {{\n    struct G;\n}}\nuse self::FakeClock as G;\n\
                  impl G {{\n    fn now(&self) -> u64 {{\n        7\n    }}\n}}\n"
             ),
+            vec![],
+        ),
+        (
+            "an import with a leading colon inside a body",
+            format!("{FAKE}fn helper() {{\n    use ::dep::Take;\n}}\n"),
             vec![],
         ),
         (
@@ -291,7 +296,7 @@ fn a_fake_with_every_condition_pins() {
         union Bits {\n    a: u8,\n}\nimpl Bits {\n    fn now(&self) -> u64 {\n        7\n    }\n}\n\
         use std::fmt::Debug;\nuse std::collections::*;\n";
     let tests = format!(
-        "{fake}#[test]\nfn echo() {{\n    use std::cell::Cell;\n    let clock = FakeClock::default();\n    \
+        "{fake}#[test]\nfn echo() {{\n    use std::cell::Cell;\n    use ::std::fmt::Write;\n    let clock = FakeClock::default();\n    \
          assert_eq!(clock.now(), 42);\n}}\n"
     );
     let contributions = scan("fake-control", &[("src/tests.rs", &tests)]);
