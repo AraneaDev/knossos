@@ -104,13 +104,18 @@ use PHPUnit\Framework\Attributes\Group;
  * 15. A gap: `nemesis-experiments/fluent` `QueryTest.php:17`: Nemesis reports
  *    `Order::Random`, a case the enum lacks. Knossos reads no enum cases yet,
  *    so the pin's type is unknown: silent.
- * 16. Momus's MOCK-001 (over-mocking, `pest` `FeatureFlagTest.php:1`) is an
- *    on-request check, not a scan one; MOCK-002 (info) is not
- *    `MOCKS_SUBJECT` here, since these tests run no production code.
+ * 16. Momus's MOCK-001 (over-mocking, `pest` `FeatureFlagTest.php:1`) is the
+ *    on-request OVER_MOCKING, which `OnRequestAcceptanceTest` compares; it is
+ *    silent for PHP, whose worker sends no imports (its departure 4, G6-02).
+ *    MOCK-002 (info, `nemesis-magic` `BagTest.php:14` and each experiment)
+ *    is not `MOCKS_SUBJECT` here, since these tests run no production code.
  * 17. `nemesis-experiments/fluent` `QueryTest.php:15`: Nemesis reports
  *    `willReturnSelf()` on a `void` method as definite drift; Knossos
  *    deliberately gives a warning (Ruling R18): the void method's generated
  *    body returns nothing, so neither PHPUnit nor Mockery fails on it.
+ *
+ * The frozen output of every run above is in
+ * `tests/Fixtures/test-fidelity/goldens/{momus,nemesis}/php.json`.
  *
  * Rulings these fixtures hold no case of, pinned by their own tests instead:
  * R2 (PHPUnit `with()` judged only for too many), R11 and R12 (what a property
@@ -122,7 +127,135 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('php-scanner')]
 final class PhpAcceptanceTest extends KnossosTestCase
 {
+    use FrozenGoldens;
     private const FIXTURES = '/tests/Fixtures/test-fidelity/php';
+
+    /**
+     * What the frozen Momus run over each fixture reports (`goldens/momus/php.json`),
+     * as `RULE/severity@file:line`: the runs this docblock describes.
+     */
+    private const MOMUS_GOLDEN = [
+        'momus' => [
+            'DRIFT-001/error@tests/AbstractMockTest.php:13',
+            'DRIFT-001/error@tests/AnonymousTest.php:13',
+            'DRIFT-001/error@tests/InvoiceTest.php:15',
+            'DRIFT-001/error@tests/MockeryPestTest.php:13',
+            'DRIFT-001/error@tests/MockeryPestTest.php:33',
+            'DRIFT-001/error@tests/MockeryPestTest.php:42',
+            'DRIFT-001/error@tests/SetUpMockTest.php:19',
+            'DRIFT-003/warning@tests/DocblockTest.php:14',
+            'DRIFT-003/warning@tests/DocblockTest.php:21',
+            'DRIFT-003/warning@tests/Drift003Test.php:14',
+            'DRIFT-003/warning@tests/Drift003Test.php:21',
+            'DRIFT-003/warning@tests/Drift003Test.php:28',
+            'DRIFT-003/warning@tests/InvoiceTest.php:22',
+            'DRIFT-003/warning@tests/PartialMockTest.php:13',
+            'DRIFT-003/warning@tests/PartialMockTest.php:19',
+            'DRIFT-003/warning@tests/SetUpMockTest.php:25',
+            'DRIFT-004/error@tests/ConstructorTest.php:13',
+            'TAUT-001/error@tests/InvoiceTest.php:16',
+            'TAUT-002/error@tests/InvoiceTest.php:23',
+            'TAUT-002/error@tests/SetUpMockTest.php:26',
+            'TAUT-003/error@tests/InvoiceTest.php:16',
+            'TAUT-005/warning@tests/Drift003Test.php:36',
+            'TAUT-005/warning@tests/InvoiceTest.php:13',
+            'TAUT-005/warning@tests/MockeryPestTest.php:41',
+            'TAUT-005/warning@tests/ReassignTest.php:13',
+        ],
+        'nemesis' => [
+            'TAUT-005/warning@tests/BillingServiceTest.php:20',
+            'TAUT-005/warning@tests/BillingServiceTest.php:27',
+            'TAUT-005/warning@tests/BillingServiceTest.php:34',
+        ],
+        'nemesis-magic' => [
+            'DRIFT-001/error@tests/BagTest.php:15',
+            'MOCK-002/info@tests/BagTest.php:14',
+        ],
+        'nemesis-experiments/callback' => [
+            'MOCK-002/info@tests/CourierTest.php:12',
+        ],
+        'nemesis-experiments/final' => [
+            'MOCK-002/info@tests/SealedTest.php:13',
+            'TAUT-005/warning@tests/SealedTest.php:16',
+        ],
+        'nemesis-experiments/fluent' => [
+            'MOCK-002/info@tests/QueryTest.php:13',
+        ],
+        'nemesis-experiments/mockery' => [
+            'MOCK-002/info@tests/NotifierTest.php:13',
+        ],
+        'nemesis-experiments/partial-mock' => [
+            'DRIFT-001/error@tests/LedgerTest.php:15',
+            'DRIFT-001/error@tests/LedgerTest.php:24',
+            'DRIFT-003/warning@tests/LedgerTest.php:23',
+            'MOCK-002/info@tests/LedgerTest.php:15',
+            'MOCK-002/info@tests/LedgerTest.php:22',
+        ],
+        'nemesis-experiments/pest' => [
+            'DRIFT-001/error@tests/FeatureFlagTest.php:7',
+            'MOCK-001/warning@tests/FeatureFlagTest.php:1',
+            'MOCK-002/info@tests/FeatureFlagTest.php:6',
+        ],
+        'nemesis-experiments/phpunit-stub' => [
+            'MOCK-002/info@tests/InvoiceGatewayTest.php:12',
+        ],
+    ];
+
+    /** The same for the frozen Nemesis run (`goldens/nemesis/php.json`), as `TYPE/confidence@file:line`. */
+    private const NEMESIS_GOLDEN = [
+        'momus' => [
+            'GHOST_METHOD/definite@tests/AbstractMockTest.php:13',
+            'GHOST_METHOD/definite@tests/MockeryPestTest.php:13',
+            'GHOST_METHOD/definite@tests/MockeryPestTest.php:42',
+            'RETURN_DRIFT/definite@tests/BrokenTest.php:10',
+            'RETURN_DRIFT/definite@tests/Drift003Test.php:14',
+            'RETURN_DRIFT/definite@tests/Drift003Test.php:21',
+            'RETURN_DRIFT/definite@tests/Drift003Test.php:28',
+            'RETURN_DRIFT/definite@tests/PartialMockTest.php:13',
+            'RETURN_DRIFT/definite@tests/PartialMockTest.php:19',
+            'RETURN_DRIFT/warning@tests/DocblockTest.php:14',
+            'RETURN_DRIFT/warning@tests/DocblockTest.php:21',
+            'RETURN_DRIFT/warning@tests/DocblockTest.php:28',
+            'RETURN_DRIFT/warning@tests/DocblockTest.php:29',
+            'RETURN_DRIFT/warning@tests/DocblockTest.php:30',
+        ],
+        'nemesis' => [
+            'ARITY_MISMATCH/definite@tests/BillingServiceTest.php:21',
+            'GHOST_METHOD/definite@tests/BillingServiceTest.php:14',
+            'RETURN_DRIFT/definite@tests/BillingServiceTest.php:28',
+        ],
+        'nemesis-magic' => [],
+        'nemesis-experiments/callback' => [
+            'ARITY_MISMATCH/definite@tests/CourierTest.php:15',
+        ],
+        'nemesis-experiments/final' => [
+            'RETURN_DRIFT/warning@tests/SealedTest.php:20',
+            'VISIBILITY_BREACH/definite@tests/SealedTest.php:14',
+            'VISIBILITY_BREACH/definite@tests/SealedTest.php:17',
+            'VISIBILITY_BREACH/definite@tests/SealedTest.php:20',
+            'VISIBILITY_BREACH/warning@tests/SealedTest.php:18',
+        ],
+        'nemesis-experiments/fluent' => [
+            'RETURN_DRIFT/definite@tests/QueryTest.php:15',
+            'RETURN_DRIFT/definite@tests/QueryTest.php:17',
+        ],
+        'nemesis-experiments/mockery' => [
+            'ARITY_MISMATCH/definite@tests/NotifierTest.php:14',
+        ],
+        'nemesis-experiments/partial-mock' => [
+            'GHOST_METHOD/definite@tests/LedgerTest.php:15',
+            'GHOST_METHOD/definite@tests/LedgerTest.php:18',
+            'GHOST_METHOD/definite@tests/LedgerTest.php:24',
+            'RETURN_DRIFT/definite@tests/LedgerTest.php:23',
+        ],
+        'nemesis-experiments/pest' => [
+            'GHOST_METHOD/definite@tests/FeatureFlagTest.php:7',
+        ],
+        'nemesis-experiments/phpunit-stub' => [
+            'GHOST_METHOD/definite@tests/InvoiceGatewayTest.php:13',
+            'RETURN_DRIFT/definite@tests/InvoiceGatewayTest.php:14',
+        ],
+    ];
 
     /**
      * A project made of a copy of one fixture directory, scanned once.
@@ -325,5 +458,16 @@ final class PhpAcceptanceTest extends KnossosTestCase
         assertSame(6, $audit->data['total']);
         assertSame(['tests/BillingServiceTest.php'], array_values(array_unique(array_column($audit->data['items'], 'file'))));
         assertSame(['definite' => 3, 'warning' => 3], $audit->data['summary']['by_language']['php']);
+    }
+
+    /**
+     * The frozen goldens still hold the tool runs this docblock describes;
+     * `OnRequestAcceptanceTest` checks each against its fixture and commit.
+     */
+    public function testTheFrozenGoldensHoldWhatThisDocblockDescribes(): void
+    {
+        assertSame(self::MOMUS_GOLDEN, self::goldenFindings('momus', 'php'));
+        assertSame(self::NEMESIS_GOLDEN, self::goldenFindings('nemesis', 'php'));
+        assertSame([self::MOMUS_COMMIT, self::NEMESIS_COMMIT], [self::golden('momus', 'php')['commit'], self::golden('nemesis', 'php')['commit']]);
     }
 }

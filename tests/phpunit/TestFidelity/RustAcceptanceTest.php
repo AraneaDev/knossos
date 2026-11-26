@@ -93,9 +93,10 @@ use PHPUnit\Framework\Attributes\Group;
  *    not resolve in the test file either.
  * 7. A gap (G5-11): MOCK-002 (info) at `generic_test.rs:36` and `:43`.
  *    `MOCKS_SUBJECT` is silent for Rust (Decision 10).
- * 8. On request in phase 6: Momus's MOCK-001 (`automock-drift`
- *    `tests/gateway_mock.rs:1`, and the `tautology` mock files) is an
- *    on-request check in Knossos, not a scan one.
+ * 8. Momus's MOCK-001 (`automock-drift` `tests/gateway_mock.rs:1`, and the
+ *    `tautology` mock files) is the on-request OVER_MOCKING, which
+ *    `OnRequestAcceptanceTest` compares: it fires on the `tautology` files,
+ *    and `gateway_mock.rs` holds no double (item 4; its departure 5).
  * 9. Agreed: Momus's TAUT-005 at `mocktopus_test.rs:12` is
  *    `TAUTOLOGY/zero_reach/warning`: a mocktopus pin nothing calls.
  * 10. Knossos-only, each checked true by reading the source:
@@ -111,6 +112,9 @@ use PHPUnit\Framework\Attributes\Group;
  *    `mock_only` at `tests/mock_only.rs:7`, where Momus is silent. The
  *    mock is the crate's own `tautology::clock::MockClock`, imported.
  *
+ * The frozen output of every run above is in
+ * `tests/Fixtures/test-fidelity/goldens/{momus,nemesis}/rust.json`.
+ *
  * The tautology golden (`tautology/`) sets one planted case beside its
  * healthy twin, which runs production, for each category that applies to
  * Rust: `self_comparison` (two equal literals), `constant`, `mock_echo`,
@@ -122,9 +126,69 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('test-fidelity')]
 final class RustAcceptanceTest extends KnossosTestCase
 {
+    use FrozenGoldens;
     use WorkerClients;
 
     private const FIXTURES = '/tests/Fixtures/test-fidelity/rust';
+
+    /**
+     * What the frozen Momus run over each fixture reports (`goldens/momus/rust.json`),
+     * as `RULE/severity@file:line`: the runs this docblock describes.
+     */
+    private const MOMUS_GOLDEN = [
+        'momus-drift' => [
+            'DRIFT-001/error@drift_test.rs:10',
+            'DRIFT-003/warning@drift_test.rs:11',
+            'DRIFT-003/warning@drift_test.rs:12',
+            'DRIFT-003/warning@mocktopus_test.rs:12',
+            'MOCK-002/info@generic_test.rs:36',
+            'MOCK-002/info@generic_test.rs:43',
+            'TAUT-005/warning@drift_test.rs:9',
+            'TAUT-005/warning@healthy_test.rs:9',
+            'TAUT-005/warning@mocktopus_test.rs:12',
+        ],
+        'nemesis' => [],
+        'tautology' => [
+            'MOCK-001/warning@tests/mock_echo.rs:1',
+            'MOCK-001/warning@tests/mock_only.rs:1',
+            'MOCK-001/warning@tests/zero_reach.rs:1',
+            'TAUT-001/error@tests/self_comparison.rs:5',
+            'TAUT-003/error@tests/constant.rs:5',
+            'TAUT-003/error@tests/self_comparison.rs:5',
+            'TAUT-005/warning@tests/zero_reach.rs:5',
+        ],
+        'nemesis-experiments/automock' => [],
+        'nemesis-experiments/automock-drift' => [
+            'DRIFT-001/error@tests/gateway_mock.rs:7',
+            'MOCK-001/warning@tests/gateway_mock.rs:1',
+            'TAUT-005/warning@tests/gateway_mock.rs:12',
+            'TAUT-005/warning@tests/gateway_mock.rs:5',
+        ],
+        'nemesis-experiments/mock-block' => [],
+        'nemesis-experiments/mock-macro' => [],
+        'nemesis-experiments/trait-shapes' => [],
+    ];
+
+    /** The same for the frozen Nemesis run (`goldens/nemesis/rust.json`), as `TYPE/confidence@file:line`. */
+    private const NEMESIS_GOLDEN = [
+        'momus-drift' => [
+            'GHOST_METHOD/definite@drift_test.rs:10',
+            'RETURN_DRIFT/definite@drift_test.rs:11',
+            'RETURN_DRIFT/definite@drift_test.rs:12',
+        ],
+        'nemesis' => [],
+        'tautology' => [],
+        'nemesis-experiments/automock' => [],
+        'nemesis-experiments/automock-drift' => [
+            'ARITY_MISMATCH/definite@tests/gateway_mock.rs:13',
+            'GHOST_METHOD/definite@tests/gateway_mock.rs:7',
+        ],
+        'nemesis-experiments/mock-block' => [
+            'GHOST_METHOD/definite@tests/store_mock.rs:4',
+        ],
+        'nemesis-experiments/mock-macro' => [],
+        'nemesis-experiments/trait-shapes' => [],
+    ];
 
     protected function setUp(): void
     {
@@ -372,5 +436,16 @@ final class RustAcceptanceTest extends KnossosTestCase
             }
             file_put_contents($file, $contents);
         }
+    }
+
+    /**
+     * The frozen goldens still hold the tool runs this docblock describes;
+     * `OnRequestAcceptanceTest` checks each against its fixture and commit.
+     */
+    public function testTheFrozenGoldensHoldWhatThisDocblockDescribes(): void
+    {
+        assertSame(self::MOMUS_GOLDEN, self::goldenFindings('momus', 'rust'));
+        assertSame(self::NEMESIS_GOLDEN, self::goldenFindings('nemesis', 'rust'));
+        assertSame([self::MOMUS_COMMIT, self::NEMESIS_COMMIT], [self::golden('momus', 'rust')['commit'], self::golden('nemesis', 'rust')['commit']]);
     }
 }

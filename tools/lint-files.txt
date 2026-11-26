@@ -1362,9 +1362,11 @@ php	tests/phpunit/TestFidelity/Fixtures/DtoMatchTest.php
 php	tests/phpunit/TestFidelity/Fixtures/FixtureDriftTest.php
 php	tests/phpunit/TestFidelity/Fixtures/JsonDocumentTest.php
 php	tests/phpunit/TestFidelity/Fixtures/YamlDocumentTest.php
+php	tests/phpunit/TestFidelity/FrozenGoldens.php
 php	tests/phpunit/TestFidelity/MockedModulePathsTest.php
 php	tests/phpunit/TestFidelity/OnRequest/OverMockingTest.php
 php	tests/phpunit/TestFidelity/OnRequest/StaleSinceTest.php
+php	tests/phpunit/TestFidelity/OnRequestAcceptanceTest.php
 php	tests/phpunit/TestFidelity/OnRequestIsolationTest.php
 php	tests/phpunit/TestFidelity/PhpAcceptanceTest.php
 php	tests/phpunit/TestFidelity/PhpHealthyIdiomsTest.php
