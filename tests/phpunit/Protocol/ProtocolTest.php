@@ -384,6 +384,21 @@ final class ProtocolTest extends KnossosTestCase
         assertSame(1, count($this->nodeSchemaErrors($badAncestors)), 'G3-10: a built-in pin names each type it is.');
     }
 
+    /** A pinned value's `type` is a non-empty string; anything else breaks the schema (G3-01). */
+    #[Group('protocol')]
+    public function testContributionSchemaRejectsAPinTypeThatIsNoName(): void
+    {
+        $pinned = static fn(mixed $type): array => self::wireNode('test_double', [
+            'framework' => 'phpunit', 'pattern' => 'createMock', 'target' => ['kind' => 'class', 'export' => 'App\\Cart'], 'automock' => false, 'invocations' => 0,
+            'members' => [['name' => 'total', 'line' => 8, 'api' => 'method', 'returns' => [['api' => 'willReturn', 'line' => 9, 'once' => false, 'assignable' => 'unknown', 'typed' => true, 'type' => $type]]]],
+        ]);
+
+        assertSame([], $this->nodeSchemaErrors($pinned('class:App\\Money')));
+        foreach ([5, true, null, ['int'], ''] as $type) {
+            assertSame(1, count($this->nodeSchemaErrors($pinned($type))), (string) json_encode($type));
+        }
+    }
+
     #[Group('protocol')]
     public function testContributionSchemaAcceptsPythonTestFacts(): void
     {

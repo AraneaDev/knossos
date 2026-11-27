@@ -428,11 +428,12 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
 `schemas/scanner/v1/contribution.schema.json`.
 
 - `test_double`, named `<file>#double:<line>:<col>`: a mock, spy, stub or fake.
-  `framework` (`vitest`, `jest`, `phpunit`, `mockery`, `pest`, `prophecy`, `unittest`,
-  `pytest-mock`, `pytest`, and Rust's `mockall`, `faux`, `mry`, `mockers`,
-  `mockiato`, `mocktopus`, `mock_derive`, `galvanic` or `hand-written`), `pattern` (how it was made, such as
-  `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`; a Python worker
-  writes `<module>.<callable>`, such as `unittest.mock.patch.object` or
+  `framework` (`vitest`, `jest`, `phpunit`, `mockery`, `pest`, `prophecy`,
+  `unittest`, `pytest-mock`, `pytest`, and Rust's `mockall`, `faux`, `mry`,
+  `mockers`, `mockiato`, `mocktopus`, `mock_derive`, `galvanic` or
+  `hand-written`), `pattern` (how it was made, such as `vi.mock`,
+  `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`; a Python worker writes
+  `<module>.<callable>`, such as `unittest.mock.patch.object` or
   `pytest_mock.mocker.patch`), `target`
   (`{kind, specifier?, export?, member?}`, `kind` one of `module`, `class`,
   `instance-member`, `global`, `unknown`; a virtual module mock, made with
@@ -443,9 +444,10 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `{name, line, api, params?, returns}` where `api` is how the test names the
   member (`spyOn`, `mockFactoryKey`, `objectLiteralKey`, `instance-member`,
   PHPUnit's `method`, `configured`, `partial` and `addMethods` (a name the
-  double adds to its class, which is never a ghost; PHPUnit 9's `setMethods()`
-  sends its names so, as it adds any the class lacks), Mockery's `shouldReceive`
-  and, for a member a spy assertion names, `shouldHaveReceived`, `prophecy`, Python's `patch`, `patch.object`,
+  double adds to its class, which is never a ghost; PHPUnit 9's
+  `setMethods()` sends its names so, as it adds any the class lacks),
+  Mockery's `shouldReceive` and, for a member a spy assertion names,
+  `shouldHaveReceived`, `prophecy`, Python's `patch`, `patch.object`,
   `patch.multiple`, `patch.dict`, `spy` and `setattr` (the name the patch form
   or `monkeypatch.setattr` replaces), `attribute` (a name read through a
   spec'd handle) and `assigned` (`m.x = v`, `configure_mock` or a constructor
@@ -462,11 +464,16 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   source order, which Python sends. A reader that finds a malformed `keywords`
   keeps the matcher and takes it as `spread`, since a count holding unnamed
   keywords cannot be bound), and a `returns` entry may carry `type`, the
-  pinned value's own type as the worker names it, and for a class built into
-  the language `type_ancestors`, every class and interface it extends or
-  implements as the worker's runtime reflects them (the PHP worker runs
-  Reflection on PHP's own classes only, never on a project's). A
-  `test_double` may carry
+  pinned value's own type as the worker names it: a non-empty string, which
+  the PHP worker spells `int`, `float`, `string`, `bool`, `null`, `array`,
+  `closure`, `class:<FQCN>` or `unknown`, and the Python worker `int`,
+  `float`, `complex`, `str`, `bytes`, `bool`, `None`, `list`, `dict`, `set`,
+  `tuple`, `callable`, `class:<qualname>` or `unknown` (the TypeScript and
+  Rust workers send none). A reader takes a spelling it does not know as
+  unknown. For a class built into the language a `returns` entry may carry
+  `type_ancestors`, every class and interface it extends or implements as
+  the worker's runtime reflects them (the PHP worker runs Reflection on PHP's
+  own classes only, never on a project's). A `test_double` may carry
   `allows_protected` (`true` when the framework lets the double stub protected
   members, as Mockery's `shouldAllowMockingProtectedMethods()` does),
   `compile_checked` (`true` on a Rust double: a reader must not judge drift on
@@ -475,8 +482,9 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   be, fully qualified (Mockery's `mock(A::class, B::class)`), or
   `also_implements_open: true` when the worker could not name them all. A
   reader drops a malformed `called_with` entry, `type`, `type_ancestors`,
-  `allows_protected` or `compile_checked` (read as false) and keeps the double; a malformed `also_implements` leaves what the double
-  implements unknown.
+  `allows_protected` or `compile_checked` (read as false) and keeps the
+  double; a malformed `also_implements` leaves what the double implements
+  unknown.
 - `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
   `subjects` (canonical names of the production modules those calls land in),
   `should_panic` (optional) and `assertions`, each
