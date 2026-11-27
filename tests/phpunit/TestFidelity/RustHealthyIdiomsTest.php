@@ -67,6 +67,8 @@ use PHPUnit\Framework\Attributes\Group;
  * under that name, whose comparisons are not read (G5-07). The member
  * `nested-manifest` holds another package's manifest in its module tree,
  * reached by plain `mod`, whose macro declares the name (G5-04).
+ * `type-fakes` names a hand-written fake only as a type argument, no
+ * `zero_reach`, beside a planted pinned fake nothing names (G5-10 M4).
  *
  * `src/thermometer.rs` fakes a trait by hand (Task 4): a fake handed to
  * production and a stateful fake, beside a planted `mock_echo` (definite) of
@@ -117,6 +119,8 @@ final class RustHealthyIdiomsTest extends KnossosTestCase
             'TAUTOLOGY/mock_only/warning@src/clock.rs:244',
             'TAUTOLOGY/self_comparison/definite@tests/planted.rs:18',
             'TAUTOLOGY/zero_reach/warning@src/clock.rs:186',
+            // A pinned fake nothing names, beside one named only as a type argument.
+            'TAUTOLOGY/zero_reach/warning@type-fakes/src/lib.rs:28',
         ], $findings);
     }
 
