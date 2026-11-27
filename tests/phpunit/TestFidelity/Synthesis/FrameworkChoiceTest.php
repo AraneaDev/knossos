@@ -78,6 +78,8 @@ final class FrameworkChoiceTest extends KnossosTestCase
         assertSame([], ManifestFrameworks::named('typescript', '{"dependencies": {"vitest": "^3"}}'));
         assertSame(['mockery', 'prophecy', 'phpunit'], ManifestFrameworks::named('php', '{"require-dev": {"phpunit/phpunit": "^12", "Mockery/Mockery": "^1", "phpspec/prophecy-phpunit": "^2"}}'));
         assertSame([], ManifestFrameworks::named('php', '{"require": {"mockery/mockery": "^1"}}'));
+        // Prophecy on its own, without the PHPUnit bridge, is Prophecy too.
+        assertSame(['prophecy'], ManifestFrameworks::named('php', '{"require-dev": {"phpspec/prophecy": "^1"}}'));
         assertSame(['pytest-mock'], ManifestFrameworks::named('python', "[project.optional-dependencies]\ntest = [\"pytest_mock>=3\"]\n"));
         assertSame([], ManifestFrameworks::named('python', "pytest-mockito==1\n"));
         assertSame(['mockall'], ManifestFrameworks::named('rust', "[dependencies]\nserde = \"1\"\n\n[dev-dependencies]\nmockall = \"0.13\"\n"));

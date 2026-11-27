@@ -110,6 +110,8 @@ final class YamlDocumentEdgesTest extends KnossosTestCase
             ['a' => 'x # y', 'b' => 'a\\', 'c' => 'a" # b', 'd' => "it's # not"],
             self::read("a: \"x # y\" # one\nb: 'a\\' # two\nc: \"a\\\" # b\" # three\nd: 'it''s # not' # four\n"),
         );
+        // A quote inside a comment opens nothing.
+        self::assertSame(['a' => 1], self::read("a: 1 # a \"quoted\" word, then \"\n"));
     }
 
     public function testAFlowCollectionReadsItsQuotes(): void
@@ -137,6 +139,12 @@ final class YamlDocumentEdgesTest extends KnossosTestCase
 
     public function testATopLevelFlowMappingIsAFlowMapping(): void
     {
+        // The root stands at its first content line, past comments and a document start.
+        self::assertSame([3, 2, 4], [
+            YamlDocument::parse("# one\n\n{a: 1}\n")?->root->line,
+            YamlDocument::parse("---\na: 1\n")?->root->line,
+            YamlDocument::parse("# one\n# two\n\n- 1\n")?->root->line,
+        ]);
         self::assertSame(['a' => 1, 'b' => [2]], self::read("{a: 1, b: [2]}\n"));
         self::assertSame([['a' => 1]], self::read("- {a: 1}\n"));
     }
