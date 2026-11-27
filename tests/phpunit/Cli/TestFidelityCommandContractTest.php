@@ -134,8 +134,9 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
     {
         $this->withScannedAudit(function (\Closure $run, string $projectId): void {
             self::assertSame(implode("\n", [
-                "fixtures/users.fixture.json:4  FIXTURE_DRIFT warning  Fixture 'users.fixture.json' is missing required field 'email' of UserRecord.",
+                // Two findings on one line are in key order, the sort's last tie-break.
                 "fixtures/users.fixture.json:4  FIXTURE_DRIFT warning  Fixture 'users.fixture.json' is missing required field 'name' of UserRecord.",
+                "fixtures/users.fixture.json:4  FIXTURE_DRIFT warning  Fixture 'users.fixture.json' is missing required field 'email' of UserRecord.",
                 '4 fixture drift findings in 1 fixture file.',
             ]) . "\n", $run('check-fixtures', [$projectId], ['limit' => ['2'], 'offset' => ['1']]));
             $json = json_decode($run('check-fixtures', [$projectId], ['json' => ['true']]), true, 512, JSON_THROW_ON_ERROR);

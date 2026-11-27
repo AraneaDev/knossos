@@ -221,7 +221,8 @@ final class OverMockingTest extends TestCase
         $finding = OverMocking::findings(self::input(mocked: 3, imported: 3))[0];
         $item = $finding->toItem();
         $message = '3/3 dependencies mocked, 0 production assertions: over-mocked';
-        $key = TestFindingKey::of('test.fidelity.over_mocking.v1', 'saturation', self::FILE, null, $message);
+        // The key is the finding's identity, the rule and the file: not its counts (G6-12).
+        $key = TestFindingKey::of('test.fidelity.over_mocking.v1', 'saturation', self::FILE, null, '');
 
         self::assertSame([
             'id' => 'on_request:' . $key,
@@ -238,6 +239,17 @@ final class OverMockingTest extends TestCase
             'tier' => 'on_request',
         ], $item);
         self::assertSame('test.fidelity.over_mocking.v1', OverMocking::ID);
+    }
+
+    public function testTwoRunsThatDifferOnlyInCountsGiveOneKey(): void
+    {
+        // G6-12: a caller tracking a finding across runs keeps its key while the counts move.
+        $three = OverMocking::findings(self::input(mocked: 3, imported: 3))[0];
+        $four = OverMocking::findings(self::input(mocked: 4, imported: 4, production: 1))[0];
+
+        self::assertNotSame($three->message, $four->message);
+        self::assertSame($three->key(), $four->key());
+        self::assertSame($three->toItem()['id'], $four->toItem()['id']);
     }
 
     public function testFindingsAreInFileOrder(): void

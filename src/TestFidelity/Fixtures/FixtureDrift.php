@@ -229,6 +229,7 @@ final class FixtureDrift
             null,
             $owner->name . '.' . $field,
             $owner->canonical . '.' . $field,
+            $said,
         );
     }
 }
