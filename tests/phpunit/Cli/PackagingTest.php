@@ -26,7 +26,7 @@ final class PackagingTest extends KnossosTestCase
             assertSame(true, isset($byName[$name]));
         }
         assertSame('ok', $byName['worker.php']['status']);
-        assertContains('knossos.php@0.8.6 protocol 1.0', $byName['worker.php']['detail']);
+        assertContains('knossos.php@0.8.7 protocol 1.0', $byName['worker.php']['detail']);
         assertSame('ok', $byName['worker.typescript']['status']);
         assertSame('ok', $byName['worker.python']['status']);
         assertContains('knossos.python@0.8.0 protocol 1.0', $byName['worker.python']['detail']);

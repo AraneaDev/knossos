@@ -32,11 +32,11 @@ final class Signature
      * The `signature` attribute of a function or method.
      *
      * `optional` marks a parameter with a default value, `variadic` one that
-     * takes the rest. A function whose own body reads its arguments as a list
+     * takes the rest, `by_ref` one taken by reference (`&$out`). A function whose own body reads its arguments as a list
      * (`func_get_args()`, `func_num_args()`, `func_get_arg()`) takes any
      * number past its parameters, which the signature's own `variadic` says.
      *
-     * @return array{params: list<array{name: string, type?: string, optional?: true, variadic?: true}>, returns?: string, variadic?: true, truncated?: true}
+     * @return array{params: list<array{name: string, type?: string, optional?: true, variadic?: true, by_ref?: true}>, returns?: string, variadic?: true, truncated?: true}
      */
     public static function of(Node\FunctionLike $node): array
     {
@@ -52,6 +52,9 @@ final class Signature
             }
             if ($param->variadic) {
                 $entry['variadic'] = true;
+            }
+            if ($param->byRef) {
+                $entry['by_ref'] = true;
             }
             $params[] = $entry;
         }

@@ -168,7 +168,7 @@ as the source writes it:
   that declares no return type has no `returns`. A signature therefore reads
   the same whether or not the project's dependencies are installed.
 - `optional` marks a parameter a caller may leave out, `variadic` one that
-  takes the rest. A signature may carry `"variadic": true` itself, beside
+  takes the rest, and `by_ref` (PHP only) one taken by reference (`&$out`). A signature may carry `"variadic": true` itself, beside
   `params`, when the function takes any number of arguments past them without
   a rest parameter (a PHP body that calls `func_get_args()`). A receiver the
   caller does not pass (`this`, `self`) is not listed. A destructured

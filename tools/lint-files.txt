@@ -1419,6 +1419,7 @@ php	tests/phpunit/TestFidelity/Synthesis/ExampleValueTest.php
 php	tests/phpunit/TestFidelity/Synthesis/FrameworkChoiceTest.php
 php	tests/phpunit/TestFidelity/Synthesis/MockMembersTest.php
 php	tests/phpunit/TestFidelity/Synthesis/SynthesisGoldenTest.php
+php	tests/phpunit/TestFidelity/Synthesis/TemplateRenderingTest.php
 php	tests/phpunit/TestFidelity/Synthesis/TemplatesLintTest.php
 php	tests/phpunit/TestFidelity/TautologyEndToEndTest.php
 php	tests/phpunit/TestFidelity/TestFactsSearchTest.php

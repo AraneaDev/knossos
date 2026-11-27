@@ -53,10 +53,13 @@ final readonly class RustTemplate implements MockTemplate
         $declarers = [$target->localId => $target];
         $groups = [];
         $imports = [];
+        // Each member rendered once: its imports and its expectation come from the one rendering (G6-08g).
+        $parts = [];
         foreach ($members->members as $member) {
             $declarers[$member->declarer->localId] = $member->declarer;
             $groups[self::group($member)][] = $member;
-            $imports = [...$imports, ...$this->member($members, $member, $framework, $values)['imports']];
+            $parts[spl_object_id($member)] = $this->member($members, $member, $framework, $values);
+            $imports = [...$imports, ...$parts[spl_object_id($member)]['imports']];
         }
         $uses = [...($framework === 'mockall' ? ['use mockall::mock;'] : []), ...array_map(static fn(NodeFact $declarer): string => sprintf('use %s;', $declarer->canonicalName), $declarers), ...$imports];
         $uses = array_values(array_unique($uses));
@@ -71,7 +74,8 @@ final readonly class RustTemplate implements MockTemplate
             foreach ($declarers as $id => $declarer) {
                 $lines[] = '';
                 $lines[] = sprintf('impl %s for Fake%s {', $declarer->displayName, $name);
-                $bodies = array_map(fn(MockMember $member): string => $this->fake($member, $values)['rendered'], $groups[$id] ?? []);
+                // A method's fake is its rendering; an associated item sits one level shallower in a fake's impl than in mock!.
+                $bodies = array_map(fn(MockMember $member): string => $member->kind === 'method' ? $parts[spl_object_id($member)]['rendered'] : $this->fake($member, $values)['rendered'], $groups[$id] ?? []);
                 $lines[] = implode("\n\n", $bodies);
                 $lines[] = '}';
             }
@@ -110,7 +114,7 @@ final readonly class RustTemplate implements MockTemplate
         $lines = [...$lines, '}', '', '#[test]', sprintf('fn %s_mock() {', TypeText::snake($name)), sprintf('    let mut mock = Mock%s::new();', $name)];
         foreach ($members->members as $member) {
             if ($member->kind === 'method') {
-                $lines[] = $this->member($members, $member, $framework, $values)['rendered'];
+                $lines[] = $parts[spl_object_id($member)]['rendered'];
             }
         }
         $lines[] = '}';
@@ -155,7 +159,12 @@ final readonly class RustTemplate implements MockTemplate
         return ['rendered' => sprintf('    mock.expect_%s().returning(%s);', $member->name, $closure), 'unknown' => $unknown, 'imports' => $example['imports']];
     }
 
-    /** The owned zero a borrowed return lends from: `String::new()` for `&str` or `&String`, `Vec::new()` for `&[T]` or `&Vec<T>`; null for any other. */
+    /**
+     * The owned zero a borrowed return lends from: `String::new()` for `&str`
+     * or `&String`, `Vec::new()` for `&[T]` or `&Vec<T>`; null for any other.
+     * mockall 0.13.1 compiles `return_const(Vec::new())` for a `&[u8]` return
+     * and lends the slice (checked offline, G6-08g).
+     */
     private static function ownedZero(string $returns): ?string
     {
         $lent = trim((string) preg_replace("/^&(?:'\\w+\\s+)?(?:mut\\s+)?/", '', $returns));

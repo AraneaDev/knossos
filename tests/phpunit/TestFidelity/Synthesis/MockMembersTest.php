@@ -419,9 +419,13 @@ final class MockMembersTest extends KnossosTestCase
             'Mk4 implements std::fmt::Debug, a trait outside the scan: its methods the impl does not write (defaults) are not listed.',
         ], $copy->notes);
         // An impl<T> cannot be written without its parameters.
-        $generic = $this->members($this->struct('Gen'), 'rust', [['type' => 'crate::Gen', 'trait' => 'From<T>', 'methods' => ['from'], 'generics' => true]]);
+        $gen = $this->struct('Gen');
+        // G6-08g: the omitted impl's own method is omitted with it, never rendered in a block of its own.
+        $this->method($gen, '<impl From<T>>::from', ['overrides' => true, 'impl_trait' => 'From<T>', 'signature' => ['params' => [['name' => 'value', 'type' => 'T']], 'returns' => 'Self']]);
+        $generic = $this->members($gen, 'rust', [['type' => 'crate::Gen', 'trait' => 'From<T>', 'methods' => ['from'], 'generics' => true]]);
         assertSame([[], false], [$generic->impls, $generic->complete]);
         assertSame([['name' => 'impl From<T>', 'reason' => 'a generic impl (impl<T>): its parameters are not recorded']], $generic->omitted);
+        assertSame(['go'], self::names($generic->members));
     }
 
     /** A marker trait or a generic impl is passed over, never the end of the list: the impls after it still count. */

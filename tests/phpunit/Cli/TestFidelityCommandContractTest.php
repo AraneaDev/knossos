@@ -111,6 +111,8 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
             // The text is the template alone, as the golden holds it.
             self::assertSame($golden, $run('synthesize-mock', [$projectId, 'Typed'], []));
             self::assertSame((string) file_get_contents(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/synthesis-expected/ts-typed-no-values.txt'), $run('synthesize-mock', [$projectId, 'Typed'], ['no-values' => ['true']]));
+            // G6-08g: a bare --no-values means no values, and --no-values=false means values.
+            self::assertSame([(string) file_get_contents(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/synthesis-expected/ts-typed-no-values.txt'), $golden], [$run('synthesize-mock', [$projectId, 'Typed'], ['no-values' => ['']]), $run('synthesize-mock', [$projectId, 'Typed'], ['no-values' => ['false']])]);
             self::assertSame((string) file_get_contents(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/synthesis-expected/rs-store-hand-written.txt'), $run('synthesize-mock', [$projectId, 'Store'], ['language' => ['rust'], 'framework' => ['hand-written']]));
             $json = json_decode($run('synthesize-mock', [$projectId, 'Typed'], ['json' => ['true']]), true, 512, JSON_THROW_ON_ERROR);
             self::assertSame([$golden, 'vitest', 'default', true], [$json['data']['template'], $json['data']['framework'], $json['data']['framework_source'], $json['data']['complete']]);
