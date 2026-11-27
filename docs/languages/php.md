@@ -219,7 +219,10 @@ own semantics:
   warning. `self` and `static` declared in a trait stand for the class using
   it.
 - A class the scan does not hold, or a relation that could live in `vendor/` or
-  PHP itself, makes drift a warning at most. A facade double names no class,
+  PHP itself, makes drift a warning at most. A class built into PHP and pinned
+  with `new` is what PHP's own Reflection, run in the worker, says it extends
+  and implements, so `new \DateTimeImmutable()` fits `\DateTimeInterface`;
+  a project class is never loaded to ask. A facade double names no class,
   so nothing it stubs is held against one.
 
 ## Field facts

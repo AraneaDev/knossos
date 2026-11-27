@@ -462,7 +462,11 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   source order, which Python sends. A reader that finds a malformed `keywords`
   keeps the matcher and takes it as `spread`, since a count holding unnamed
   keywords cannot be bound), and a `returns` entry may carry `type`, the
-  pinned value's own type as the worker names it. A `test_double` may carry
+  pinned value's own type as the worker names it, and for a class built into
+  the language `type_ancestors`, every class and interface it extends or
+  implements as the worker's runtime reflects them (the PHP worker runs
+  Reflection on PHP's own classes only, never on a project's). A
+  `test_double` may carry
   `allows_protected` (`true` when the framework lets the double stub protected
   members, as Mockery's `shouldAllowMockingProtectedMethods()` does),
   `compile_checked` (`true` on a Rust double: a reader must not judge drift on
@@ -470,8 +474,8 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `also_implements`, the further classes and interfaces the double is made to
   be, fully qualified (Mockery's `mock(A::class, B::class)`), or
   `also_implements_open: true` when the worker could not name them all. A
-  reader drops a malformed `called_with` entry, `type`, `allows_protected` or
-  `compile_checked` (read as false) and keeps the double; a malformed `also_implements` leaves what the double
+  reader drops a malformed `called_with` entry, `type`, `type_ancestors`,
+  `allows_protected` or `compile_checked` (read as false) and keeps the double; a malformed `also_implements` leaves what the double
   implements unknown.
 - `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
   `subjects` (canonical names of the production modules those calls land in),

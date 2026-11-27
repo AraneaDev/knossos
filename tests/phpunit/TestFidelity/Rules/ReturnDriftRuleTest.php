@@ -124,6 +124,21 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertSame(FindingConfidence::Warning, $findings[0]->confidence);
     }
 
+    /** The probe's healthy test: a built-in class pinned for a built-in interface it implements, as the worker reflected it, fits; `stdClass` still warns (G3-10). */
+    public function testABuiltInPinIsWhatTheWorkerReflected(): void
+    {
+        $pin = static fn(string $type, array $ancestors): array => [...(new ReturnDriftRule())->findings(DriftFixtures::phpGraph(
+            [['now', ['signature' => ['params' => [], 'returns' => 'DateTimeInterface']]]],
+            [['name' => 'now', 'line' => 14, 'api' => 'method', 'returns' => [['api' => 'willReturn', 'line' => 14, 'once' => false, 'assignable' => 'unknown', 'typed' => true, 'type' => $type, 'type_ancestors' => $ancestors]]]],
+        ))];
+        $plain = $pin('class:stdClass', []);
+
+        assertSame([], $pin('class:DateTimeImmutable', ['DateTimeInterface']));
+        assertCount(1, $plain);
+        assertSame(FindingConfidence::Warning, $plain[0]->confidence);
+        assertSame('now returns DateTimeInterface; the double pins a value it does not admit (willReturn)', $plain[0]->message);
+    }
+
     public function testSelfInAPhpReturnTypeIsTheDeclaringClass(): void
     {
         $pin = static fn(string $type): array => [DriftFixtures::stub('make', null, [['api' => 'willReturn', 'line' => 9, 'once' => false, 'assignable' => 'unknown', 'typed' => true, 'type' => $type]])];

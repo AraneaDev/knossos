@@ -267,6 +267,21 @@ final class PhpTestDoublesTest extends KnossosTestCase
         assertSame(['getMockForAbstractClass', false, []], $summary($doubles[35]));
     }
 
+    /**
+     * A pinned class built into PHP carries the classes and interfaces it
+     * extends or implements, read by Reflection from PHP itself; `stdClass`,
+     * which has none, and a project class, never reflected, carry none (G3-10).
+     */
+    public function testABuiltInPinCarriesWhatItIs(): void
+    {
+        [$clock] = $this->scan('healthy-idioms', ['tests/ClockTest.php']);
+        [$pins] = $this->scan('doubles', ['tests/PinsTest.php']);
+        $ancestors = static fn(array $doubles): array => array_merge(...array_map(static fn(TestDouble $double): array => array_merge(...array_map(static fn(StubbedMember $member): array => array_map(static fn(PinnedValue $pin): array => [$pin->type, $pin->typeAncestors], $member->returns), $double->members)), array_values($doubles)));
+
+        assertSame([['class:DateTimeImmutable', ['DateTimeInterface']], ['class:stdClass', []]], $ancestors($this->doubles($clock)));
+        assertSame([['class:App\Invoice', []], ['class:App\Billing\Foo', []]], array_values(array_filter($ancestors($this->doubles($pins)), static fn(array $pin): bool => str_starts_with((string) $pin[0], 'class:'))));
+    }
+
     /** PHPUnit 9's `setMethods()` adds a method the class lacks, as `addMethods()` does, so its names go under that api; `onlyMethods()` keeps `partial` (G3-37). */
     public function testSetMethodsNamesAreAddedMethods(): void
     {
@@ -391,7 +406,7 @@ final class PhpTestDoublesTest extends KnossosTestCase
                 'api' => $member->api,
                 'params' => $member->params,
                 'called_with' => $member->calledWith === [] ? null : array_map(static fn(CallMatcher $matcher): array => ['api' => $matcher->api, 'line' => $matcher->line, 'count' => $matcher->count, 'spread' => $matcher->spread], $member->calledWith),
-                'returns' => array_map(static fn(PinnedValue $pin): array => array_filter(['api' => $pin->api, 'line' => $pin->line, 'once' => $pin->once, 'assignable' => $pin->assignable, 'typed' => $pin->typed, 'type' => $pin->type], $present), $member->returns),
+                'returns' => array_map(static fn(PinnedValue $pin): array => array_filter(['api' => $pin->api, 'line' => $pin->line, 'once' => $pin->once, 'assignable' => $pin->assignable, 'typed' => $pin->typed, 'type' => $pin->type, 'type_ancestors' => $pin->typeAncestors === [] ? null : $pin->typeAncestors], $present), $member->returns),
             ], $present), $double->members),
         ], $present);
     }

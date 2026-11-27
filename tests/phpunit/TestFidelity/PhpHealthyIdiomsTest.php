@@ -32,6 +32,9 @@ use PHPUnit\Framework\Attributes\Group;
  *   'save'], 7)`) may be called with more arguments than it takes, so a
  *   matcher listing more is satisfiable, though one on a method only called
  *   directly is not (G3-31);
+ * - a built-in class pinned for a built-in type it implements
+ *   (`DateTimeImmutable` for `DateTimeInterface`) fits, as PHP's own
+ *   Reflection in the worker says, though `stdClass` still may not (G3-10);
  * - a name PHPUnit 9's `setMethods()` lists adds a method the class lacks,
  *   so it is no ghost, though one `onlyMethods()` lists is (G3-37);
  * - Mockery's `anyArgs()`, `noArgs()`, `andAnyOtherArgs()` and
@@ -79,6 +82,8 @@ final class PhpHealthyIdiomsTest extends KnossosTestCase
             'ARITY_MISMATCH/call_arity/definite@tests/WalkTest.php:22',
             // Genuine: self() takes no argument.
             'ARITY_MISMATCH/call_arity/definite@tests/MailerTest.php:26',
+            // Genuine, though only a warning: stdClass is no DateTimeInterface, a relation outside the project (G3-10).
+            'RETURN_DRIFT/return_type/warning@tests/ClockTest.php:21',
             // Ruling R18: a self pin on void breaks nothing at run time.
             'RETURN_DRIFT/return_type/warning@tests/MailerTest.php:27',
             'RETURN_DRIFT/return_type/warning@tests/MailerTest.php:34',

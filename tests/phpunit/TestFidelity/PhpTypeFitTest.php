@@ -198,4 +198,26 @@ final class PhpTypeFitTest extends KnossosTestCase
         assertSame(self::REFUSED, PhpTypeFit::judge('class:App\Name', 'string', $graph), 'A strict double still refuses it.');
         assertSame(self::REFUSED, PhpTypeFit::judge('class:App\Name', 'int', $graph, null, false), 'A Stringable object is coerced to no int.');
     }
+
+    /**
+     * A built-in class is what the worker's Reflection says it extends and
+     * implements, in any case and through a union or an intersection; a type
+     * it does not list may still be a relation outside the project, so a
+     * miss stays a warning (G3-10).
+     */
+    public function testABuiltInPinIsWhatReflectionSaysItIs(): void
+    {
+        $builtIn = static fn(string $declared, array $ancestors = ['DateTimeInterface']): array => PhpTypeFit::judge('class:DateTimeImmutable', $declared, self::graph(), null, true, $ancestors);
+        $iterator = ['Countable', 'Iterator', 'Traversable'];
+
+        assertSame(self::FITS, $builtIn('DateTimeInterface'));
+        assertSame(self::FITS, $builtIn('\datetimeinterface'));
+        assertSame(self::FITS, $builtIn('?DateTimeInterface'));
+        assertSame(self::FITS, PhpTypeFit::judge('class:ArrayIterator', 'Countable&Traversable', self::graph(), null, true, $iterator));
+        assertSame(self::WARNS, PhpTypeFit::judge('class:ArrayIterator', 'Countable&Stringable', self::graph(), null, true, $iterator));
+        assertSame(self::WARNS, $builtIn('DateTimeInterface', []), 'A class the worker lists nothing for, stdClass, is not one.');
+        assertSame(self::WARNS, $builtIn('App\Payable'));
+        assertSame(self::REFUSED, $builtIn('int'));
+        assertSame(self::WARNS, self::judge('class:DateTimeImmutable', 'DateTimeInterface'), 'Without the list the relation lies outside the project.');
+    }
 }

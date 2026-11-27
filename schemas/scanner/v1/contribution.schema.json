@@ -336,7 +336,12 @@
         "once": { "type": "boolean" },
         "assignable": { "enum": [true, false, "unknown"] },
         "typed": { "type": "boolean" },
-        "type": { "type": "string", "minLength": 1 }
+        "type": { "type": "string", "minLength": 1 },
+        "type_ancestors": {
+          "description": "For a pinned class built into the language, every class and interface it extends or implements, fully qualified, as the worker's runtime reflects them (the PHP worker's Reflection on PHP's own classes).",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
       }
     },
     "callMatcher": {

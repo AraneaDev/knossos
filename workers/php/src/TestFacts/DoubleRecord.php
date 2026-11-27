@@ -84,7 +84,8 @@ final class DoubleRecord
         }
         $type = PinnedType::of($value);
         $this->answers[strtolower($name)][] = [$value, $value->getStartFilePos(), $plain];
-        $this->members[strtolower($name)]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => $type !== PinnedType::UNKNOWN, 'type' => $type];
+        $ancestors = PinnedType::ancestors($type);
+        $this->members[strtolower($name)]['returns'][] = ['api' => $api, 'line' => $line, 'once' => false, 'assignable' => 'unknown', 'typed' => $type !== PinnedType::UNKNOWN, 'type' => $type, ...($ancestors === [] ? [] : ['type_ancestors' => $ancestors])];
     }
 
     /** Record a value the test makes a member return without stating it, such as a callback's result. */

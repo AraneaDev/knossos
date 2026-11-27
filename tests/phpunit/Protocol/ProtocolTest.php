@@ -368,9 +368,11 @@ final class ProtocolTest extends KnossosTestCase
                 'line' => 8,
                 'api' => 'instance-member',
                 'called_with' => [['api' => 'toHaveBeenCalledWith', 'line' => 29, 'count' => 3, 'spread' => false]],
-                'returns' => [['api' => 'andReturn', 'line' => 9, 'once' => false, 'assignable' => true, 'typed' => true, 'type' => 'string']],
+                'returns' => [['api' => 'andReturn', 'line' => 9, 'once' => false, 'assignable' => true, 'typed' => true, 'type' => 'class:DateTimeImmutable', 'type_ancestors' => ['DateTimeInterface']]],
             ]],
         ]);
+        $badAncestors = $double;
+        $badAncestors['attributes']['members'][0]['returns'][0]['type_ancestors'] = ['DateTimeInterface', ''];
         $badMatcher = $double;
         $badMatcher['attributes']['members'][0]['called_with'][0]['count'] = -1;
         $badProtected = $double;
@@ -379,6 +381,7 @@ final class ProtocolTest extends KnossosTestCase
         assertSame([], $this->nodeSchemaErrors($double));
         assertSame(1, count($this->nodeSchemaErrors($badMatcher)));
         assertSame(1, count($this->nodeSchemaErrors($badProtected)));
+        assertSame(1, count($this->nodeSchemaErrors($badAncestors)), 'G3-10: a built-in pin names each type it is.');
     }
 
     #[Group('protocol')]

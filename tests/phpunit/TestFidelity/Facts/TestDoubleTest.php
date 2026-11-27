@@ -220,6 +220,25 @@ final class TestDoubleTest extends KnossosTestCase
         assertSame(false, $other->members[0]->returns[0]->assignable);
     }
 
+    /** What a built-in pinned class is, as the worker reflected it (G3-10); a malformed list is none, and the pin stays. */
+    public function testReadsWhatABuiltInPinIs(): void
+    {
+        $read = static function (mixed $ancestors): ?array {
+            $attributes = self::attributes();
+            $attributes['members'][0]['returns'][0]['type'] = 'class:DateTimeImmutable';
+            $attributes['members'][0]['returns'][0]['type_ancestors'] = $ancestors;
+
+            return TestDouble::fromNode(self::node('test_double', $attributes))?->members[0]->returns[0]->typeAncestors;
+        };
+
+        assertSame(['DateTimeInterface'], $read(['DateTimeInterface']));
+        assertSame([], $read('DateTimeInterface'));
+        assertSame([], $read(['DateTimeInterface', 3]));
+        assertSame([], $read(['']));
+        assertSame([], $read(['a' => 'DateTimeInterface']));
+        assertSame([], TestDouble::fromNode(self::node('test_double', self::attributes()))?->members[0]->returns[0]->typeAncestors);
+    }
+
     public function testReadsAllowsProtectedAndFrameworksOfPhase3(): void
     {
         $double = TestDouble::fromNode(self::node('test_double', self::attributes(['framework' => 'mockery', 'allows_protected' => true])));
