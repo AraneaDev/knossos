@@ -370,7 +370,11 @@ function isLiteral(node) {
 /**
  * The text of the value a pin makes a stub return: the argument as written,
  * or for an implementation the expression it returns, when that is a single
- * expression body or a literal returned.
+ * expression body or the one literal every `return` of its own body hands
+ * back. A `return` inside a nested function (`xs.map(() => { return 1; })`)
+ * is that function's, and a body that returns two values, or anything but a
+ * literal, pins no one value: then the implementation's own text stands,
+ * which no literal equals.
  */
 function configuredValueText(value, sourceFile, api) {
     if (!IMPLEMENTATION_APIS.has(api)) return value.getText(sourceFile);
@@ -380,23 +384,29 @@ function configuredValueText(value, sourceFile, api) {
     if (ts.isArrowFunction(callback) && !ts.isBlock(callback.body))
         return callback.body.getText(sourceFile);
     if (ts.isFunctionExpression(callback) || ts.isArrowFunction(callback)) {
-        let result;
-        const visit = (node) => {
-            if (result !== undefined) return;
-            if (
-                ts.isReturnStatement(node) &&
-                node.expression !== undefined &&
-                isLiteral(node.expression)
-            ) {
-                result = node.expression.getText(sourceFile);
-                return;
-            }
-            ts.forEachChild(node, visit);
-        };
-        ts.forEachChild(callback.body, visit);
-        if (result !== undefined) return result;
+        const returned = new Set(
+            ownReturns(callback.body).map((expression) =>
+                expression !== undefined && isLiteral(expression)
+                    ? expression.getText(sourceFile)
+                    : null,
+            ),
+        );
+        if (returned.size === 1 && !returned.has(null))
+            return [...returned][0];
     }
     return value.getText(sourceFile);
+}
+
+/** The value of every `return` a function body makes itself, nested functions aside; undefined for a bare `return`. */
+function ownReturns(body) {
+    const returns = [];
+    const walk = (node) => {
+        if (ts.isFunctionLike(node)) return;
+        if (ts.isReturnStatement(node)) returns.push(node.expression);
+        ts.forEachChild(node, walk);
+    };
+    ts.forEachChild(body, walk);
+    return returns;
 }
 
 /**
@@ -407,13 +417,8 @@ function configuredValueText(value, sourceFile, api) {
 function returnExpression(body) {
     if (body === undefined) return undefined;
     if (!ts.isBlock(body)) return body;
-    const returns = [];
-    const walk = (node) => {
-        if (ts.isFunctionLike(node)) return;
-        if (ts.isReturnStatement(node) && node.expression !== undefined)
-            returns.push(node.expression);
-        ts.forEachChild(node, walk);
-    };
-    ts.forEachChild(body, walk);
+    const returns = ownReturns(body).filter(
+        (expression) => expression !== undefined,
+    );
     return returns.length === 1 ? returns[0] : undefined;
 }

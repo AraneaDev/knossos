@@ -8,6 +8,7 @@ use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\Rules\TautologyRule;
+use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\TestFidelity\TestFinding;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
@@ -136,6 +137,107 @@ final class TautologyRuleTest extends KnossosTestCase
         ], true)], 1));
 
         assertSame(['constant'], self::subRules($findings));
+    }
+
+    public function testANegatedConstantComparedWithItselfCannotPass(): void
+    {
+        // G1-17: `expect(true).not.toBe(true)` always fails; `expect(1).not.toBe(2)` always passes.
+        $true = CaseFixtures::operand('literal', ['text' => 'true']);
+        $messages = static fn(array $operands, bool $negated): array => array_map(
+            static fn(TestFinding $finding): string => $finding->subRule . ' ' . $finding->confidence->value . ' ' . $finding->message,
+            self::judge(CaseFixtures::testCase([CaseFixtures::assertion('toBe', $operands, $negated)], 1)),
+        );
+
+        assertSame(['constant definite true is compared with true, both constants; the assertion cannot pass'], $messages([$true, $true], true));
+        assertSame(['constant definite 1 is compared with 2, both constants; the assertion cannot fail'], $messages([CaseFixtures::operand('literal', ['text' => '1']), CaseFixtures::operand('literal', ['text' => '2'])], true));
+        assertSame(['self_comparison definite true is compared with itself; the assertion cannot fail'], $messages([$true, $true], false));
+        assertSame(['constant definite a literal is compared with a literal, both constants; the assertion cannot fail'], $messages([CaseFixtures::operand('literal'), CaseFixtures::operand('literal')], true), 'two literals without text are not shown the same');
+    }
+
+    public function testATestThatIsMeantToFailIsNeverATautology(): void
+    {
+        // G1-10: `it.fails` passes only when its body fails, so an assertion that always fails is its point.
+        $assertions = [CaseFixtures::assertion('toBe', [CaseFixtures::operand('literal', ['text' => '1']), CaseFixtures::operand('literal', ['text' => '2'])])];
+        $case = static fn(array $extra): NodeFact => DriftFixtures::node('test_case', CaseFixtures::FILE . '#test:10', 'fails', ['name' => 'fails', 'production_calls' => 0, 'subjects' => [], 'assertions' => $assertions, ...$extra], 10);
+
+        assertSame([], self::subRules(self::judge($case(['fails' => true]))));
+        assertSame(['constant'], self::subRules(self::judge($case(['fails' => false]))), 'the control');
+        assertSame(['constant'], self::subRules(self::judge($case([]))), 'the control');
+        assertSame([], self::subRules(self::judge($case(['fails' => 'yes']))), 'a malformed flag drops the case');
+    }
+
+    public function testADoubleOfATestThatIsMeantToFailIsNeverZeroReach(): void
+    {
+        $pinned = CaseFixtures::double(6, members: [CaseFixtures::member('total')], testCase: CaseFixtures::FILE . '#test:10');
+        $case = static fn(bool $fails): NodeFact => DriftFixtures::node('test_case', CaseFixtures::FILE . '#test:10', 'pins', ['name' => 'pins', 'production_calls' => 0, 'subjects' => [], 'fails' => $fails, 'assertions' => []], 10);
+
+        assertSame([], self::subRules(self::judge($case(true), $pinned)));
+        assertSame(['zero_reach'], self::subRules(self::judge($case(false), $pinned)), 'the control');
+    }
+
+    public function testANegatedCallMatcherNoCallCanMeetIsAVacuousAssertion(): void
+    {
+        // G3-02: `expect(spy).not.toHaveBeenCalledWith()` for `rate(x)` holds that no call lists nothing, which none can.
+        $findings = [...(new TautologyRule())->findings(self::rateGraph([['api' => 'toHaveBeenCalledWith', 'line' => 8, 'count' => 0, 'spread' => false, 'negated' => true]]))];
+
+        assertCount(1, $findings);
+        self::assertFinding($findings[0], 'vacuous_negation', FindingConfidence::Warning);
+        assertSame('rate needs 1 argument(s); the negated toHaveBeenCalledWith expects 0, so it cannot fail', $findings[0]->message);
+        assertSame([8, 'tests/a.test.ts'], [$findings[0]->evidence->startLine, $findings[0]->evidence->relativePath]);
+        assertSame(['member' => 'rate', 'api' => 'toHaveBeenCalledWith'], $findings[0]->attributes);
+        assertSame(['ts:test_double:tests/a.test.ts#double:6:3', 'ts:class:src/UserService.ts#UserService'], [$findings[0]->doubleOrCaseReference, $findings[0]->targetReference]);
+    }
+
+    public function testAVacuousNegationIsTheOneFindingOfItsAssertion(): void
+    {
+        // The assertion on that line would be mock-only too; the narrower finding wins, and another line keeps its own.
+        $assertions = [
+            CaseFixtures::assertion('toHaveBeenCalledWith', [CaseFixtures::operand('mock-call', ['double' => 'tests/a.test.ts#double:6:3'])], true, 8),
+            CaseFixtures::assertion('toHaveBeenCalled', [CaseFixtures::operand('mock-call', ['double' => 'tests/a.test.ts#double:6:3'])], false, 9),
+        ];
+        $case = DriftFixtures::node('test_case', 'tests/a.test.ts#test:5', 'checks', ['name' => 'checks', 'production_calls' => 0, 'subjects' => [], 'assertions' => $assertions], 5);
+        $matchers = [['api' => 'toHaveBeenCalledWith', 'line' => 8, 'count' => 0, 'spread' => false, 'negated' => true]];
+        // Two stubs of the member, each with the matcher: one finding for the line.
+        $graph = DriftFixtures::graph(
+            [DriftFixtures::method('rate', ['signature' => ['params' => [['name' => 'x', 'type' => 'number']], 'returns' => 'number']])],
+            [DriftFixtures::stub('rate', calledWith: $matchers), DriftFixtures::stub('rate', calledWith: $matchers)],
+            extra: [$case],
+        );
+
+        assertSame(['mock_only 9', 'vacuous_negation 8'], array_map(
+            static fn(TestFinding $finding): string => $finding->subRule . ' ' . $finding->evidence->startLine,
+            [...(new TautologyRule())->findings($graph)],
+        ));
+    }
+
+    public function testANegatedCallMatcherSomeCallCouldMeetIsSilent(): void
+    {
+        $matcher = static fn(array $fields): array => [['api' => 'toHaveBeenCalledWith', 'line' => 8, 'count' => 0, 'spread' => false, 'negated' => true, ...$fields]];
+        $judge = static fn(array $matchers, array $params = [['name' => 'x', 'type' => 'number']]): array => self::subRules([...(new TautologyRule())->findings(self::rateGraph($matchers, params: $params))]);
+
+        assertSame([], $judge($matcher(['negated' => false])), 'a plain matcher with too few is arity drift, not this');
+        assertSame([], $judge($matcher(['count' => 1])));
+        assertSame([], $judge($matcher(['count' => 2])), 'too many is arity drift, not this');
+        assertSame([], $judge($matcher(['spread' => true])));
+        assertSame([], $judge($matcher([]), [['name' => 'xs', 'type' => 'number[]', 'variadic' => true]]));
+        assertSame([], $judge($matcher([]), [['name' => 'x', 'type' => 'number', 'optional' => true]]));
+        assertSame(['vacuous_negation'], $judge($matcher(['api' => 'toHaveBeenNthCalledWith'])), 'the control');
+    }
+
+    /**
+     * `UserService.rate(x)` spied in `tests/a.test.ts`, with the given call matchers on it.
+     *
+     * @param list<array<string, mixed>> $calledWith
+     * @param list<NodeFact> $extra further test nodes
+     * @param list<array<string, mixed>> $params
+     */
+    private static function rateGraph(array $calledWith, array $extra = [], array $params = [['name' => 'x', 'type' => 'number']]): TestFidelityGraph
+    {
+        return DriftFixtures::graph(
+            [DriftFixtures::method('rate', ['signature' => ['params' => $params, 'returns' => 'number']])],
+            [DriftFixtures::stub('rate', calledWith: $calledWith)],
+            extra: $extra,
+        );
     }
 
     public function testMockOnlyIsWarning(): void

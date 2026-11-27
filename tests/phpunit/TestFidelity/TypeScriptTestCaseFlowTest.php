@@ -200,10 +200,11 @@ final class TypeScriptTestCaseFlowTest extends KnossosTestCase
         assertSame(['mock-config=42', 'literal:42'], $read['assertions'][16]);
         assertSame(['mock-config=42', 'literal:42'], $read['assertions'][17]);
         assertSame(['mock-config=42', 'literal:42'], $read['assertions'][18]);
-        // An implementation pins what it returns: an expression body, the
-        // first literal returned, a parenthesised one; any other is its name.
+        // An implementation pins what it returns: an expression body, the one
+        // literal every return hands back, a parenthesised one; any other,
+        // two returns of two values among them (G1-09), is its own text.
         assertSame(['mock-config=7', 'literal:7'], $read['assertions'][27]);
-        assertSame(['mock-config=8', 'literal:8'], $read['assertions'][28]);
+        assertSame(['mock-config=function () { if (a) { return 8; } return 9; }', 'literal:8'], $read['assertions'][28]);
         assertSame(['mock-config=10', 'literal:10'], $read['assertions'][29]);
         assertSame(['mock-config=impl', 'literal:0'], $read['assertions'][30]);
         // An assertion outside every test belongs to no test.

@@ -95,6 +95,47 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertSame('find needs 2 argument(s); the matcher expects 1', $findings[0]->message);
     }
 
+    public function testTooFewUnderNotIsNoArityDrift(): void
+    {
+        // G3-02: `.not.toHaveBeenCalledWith()` for `rate(x)` cannot fail; TautologyRule reports it, as vacuous.
+        $signature = ['params' => [['name' => 'id'], ['name' => 'patch']]];
+        $negated = static fn(int $count): array => ['negated' => true] + self::matcher($count);
+
+        assertSame([], self::judgeCalls($signature, [$negated(1)]));
+        assertSame([], self::judgeCalls($signature, [$negated(0), self::matcher(2)]));
+        assertSame(['find takes 2 argument(s); the matcher expects 3'], array_map(static fn($finding): string => $finding->message, self::judgeCalls($signature, [$negated(3)])), 'too many under .not is still drift');
+        assertSame(['find needs 2 argument(s); the matcher expects 1'], array_map(static fn($finding): string => $finding->message, self::judgeCalls($signature, [$negated(1), self::matcher(1)])), 'the control');
+    }
+
+    public function testAMatcherWithAMalformedNegationIsDropped(): void
+    {
+        assertSame([], self::judgeCalls(['params' => [['name' => 'id'], ['name' => 'patch']]], [['negated' => 'yes'] + self::matcher(1)]));
+    }
+
+    public function testAnOverloadedMemberIsSilentForAMatcher(): void
+    {
+        // G3-02: the node holds the first signature only, so no count can be held against it.
+        $graph = DriftFixtures::graph(
+            [DriftFixtures::method('find', ['signature' => ['params' => [['name' => 'id', 'type' => 'string']]], 'overloaded' => true])],
+            [DriftFixtures::stub('find', null, [], [self::matcher(3), self::matcher(0)])],
+        );
+
+        assertSame([], [...(new ArityMismatchRule())->findings($graph)]);
+    }
+
+    public function testAProphecyMatcherIsExact(): void
+    {
+        // G3-02: only PHPUnit's `with()` leaves the arguments it is not given open.
+        $signature = ['signature' => ['params' => [['name' => 'id', 'type' => 'string'], ['name' => 'deep', 'type' => 'bool']]]];
+        $findings = static fn(string $framework, string $api): array => array_map(
+            static fn($finding): string => $finding->message,
+            [...(new ArityMismatchRule())->findings(DriftFixtures::graph([DriftFixtures::method('find', $signature)], [DriftFixtures::stub('find', null, [], [self::matcher(1, $api)])], framework: $framework))],
+        );
+
+        assertSame(['find needs 2 argument(s); the matcher expects 1'], $findings('prophecy', 'with'));
+        assertSame([], $findings('phpunit', 'with'), 'the control');
+    }
+
     public function testAnArgumentCountWithinTheSignatureIsSilent(): void
     {
         $signature = ['params' => [['name' => 'id'], ['name' => 'deep', 'optional' => true]]];

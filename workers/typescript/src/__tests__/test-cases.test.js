@@ -124,6 +124,124 @@ describe("an echoed stub value", () => {
     });
 });
 
+describe("which calls define a test", () => {
+    // G1-10: every Vitest form of `it`/`test` is read; `it.fails` says that
+    // it passes only when its body fails; two tests on one line are two.
+    it("reads concurrent, todo, fails, skipIf and runIf tests, and both tests of a line", () => {
+        const { nodes } = scan({
+            "tests/forms.test.ts": [
+                "import { describe, expect, it, test } from 'vitest';",
+                "describe.concurrent('forms', () => {",
+                "  it.concurrent('concurrent', () => { expect(1).toBe(1); });",
+                "  test.concurrent.only('concurrent only', () => { expect(1).toBe(1); });",
+                "  it.todo('todo', () => { expect(1).toBe(1); });",
+                "  it.todo('todo without a body');",
+                "  it.fails('fails', () => { expect(1).toBe(2); });",
+                "  it.skipIf(process.env.CI)('skip if', () => { expect(1).toBe(1); });",
+                "  test.runIf(true)('run if', () => { expect(1).toBe(1); });",
+                "  it.each([1])('each %i', (n) => { expect(n).toBe(n); });",
+                "  it('one', () => { expect(2).toBe(2); }); it('two', () => { expect(3).toBe(3); });",
+                "  it.sideways('no test', () => { expect(1).toBe(1); });",
+                "  describe.sideways('no suite', () => {});",
+                "});",
+                "",
+            ].join("\n"),
+        });
+        const path = "tests/forms.test.ts";
+        const cases = testCases(nodes, path).map((node) => [
+            node.canonical_name,
+            node.display_name,
+            node.attributes.fails ?? false,
+        ]);
+
+        expect(cases).toEqual([
+            [`${path}#test:3`, "concurrent", false],
+            [`${path}#test:4`, "concurrent only", false],
+            [`${path}#test:5`, "todo", false],
+            [`${path}#test:7`, "fails", true],
+            [`${path}#test:8`, "skip if", false],
+            [`${path}#test:9`, "run if", false],
+            [`${path}#test:10`, "each %i", false],
+            [`${path}#test:11`, "one", false],
+            [`${path}#test:11.2`, "two", false],
+        ]);
+        expect(assertionAt(nodes, path, 3).operands).toEqual([
+            { source: "literal", text: "1" },
+            { source: "literal", text: "1" },
+        ]);
+        expect(
+            testCases(nodes, path)
+                .filter((node) => node.evidence.start_line === 11)
+                .map((node) => node.attributes.assertions[0].operands[0].text),
+        ).toEqual(["2", "3"]);
+    });
+
+    it("names on each double the test of its line it was made in", () => {
+        const { nodes } = scan({
+            "tests/line.test.ts": [
+                "import { it, vi } from 'vitest';",
+                "it('a', () => { vi.fn(); }); it('b', () => { vi.fn().mockReturnValue(1); });",
+                "",
+            ].join("\n"),
+        });
+
+        expect(
+            nodes
+                .filter((node) => node.kind === "test_double")
+                .map((node) => node.attributes.test_case),
+        ).toEqual(["tests/line.test.ts#test:2", "tests/line.test.ts#test:2.2"]);
+    });
+});
+
+describe("the value an implementation pins", () => {
+    // G1-09: a `return` inside a nested function is not the stub's, and a
+    // body that returns more than one value pins none of them.
+    it("reads the one literal every return of the body itself hands back", () => {
+        const { nodes } = scan({
+            "tests/echo.test.ts": [
+                "import { describe, it, expect, vi } from 'vitest';",
+                "",
+                "describe('echo', () => {",
+                "  it('nested return via impl', () => {",
+                "    const total = vi.fn();",
+                "    total.mockImplementation((xs: number[]) => { const ys = xs.map(() => { return 1; }); return ys.length * 5; });",
+                "    expect(total([3, 4])).toBe(1);",
+                "  });",
+                "  it('conditional impl', () => {",
+                "    const total = vi.fn();",
+                "    total.mockImplementation((xs: number[]) => { if (xs.length === 0) { return 0; } return xs.length * 3; });",
+                "    expect(total([])).toBe(0);",
+                "  });",
+                "  it('every return the same literal', () => {",
+                "    const total = vi.fn();",
+                "    total.mockImplementation(function (xs: number[]) { if (xs.length === 0) { return 4; } return 4; });",
+                "    expect(total([])).toBe(4);",
+                "  });",
+                "  it('a bare return', () => {",
+                "    const total = vi.fn();",
+                "    total.mockImplementation((xs: number[]) => { if (xs.length === 0) { return; } return 4; });",
+                "    expect(total([])).toBe(4);",
+                "  });",
+                "});",
+                "",
+            ].join("\n"),
+        });
+        const pinned = (line) =>
+            assertionAt(nodes, "tests/echo.test.ts", line).operands[0].value;
+
+        expect(pinned(7)).toBe(
+            "(xs: number[]) => { const ys = xs.map(() => { return 1; }); return ys.length * 5; }",
+        );
+        expect(pinned(12)).toBe(
+            "(xs: number[]) => { if (xs.length === 0) { return 0; } return xs.length * 3; }",
+        );
+        expect(pinned(17)).toBe("4");
+        expect(pinned(22)).toBe(
+            "(xs: number[]) => { if (xs.length === 0) { return; } return 4; }",
+        );
+    });
+});
+
 describe("what a test exercises", () => {
     it("counts production calls and records their subjects", () => {
         const { nodes } = scan({
@@ -210,13 +328,13 @@ describe("what a test exercises", () => {
             subjects: ["src/engine.ts"],
             assertions: [{ operands: [{ source: "production" }, {}] }],
         });
+        // G1-11: the `import()` of the module and the call of what it hands
+        // back are two calls into production.
         expect(testAt(nodes, path, 14).attributes).toMatchObject({
+            production_calls: 2,
             subjects: ["src/engine.ts"],
             assertions: [{ operands: [{ source: "production" }, {}] }],
         });
-        expect(
-            testAt(nodes, path, 14).attributes.production_calls,
-        ).toBeGreaterThan(0);
     });
 });
 
@@ -338,6 +456,33 @@ describe("what an assertion compares", () => {
                 { source: "literal", text: "-1" },
                 { source: "literal", text: "`a`" },
             ],
+        });
+    });
+
+    it("reads an assertion through .resolves and .rejects, and marks one through .not", () => {
+        const { nodes } = scan({
+            "tests/promise.test.ts": [
+                "import { expect, it } from 'vitest';",
+                "it('settles', async () => {",
+                "  await expect(Promise.reject(new Error('x'))).rejects.toThrow('x');",
+                "  await expect(Promise.resolve(1)).resolves.not.toBe(2);",
+                "});",
+                "",
+            ].join("\n"),
+        });
+        const path = "tests/promise.test.ts";
+
+        expect(assertionAt(nodes, path, 3)).toMatchObject({
+            api: "toThrow",
+            operands: [
+                { source: "unknown" },
+                { source: "literal", text: "'x'" },
+            ],
+        });
+        expect(assertionAt(nodes, path, 3)).not.toHaveProperty("negated");
+        expect(assertionAt(nodes, path, 4)).toMatchObject({
+            api: "toBe",
+            negated: true,
         });
     });
 });

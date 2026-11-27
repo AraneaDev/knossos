@@ -459,11 +459,14 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   above and each `returns` entry is `{api, line, once, assignable, typed}`
   (`assignable` is `true`, `false` or `"unknown"`). A member may also carry
   `called_with`, the argument-list assertions on it, each
-  `{api, line, count, spread, keywords?}` (`count` arguments listed, `spread` when one is a
+  `{api, line, count, spread, keywords?, negated?}` (`count` arguments listed, `spread` when one is a
   spread so the real count is open; `keywords`, the keyword names among them in
   source order, which Python sends. A reader that finds a malformed `keywords`
   keeps the matcher and takes it as `spread`, since a count holding unnamed
-  keywords cannot be bound), and a `returns` entry may carry `type`, the
+  keywords cannot be bound; `negated`, `true` when the matcher is called
+  through `.not`, which the TypeScript worker sends: a negated matcher that
+  lists fewer arguments than the member requires cannot fail, so a reader
+  takes it as a vacuous assertion, not as drift of the signature), and a `returns` entry may carry `type`, the
   pinned value's own type as the worker names it: a non-empty string, which
   the PHP worker spells `int`, `float`, `string`, `bool`, `null`, `array`,
   `closure`, `class:<FQCN>` or `unknown`, and the Python worker `int`,
@@ -485,9 +488,13 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `allows_protected` or `compile_checked` (read as false) and keeps the
   double; a malformed `also_implements` leaves what the double implements
   unknown.
-- `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
-  `subjects` (canonical names of the production modules those calls land in),
-  `should_panic` (optional) and `assertions`, each
+- `test_case`, named `<file>#test:<line>` (a second test that starts on the
+  same line `<file>#test:<line>.2`, a third `.3`, and so on): `name`,
+  `production_calls`, `subjects` (canonical names of the production modules
+  those calls land in), `should_panic` (optional), `fails` (optional, `true`
+  for a test the runner expects to fail, Vitest's `it.fails`: it passes only
+  when an assertion fails, so a reader judges none of its assertions, nor a
+  double it answers for, a tautology) and `assertions`, each
   `{api, line, negated?, operands}` (`api` is the matcher's name; `negated` is
   `true` when the matcher is called through `.not`) with operands
   `{source, text?, value?, double?, unconfigured_spy?}`, `source` one of

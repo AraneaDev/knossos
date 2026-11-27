@@ -356,11 +356,15 @@
           "description": "The keyword names the matcher lists, in source order (Python); `count` holds the positional arguments and the keywords together.",
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "negated": {
+          "description": "True when the matcher is called through `.not` (TypeScript): one that lists fewer arguments than the member requires cannot fail.",
+          "type": "boolean"
         }
       }
     },
     "testCaseAttributes": {
-      "description": "What a test_case node carries: its name, how many production calls it makes, the production modules those calls land in, whether it expects a panic and its assertions with the source of each operand.",
+      "description": "What a test_case node carries: its name, how many production calls it makes, the production modules those calls land in, whether it expects a panic or to fail and its assertions with the source of each operand.",
       "type": "object",
       "required": ["name", "production_calls", "subjects", "assertions"],
       "properties": {
@@ -371,6 +375,10 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "should_panic": { "type": "boolean" },
+        "fails": {
+          "description": "True for a test the runner expects to fail (Vitest's `it.fails`): it passes only when an assertion fails, so no tautology is judged in it.",
+          "type": "boolean"
+        },
         "assertions": {
           "type": "array",
           "items": { "$ref": "#/$defs/testAssertion" }
