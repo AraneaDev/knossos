@@ -232,6 +232,20 @@ def test_a_v2_name_keeps_an_optional_field_without_a_default_required(project, s
     assert _required(_class(project, scan_collect, source)) == {"a": True, "b": False}
 
 
+def test_an_assigned_default_outranks_an_annotated_field_call_without_a_v2_name(project, scan_collect) -> None:
+    source = (
+        "from typing import Annotated, Optional\nfrom pydantic import BaseModel, Field\n"
+        + "class C(BaseModel):\n"
+        + "    a: Annotated[Optional[int], Field(...)] = None\n"
+        + "    b: Annotated[Optional[int], Field(...)]\n"
+        + "    c: Annotated[Optional[int], Field(default=...)]\n"
+        + "    d: Annotated[Optional[int], Field(gt=0)]\n"
+        + "    e: Annotated[Optional[int], Field(gt=0)] = Field(...)\n"
+    )
+
+    assert _required(_class(project, scan_collect, source)) == {"a": False, "b": True, "c": True, "d": False, "e": True}
+
+
 def test_a_dataclass_optional_field_without_a_default_stays_required(project, scan_collect) -> None:
     source = "from dataclasses import dataclass\nfrom typing import Optional\n"
     source += "@dataclass\nclass C:\n    a: Optional[int]\n"

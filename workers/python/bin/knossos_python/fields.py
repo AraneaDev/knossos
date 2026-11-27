@@ -280,7 +280,8 @@ class FieldFacts:
         if kind == "typeddict":
             return "Required" in wrappers or ("NotRequired" not in wrappers and total)
         if kind == "pydantic" and not self.v2 and may_be_none(inner, self.qualified):
-            given = [each for each in [value, *metadata] if isinstance(each, ast.Call)]
+            # An assigned default outranks a Field in the Annotated metadata, as for v2.
+            given = [each for each in ([value] if value is not None else metadata) if isinstance(each, ast.Call)]
             explicit = [each for each in given if self.qualified(each) in FIELD_CALLS]
             return _is_ellipsis(value) or any(_ellipsis_default(call) for call in explicit)
         if value is None:
