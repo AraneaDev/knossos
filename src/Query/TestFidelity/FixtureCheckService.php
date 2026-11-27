@@ -189,7 +189,7 @@ final readonly class FixtureCheckService extends AbstractArchitectureQueryServic
 
     /**
      * The findings per packaged language and confidence, and per language
-     * whose worker sent no field facts, a note saying so.
+     * with no type that carries field facts, a note saying so.
      *
      * @param list<array<string, mixed>> $items
      * @param array<string, string> $languages fixture file => its type's language
@@ -207,7 +207,7 @@ final readonly class FixtureCheckService extends AbstractArchitectureQueryServic
         }
         foreach ($factless as $language) {
             $byLanguage[$language] ??= $zeros;
-            $byLanguage[$language]['notes'] = ['FIXTURE_DRIFT: no field facts from worker ' . PackagedLanguages::scannerOf($language)];
+            $byLanguage[$language]['notes'] = ['FIXTURE_DRIFT: no type with field facts from ' . PackagedLanguages::scannerOf($language)];
         }
         ksort($byLanguage);
 

@@ -294,7 +294,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
      * @param list<OnRequestFinding> $onRequest the on-request findings the project holds
      * @param array<string, string> $languages each test file's language
      * @param list<string> $silent the languages `OVER_MOCKING` could not judge
-     * @param list<string> $factless the languages whose worker sent `FIXTURE_DRIFT` no field facts
+     * @param list<string> $factless the languages with no type that carries field facts for `FIXTURE_DRIFT`
      * @return array<string, array<string, int|list<string>>>
      */
     private function byLanguage(string $projectId, TestFindingSuppressions $suppressions, bool $scan, array $onRequest, array $languages, array $silent, array $factless = []): array
@@ -316,7 +316,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         }
         foreach ($factless as $language) {
             $byLanguage[$language] ??= $zeros;
-            $byLanguage[$language]['notes'] = [...($byLanguage[$language]['notes'] ?? []), 'FIXTURE_DRIFT: no field facts from worker ' . PackagedLanguages::scannerOf($language)];
+            $byLanguage[$language]['notes'] = [...($byLanguage[$language]['notes'] ?? []), 'FIXTURE_DRIFT: no type with field facts from ' . PackagedLanguages::scannerOf($language)];
         }
         ksort($byLanguage);
 

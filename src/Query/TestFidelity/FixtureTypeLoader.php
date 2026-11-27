@@ -118,6 +118,8 @@ final readonly class FixtureTypeLoader
                 $records[] = self::type($graph, $node, $language, $fields->fields());
             }
         }
+        // A language none of whose types carries field facts: nothing to match its fixtures against,
+        // whether its worker sends no facts at all or its types send none (a Rust struct without `Deserialize`).
         $factless = array_values(array_diff(array_keys($languages), array_keys($withFacts)));
         sort($factless);
 
