@@ -48,6 +48,8 @@ final class YamlDocumentEdgesTest extends KnossosTestCase
             "a:\n    b: 1\n  c: 2\n" => 'bad indentation',
             "a: 1\n- b\n" => 'not a mapping entry',
             "a: |x\n" => 'unsupported block scalar',
+            "a: ||\n" => 'unsupported block scalar',
+            "a: |x|\n" => 'unsupported block scalar',
             "a: |-x\n" => 'unsupported block scalar',
             "a: |-+\n  x\n" => 'unsupported block scalar',
             "a: |+2-\n  x\n" => 'unsupported block scalar',
@@ -128,6 +130,8 @@ final class YamlDocumentEdgesTest extends KnossosTestCase
         self::assertSame(['a' => ['q\\', 'z']], self::read("a: [\"q\\\\\",\n  z]\n"));
         // Across lines, each continuation read without its indentation.
         self::assertSame(['a' => [1, 2, 3], 'b' => 4], self::read("a: [1,\n     2,\n   3]   \nb: 4\n"));
+        // A trailing tab on a continuation is trimmed too: the flow reader skips spaces only.
+        self::assertSame(['a' => [1, 2]], self::read("a: [1,\n  2]\t\n"));
     }
 
     public function testAFlowCollectionIsNestedToItsBoundAndNoFurther(): void
