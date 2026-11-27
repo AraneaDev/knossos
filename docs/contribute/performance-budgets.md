@@ -200,6 +200,23 @@ worker 96.4% and 96.2% (medians of 15 alternating scans). Each worker figure
 is a median of alternating scans, three per commit unless said, with ext-ffi
 loaded on both sides.
 
+The test-findings reads that `architecture_summary` makes (the snapshot facts'
+`NOT EXISTS` conditions) were measured on the `large` profile at `e9e156c2`, the
+commit before the test-fidelity sweep, and at the sweep's head, on one machine
+with ext-ffi loaded on both sides, alternating the two commits. Each figure is
+the whole `architecture-summary` command (`query_seconds` of the benchmark
+report), so it holds the process start as well as the query:
+
+| Commit              | Runs | `query_seconds` per run      | Median |
+| ------------------- | ---- | ---------------------------- | ------ |
+| `e9e156c2` (base)   | 4    | 0.102, 0.102, 0.1123, 0.1122 | 0.107s |
+| sweep head (Task 4) | 3    | 0.1021, 0.0917, 0.1121       | 0.102s |
+
+The head took 95% of the base, so the query is not slower. The same runs'
+cold scans took 23.5 to 23.9s on both sides. The `large` profile's graph is
+small (an 8 MB database), so this shows no regression at that size; it does not
+measure a graph near the 300,000-row archive cap.
+
 Timing and RSS values vary with hardware, load, filesystem, and cold runtime
 caches. Compare trends from equivalent pinned runners. Tightening a budget
 requires a successful report from representative CI; relaxing one requires the
