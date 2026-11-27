@@ -122,6 +122,11 @@ fn pretty_assertions_are_read_only_from_the_real_crate() {
         "[dev-dependencies]\npretty_assertions = { version = \"1\", package = \"pretty_assertions\" }",
         "[dev-dependencies.pretty_assertions]\nversion = \"1\"",
         "[target.'cfg(unix)'.dev-dependencies]\npretty_assertions = \"1\"",
+        "[dev-dependencies]\npretty_assertions.version = \"1\"",
+        // Not inherited: only `workspace = true` is.
+        "[dependencies]\npretty_assertions = { version = \"1\", optional = true }",
+        // Another dependency's rename is its own.
+        "[dev-dependencies]\npretty_assertions = \"1\"\nother.package = \"other-assertions\"",
     ] {
         assert_eq!(literal("10"), pretty(&depends(table), ""), "{table}");
     }
@@ -132,6 +137,9 @@ fn pretty_assertions_are_read_only_from_the_real_crate() {
         "[dev-dependencies.pretty_assertions]\npackage = \"other-assertions\"",
         "[dev-dependencies]\npretty_assertions.package = \"other-assertions\"",
         "[dev-dependencies]\nother_assertions = \"1\"",
+        // Tables that hold no dependency.
+        "[features]\npretty_assertions = []",
+        "[package.metadata.dependencies]\npretty_assertions = \"1\"",
         "",
     ] {
         assert_eq!(Value::Null, pretty(&depends(table), ""), "{table}");
@@ -142,13 +150,19 @@ fn pretty_assertions_are_read_only_from_the_real_crate() {
         "#[cfg(test)]\nextern crate other as pretty_assertions;",
         "mod pretty_assertions {\n    pub use other::*;\n}",
         "use other as pretty_assertions;",
+        "use other::pretty_assertions;",
+        "use other::pretty_assertions::{self};",
     ] {
         assert_eq!(Value::Null, pretty(&real, lib), "{lib}");
     }
-    assert_eq!(
-        literal("10"),
-        pretty(&real, "extern crate pretty_assertions;")
-    );
+    // The crate itself, under its own name.
+    for lib in [
+        "extern crate pretty_assertions;",
+        "use ::pretty_assertions;",
+        "use pretty_assertions::{self};",
+    ] {
+        assert_eq!(literal("10"), pretty(&real, lib), "{lib}");
+    }
 }
 
 #[test]
