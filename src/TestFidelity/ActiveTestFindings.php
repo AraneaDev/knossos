@@ -16,9 +16,10 @@ use PDO;
  * while reading, exist once.
  *
  * Filters are `path_prefix` (compared as bytes: LIKE would fold ASCII case and
- * read `_` and `%` as wildcards), `confidence` and `category`.
+ * read `_` and `%` as wildcards), `confidence`, `category`, and `doubles`,
+ * the node ids of the doubles whose findings are wanted.
  *
- * @phpstan-type Filters array{path_prefix?: ?string, confidence?: ?string, category?: ?string}
+ * @phpstan-type Filters array{path_prefix?: ?string, confidence?: ?string, category?: ?string, doubles?: list<string>}
  * @phpstan-type Finding array{id: string, double_id: string, attributes: array<string, mixed>, key: string, category: string, confidence: string, rule_id: string, sub_rule: string, message: string, file: ?string, line: ?int, double_name: string, target_name: ?string, target_canonical: ?string, target_file: ?string}
  */
 final readonly class ActiveTestFindings
@@ -178,6 +179,10 @@ final readonly class ActiveTestFindings
         if (($filters['category'] ?? null) !== null) {
             $where .= ' AND tf.category = :category';
             $parameters['category'] = $filters['category'];
+        }
+        if (isset($filters['doubles'])) {
+            $where .= ' AND tf.node_id IN (SELECT value FROM json_each(:doubles))';
+            $parameters['doubles'] = json_encode($filters['doubles'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         }
 
         return [$where, $parameters];

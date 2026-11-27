@@ -211,13 +211,20 @@ final readonly class OnRequestFindings
      */
     private static function targets(array $rows, array $members): array
     {
+        // A member is the nearest declaration's: one the target or a nearer ancestor declares hides the rest (G6-08c).
+        $nearest = [];
+        foreach ($members as $member) {
+            [$target, $name] = [(string) $member['target'], (string) $member['member']];
+            $nearest[$target][$name] = min($nearest[$target][$name] ?? PHP_INT_MAX, (int) $member['depth']);
+        }
         $own = [];
         $inherited = [];
         foreach ($members as $member) {
             $target = (string) $member['target'];
-            if ((int) $member['depth'] === 0) {
+            $depth = (int) $member['depth'];
+            if ($depth === 0) {
                 $own[$target][] = (string) $member['file'];
-            } else {
+            } elseif ($depth === $nearest[$target][(string) $member['member']]) {
                 $inherited[$target][(string) $member['member']][] = (string) $member['file'];
             }
         }

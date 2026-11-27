@@ -1365,6 +1365,7 @@ php	tests/phpunit/Support/SyntheticGraph.php
 php	tests/phpunit/Support/TempRootGuard.php
 php	tests/phpunit/Support/TempTrees.php
 php	tests/phpunit/Support/WorkerClients.php
+php	tests/phpunit/TestFidelity/ActiveTestFindingsTest.php
 php	tests/phpunit/TestFidelity/DashboardTestFindingsTest.php
 php	tests/phpunit/TestFidelity/DriftEndToEndTest.php
 php	tests/phpunit/TestFidelity/Facts/FieldListTest.php

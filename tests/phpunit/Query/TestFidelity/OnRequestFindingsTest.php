@@ -125,6 +125,27 @@ final class OnRequestFindingsTest extends KnossosTestCase
         ]], $input->targets['tests/GreeterTest.php']);
     }
 
+    /** G6-08c: a member the target declares, or a nearer ancestor does, is not looked for further up. */
+    public function testAnOverriddenMemberDoesNotCountTheAncestorsFile(): void
+    {
+        $root = self::scratchPath('knossos-stale-php-override');
+        $this->writeTree($root, [
+            'composer.json' => '{"autoload":{"psr-4":{"App\\\\":"src/"}},"autoload-dev":{"psr-4":{"Tests\\\\":"tests/"}}}',
+            'src/Greets.php' => "<?php\nnamespace App;\ntrait Greets { public function greet(): string { return 'hi'; } public function wave(): void {} }\n",
+            'src/Root.php' => "<?php\nnamespace App;\nclass Root { public function id(): int { return 0; } public function kind(): string { return 'r'; } }\n",
+            'src/Base.php' => "<?php\nnamespace App;\nclass Base extends Root { public function id(): int { return 1; } }\n",
+            'src/Greeter.php' => "<?php\nnamespace App;\nclass Greeter extends Base { use Greets; public function greet(): string { return 'x'; } }\n",
+            'tests/GreeterTest.php' => "<?php\nnamespace Tests;\nuse App\\Greeter;\nuse PHPUnit\\Framework\\TestCase;\nfinal class GreeterTest extends TestCase {\n    public function testGreets(): void {\n        \$g = \$this->createMock(Greeter::class);\n        \$g->method('greet')->willReturn('yo');\n        \$g->method('id')->willReturn(2);\n        self::assertSame('yo', \$g->greet());\n    }\n}\n",
+        ]);
+        $pdo = $this->freshTestDatabase();
+        $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$root]))->scan($root)->projectId;
+
+        $target = (new OnRequestFindings($pdo))->load($projectId, changed: ['src/Greets.php'])->targets['tests/GreeterTest.php'][0];
+        // Greeter's own greet hides the trait's; Base's id hides Root's; Root's kind and the trait's wave are inherited.
+        self::assertSame(['src/Greeter.php'], $target['files']);
+        self::assertSame(['id' => ['src/Base.php'], 'wave' => ['src/Greets.php'], 'kind' => ['src/Root.php']], $target['inherited']);
+    }
+
     public function testAProjectWithNoTestsLoadsNothing(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture('nest');
