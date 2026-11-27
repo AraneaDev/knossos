@@ -51,6 +51,7 @@ final class FieldFactsSchemaTest extends KnossosTestCase
             'LaneRecord' => ['id', 'lane'],
             'Manifest' => ['courier', 'reference'],
             'Member' => ['id', 'nickname', 'tier'],
+            'Order' => ['note', 'order_id', 'tags'],
             'Parcel' => ['courier', 'id', 'label', 'weight_kg'],
             'PostalAddress' => ['city_name', 'street_name'],
             'Price' => ['cents', 'currency'],

@@ -108,18 +108,20 @@ use PHPUnit\Framework\Attributes\Group;
  * 19. Field facts, deliberate: PHP promoted properties are fields; a Rust `Option` (and a `Box`, `Rc` or `Arc`
  *    of one, or a bare type parameter) is not required; a pydantic `Field(...)` is required; a Python `Enum`
  *    subclass is no DTO; a Python `self.x` write is no field; PHP `type` is the resolved class name; Python
- *    `Optional[X]` without a default is required (pydantic v2); a PHP untyped property is optional; TS enum
- *    values are all or none.
+ *    `Optional[X]` without a default is required (pydantic v2) only in a file that imports a name v1 lacks,
+ *    and not required elsewhere; a PHP untyped property is optional; TS enum values are all or none.
  * 20. Field facts sent only where the wire shape is provable, deliberate: a TS union-resolving type sends no
  *    list, and a decorator opens it, per property and on a mapped source class; Python sends lists for
  *    dataclass, pydantic and TypedDict classes only (not NamedTuple, attrs or pydantic dataclasses), and a
  *    pydantic model passed to a call, a default naming a module constant or an alias-holding name opens it;
- *    Rust sends one only for a derived `Deserialize`; a Rust `with`/`deserialize_with` field sends no type;
+ *    Rust sends one only for a derived `Deserialize`; a Rust `with`/`deserialize_with` field, and a Python
+ *    field a pydantic validator reaches before the type check (mode before, wrap or plain, `pre=True`,
+ *    `BeforeValidator`, `PlainValidator`, `WrapValidator`), sends no type;
  *    any serde attribute on a Rust enum, and a Python Enum hook or foreign base, drops its cases.
  * 21. Gaps in field facts: a Python subclass of a base in another file gets no list, which drops most real
  *    pydantic hierarchies; `type Maybe<T> = Option<T>` reads as required; a derive named `Deserialize` from
- *    another crate is trusted; a dataclass over a pydantic base composes the base's fields; a project on
- *    pydantic v1 would get false `missing_required` for `Optional[X]`.
+ *    another crate is trusted; a dataclass over a pydantic base composes the base's fields; a pydantic v2
+ *    file that imports no name v1 lacks gets no `missing_required` for `Optional[X]`.
  * 22. Deliberate: a type whose wire names may differ (`fields_open`: serde, pydantic or serializer renames)
  *    is never a candidate; Nemesis ignores renames.
  * 23. Deliberate: a type name two nodes hold is ambiguous and matches nothing; Nemesis keeps the last indexed.

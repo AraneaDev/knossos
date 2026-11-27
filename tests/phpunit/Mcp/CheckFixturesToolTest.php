@@ -114,8 +114,9 @@ final class CheckFixturesToolTest extends KnossosTestCase
 
             self::assertSame([], $data['items']);
             self::assertSame(0, $data['total']);
-            // Every other fixture was matched to its type and found to fit it.
-            self::assertSame(32, $data['scanned']);
+            // Every other fixture was matched to its type and found to fit it,
+            // `orders.fixture.json`'s "a,b" too: Order splits its tags before pydantic checks the list.
+            self::assertSame(33, $data['scanned']);
             self::assertSame(self::OPEN, array_column($data['unmatched'], 'file'));
             self::assertSame(self::UNPARSABLE, $data['unparsable']);
             self::assertSame([4, false], [$data['skipped'], $data['truncated']]);
@@ -144,6 +145,8 @@ final class CheckFixturesToolTest extends KnossosTestCase
                 'python/fixtures/parcels.yaml' => ['courier: post' => 'courier: drone'],
                 'python/fixtures/stops.fixture.json' => ['{ "city": "Utrecht" }' => '{ "city": 7, "street": "x" }'],
                 'python/fixtures/manifests.yml' => ['reference: M-1' => 'courier: van'],
+                // A validator before the type check spares a field's kind, never its name.
+                'python/fixtures/orders.fixture.json' => ['"order_id": 1, "tags": "a,b"' => '"order_id": "one", "tag": "a,b"'],
                 'rust/fixtures/pallets.fixture.json' => ['{ "id": 1, "dock": "North" }' => '{ "id": "one", "dock": "East", "colour": "red" }, { "dock": "South" }'],
             ];
             foreach ($plants as $file => $replacements) {
@@ -159,6 +162,9 @@ final class CheckFixturesToolTest extends KnossosTestCase
                 ['not_a_case', 'php/fixtures/members.yaml', 3, 'Member.tier'],
                 ['kind_mismatch', 'php/fixtures/sacks.fixture.json', 1, 'Sack.id'],
                 ['missing_required', 'python/fixtures/manifests.yml', 1, 'Manifest.reference'],
+                ['kind_mismatch', 'python/fixtures/orders.fixture.json', 1, 'Order.order_id'],
+                ['missing_required', 'python/fixtures/orders.fixture.json', 1, 'Order.tags'],
+                ['unknown_key', 'python/fixtures/orders.fixture.json', 1, 'Order.tag'],
                 ['not_a_case', 'python/fixtures/parcels.yaml', 5, 'Parcel.courier'],
                 ['kind_mismatch', 'python/fixtures/stops.fixture.json', 1, 'Stop.city'],
                 ['unknown_key', 'python/fixtures/stops.fixture.json', 1, 'Stop.street'],
@@ -214,7 +220,7 @@ final class CheckFixturesToolTest extends KnossosTestCase
             // A file outside any fixture directory is no fixture, unless it is named: then it is taken at its word.
             mkdir($root . '/data');
             file_put_contents($root . '/data/trips.json', '{"trips": [{"id": "T", "speed": "warp", "priority": 1}]}');
-            self::assertSame(32, $tools->call('check_fixtures', ['project_id' => $projectId])->data['scanned']);
+            self::assertSame(33, $tools->call('check_fixtures', ['project_id' => $projectId])->data['scanned']);
             $named = $tools->call('check_fixtures', ['project_id' => $projectId, 'paths' => ['data']])->data;
             self::assertSame([['not_a_case', 'data/trips.json', 1, 'TripRecord.speed']], self::findings($named['items']));
         });

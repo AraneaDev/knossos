@@ -29,7 +29,7 @@ final class PackagingTest extends KnossosTestCase
         assertContains('knossos.php@0.8.2 protocol 1.0', $byName['worker.php']['detail']);
         assertSame('ok', $byName['worker.typescript']['status']);
         assertSame('ok', $byName['worker.python']['status']);
-        assertContains('knossos.python@0.6.0 protocol 1.0', $byName['worker.python']['detail']);
+        assertContains('knossos.python@0.7.0 protocol 1.0', $byName['worker.python']['detail']);
         assertSame('28 applied', $byName['sqlite.migrations']['detail']);
         // The Node requirement is a floor with no ceiling: every release from 24
         // upwards passes, so a newer runtime than the one this release was built

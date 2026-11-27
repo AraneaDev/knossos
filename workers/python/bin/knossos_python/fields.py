@@ -15,9 +15,10 @@ elsewhere: an alias, an alias generator, a ``model_config`` or ``class
 Config``, a hook that may rewrite the input or the constructor, a decorator
 other than ``dataclass``, a class keyword, a base this scan cannot read, and
 :meth:`ClassMembers.opens_fields`'s causes (``__getattr__`` leaves it closed:
-the fixture check reads it as a method of its own). An ``Enum`` sends
-``cases`` instead, never ``fields``, with each case's literal value when every
-case has one.
+the fixture check reads it as a method of its own). A field a pydantic
+validator may reach before the type check sends no ``type``
+(:mod:`.field_rewrites`). An ``Enum`` sends ``cases`` instead, never
+``fields``, with each case's literal value when every case has one.
 """
 
 import ast
@@ -27,6 +28,7 @@ from typing import Any
 from .ast_helpers import dotted
 from .class_members import ClassMembers, Resolve, is_dunder
 from .field_names import FieldNames
+from .field_rewrites import ALL, annotation_rewrites, may_be_none, pydantic_v2, validated_fields
 from .module_index import ProjectModuleIndex
 
 MAX_ENTRIES = 64
@@ -92,6 +94,15 @@ class FieldFacts:
         counts = Counter(f"{module}.{item.name}" for item in declared)
         # A class this file declares once, by the name its references resolve to.
         self.classes = {f"{module}.{item.name}": item for item in declared if counts[f"{module}.{item.name}"] == 1}
+        self.tree = tree
+        self._v2: bool | None = None
+
+    @property
+    def v2(self) -> bool:
+        """Whether the file is known to run under pydantic v2, which alone requires an ``Optional`` without default."""
+        if self._v2 is None:
+            self._v2 = pydantic_v2(self.tree, self.qualified)
+        return self._v2
 
     def qualified(self, expression: ast.expr | None) -> str | None:
         """What a name, or the callee of a call, names as its import resolves, without the reference's kind."""
@@ -164,6 +175,10 @@ class FieldFacts:
         opened = False
         total = not any(keyword.arg == "total" and _not_true(keyword) for keyword in node.keywords)
         params = {param.name for param in getattr(node, "type_params", [])}
+        own = validated_fields(node.body, self.qualified)
+        inherited = self.inherited_validated(node, frozenset())
+        validated = None if own is None or inherited is None else own | inherited
+        opened = validated is None
         for item in node.body:
             opened = opened or self.body_opens(item, kind)
             if not isinstance(item, ast.AnnAssign) or not isinstance(item.target, ast.Name):
@@ -178,9 +193,28 @@ class FieldFacts:
                 continue
             opened = opened or "InitVar" in wrappers or self.renames([annotation, item.value])
             opened = opened or self.names.opens(item.annotation, item.value, params)
-            required = self.required(kind, item.value, wrappers, metadata, total)
+            required = self.required(kind, item.value, wrappers, inner, metadata, total)
             found[name] = {"name": name, "type": ast.unparse(inner), "required": required, "line": item.lineno}
+            if validated is None or {ALL, name} & validated or annotation_rewrites(annotation, self.qualified):
+                del found[name]["type"]  # A validator before the type check may take another kind.
+        # A validator naming a field this body does not declare may cover an inherited one.
+        opened = opened or bool(own is not None and own - {ALL} - set(found))
         return [found[name] for name in sorted(found)], opened
+
+    def inherited_validated(self, node: ast.ClassDef, seen: frozenset[str]) -> set[str] | None:
+        """The fields the validators of the class's same-file bases cover, inherited as pydantic inherits them."""
+        covered: set[str] = set()
+        for base in node.bases:
+            named = self.qualified(base)
+            if named not in self.classes or named in seen:
+                continue
+            parent = self.classes[named]
+            own = validated_fields(parent.body, self.qualified)
+            above = self.inherited_validated(parent, seen | {named})
+            if own is None or above is None:
+                return None
+            covered |= own | above
+        return covered
 
     def body_opens(self, item: ast.stmt, kind: str) -> bool:
         """Whether one class-body statement may hide a field or rewrite how the input is read."""
@@ -224,7 +258,13 @@ class FieldFacts:
         return False
 
     def required(
-        self, kind: str, value: ast.expr | None, wrappers: set[str], metadata: list[ast.expr], total: bool
+        self,
+        kind: str,
+        value: ast.expr | None,
+        wrappers: set[str],
+        inner: ast.expr,
+        metadata: list[ast.expr],
+        total: bool,
     ) -> bool:
         """Whether a deserialiser needs the field's key.
 
@@ -232,10 +272,17 @@ class FieldFacts:
         totality. Otherwise a field without a value is required, unless a
         pydantic ``Annotated`` ``Field`` gives it a default; a field call is
         required without ``default`` or ``default_factory``, a pydantic
-        ``= ...`` is required, and any other value is a default.
+        ``= ...`` is required, and any other value is a default. Pydantic v1
+        fills an ``Optional`` or ``Any`` field without a default with
+        ``None``, so unless the file shows v2 such a field is required only
+        when written ``...``.
         """
         if kind == "typeddict":
             return "Required" in wrappers or ("NotRequired" not in wrappers and total)
+        if kind == "pydantic" and not self.v2 and may_be_none(inner, self.qualified):
+            given = [each for each in [value, *metadata] if isinstance(each, ast.Call)]
+            explicit = [each for each in given if self.qualified(each) in FIELD_CALLS]
+            return _is_ellipsis(value) or any(_ellipsis_default(call) for call in explicit)
         if value is None:
             calls = [each for each in metadata if kind == "pydantic" and self.qualified(each) in FIELD_CALLS]
             return not any(_defaults(call) for call in calls if isinstance(call, ast.Call))
@@ -374,6 +421,12 @@ def _defaults(call: ast.Call) -> bool:
     if any(keyword.arg in ("default", "default_factory") for keyword in call.keywords):
         return True
     return bool(call.args) and not _is_ellipsis(call.args[0])
+
+
+def _ellipsis_default(call: ast.Call) -> bool:
+    """Whether a field call's default is ``...``, which makes the field required in either pydantic."""
+    given = [*(keyword.value for keyword in call.keywords if keyword.arg == "default"), *call.args[:1]]
+    return any(_is_ellipsis(each) for each in given)
 
 
 def _literal(value: ast.expr | None) -> str | None:

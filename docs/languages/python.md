@@ -404,9 +404,15 @@ fields: `@dataclass`, or a base that is pydantic's `BaseModel`, a `TypedDict`
 or a class of the same file that is one. A plain class, a `NamedTuple`, an
 attrs class, a pydantic dataclass and a subclass of a class in another file
 send none, which leaves most real pydantic hierarchies unjudged. A field with
-a default is optional; `Field(...)`, `= ...` and `Optional[X]` without a
-default stay required, as pydantic v2 reads them. An `Enum` sends its cases
-and is never a fixture's type.
+a default is optional; `Field(...)` and `= ...` stay required. `Optional[X]`
+without a default stays required, as pydantic v2 reads it, only in a file that
+imports a name pydantic v1 lacks (`ConfigDict`, `field_validator` and the
+like); elsewhere v1 may fill it with `None`, so it is not required. A field a
+validator may reach before the type check (`field_validator` in mode
+`before`, `wrap` or `plain`, v1 `validator(pre=True)`, or a `BeforeValidator`,
+`PlainValidator` or `WrapValidator` in its `Annotated` metadata) keeps its
+name but sends no type, so a fixture's kind for it is never judged. An `Enum`
+sends its cases and is never a fixture's type.
 
 The list is open for an alias (`alias`, `validation_alias`,
 `serialization_alias`), a `model_config` or `class Config`, a field call with

@@ -351,7 +351,16 @@ holds the class's own annotated fields, `ClassVar`, `KW_ONLY` and a pydantic
 for PHP, a `BaseModel` or `TypedDict` outside the project ending the walk. A
 field is not required when it has a default; a pydantic `Field(...)` or
 `Field()` with no `default` or `default_factory`, and `= ...`, stay required,
-as does `Optional[X]` without a default. A TypedDict key follows `total`,
+as does `Optional[X]` without a default in a file that imports a name only
+pydantic v2 has (`ConfigDict`, `field_validator`, `TypeAdapter` and the like);
+in any other file pydantic v1 may fill it with `None`, so an `Optional`, `X |
+None` or `Any` field is required there only when written `...`. A field a
+validator may reach before the type check covers (`field_validator` with mode
+`before`, `wrap` or `plain`, v1 `validator(pre=True)`, `"*"` naming every
+field, or a `BeforeValidator`, `PlainValidator` or `WrapValidator` anywhere in
+its annotation) sends no `type`, since it may accept another kind; a field
+validator whose field names cannot be read, or that names a field the class
+does not declare, sets `fields_open`. A TypedDict key follows `total`,
 `Required` and `NotRequired`. `fields_open` is set for an `alias`,
 `validation_alias` or `serialization_alias`, a `model_config` or `class
 Config`, a field call with `init`, `metadata` or `**`, an `InitVar`, a

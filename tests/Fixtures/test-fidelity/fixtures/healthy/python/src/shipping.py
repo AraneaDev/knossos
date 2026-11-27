@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import NotRequired, Optional, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Courier(Enum):
@@ -60,3 +60,14 @@ class PostalAddress:
 class Consignment:
     billing_address: PostalAddress
     shipping_address: PostalAddress
+
+
+class Order(BaseModel):
+    order_id: int
+    tags: list[str]
+    note: Optional[str]
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def split(cls, value: object) -> object:
+        return value.split(",") if isinstance(value, str) else value
