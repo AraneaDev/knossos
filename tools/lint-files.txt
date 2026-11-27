@@ -583,6 +583,7 @@ php	src/TestFidelity/OnRequest/OnRequestInput.php
 php	src/TestFidelity/OnRequest/OverMocking.php
 php	src/TestFidelity/OnRequest/StaleSince.php
 php	src/TestFidelity/OnRequestCategory.php
+php	src/TestFidelity/PhpCallableReach.php
 php	src/TestFidelity/PhpTypeDeclarations.php
 php	src/TestFidelity/PhpTypeFit.php
 php	src/TestFidelity/PythonAnnotation.php

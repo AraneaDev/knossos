@@ -69,23 +69,57 @@ final class PhpCallableReachTest extends KnossosTestCase
             {
                 public function run(array $xs, $untyped, string $name): void
                 {
-                    $pair = ['first', 'second'];
-                    $list = [1, 2, 3];
-                    $keyed = ['a' => $this, 'b' => 'run'];
-                    $three = [$this, 'run', 'extra'];
-                    $dynamic = [$this, $name];
-                    $unknown = [$untyped, 'run'];
-                    $spread = [...$xs, 'run'];
-                    $word = 'not a callable';
-                    $bad = 'App\Plain::';
-                    $odd = '::run';
+                    take(['first', 'second']);
+                    take([1, 2, 3]);
+                    take(['a' => $this, 'b' => 'run']);
+                    take([$this, 'run', 'extra']);
+                    take([$this, $name]);
+                    take([$untyped, 'run']);
+                    take(...[[$this, 'run']]);
+                    array_map('not a callable', $xs);
+                    array_map('App\Plain::', $xs);
+                    array_map('::run', $xs);
                     $this->run($xs, $untyped, $name);
-                    $nested = [[$this, 'run']][0];
                 }
             }
             PHP);
 
-        assertSame([['php:method:App\Plain::run', 'php:method:App\Plain::run']], $edges, 'Only the array callable nested in a list names a method; a plain call is no callable.');
+        assertSame([], $edges, 'A plain call is no callable, nor is what names no method.');
+    }
+
+    /**
+     * Only an argument handed straight to a call is reached: not one to `new`
+     * (an exception's message), nor a value returned, yielded or assigned. A
+     * string counts only for `Closure::fromCallable()` or a PHP function
+     * known to take a callback (the reviewer's adversarial cases, G3-31).
+     */
+    public function testOnlyACallArgumentIsACallable(): void
+    {
+        $edges = $this->callableEdges(<<<'PHP'
+            <?php
+            namespace App;
+
+            final class Shelf
+            {
+                public function put(Store $store): iterable
+                {
+                    $held = [$store, 'held'];
+                    yield [Store::class, 'yielded'];
+                    throw new \LogicException('App\Store::message');
+                    $this->log('App\Store::logged');
+                    log_it([Store::class, 'handed']);
+                    \Closure::fromCallable('App\Store::fromString');
+                    call_user_func('App\Store::called');
+                    return [$store, 'returned'];
+                }
+            }
+            PHP);
+
+        assertSame([
+            ['php:method:App\Shelf::put', 'php:method:App\Store::handed'],
+            ['php:method:App\Shelf::put', 'php:method:App\Store::fromString'],
+            ['php:method:App\Shelf::put', 'php:method:App\Store::called'],
+        ], $edges);
     }
 
     /**

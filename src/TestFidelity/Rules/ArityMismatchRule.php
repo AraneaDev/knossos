@@ -22,8 +22,9 @@ use Knossos\TestFidelity\TestFinding;
  * A call matcher that lists more arguments than the member takes, or, where the
  * matcher is exact, fewer than it requires, is a `call_arity` finding. The count
  * is syntax on both sides, so it is definite; a spread matcher is silent. A
- * PHP method production hands on as a callable (`[$repo, 'save']`, a
- * `calls` edge marked `callable`) through the target or a type it inherits
+ * PHP method production hands to a call as a callable argument
+ * (`array_walk($xs, [$repo, 'save'])`, a `calls` edge marked `callable`
+ * whose source is no test code, `PhpCallableReach`) through the target or a type it inherits
  * from may be called with more arguments than it takes, so neither more
  * matcher arguments nor more replacement parameters are reported for it,
  * though too few still are (G3-31). A

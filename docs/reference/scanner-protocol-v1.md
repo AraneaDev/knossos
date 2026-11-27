@@ -507,8 +507,14 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `callsAttributes` in the schema). Whatever it is handed to may call it with
   more arguments than it takes, as `array_walk()` passes a third, so a reader
   holds no count above the method's parameters against it, though a count
-  below what it requires still is. The PHP worker sends one for an array or
-  string callable as a probable, speculative edge, kept only when it resolves.
+  below what it requires still is. Only an edge from production counts: one
+  whose source node is test code (a data provider's row, an
+  `assertIsCallable()`) hands nothing to the code under test. The PHP worker
+  sends one, as a probable, speculative edge kept only when it resolves, for
+  an array callable passed straight to a function or method call, and for a
+  string callable passed to `Closure::fromCallable()` or to a PHP function
+  known to take a callback (`array_map()`, `usort()`, `call_user_func()` and
+  the rest); a value given to `new`, returned, yielded or assigned is none.
 
 A fact whose attributes break the schema is dropped by the readers rather than
 failing the scan.

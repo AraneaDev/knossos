@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\TestFidelity\Rules;
 
 use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\EdgeFact;
+use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\Origin;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\Rules\ArityMismatchRule;
@@ -389,10 +390,12 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         $replacement = ['name' => 'save', 'line' => 15, 'api' => 'method', 'returns' => [], 'params' => [['name' => 'a', 'type' => 'string'], ['name' => 'b', 'type' => 'int'], ['name' => 'c', 'type' => 'int']]];
         $tooFew = ['name' => 'save', 'line' => 15, 'api' => 'shouldReceive', 'returns' => [], 'called_with' => [['api' => 'with', 'line' => 15, 'count' => 1, 'spread' => false]]];
         $walker = DriftFixtures::phpType('class', 'App\Walker', [], 'src/Walker.php');
-        $reach = static fn(string $target, bool $callable = true): EdgeFact => new EdgeFact('calls', 'php:method:App\Walker::each', $target, Origin::Ast, Confidence::Probable, $walker->evidence, $callable ? ['speculative' => true, 'callable' => true] : []);
+        $each = DriftFixtures::phpMethod($walker, 'each');
+        $provider = DriftFixtures::phpMethod(DriftFixtures::phpType('class', 'Tests\WalkerTest', [], 'tests/WalkerTest.php'), 'rows');
+        $reach = static fn(string $target, bool $callable = true, ?NodeFact $from = null): EdgeFact => new EdgeFact('calls', ($from ?? $each)->localId, $target, Origin::Ast, Confidence::Probable, ($from ?? $each)->evidence, $callable ? ['speculative' => true, 'callable' => true] : []);
         $parent = DriftFixtures::phpType('interface', 'App\Saves', ['member_names' => []], 'src/Saves.php');
         $lineage = [DriftFixtures::edge('implements', DriftFixtures::phpType('class', 'App\UserService'), $parent->localId)];
-        $graph = static fn(array $member, array $edges, array $extra = [], array $double = []): TestFidelityGraph => DriftFixtures::phpGraph([['save', $save]], [$member], $double, extra: [$walker, ...$extra], extraEdges: $edges);
+        $graph = static fn(array $member, array $edges, array $extra = [], array $double = []): TestFidelityGraph => DriftFixtures::phpGraph([['save', $save]], [$member], $double, extra: [$walker, $each, $provider, ...$extra], extraEdges: $edges);
 
         assertSame([], self::findings($graph($tooMany, [$reach('php:method:App\UserService::save')])));
         assertSame([], self::findings($graph($tooMany, [$reach('php:method:\app\userservice::SAVE')])), 'PHP names match in any case.');
@@ -405,6 +408,9 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertCount(1, self::findings($graph($tooMany, [$reach('php:method:App\Other::save')])));
         assertCount(1, self::findings($graph($tooMany, [$reach('php:method_of_property:App\UserService::save')])));
         assertCount(1, self::findings($graph($replacement, [])));
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method:App\UserService::save', true, $provider)])), 'A test that lists the callable, a data provider, hands nothing to production.');
+        assertCount(1, self::findings($graph($tooMany, [new EdgeFact('calls', 'php:method:App\Gone::each', 'php:method:App\UserService::save', Origin::Ast, Confidence::Probable, $walker->evidence, ['callable' => true])])), 'A source the scan does not hold is no production.');
+        assertCount(1, self::findings($graph($tooMany, [new EdgeFact('references', $each->localId, 'php:method:App\UserService::save', Origin::Ast, Confidence::Probable, $each->evidence, ['callable' => true])])), 'Only a calls edge reaches a method.');
     }
 
     /** @return list<\Knossos\TestFidelity\TestFinding> */

@@ -5,23 +5,28 @@ declare(strict_types=1);
 namespace KnossosPhpScanner;
 
 use Closure;
-use PhpParser\Node;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar;
 
 /**
- * The method a value hands on as a callable rather than calling it there:
- * `[$repo, 'save']`, `[Repo::class, 'save']`, `['App\Repo', 'save']` or
- * `'App\Repo::save'` (G3-31). Whatever the value is handed to may call the
- * method with more arguments than it takes, as `array_walk()` passes a
- * third, and PHP drops the extra ones silently.
+ * The methods a call is handed as callable values rather than calling them
+ * there (G3-31): `array_walk($xs, [$repo, 'save'], 7)`. Whatever takes the
+ * callable may call it with more arguments than it takes, as `array_walk()`
+ * passes a third, and PHP drops the extra ones silently.
  *
- * A class a string names must be qualified (`App\Repo`): a two-string list
- * of bare words (`['id', 'name']`) is far more often data than a callable.
- * A first-class callable (`$repo->save(...)`) is a call node, marked where
- * its `calls` edge is made.
+ * Only an argument passed straight to a function or method call counts, not
+ * one to `new` (an exception's message), nor a value returned, yielded (a
+ * data provider's row) or assigned. An array callable, `[$repo, 'save']`,
+ * `[Repo::class, 'save']` or `['App\Repo', 'save']`, counts as an argument
+ * of any call. A string callable, `'App\Repo::save'`, counts only handed to
+ * `Closure::fromCallable()` or to a PHP function known to take a callback
+ * (`array_map()`, `usort()`, `call_user_func()` and the rest): a string
+ * shaped like one elsewhere is more often text. A class a string names must
+ * be qualified, as a list of two bare words (`['id', 'name']`) is more often
+ * data. A first-class callable (`$repo->save(...)`) is a call node, marked
+ * where its `calls` edge is made.
  */
 final class CallableReach
 {
@@ -31,30 +36,83 @@ final class CallableReach
     /** A method name. */
     private const METHOD = '/^[A-Za-z_][A-Za-z0-9_]*$/D';
 
+    /** PHP's own functions that take a callback, in lower case, which a string may name. */
+    private const CALLBACK_FUNCTIONS = [
+        'array_filter', 'array_map', 'array_reduce', 'array_walk', 'array_walk_recursive', 'array_find', 'array_find_key', 'array_any', 'array_all',
+        'usort', 'uasort', 'uksort', 'array_udiff', 'array_udiff_assoc', 'array_udiff_uassoc', 'array_diff_uassoc', 'array_diff_ukey',
+        'array_uintersect', 'array_uintersect_assoc', 'array_uintersect_uassoc', 'array_intersect_uassoc', 'array_intersect_ukey',
+        'call_user_func', 'call_user_func_array', 'forward_static_call', 'forward_static_call_array', 'is_callable', 'iterator_apply',
+        'preg_replace_callback', 'register_shutdown_function', 'register_tick_function', 'set_error_handler', 'set_exception_handler', 'spl_autoload_register',
+    ];
+
     private function __construct() {}
 
     /**
-     * `<FQCN>::<method>` for the method a node names as a callable value, or null when it names none.
+     * Each method the call's arguments hand on as a callable, `<FQCN>::<method>`, with the argument that names it.
      *
      * @param Closure(Expr): ?string $valueClass the class of an object the code holds, where the code shows it
      * @param Closure(Name): string $className a class name resolved as the file writes it
+     * @return list<array{string, Expr}>
      */
-    public static function method(Node $node, Closure $valueClass, Closure $className): ?string
+    public static function arguments(Expr\CallLike $call, Closure $valueClass, Closure $className): array
     {
-        if ($node instanceof Scalar\String_) {
-            $parts = explode('::', $node->value);
-
-            return count($parts) === 2 ? self::named(self::qualified($parts[0]), $parts[1]) : null;
+        if ($call instanceof Expr\New_ || $call->isFirstClassCallable()) {
+            return [];
         }
-        if (!$node instanceof Expr\Array_ || count($node->items) !== 2) {
+        $strings = self::takesStrings($call, $className);
+        $methods = [];
+        foreach ($call->getArgs() as $argument) {
+            $value = $argument->value;
+            $method = match (true) {
+                $argument->unpack => null,
+                $value instanceof Expr\Array_ => self::arrayMethod($value, $valueClass, $className),
+                $value instanceof Scalar\String_ && $strings => self::stringMethod($value->value),
+                default => null,
+            };
+            if ($method !== null) {
+                $methods[] = [$method, $value];
+            }
+        }
+
+        return $methods;
+    }
+
+    /** Whether a string argument of the call may name a callable: the call is `Closure::fromCallable()` or a PHP function known to take a callback. */
+    private static function takesStrings(Expr\CallLike $call, Closure $className): bool
+    {
+        if ($call instanceof Expr\StaticCall) {
+            return $call->class instanceof Name && strcasecmp(ltrim($className($call->class), '\\'), 'Closure') === 0
+                && $call->name instanceof Identifier && strcasecmp($call->name->toString(), 'fromCallable') === 0;
+        }
+
+        return $call instanceof Expr\FuncCall && $call->name instanceof Name && in_array(strtolower(ltrim($call->name->toString(), '\\')), self::CALLBACK_FUNCTIONS, true);
+    }
+
+    /**
+     * The method a two-element array callable names, or null.
+     *
+     * @param Closure(Expr): ?string $valueClass
+     * @param Closure(Name): string $className
+     */
+    private static function arrayMethod(Expr\Array_ $array, Closure $valueClass, Closure $className): ?string
+    {
+        if (count($array->items) !== 2) {
             return null;
         }
-        [$receiver, $method] = $node->items;
+        [$receiver, $method] = $array->items;
         if ($receiver->key !== null || $method->key !== null || $receiver->unpack || !$method->value instanceof Scalar\String_) {
             return null;
         }
 
         return self::named(self::classOf($receiver->value, $valueClass, $className), $method->value->value);
+    }
+
+    /** The method a `Class::method` string names, or null. */
+    private static function stringMethod(string $value): ?string
+    {
+        $parts = explode('::', $value);
+
+        return count($parts) === 2 ? self::named(self::qualified($parts[0]), $parts[1]) : null;
     }
 
     /**

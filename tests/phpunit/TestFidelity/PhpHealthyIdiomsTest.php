@@ -27,11 +27,10 @@ use PHPUnit\Framework\Attributes\Group;
  *   `func_get_arg()` in its own body takes any number of arguments;
  * - every type `Mockery::mock(A::class, B::class)` or `'A, B'` names is the
  *   double's, so a member of `B` is no ghost;
- * - a name PHPUnit's `addMethods()` adds is the double's own;
  * - a method production hands on as a callable (`array_walk($xs, [$repo,
  *   'save'], 7)`) may be called with more arguments than it takes, so a
  *   matcher listing more is satisfiable, though one on a method only called
- *   directly is not (G3-31);
+ *   directly is not, whatever a test lists or a message spells (G3-31);
  * - a built-in class pinned for a built-in type it implements
  *   (`DateTimeImmutable` for `DateTimeInterface`) fits, as PHP's own
  *   Reflection in the worker says, though `stdClass` still may not (G3-10);
@@ -78,7 +77,8 @@ final class PhpHealthyIdiomsTest extends KnossosTestCase
             'GHOST_MEMBER/missing_member/definite@tests/ExtraTest.php:30',
             // Genuine: onlyMethods() names only methods the class has, and Repo has no legacy() (G3-37).
             'GHOST_MEMBER/missing_member/definite@tests/OldTest.php:26',
-            // Genuine: Store::save() is only ever called directly, with two arguments (G3-31).
+            // Genuine: Store::save() is only ever called directly, with two arguments; a test listing it as a
+            // callable and an exception message spelling it hand it to nothing (G3-31).
             'ARITY_MISMATCH/call_arity/definite@tests/WalkTest.php:22',
             // Genuine: self() takes no argument.
             'ARITY_MISMATCH/call_arity/definite@tests/MailerTest.php:26',

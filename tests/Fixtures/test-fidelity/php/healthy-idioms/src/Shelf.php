@@ -13,6 +13,10 @@ final class Shelf
 
     public function put(string $name): bool
     {
-        return $this->store->save($name, 0);
+        if (!$this->store->save($name, 0)) {
+            throw new \LogicException('App\Store::save');
+        }
+
+        return true;
     }
 }

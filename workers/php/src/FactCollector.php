@@ -897,15 +897,14 @@ final class FactCollector extends NodeVisitorAbstract
         };
     }
 
-    /** A method handed on as a callable value (`CallableReach`): a speculative `calls` edge marked `callable`, since PHP may pass it more arguments than it takes. */
+    /** Each method a call is handed as a callable argument (`CallableReach`): a speculative `calls` edge marked `callable`, since PHP may pass it more arguments than it takes. */
     private function callableReach(Node $node): void
     {
-        if (!$node instanceof Expr\Array_ && !$node instanceof Node\Scalar\String_) {
+        if (!$node instanceof Expr\CallLike) {
             return;
         }
-        $method = CallableReach::method($node, $this->valueClass(...), $this->resolvedClassName(...));
-        if ($method !== null) {
-            $this->addEdge('calls', $this->currentSource(), self::reference('method', $method), $node, 'probable', ['speculative' => true, 'callable' => true]);
+        foreach (CallableReach::arguments($node, $this->valueClass(...), $this->resolvedClassName(...)) as [$method, $argument]) {
+            $this->addEdge('calls', $this->currentSource(), self::reference('method', $method), $argument, 'probable', ['speculative' => true, 'callable' => true]);
         }
     }
 
