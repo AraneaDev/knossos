@@ -50,7 +50,9 @@ The other four test tools belong at fixed points of a change:
   is no case of its enum, at its own line.
 - **Before a review**, `audit_tests` with `tier: "all"` adds what the scan does
   not store: over-mocked test files and, with `scope: "git-diff"`, doubles whose
-  target changed while their test did not.
+  target changed while their test did not. That scope narrows the stored
+  findings to the diff, but `OVER_MOCKING` and `FIXTURE_DRIFT` still cover the
+  whole project.
 
 Each on-request finding (`OVER_MOCKING`, `STALE_SINCE`, `FIXTURE_DRIFT`) is a
 `warning`, never `definite`: it rests on a ratio, a changed file or a match by

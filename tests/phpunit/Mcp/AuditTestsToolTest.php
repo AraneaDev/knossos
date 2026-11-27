@@ -63,6 +63,8 @@ final class AuditTestsToolTest extends KnossosTestCase
                 assertStringContainsString($onRequest->value, $properties['tier']['description']);
             }
             assertSame([['all', 'git-diff'], 'all'], [$properties['scope']['enum'], $properties['scope']['default']]);
+            // git-diff narrows stored findings and computes STALE_SINCE; the other two on-request categories stay whole-project, and say so.
+            assertStringContainsString('OVER_MOCKING and FIXTURE_DRIFT are not narrowed: they cover the whole project.', $properties['scope']['description']);
             assertSame([1, 10000, 2000], [$properties['timeout_ms']['minimum'], $properties['timeout_ms']['maximum'], $properties['timeout_ms']['default']]);
             assertSame(['string', 1], [$properties['base_ref']['type'], $properties['base_ref']['minLength']]);
 

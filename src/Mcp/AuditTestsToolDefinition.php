@@ -37,7 +37,7 @@ final readonly class AuditTestsToolDefinition
                     'offset' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 100000, 'default' => 0],
                     'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 200, 'default' => 50],
                     'tier' => ['type' => 'string', 'enum' => TestFidelityQueryService::TIERS, 'description' => 'scan (the default; all in scope git-diff): stored findings; on_request: computed now (OVER_MOCKING, STALE_SINCE, FIXTURE_DRIFT), never stored; all: both.'],
-                    'scope' => ['type' => 'string', 'enum' => TestFidelityQueryService::SCOPES, 'default' => 'all', 'description' => 'git-diff: STALE_SINCE, and stored findings narrowed to those whose file or target file changed since base_ref (staged, unstaged and untracked).'],
+                    'scope' => ['type' => 'string', 'enum' => TestFidelityQueryService::SCOPES, 'default' => 'all', 'description' => 'git-diff: STALE_SINCE, and stored findings narrowed to those whose file or target file changed since base_ref (staged, unstaged and untracked). OVER_MOCKING and FIXTURE_DRIFT are not narrowed: they cover the whole project.'],
                     'base_ref' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200, 'description' => 'The ref scope git-diff compares the working tree with; HEAD when omitted.'],
                     'timeout_ms' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 10000, 'default' => 2000, 'description' => 'Bound on the on-request tier, checked between its phases (the git call, each graph read), not within one; past it the result is partial. The git call of scope git-diff is capped at 5000, and its timeout is an error.'],
                 ],
