@@ -103,19 +103,21 @@ final readonly class GhostMemberRule extends DriftRule
             return null;
         }
         $suggestion = self::suggestion($pair->stub->name, $names);
+        // The suggestion is the point of the message, so the cap cuts the head, never it (G1-14).
+        $suffix = $suggestion === null ? '' : '; did you mean ' . DriftText::clean($suggestion) . '?';
+        $head = DriftText::clean(sprintf(
+            '%s stubs %s, which %s no longer has',
+            DriftText::clean($pair->doubleNode->displayName),
+            DriftText::clean($pair->stub->name),
+            DriftText::clean($pair->target->displayName),
+        ), DriftText::MAX_LENGTH - mb_strlen($suffix));
 
         return $pair->finding(
             FindingCategory::GhostMember,
             FindingConfidence::Definite,
             self::ID,
             $pair->target->kind === 'module' ? 'missing_export' : 'missing_member',
-            sprintf(
-                '%s stubs %s, which %s no longer has%s',
-                DriftText::clean($pair->doubleNode->displayName),
-                DriftText::clean($pair->stub->name),
-                DriftText::clean($pair->target->displayName),
-                $suggestion === null ? '' : '; did you mean ' . DriftText::clean($suggestion) . '?',
-            ),
+            $head . $suffix,
             $suggestion === null ? [] : ['suggestion' => DriftText::clean($suggestion)],
         );
     }
@@ -217,7 +219,8 @@ final readonly class GhostMemberRule extends DriftRule
                 continue;
             }
             $distance = levenshtein($missing, $name);
-            if ($distance > 0 && $distance < $bestDistance) {
+            // A lineage's names come unsorted, so a tie goes to the alphabet, not to the order (G1-15).
+            if ($distance > 0 && ($distance < $bestDistance || ($best !== null && $distance === $bestDistance && strcmp($name, $best) < 0))) {
                 $best = $name;
                 $bestDistance = $distance;
             }

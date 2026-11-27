@@ -232,6 +232,39 @@ final class GhostMemberRuleTest extends KnossosTestCase
         assertSame('vi.spyOn stubs bad name, which UserService no longer has', self::judge($graph)[0]->message);
     }
 
+    public function testTheLengthCapCutsTheHeadAndKeepsTheSuggestion(): void
+    {
+        // G1-14: a 63-character name and its 64-character neighbour run the message past 120 characters.
+        $missing = str_repeat('a', 59) . 'Cent';
+        $present = str_repeat('a', 59) . 'Cents';
+        $graph = DriftFixtures::graph([DriftFixtures::method($present)], [DriftFixtures::stub($missing)]);
+
+        $message = self::judge($graph)[0]->message;
+
+        assertSame('vi.spyOn stubs ' . str_repeat('a', 24) . '…; did you mean ' . $present . '?', $message);
+        assertSame(120, mb_strlen($message));
+        assertSame('vi.spyOn stubs refund, which UserService no longer has', self::judge(DriftFixtures::graph([DriftFixtures::method('totalCents')], [DriftFixtures::stub('refund')]))[0]->message, 'a short message is not cut');
+    }
+
+    public function testOfTwoNamesAsNearTheAlphabeticallyFirstIsSuggested(): void
+    {
+        // G1-15: a lineage's names reach the rule unsorted (a class's, then its parent's).
+        $graph = static fn(array $names): \Knossos\TestFidelity\TestFidelityGraph => DriftFixtures::graph([], [DriftFixtures::stub('lod')], targetAttributes: ['member_names' => $names]);
+
+        assertSame('loa', self::judge($graph(['lop', 'loa']))[0]->attributes['suggestion'] ?? null);
+        assertSame('loa', self::judge($graph(['loa', 'lop']))[0]->attributes['suggestion'] ?? null);
+        assertSame('lop', self::judge($graph(['kzd', 'lop']))[0]->attributes['suggestion'] ?? null, 'a nearer name wins over the alphabet');
+    }
+
+    public function testADoubleOfAFunctionIsNeverJudgedForMembers(): void
+    {
+        // G1-15: a function holds no members, whatever names its node lists.
+        $graph = DriftFixtures::graph([], [DriftFixtures::stub('gone')], ['kind' => 'function', 'export' => 'run'], targetKind: 'function', targetAttributes: ['member_names' => []]);
+
+        assertSame([], self::judge($graph));
+        assertCount(1, self::judge(DriftFixtures::graph([], [DriftFixtures::stub('gone')], targetAttributes: ['member_names' => []])), 'the control');
+    }
+
     public function testVendorTargetIsNotAGhost(): void
     {
         // `createMock(LoggerInterface::class)`, `Psr\Log` only in vendor/: the scan holds no node to judge against.

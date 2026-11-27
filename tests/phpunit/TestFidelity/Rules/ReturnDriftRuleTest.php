@@ -38,6 +38,19 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertSame(9, $findings[0]->evidence->startLine);
     }
 
+    public function testTheFirstPinRefusedOnDeclaredTypesIsReportedBeforeAnEarlierInferredOne(): void
+    {
+        // G1-15: `worst()` passes over a refusal resting on an inferred side for a later one on declared types.
+        $pin = static fn(int $line, bool $typed, bool|string $assignable = false): array => ['api' => 'mockReturnValueOnce', 'line' => $line, 'once' => true, 'assignable' => $assignable, 'typed' => $typed];
+        $judge = static fn(array $returns): array => array_map(
+            static fn($finding): array => [$finding->confidence, $finding->evidence->startLine],
+            [...(new ReturnDriftRule())->findings(DriftFixtures::graph([DriftFixtures::method('total', ['signature' => ['params' => [], 'returns' => 'number']])], [DriftFixtures::stub('total', null, $returns)]))],
+        );
+
+        assertSame([[FindingConfidence::Definite, 11]], $judge([$pin(9, false), $pin(10, true, true), $pin(11, true), $pin(12, true)]));
+        assertSame([[FindingConfidence::Warning, 9]], $judge([$pin(9, false), $pin(10, false), $pin(11, true, 'unknown')]));
+    }
+
     public function testACompileCheckedDoubleIsNeverJudged(): void
     {
         $methods = [DriftFixtures::method('total', ['signature' => ['params' => [], 'returns' => 'number']])];
