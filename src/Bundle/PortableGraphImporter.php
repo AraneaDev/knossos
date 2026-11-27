@@ -47,13 +47,17 @@ final readonly class PortableGraphImporter
 
     /**
      * Create the project and its synthetic scan, which the imported rows hang off.
+     * The scan keeps the fixed `bundle` hash, never the exporter's: a bundle holds no
+     * test findings, so a matching hash would let the next scan keep the graph and
+     * those zero findings; this one never matches, and the scan is a real one.
      *
      * @param array<string, mixed> $manifest @param array<string, mixed> $scan
      */
     private function insertProjectAndScan(array $manifest, array $scan, string $projectId, string $scanId, string $checksum, string $projectName, string $finishedAt): void
     {
         $this->insert('projects', ['id' => $projectId, 'name' => $projectName, 'root_realpath' => 'bundle://' . substr($checksum, 0, 32), 'config_json' => GraphBundleDecoder::encodeCanonical(['imported' => true, 'redaction' => $manifest['redaction'] ?? 'unknown']), 'active_scan_id' => null, 'created_at' => $finishedAt, 'updated_at' => $finishedAt]);
-        $this->insert('scans', ['id' => $scanId, 'project_id' => $projectId, 'mode' => 'full', 'status' => 'complete', 'scanner_set_hash' => $this->hexHash($scan['scanner_set_hash'] ?? null, hash('sha256', 'bundle')), 'started_at' => $finishedAt, 'finished_at' => $finishedAt]);
+        $this->hexHash($scan['scanner_set_hash'] ?? null, '');
+        $this->insert('scans', ['id' => $scanId, 'project_id' => $projectId, 'mode' => 'full', 'status' => 'complete', 'scanner_set_hash' => hash('sha256', 'bundle'), 'started_at' => $finishedAt, 'finished_at' => $finishedAt]);
     }
 
     /**
