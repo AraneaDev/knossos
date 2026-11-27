@@ -47,7 +47,10 @@ final class YamlFlow
         $this->text .= ($start === 0 ? '' : ' ') . $segment;
         for ($i = $start, $length = strlen($this->text); $i < $length; ++$i) {
             $character = $this->text[$i];
-            if ($this->quote !== null) {
+            if ($this->quote === "'" && $character === "'" && ($this->text[$i + 1] ?? '') === "'") {
+                // A doubled single quote is a quote inside the scalar, which stays open (G6-08f).
+                ++$i;
+            } elseif ($this->quote !== null) {
                 $closes = $character === $this->quote && !$this->escaped;
                 $this->escaped = $this->quote === '"' && $character === '\\' && !$this->escaped;
                 $this->quote = $closes ? null : $this->quote;
@@ -160,9 +163,15 @@ final class YamlFlow
         return trim(substr($this->text, $start, $this->at - $start));
     }
 
-    /** Skip spaces. */
+    /**
+     * Skip spaces. A tab where the next token starts refuses the file, as
+     * PyYAML refuses `{a:\t1}` and `[a,\tb]` (G6-16).
+     */
     private function space(): void
     {
         $this->at += strspn($this->text, ' ', $this->at);
+        if (($this->text[$this->at] ?? '') === "\t") {
+            throw new UnexpectedValueException('tab in a flow collection');
+        }
     }
 }

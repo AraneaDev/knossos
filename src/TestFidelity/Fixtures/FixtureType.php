@@ -52,20 +52,18 @@ final readonly class FixtureType
 
     /**
      * Whether `$key` names one of the type's fields, by its own name or in
-     * another case style (`billingAddress` for `billing_address`).
+     * another case style (`billingAddress` for `billing_address`) that no
+     * other field shares, as the drift check's aliases take it.
      */
     public function hasFieldSpelled(string $key): bool
     {
         if (isset($this->fields[$key])) {
             return true;
         }
-        foreach (array_keys($this->fields) as $field) {
-            if (self::styleless((string) $field) === self::styleless($key)) {
-                return true;
-            }
-        }
+        $styleless = self::styleless($key);
+        $spelled = array_filter(array_keys($this->fields), static fn(int|string $field): bool => self::styleless((string) $field) === $styleless);
 
-        return false;
+        return count($spelled) === 1;
     }
 
     /** A name without its case style: lower case, no `_` or `-`. */
