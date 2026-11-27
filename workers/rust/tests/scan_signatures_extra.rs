@@ -224,6 +224,20 @@ fn a_traits_associated_types_and_consts_are_listed() {
 }
 
 #[test]
+fn only_a_negated_literal_counts_as_a_literal_value() {
+    let nodes = scan(
+        "pub trait Signs { const NEG: i32; const NOT: bool; const MINUS: i32; fn f(&self); }\n\
+         pub struct S;\n\
+         impl Signs for S {\n    const NEG: i32 = -1;\n    const NOT: bool = !true;\n    const MINUS: i32 = -Self::NEG;\n    fn f(&self) {}\n}\n",
+    );
+
+    assert_eq!(
+        json!([{"name": "NEG", "type": "i32", "value": "-1"}, {"name": "NOT", "type": "bool"}, {"name": "MINUS", "type": "i32"}]),
+        nodes["crate::S::<impl Signs>::f"]["attributes"]["impl_consts"]
+    );
+}
+
+#[test]
 fn a_trait_impls_associated_items_ride_on_its_methods() {
     let nodes = scan(
         "pub trait WithAssoc { type Output; const LIMIT: usize; const NAME: &'static str; fn produce(&self) -> Self::Output; fn limit(&self) -> usize; }\n\

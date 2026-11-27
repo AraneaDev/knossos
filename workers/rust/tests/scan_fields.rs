@@ -274,6 +274,27 @@ fn two_cfg_alternatives_of_one_struct_open_the_list() {
 }
 
 #[test]
+fn a_union_alternative_of_a_struct_opens_its_list() {
+    // A union declared under the other `cfg` is the same path: the struct's list is not the only shape.
+    let source = "#[cfg(unix)]\n#[derive(Deserialize)]\npub struct Config {\n    a: u8,\n}\n#[cfg(not(unix))]\npub union Config {\n    b: u8,\n}\n";
+
+    let contributions = scan_fixture("fields-union-alternative", &[("src/lib.rs", source)]);
+    let listed: Vec<&Value> = contributions[0]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|node| node["local_id"] == "rust:class:crate::Config")
+        .filter(|node| node["attributes"].get("fields").is_some())
+        .collect();
+
+    assert_eq!(1, listed.len());
+    assert_eq!(
+        Some(&json!(true)),
+        listed[0]["attributes"].get("fields_open")
+    );
+}
+
+#[test]
 fn a_struct_in_an_inline_module_lists_its_fields() {
     let source = "pub mod dto {\n    #[derive(Deserialize)]\n    pub struct User {\n        id: u64,\n    }\n}\n";
     let contributions = scan_fixture("fields-inline", &[("src/lib.rs", source)]);
@@ -295,6 +316,64 @@ fn a_long_list_is_cut_and_marked() {
     assert_eq!(64, attributes["fields"].as_array().unwrap().len());
     assert_eq!("f063", attributes["fields"][63]["name"]);
     assert_eq!(Some(&json!(true)), attributes.get("fields_truncated"));
+}
+
+#[test]
+fn only_the_standard_option_path_is_optional() {
+    // Three segments name `Option` only as `std::option::Option` or `core::option::Option`.
+    let source = "#[derive(Deserialize)]\npub struct Paths {\n    a: std::vec::Vec<u8>,\n    b: crate::types::Option<u8>,\n    c: std::other::Option<u8>,\n}\n";
+
+    assert_eq!(
+        pairs(&[("a", true), ("b", true), ("c", true)]),
+        required(&class("Paths", source))
+    );
+}
+
+#[test]
+fn a_tool_attribute_changes_no_key() {
+    let attributes = class(
+        "Tooled",
+        "#[derive(Deserialize)]\n#[rustfmt::skip]\npub struct Tooled {\n    #[clippy::doc]\n    a: u8,\n}\n",
+    );
+
+    assert_eq!(None, attributes.get("fields_open"));
+    assert_eq!(pairs(&[("a", true)]), required(&attributes));
+}
+
+#[test]
+fn a_field_only_serde_key_on_the_struct_opens_its_list() {
+    let attributes = class(
+        "Withed",
+        "#[derive(Deserialize)]\n#[serde(deserialize_with = \"read\")]\npub struct Withed {\n    a: u8,\n}\n",
+    );
+
+    assert_eq!(Some(&json!(true)), attributes.get("fields_open"));
+}
+
+#[test]
+fn a_list_of_exactly_the_bound_is_whole() {
+    let fields: String = (0..64)
+        .map(|index| format!("    f{index:03}: u8,\n"))
+        .collect();
+    let attributes = class(
+        "Full",
+        &format!("#[derive(Deserialize)]\npub struct Full {{\n{fields}}}\n"),
+    );
+
+    assert_eq!(64, attributes["fields"].as_array().unwrap().len());
+    assert_eq!(None, attributes.get("fields_truncated"));
+}
+
+#[test]
+fn a_skip_on_the_struct_itself_opens_its_list() {
+    // `skip` is a field's attribute; on a struct serde refuses it, so nothing is known of the shape.
+    let attributes = class(
+        "Skipped",
+        "#[derive(Deserialize)]\n#[serde(skip)]\npub struct Skipped {\n    a: u8,\n}\n",
+    );
+
+    assert_eq!(Some(&json!(true)), attributes.get("fields_open"));
+    assert_eq!(pairs(&[("a", true)]), required(&attributes));
 }
 
 #[test]
