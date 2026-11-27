@@ -117,12 +117,16 @@ final class YamlDocumentTest extends KnossosTestCase
         self::assertSame(30_001, count(YamlDocument::parse($sequence(30_000))?->root->items() ?? []));
         $map = static fn(int $lines): string => "{\n" . implode(",\n", array_map(static fn(int $at): string => "'k" . $at . "': \"v\"", range(1, $lines))) . "}\n";
         self::assertSame(30_000, count(YamlDocument::parse($map(30_000))?->root->keys() ?? []));
-        // Four times the lines take about four times as long when the read is linear and sixteen
-        // times when it is quadratic. A ratio, not a wall-clock limit, so a slow or loaded host
-        // (or a coverage run) cannot fail it; the best of three readings per size drops a stray pause.
+        // Thirty-two times the lines take about 33 times as long when the read is linear (measured 33-35)
+        // and over 75 times with even a cheap quadratic term, such as one count over the text so far per
+        // line (measured 78-122; an eight-fold step gave only 11-13 against 8-9 and missed it). A ratio,
+        // not a wall-clock limit, so a slow or loaded host (or a coverage run) cannot fail it; the best of
+        // three readings per size drops a stray pause. The absolute ceiling is a second, generous guard.
         foreach (['sequence' => $sequence, 'map' => $map] as $shape => $document) {
-            $ratio = self::fastest(static fn(): mixed => YamlDocument::parse($document(30_000))) / self::fastest(static fn(): mixed => YamlDocument::parse($document(7_500)));
-            self::assertLessThan(8.0, $ratio, $shape);
+            $large = self::fastest(static fn(): mixed => YamlDocument::parse($document(128_000)));
+            $ratio = $large / self::fastest(static fn(): mixed => YamlDocument::parse($document(4_000)));
+            self::assertLessThan(55.0, $ratio, $shape);
+            self::assertLessThan(60.0, $large, $shape);
         }
     }
 
