@@ -31,7 +31,10 @@ use PHPUnit\Framework\Attributes\Group;
  *   in the copy, since Momus audits Python only when told to:
  *   `npx tsx packages/cli/src/index.ts audit --root <copy> --max-issues 1000`.
  *   Over `momus-drift/` it gives exactly its own golden, "python drift
- *   fixtures" in `test/golden/audit.test.ts`.
+ *   fixtures" in `test/golden/audit.test.ts`. Over `momus-spec/`, a
+ *   fixture of Knossos's own holding item 11's spec'd and autospec'd echoes
+ *   beside a healthy twin, frozen so the gap keeps its reference once Momus
+ *   is archived.
  * - Nemesis over each Nemesis fixture (`nemesis/` is `fixtures/python`,
  *   `nemesis-experiments/<name>/` is `fixtures/experiments/python/<name>`),
  *   run from inside the copy, as its CLI resolves paths under the working
@@ -99,7 +102,8 @@ use PHPUnit\Framework\Attributes\Group;
  * 11. A gap: a `Mock(spec=…)` member's pin read back
  *    (`ledger.total.return_value = 7` then `assert ledger.total() == 7`):
  *    Momus reports TAUT-002; the worker gives a spec'd double no pinned
- *    value, so Knossos is silent. The golden's echo uses a plain `Mock()`.
+ *    value, so Knossos is silent. The golden's echo uses a plain `Mock()`;
+ *    `momus-spec` `test_spec_echo.py:9` and `:15` hold the spec'd case (G4-14, wontfix).
  * 12. A gap (Ruling P10): an unspec'd `Mock()` pinned and never reached:
  *    Momus reports TAUT-005; an unspec'd double records no members
  *    (Decision 2), so Knossos is silent. The golden's stub is spec'd.
@@ -151,6 +155,10 @@ final class PythonAcceptanceTest extends KnossosTestCase
             'TAUT-005/warning@drift_test.py:11',
             'TAUT-005/warning@drift_test.py:16',
             'TAUT-005/warning@healthy_test.py:11',
+        ],
+        'momus-spec' => [
+            'TAUT-002/error@tests/test_spec_echo.py:15',
+            'TAUT-002/error@tests/test_spec_echo.py:9',
         ],
         'momus-src-layout' => [
             'DRIFT-005/error@tests/test_patch_missing.py:5',
@@ -206,6 +214,7 @@ final class PythonAcceptanceTest extends KnossosTestCase
             'RETURN_DRIFT/definite@drift_test.py:12',
             'RETURN_DRIFT/warning@drift_test.py:17',
         ],
+        'momus-spec' => [],
         'momus-src-layout' => [],
         'nemesis' => [
             'GHOST_METHOD/definite@tests/test_auth.py:9',
@@ -302,6 +311,14 @@ final class PythonAcceptanceTest extends KnossosTestCase
         [$pdo] = $this->scanned('momus-src-layout');
 
         assertSame(['GHOST_MEMBER/missing_export/definite@tests/test_patch_missing.py:5'], self::findings($pdo));
+    }
+
+    /** The spec'd and autospec'd echoes Momus reports are item 11's gap: silent, as is their healthy twin. */
+    public function testMomusSpecdEchoIsTheKnownGap(): void
+    {
+        [$pdo] = $this->scanned('momus-spec');
+
+        assertSame([], self::findings($pdo));
     }
 
     public function testNemesisPythonFixtures(): void

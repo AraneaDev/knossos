@@ -537,6 +537,72 @@
       }
     },
     {
+      "fixture": "nemesis-experiments/enum-value",
+      "trees": {
+        "php/nemesis-experiments/enum-value": ""
+      },
+      "fixture_sha256": "aeaf05c446584358ab7e19e2742973a7ac83e67e8032fbffe32a5ec62ee6e363",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "php": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 2,
+            "errors": 0,
+            "warnings": 1,
+            "infos": 1,
+            "totalIssues": 2,
+            "totalErrors": 0,
+            "totalWarnings": 1,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "durationMs": 28,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "tests/ShipmentTest.php",
+              "line": 14,
+              "column": 9,
+              "endLine": 14,
+              "endColumn": 54,
+              "message": "return-type-mismatch: configured value does not match 'leg's production return t",
+              "tokens": 37
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/ShipmentTest.php",
+              "line": 12,
+              "column": 21,
+              "endLine": 12,
+              "endColumn": 55,
+              "message": "mock-of-self: 'Shipment' is mocked but also the subject under test",
+              "tokens": 33
+            }
+          ]
+        }
+      }
+    },
+    {
       "fixture": "nemesis-experiments/final",
       "trees": {
         "php/nemesis-experiments/final": ""

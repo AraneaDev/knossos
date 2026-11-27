@@ -58,6 +58,27 @@
       }
     },
     {
+      "fixture": "momus-spec",
+      "trees": {
+        "python/momus-spec": ""
+      },
+      "fixture_sha256": "ea98a1f37a7a5fcbe105ad252e6ff3dbe45d22ad5db1275c68a2f8ebb9fc8313",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 0,
+          "violations_count": 0,
+          "doubles_checked": 0,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    },
+    {
       "fixture": "momus-src-layout",
       "trees": {
         "python/momus-src-layout": ""

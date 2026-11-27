@@ -113,6 +113,12 @@ use PHPUnit\Framework\Attributes\Group;
  *    `willReturnSelf()` on a `void` method as definite drift; Knossos
  *    deliberately gives a warning (Ruling R18): the void method's generated
  *    body returns nothing, so neither PHPUnit nor Mockery fails on it.
+ * 18. A gap (G3-19): `nemesis-experiments/enum-value` `ShipmentTest.php:15`:
+ *    Nemesis reports `with('rail')` for a `Leg` parameter, whose cases are
+ *    `air` and `sea`, as definite arity drift. Knossos judges no matcher
+ *    value against an enum's cases yet: silent. At `:14` both tools and
+ *    Knossos report `willReturn('rail')` for `leg(): Leg`; Momus warns
+ *    (item 1), Nemesis and Knossos give definite drift.
  *
  * The frozen output of every run above is in
  * `tests/Fixtures/test-fidelity/goldens/{momus,nemesis}/php.json`.
@@ -174,6 +180,10 @@ final class PhpAcceptanceTest extends KnossosTestCase
         'nemesis-experiments/callback' => [
             'MOCK-002/info@tests/CourierTest.php:12',
         ],
+        'nemesis-experiments/enum-value' => [
+            'DRIFT-003/warning@tests/ShipmentTest.php:14',
+            'MOCK-002/info@tests/ShipmentTest.php:12',
+        ],
         'nemesis-experiments/final' => [
             'MOCK-002/info@tests/SealedTest.php:13',
             'TAUT-005/warning@tests/SealedTest.php:16',
@@ -227,6 +237,10 @@ final class PhpAcceptanceTest extends KnossosTestCase
         'nemesis-magic' => [],
         'nemesis-experiments/callback' => [
             'ARITY_MISMATCH/definite@tests/CourierTest.php:15',
+        ],
+        'nemesis-experiments/enum-value' => [
+            'ARITY_MISMATCH/definite@tests/ShipmentTest.php:15',
+            'RETURN_DRIFT/definite@tests/ShipmentTest.php:14',
         ],
         'nemesis-experiments/final' => [
             'RETURN_DRIFT/warning@tests/SealedTest.php:20',
@@ -365,6 +379,10 @@ final class PhpAcceptanceTest extends KnossosTestCase
             'callback' => ['callback', [
                 'ARITY_MISMATCH/signature/definite@tests/CourierTest.php:15',
                 'TAUTOLOGY/mock_only/warning@tests/CourierTest.php:21',
+            ]],
+            'enum-value' => ['enum-value', [
+                'RETURN_DRIFT/return_type/definite@tests/ShipmentTest.php:14',
+                'TAUTOLOGY/mock_only/warning@tests/ShipmentTest.php:17',
             ]],
             'final' => ['final', [
                 'RETURN_DRIFT/return_type/definite@tests/SealedTest.php:18',
