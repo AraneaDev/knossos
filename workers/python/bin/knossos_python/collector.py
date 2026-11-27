@@ -904,7 +904,7 @@ class PythonAstFactCollector(ast.NodeVisitor):
             self.untyped_calls.add(target.rsplit("::", 1)[1])
         # Calling an instance (`repo()`) names no declaration of its own.
         if target and not target.startswith("py:instance:"):
-            self.facts.add_edge("calls", self.current(), target, node)
+            self.facts.add_edge("calls", self.current(), target, node, self.receivers.unbound(name, target))
         self.implied_calls(target, node)
         self.fastapi.enrich_call(node, name)
         self.flask.enrich_call(node, name)

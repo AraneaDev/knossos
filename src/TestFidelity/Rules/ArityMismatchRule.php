@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\TestFidelity\Rules;
 
+use Knossos\TestFidelity\Facts\CallMatcher;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\TestFidelityGraph;
@@ -31,9 +32,10 @@ use Knossos\TestFidelity\TestFinding;
  * Python matcher is bound by keyword name and parameter kind as well
  * (`PythonCallBinding`), definite with or without `autospec` (the user's
  * decision), and silent for a decorated member, whose signature a decorator
- * may have replaced. Accepted residual: a Python call made unbound,
- * `Repo.save(repo, x)`, records the receiver, so a matcher written for it
- * reads as one argument too many. A rebind from another file
+ * may have replaced. A Python method production calls through its class,
+ * `Repo.save(repo, x)` (`called_unbound`, `PythonUnboundCalls`, G4-10), takes
+ * its receiver as an argument there, so a matcher or a replacement that lists
+ * it fits, and one argument more still does not. A rebind from another file
  * (`Repo.save = wrap(Repo.save)` in another module, or a package's
  * `m.f = partial(m.f, 1)`) marks the def decorated in the graph's view
  * (`PythonForeignWrites`, G4-03), so it is not judged. Silent
@@ -66,8 +68,10 @@ final readonly class ArityMismatchRule extends DriftRule
             return null;
         }
         $takesMore = self::reachedAsCallable($pair, $graph);
+        // G4-10: production calls the method through its class, which hands the receiver over as an argument.
+        $unbound = ($pair->member?->attributes['called_unbound'] ?? false) === true;
 
-        return $this->signature($pair, $declared, $takesMore) ?? $this->calls($pair, $declared, $takesMore);
+        return $this->signature($pair, $declared, $takesMore, $unbound) ?? $this->calls($pair, $declared, $takesMore, $unbound);
     }
 
     /** Whether production hands the stubbed PHP method on as a callable value through the target or a type it inherits from (G3-31). */
@@ -87,9 +91,16 @@ final readonly class ArityMismatchRule extends DriftRule
     }
 
     /** A call matcher on the member lists a count the member cannot meet. */
-    private function calls(DriftPair $pair, SignatureShape $declared, bool $takesMore): ?TestFinding
+    private function calls(DriftPair $pair, SignatureShape $declared, bool $takesMore, bool $unbound): ?TestFinding
     {
-        $violation = CallArity::violation($pair->stub->calledWith, $declared, DriftText::clean($pair->stub->name), $pair->double->framework, TestFidelityGraph::isPython($pair->target), $takesMore);
+        $python = TestFidelityGraph::isPython($pair->target);
+        $matchers = $pair->stub->calledWith;
+        if ($unbound) {
+            // A matcher that binds once the receiver is counted fits a call made through the class.
+            $receiver = $declared->withReceiver();
+            $matchers = array_values(array_filter($matchers, static fn(CallMatcher $matcher): bool => CallArity::violation([$matcher], $receiver, '', $pair->double->framework, $python, $takesMore) !== null));
+        }
+        $violation = CallArity::violation($matchers, $declared, DriftText::clean($pair->stub->name), $pair->double->framework, $python, $takesMore);
 
         return $violation === null ? null : $pair->finding(
             FindingCategory::ArityMismatch,
@@ -102,10 +113,10 @@ final readonly class ArityMismatchRule extends DriftRule
     }
 
     /** The double declares more required parameters than the member takes. */
-    private function signature(DriftPair $pair, SignatureShape $declared, bool $takesMore): ?TestFinding
+    private function signature(DriftPair $pair, SignatureShape $declared, bool $takesMore, bool $unbound): ?TestFinding
     {
         $actual = SignatureShape::ofParams($pair->stub->params);
-        if ($takesMore || $actual === null || $declared->isVariadic() || $actual->requiredCount() <= count($declared->params)) {
+        if ($takesMore || $actual === null || $declared->isVariadic() || $actual->requiredCount() <= count($declared->params) + ($unbound ? 1 : 0)) {
             return null;
         }
 

@@ -543,7 +543,14 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   an array callable passed straight to a function or method call, and for a
   string callable passed to `Closure::fromCallable()` or to a PHP function
   known to take a callback (`array_map()`, `usort()`, `call_user_func()` and
-  the rest); a value given to `new`, returned, yielded or assigned is none.
+  the rest); a value given to `new`, returned, yielded or assigned is none. A
+  Python `calls` edge to a method may carry `unbound: true` when the call
+  names the method through its class (`Repo.save(repo, x)`, `Base.save(self,
+x)`), which hands the receiver to `self` as an argument: a double that
+  replaces the method on the class records it, so a reader takes a matcher or
+  a `side_effect` that lists it as fitting, and one argument more as not. A
+  static or class method called through its class is marked too. Only an edge
+  from production counts.
 
 A fact whose attributes break the schema is dropped by the readers rather than
 failing the scan.

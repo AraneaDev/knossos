@@ -72,7 +72,9 @@ use PHPUnit\Framework\Attributes\Group;
  * `tests/test_allowed.py` holds the decorators and metaclasses that rewrite
  * nothing: `dataclass`, `total_ordering`, `abc.ABC`, `enum.unique`.
  * `tests/test_foreign.py` patches a module global only another file writes
- * (`flags.VERBOSE = True` in `boot.py`), which that write opens (G4-03).
+ * (`flags.VERBOSE = True` in `boot.py`), which that write opens (G4-03), and
+ * `tests/test_unbound.py` a matcher that lists the receiver of a call
+ * production makes through the class, `Repo.method(repo, key)` (G4-10).
  *
  * `src/probes/` and the `tests/test_probe_*.py` files hold the final review's
  * probes, each passing under real pytest: a member Python's lookup answers

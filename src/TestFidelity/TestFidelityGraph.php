@@ -115,8 +115,8 @@ final readonly class TestFidelityGraph
                 }
             }
         }
-        // G4-03: a Python list another file writes to is open in this view of it.
-        $nodes = PythonForeignWrites::applied($contributions, $nodes, $children);
+        // G4-03: a Python list another file writes to is open in this view of it; G4-10: a method production calls through its class is marked.
+        $nodes = PythonUnboundCalls::applied($contributions, PythonForeignWrites::applied($contributions, $nodes, $children));
         ksort($doubles, SORT_STRING);
         ksort($testCases, SORT_STRING);
         $byFile = [];

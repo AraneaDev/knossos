@@ -57,6 +57,17 @@ final class PythonResidualsTest extends KnossosTestCase
         assertSame(['GHOST_MEMBER/missing_export/definite@tests/test_cross_file.py:25'], self::findingsIn($pdo, 'tests/test_cross_file.py'));
     }
 
+    public function testAMatcherListingTheReceiverOfACallThroughTheClassIsNoMismatch(): void
+    {
+        [$pdo] = $this->scanned();
+
+        // `Repo.save(repo, item)` in production: the receiver is an argument; one more is not, nor is it for `Ledger().add(item)`.
+        assertSame([
+            'ARITY_MISMATCH/call_arity/definite@tests/test_unbound.py:18',
+            'ARITY_MISMATCH/call_arity/definite@tests/test_unbound.py:25',
+        ], self::findingsIn($pdo, 'tests/test_unbound.py'));
+    }
+
     /**
      * A fresh scan of a copy of the fixture.
      *

@@ -467,10 +467,11 @@
       ]
     },
     "callsAttributes": {
-      "description": "What a calls edge may carry beyond the attributes every edge may: `callable`, true when the code hands the target method to a call as a callable argument (PHP's `[$repo, 'save']`, `'App\\Repo::save'` given to a function that takes a callback, or `$repo->save(...)`) rather than calling it there, so it may be called with more arguments than it takes; readers count it from production code only.",
+      "description": "What a calls edge may carry beyond the attributes every edge may: `callable`, true when the code hands the target method to a call as a callable argument (PHP's `[$repo, 'save']`, `'App\\Repo::save'` given to a function that takes a callback, or `$repo->save(...)`) rather than calling it there, so it may be called with more arguments than it takes; `unbound`, true on a Python call that names a method through its class (`Repo.save(repo, x)`), which hands the receiver over as an argument; readers count either from production code only.",
       "type": "object",
       "properties": {
-        "callable": { "type": "boolean" }
+        "callable": { "type": "boolean" },
+        "unbound": { "type": "boolean" }
       }
     },
     "diagnostic": {

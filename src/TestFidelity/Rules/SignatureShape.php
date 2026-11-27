@@ -53,6 +53,12 @@ final readonly class SignatureShape
         return $params === null ? null : new self($params, null);
     }
 
+    /** The same signature with the receiver a call through the class hands it first, as a positional-only parameter (G4-10). */
+    public function withReceiver(): self
+    {
+        return new self([['name' => "\0receiver", 'type' => null, 'optional' => false, 'variadic' => false, 'kind' => 'positional_only'], ...$this->params], $this->returns, $this->takesMore);
+    }
+
     /** Whether a rest parameter, or a body that reads its arguments as a list, accepts any number of arguments. */
     public function isVariadic(): bool
     {

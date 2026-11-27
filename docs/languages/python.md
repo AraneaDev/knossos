@@ -353,6 +353,13 @@ package's `m.f = partial(m.f, 1)`) has its arity judged no more, and a
 unjudged. The writer reads the target's file, so a change to either file is
 judged again.
 
+A call made unbound (G4-10) is seen too: production that calls
+`Repo.save(repo, x)` hands the receiver to `self` as an argument, which a
+double of `save` on the class records, so a matcher or a `side_effect` that
+lists it is no arity mismatch, while one argument more still is, and so is the
+receiver of a method production calls only bound. A static or class method
+called through its class is held to one argument more as well, a missed check.
+
 These are accepted, and each costs a missed finding or a false one, as stated:
 
 - **A frame write from another module** (G4-08). Production code that writes a
@@ -365,9 +372,6 @@ These are accepted, and each costs a missed finding or a false one, as stated:
   a framework metaclass or base `__init_subclass__` that does can give a false
   definite arity. The common ones (`ABCMeta`, `EnumMeta`, Django's model
   metaclass) keep the signatures their defs write.
-- **A call made unbound** (G4-10). Production that calls `Repo.save(repo, x)`
-  records the receiver as an argument, so a matcher written for that call
-  reads as one argument too many: a false definite arity.
 - **A spec'd double's pin read back** (G4-14). `m = Mock(spec=C)`,
   `m.f.return_value = 7`, then `assert m.f() == 7` is an echo, but a spec'd
   double gives no pinned value, so it is silent.
