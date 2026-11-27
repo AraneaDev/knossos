@@ -590,6 +590,7 @@ php	src/TestFidelity/PythonAnnotation.php
 php	src/TestFidelity/PythonBases.php
 php	src/TestFidelity/PythonForeignWrites.php
 php	src/TestFidelity/PythonTypeFit.php
+php	src/TestFidelity/PythonUnboundCalls.php
 php	src/TestFidelity/Rules/ArityMismatchRule.php
 php	src/TestFidelity/Rules/CallArity.php
 php	src/TestFidelity/Rules/DoubleTests.php
@@ -1386,6 +1387,7 @@ php	tests/phpunit/TestFidelity/PythonHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/PythonResidualsTest.php
 php	tests/phpunit/TestFidelity/PythonSelfScanTest.php
 php	tests/phpunit/TestFidelity/PythonTypeFitTest.php
+php	tests/phpunit/TestFidelity/PythonUnboundCallsTest.php
 php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/CaseFixtures.php
