@@ -41,6 +41,11 @@ final class YamlDocument
     private function __construct(string $text)
     {
         $this->lines = explode("\n", str_replace("\r\n", "\n", $text));
+        // The break ending the last line starts no line of its own: a kept (`|+`) block at the end
+        // of the file would otherwise count one empty line more than the file holds.
+        if (count($this->lines) > 1 && end($this->lines) === '') {
+            array_pop($this->lines);
+        }
     }
 
     /**
@@ -359,6 +364,11 @@ final class YamlDocument
         for ($i = 0, $length = strlen($text); $i < $length; ++$i) {
             $character = $text[$i];
             if ($quote !== null) {
+                if ($quote === "'" && $character === "'" && ($text[$i + 1] ?? '') === "'") {
+                    // `''` is a quote inside a single-quoted scalar, not its end.
+                    ++$i;
+                    continue;
+                }
                 $quote = $character === $quote && ($quote === "'" || $text[$i - 1] !== '\\') ? null : $quote;
             } elseif (($character === '"' || $character === "'") && ($i === 0 || str_contains(' [{,:-', $text[$i - 1]))) {
                 $quote = $character;

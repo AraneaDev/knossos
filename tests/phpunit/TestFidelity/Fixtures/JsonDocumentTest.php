@@ -40,6 +40,14 @@ final class JsonDocumentTest extends KnossosTestCase
         self::assertSame(['id', 'email'], $second?->keys());
     }
 
+    /** An object's items are its members' values as a list, in order, its keys dropped. */
+    public function testAnObjectsItemsAreItsValuesAsAList(): void
+    {
+        $items = JsonDocument::parse('{"b": 1, "a": "x"}')?->root->items() ?? [];
+
+        self::assertSame([[0, 1], [1, 'x']], [array_keys($items), array_map(static fn(Value $item): int|float|string|bool|null => $item->scalar, $items)]);
+    }
+
     public function testScalarsKeepTheirKinds(): void
     {
         $root = JsonDocument::parse('{"i": -12, "f": 1.5, "e": 1e3, "z": 1.0, "s": "caf\\u00e9 \"q\"", "t": true, "n": null, "o": {}, "l": []}')?->root;
@@ -78,7 +86,7 @@ final class JsonDocumentTest extends KnossosTestCase
 
     public function testInvalidInputGivesNull(): void
     {
-        foreach (['{"broken":', '', '   ', '{"a": 1,}', '[1 2]', '[1,]', "\x80", "{\"a\": \"raw\x01\"}", '{"a": NaN}', '{a: 1}', "{'a': 1}", '[] []', '01', '"\ud800"', '{"a" 1}', '-', '1.', 'tru'] as $json) {
+        foreach (['{"broken":', '', '   ', '{"a": 1,}', '[1 2]', '[1,]', "\x80", "{\"a\": \"raw\x01\"}", '{"a": NaN}', '{a: 1}', "{'a': 1}", '[] []', '01', '"\ud800"', '{"a" 1}', '{"a"x1}', '{"a": 1x', '[1x', '-', '1.', 'tru'] as $json) {
             $reason = null;
             self::assertNull(JsonDocument::parse($json, $reason), var_export($json, true));
             self::assertSame('invalid JSON', $reason, var_export($json, true));

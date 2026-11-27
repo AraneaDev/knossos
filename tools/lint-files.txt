@@ -1360,7 +1360,9 @@ php	tests/phpunit/TestFidelity/Facts/TestCaseFactTest.php
 php	tests/phpunit/TestFidelity/Facts/TestDoubleTest.php
 php	tests/phpunit/TestFidelity/Fixtures/DtoMatchTest.php
 php	tests/phpunit/TestFidelity/Fixtures/FixtureDriftTest.php
+php	tests/phpunit/TestFidelity/Fixtures/FixtureFilesTest.php
 php	tests/phpunit/TestFidelity/Fixtures/JsonDocumentTest.php
+php	tests/phpunit/TestFidelity/Fixtures/YamlDocumentEdgesTest.php
 php	tests/phpunit/TestFidelity/Fixtures/YamlDocumentTest.php
 php	tests/phpunit/TestFidelity/FrozenGoldens.php
 php	tests/phpunit/TestFidelity/MockedModulePathsTest.php

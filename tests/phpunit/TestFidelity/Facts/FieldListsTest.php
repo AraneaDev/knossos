@@ -85,6 +85,19 @@ final class FieldListsTest extends KnossosTestCase
         assertSame(null, FieldLists::of($graph, $user));
     }
 
+    /** Only the struct's own impls are asked: a trait it implements may itself require `Deserialize` of an implementor. */
+    public function testARustDeserializeIsReadOnTheStructAloneNotThroughItsTraits(): void
+    {
+        $wire = new NodeFact('rust:interface:crate::Wire', 'interface', 'Wire', 'crate::Wire', Origin::Ast, Confidence::Certain, new Evidence('src/a', 1, 9), []);
+        $user = self::node('rust:class:crate::User', self::fields('id'));
+        $graph = self::graph([$wire, $user], [
+            ['implements', $user, 'rust:interface:crate::Wire'],
+            ['extends', $wire, 'rust:interface:serde::Deserialize'],
+        ]);
+
+        assertSame(['id'], array_keys(FieldLists::of($graph, $user)?->fields() ?? []));
+    }
+
     public function testAPythonModelComposesItsBasesAndStopsAtTheRootOutsideTheProject(): void
     {
         $base = self::node('py:class:app.Base', self::fields('id'));

@@ -400,6 +400,20 @@ final class MockMembersTest extends KnossosTestCase
         assertSame([['name' => 'impl From<T>', 'reason' => 'a generic impl (impl<T>): its parameters are not recorded']], $generic->omitted);
     }
 
+    /** A marker trait or a generic impl is passed over, never the end of the list: the impls after it still count. */
+    public function testImplsAfterAMarkerOrAGenericImplAreStillRead(): void
+    {
+        $mk = $this->struct('Mk5', 'Tag');
+        $members = $this->members($mk, 'rust', [
+            ['type' => 'crate::Mk5', 'trait' => 'Send', 'unsafe' => true],
+            ['type' => 'crate::Mk5', 'trait' => 'From<T>', 'methods' => ['from'], 'generics' => true],
+            ['type' => 'crate::Mk5', 'trait' => 'Tag'],
+        ]);
+
+        assertSame(['Tag'], array_column($members->impls, 'trait'));
+        assertSame([['name' => 'impl From<T>', 'reason' => 'a generic impl (impl<T>): its parameters are not recorded']], $members->omitted);
+    }
+
     public function testARustTraitsAssociatedItemsAreMembers(): void
     {
         $trait = $this->type('rust:interface:crate::WithAssoc', 'interface', ['associated_types' => ['Output', 'Item: Clone'], 'associated_consts' => [['name' => 'LIMIT', 'type' => 'usize']]]);
