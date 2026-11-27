@@ -98,7 +98,7 @@ describe('drawBand: nothing drawn', () => {
     it('draws nothing while the mod is off, clears the band text and never resolves the elements', async () => {
         const { io } = fakePort()
         mod.session.disabled = true
-        mod.pane.bandText = 'stale'
+        mod.pane.bandText = 'drawn earlier'
         const resolve = vi.fn(() => elements as never)
         expect(await drawBand(io, resolve, { hasSurvey: false, bodyColumns: 80 }, handlers())).toBeNull()
         expect(mod.pane.bandText).toBeNull()
@@ -107,7 +107,7 @@ describe('drawBand: nothing drawn', () => {
 
     it('gives way to a survey', async () => {
         const { io } = fakePort()
-        mod.pane.bandText = 'stale'
+        mod.pane.bandText = 'drawn earlier'
         const resolve = vi.fn(() => elements as never)
         expect(await drawBand(io, resolve, { hasSurvey: true, bodyColumns: 80 }, handlers())).toBeNull()
         expect(mod.pane.bandText).toBeNull()
@@ -116,7 +116,7 @@ describe('drawBand: nothing drawn', () => {
 
     it('stays hidden while the view hides the band', async () => {
         const { io, reads } = fakePort({ view: view({ isBandHidden: true }) })
-        mod.pane.bandText = 'stale'
+        mod.pane.bandText = 'drawn earlier'
         const resolve = vi.fn(() => elements as never)
         expect(await drawBand(io, resolve, { hasSurvey: false, bodyColumns: 80 }, handlers())).toBeNull()
         expect(mod.pane.bandText).toBeNull()
@@ -127,7 +127,7 @@ describe('drawBand: nothing drawn', () => {
 
     it('draws nothing when there is no brief and no scan to report', async () => {
         const { io } = fakePort({ brief: null })
-        mod.pane.bandText = 'stale'
+        mod.pane.bandText = 'drawn earlier'
         const resolve = vi.fn(() => elements as never)
         expect(await drawBand(io, resolve, { hasSurvey: false, bodyColumns: 80 }, handlers())).toBeNull()
         expect(mod.pane.bandText).toBeNull()
@@ -255,7 +255,10 @@ describe('drawBand: stale mocks', () => {
 
     it('draws no chip for none, for warnings alone, or without a dashboard', async () => {
         expect(await bandText(withFindings(0, 0))).not.toContain('stale')
+        expect(await bandText(withFindings(0, 0))).not.toContain('test finding')
         expect(await bandText(withFindings(0, 4))).not.toContain('stale')
+        expect(await bandText(withFindings(0, 4))).not.toContain('test finding')
         expect(await bandText(null)).not.toContain('stale')
+        expect(await bandText(null)).not.toContain('test finding')
     })
 })
