@@ -86,9 +86,13 @@ final readonly class MockMembers
                     default => $node->displayName,
                 };
                 if (isset($seen[$key])) {
+                    // A supertrait's method is not an override: mockall gives one expect_name() per mock (G6-14).
+                    if ($language === 'rust' && !$struct && $seen[$key] !== $declarer) {
+                        $omitted[] = ['name' => $declarer->displayName . '::' . $node->displayName, 'reason' => sprintf('%s declares %s too: mockall cannot mock one method name from two traits', $seen[$key]->displayName, $node->displayName)];
+                    }
                     continue;
                 }
-                $seen[$key] = true;
+                $seen[$key] = $declarer;
                 $member = self::member($graph, $target, $declarer, $node, $language, $fields);
                 if ($member instanceof MockMember && $language === 'rust' && $target->kind !== 'interface') {
                     // mockall makes one expect_name() per struct, whichever impl declares the name.
@@ -397,7 +401,7 @@ final readonly class MockMembers
      * type checker reads without a node. A Python list also names data
      * attributes, which a mock built from the class has, so it is not read.
      *
-     * @param array<string, true> $seen
+     * @param array<string, NodeFact> $seen
      * @param array<string, mixed> $fields
      * @return list<string>
      */

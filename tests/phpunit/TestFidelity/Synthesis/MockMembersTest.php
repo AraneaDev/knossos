@@ -259,6 +259,30 @@ final class MockMembersTest extends KnossosTestCase
         assertSame(['Empty has no member a mock can stand in for.'], $this->members($empty, 'rust')->notes);
     }
 
+    public function testARustSupertraitMethodOfATraitMethodsNameIsOmittedAndNamed(): void
+    {
+        // G6-14: `trait Store: Base` with `fn get` in both. mockall gives one expect_get per mock,
+        // so the supertrait's is left out, named, and the list is not complete.
+        $base = $this->type('rust:interface:crate::Base', 'interface');
+        $this->method($base, 'get', ['signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'u8']]);
+        $this->method($base, 'id', ['signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'u8']]);
+        $store = $this->type('rust:interface:crate::Store', 'interface');
+        $this->method($store, 'get', ['signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'u16']]);
+        $this->edge('extends', $store, $base->localId);
+
+        $members = $this->members($store, 'rust');
+        assertSame(['get', 'id'], self::names($members->members));
+        assertSame([['name' => 'Base::get', 'reason' => 'Store declares get too: mockall cannot mock one method name from two traits']], $members->omitted);
+        assertFalse($members->complete);
+        // Without the clash the supertrait's methods are all listed and the list is complete.
+        $other = $this->type('rust:interface:crate::Other', 'interface');
+        $this->method($other, 'put', ['signature' => ['params' => [], 'receiver' => '&self']]);
+        $this->edge('extends', $other, $base->localId);
+        $clean = $this->members($other, 'rust');
+        assertSame(['put', 'get', 'id'], self::names($clean->members));
+        assertTrue($clean->complete);
+    }
+
     public function testARustStructsTraitImplsKeepTheirTrait(): void
     {
         // `impl Repo<String> for Store`: each method names its impl, so the mock can give that impl.
