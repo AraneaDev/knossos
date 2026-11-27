@@ -454,7 +454,8 @@ the module path from the file's module (`tests::adds`), and
   on one comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`) or one value, and
   `assert!(matches!(x, P))` as `matches`, each in its `debug_` form too.
   Message arguments are never operands. `pretty_assertions`' `assert_eq!` and
-  `assert_ne!` count as the standard ones. mockall's `.times(…)`, `.once()`
+  `assert_ne!` count as the standard ones where the package's `Cargo.toml`
+  depends on the real crate under that name (G5-07). mockall's `.times(…)`, `.once()`
   and `.never()` assert the double they configure, since mockall checks them
   when the mock is dropped;
 - where each operand's value comes from: a literal, a call on a double
@@ -560,23 +561,18 @@ Every Rust comparison goes through `PartialEq`, which need not be reflexive
 both sides are the same literal. `unconfigured_spy` does not apply, since no
 Rust framework makes a spy: mockall panics on a call it has no expectation
 for. A `times` assertion counts as asserting its double, so such a double is
-never `zero_reach`.
+never `zero_reach`. Nor is a hand-written fake named as a type
+(`read::<FakeClock>()`, `Vec<FakeClock>`), which code out of sight may make
+and call (G5-10).
 
 ### Known false definites
 
 A healthy test should give no definite finding. These cases still can, and
 each is accepted as contrived. The IDs are the deferred-gaps tracker's:
 
-- **A nested `Cargo.toml`** (G5-04). A manifest inside another package's
-  module tree, reached by a plain `mod`, keys the files below it to its own
-  package while the outer crate compiles them, so a macro of the outer
-  package that shadows `assert_eq!` there goes unseen. `cargo package` leaves
-  such a manifest out.
-- **A renamed assertion crate** (G5-07). `extern crate x as
-pretty_assertions`, or a Cargo `package =` rename to `pretty_assertions`,
-  is trusted as `pretty_assertions`, whose `assert_eq!` compares. A crate
-  renamed to `mockall`, `mockiato`, `mry`, `faux` or `async_trait` is trusted
-  in the same way, as holding no trait that could take a mock's call.
+- **A renamed mocking crate** (G5-18). A crate renamed to `mockall`,
+  `mockiato`, `mry`, `faux` or `async_trait` is trusted by its name, as
+  holding no trait that could take a mock's call.
 
 ### What the Rust rules do not see
 
@@ -585,6 +581,18 @@ the deferred-gaps tracker's:
 
 - **Drift the compiler rejects** (Decision 1, user decision Q1). The cases in
   the table above report nothing.
+- **A package inside another's module tree** (G5-04). A file of a package
+  whose `Cargo.toml` sits below another package's `src/`, `tests/`,
+  `examples/` or `benches/` may be compiled by either crate, so it gives no
+  test facts, and the macros it defines shadow the standard ones for every
+  package. `cargo package` leaves such a manifest out.
+- **`pretty_assertions` read only from the real crate** (G5-07). Its
+  `assert_eq!` and `assert_ne!` are not read as assertions where the
+  package's `Cargo.toml` names no dependency of it (a tree with no manifest
+  included), names another package for it (`package = "x"`), inherits a
+  workspace dependency that does, or spells it in a way the worker does not
+  read, nor where a file of the package binds the name to something else
+  (`extern crate x as pretty_assertions`, a `mod pretty_assertions`).
 - **A `mock!` struct section whose namesake lost a member** (G5-01, user
   decision Q2). `mock! { pub Store { fn purge(&self); } }` compiles after
   `Store` loses `purge`, since `purge` is the mock's own. Judging it needs a
@@ -644,8 +652,12 @@ struct with a hand-written `impl Deserialize` sends none, as its impl may read
 another shape. An `Option` field is optional, as serde reads it (and a `Box`,
 `Rc` or `Arc` of one, or a bare type parameter), and so is one with
 `#[serde(default)]`, `skip` or `skip_deserializing`. A field read `with` or
-`deserialize_with` sends no type. A type alias of `Option`
-(`type Maybe<T> = Option<T>`) is read as required, a known gap.
+`deserialize_with` sends no type. A type alias of `Option` the file declares
+(`type Maybe<T> = Option<T>`) is optional too (G6-08e); one declared in
+another file is still read as required, a known gap that can give a false
+`missing_required` warning. An `Option` field read `deserialize_with` reads
+as optional, though serde then requires its key: a missing one is not
+reported.
 
 The list is open for any `serde` key not known to keep the field names
 (`rename`, `rename_all`, `alias`, `flatten`, `tag`, `untagged` and the rest),

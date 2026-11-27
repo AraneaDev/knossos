@@ -425,9 +425,13 @@ A Rust named-field struct that derives `Deserialize` (directly or through
 `cfg_attr`) sends its fields, `type` as written; one without the derive sends
 none, and a reader gives no list for a type with an `implements` edge to
 `Deserialize`, whose hand-written impl may read another shape. A field is not
-required when it is an `Option`, a bare type parameter, or `#[serde(default)]`,
-`skip` or `skip_deserializing` on the field (`default` also on the struct). A
-field read `with` or `deserialize_with` sends no `type`. `fields_open` is set
+required when it is an `Option`, a `type` alias the same file declares of
+one (`type Maybe<T> = Option<T>`, through other such aliases too), a bare type
+parameter, or `#[serde(default)]`, `skip` or `skip_deserializing` on the
+field (`default` also on the struct). A field read `with` or
+`deserialize_with` sends no `type`. An `Option` field read
+`deserialize_with` is sent not required, although serde then requires its
+key: a reader stays silent on a missing one. `fields_open` is set
 for any `serde` key not known to keep the field names (`rename`, `rename_all`,
 `alias`, `flatten`, `tag`, `untagged`, `transparent`, `from` and the rest), a
 derive other than `Clone`, `Copy`, `Debug`, `Default`, `Eq`, `Hash`, `Ord`,
