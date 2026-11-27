@@ -7,11 +7,16 @@ pub enum Dock {
     South,
 }
 
+/// A value that may be missing: serde reads a missing key as `None`
+/// through the alias too (G6-08e).
+pub type Maybe<T> = Option<T>;
+
 #[derive(Debug, Deserialize)]
 pub struct Pallet {
     pub id: u64,
     pub dock: Dock,
     pub note: Option<String>,
+    pub label: Maybe<String>,
     #[serde(default)]
     pub layers: u8,
 }

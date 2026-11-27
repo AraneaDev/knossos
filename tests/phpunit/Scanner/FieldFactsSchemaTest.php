@@ -94,7 +94,7 @@ final class FieldFactsSchemaTest extends KnossosTestCase
             'Bundle' => [],
             'Carton' => [],
             'Dock' => ['North' => 'North', 'South' => 'South'],
-            'Pallet' => ['dock', 'id', 'layers', 'note'],
+            'Pallet' => ['dock', 'id', 'label', 'layers', 'note'],
             'Quote' => ['price', 'quantity'],
             'Tracking' => [],
         ], $this->lists(['rs']));
