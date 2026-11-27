@@ -100,7 +100,11 @@ final class PythonForeignWrites
         return $writes;
     }
 
-    /** @param array<string, mixed> $attributes */
+    /**
+     * The graph's view of a node with these attributes laid over its own.
+     *
+     * @param array<string, mixed> $attributes
+     */
     private static function with(NodeFact $node, array $attributes): NodeFact
     {
         return new NodeFact($node->localId, $node->kind, $node->canonicalName, $node->displayName, $node->origin, $node->confidence, $node->evidence, [...$node->attributes, ...$attributes]);
