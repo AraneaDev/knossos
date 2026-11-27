@@ -76,8 +76,9 @@ class TestDoubles:
             self._patch(record, arguments)
         if arguments.spread:
             record.names_open = True
-        if record.self_member is not None and is_dunder(record.self_member):
+        if record.self_member is not None and is_dunder(record.self_member) and kind != "patch.dict":
             # Ruling P3: a dunder is no member, and a target without its member would read as the whole owner.
+            # A `patch.dict` of `m.__dict__` patches the owner's namespace, which is its target (G4-07).
             record.owner = None
         self.configuration.keywords(record, arguments.extra, None)
         return record
