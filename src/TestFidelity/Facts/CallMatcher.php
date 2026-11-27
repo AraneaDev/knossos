@@ -11,7 +11,7 @@ final readonly class CallMatcher
 {
     /**
      * @param int $count how many arguments the matcher lists
-     * @param bool $spread whether one of them is a spread, so the real count is open; also set when the keyword list is malformed, because a count holding unnamed keywords cannot be bound
+     * @param bool $spread whether one of them is a spread, so the real count is open
      * @param list<string> $keywords the keyword names among the arguments (Python), empty when the wire states none
      * @param bool $negated whether the matcher is read through `.not`, so it holds that no call lists those arguments
      */
@@ -25,7 +25,7 @@ final readonly class CallMatcher
     ) {}
 
     /**
-     * Read one matcher from a decoded attribute block; null when it is malformed.
+     * Read one matcher from a decoded attribute block; null when it is malformed: a keyword list that is not a list of names, or longer than the count, cannot be bound.
      */
     public static function fromArray(mixed $raw): ?self
     {
@@ -41,9 +41,9 @@ final readonly class CallMatcher
             return null;
         }
 
-        $keywords = $raw['keywords'] ?? [];
-        if (!is_array($keywords) || !array_is_list($keywords) || array_filter($keywords, static fn(mixed $name): bool => !is_string($name) || $name === '') !== []) {
-            return new self($api, $line, $count, true, negated: $negated);
+        $keywords = array_key_exists('keywords', $raw) ? $raw['keywords'] : [];
+        if (!is_array($keywords) || !array_is_list($keywords) || array_filter($keywords, static fn(mixed $name): bool => !is_string($name) || $name === '') !== [] || count($keywords) > $count) {
+            return null;
         }
 
         return new self($api, $line, $count, $spread, $keywords, $negated);

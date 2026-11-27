@@ -14,11 +14,17 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use function PHPUnit\Framework\assertNull;
 use function PHPUnit\Framework\assertSame;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 #[Group('test-fidelity')]
 final class TestDoubleTest extends KnossosTestCase
 {
+    /** The keys the contribution schema requires of a test_double, a stubbedMember and a callMatcher. */
+    private const DOUBLE_KEYS = ['framework', 'pattern', 'target', 'automock', 'invocations', 'members'];
+    private const MEMBER_KEYS = ['name', 'line', 'api', 'returns'];
+    private const MATCHER_KEYS = ['api', 'line', 'count', 'spread'];
+
     /**
      * @param array<string, mixed> $attributes
      */
@@ -180,18 +186,19 @@ final class TestDoubleTest extends KnossosTestCase
 
     public function testReadsWhetherAMatcherIsNegated(): void
     {
-        // G3-02: a matcher read through `.not`; a flag that is no boolean drops the matcher, and keeps the double.
+        // G3-02: a matcher read through `.not`; a flag that is no boolean, or a keyword list that cannot bind, drops the matcher and keeps the double.
         $attributes = self::attributes();
         $attributes['members'][0]['called_with'] = [
             ['api' => 'toHaveBeenCalledWith', 'line' => 29, 'count' => 0, 'spread' => false, 'negated' => true],
             ['api' => 'toHaveBeenCalledWith', 'line' => 30, 'count' => 1, 'spread' => false],
             ['api' => 'toHaveBeenCalledWith', 'line' => 31, 'count' => 1, 'spread' => false, 'negated' => 'yes'],
             ['api' => 'assert_called_with', 'line' => 32, 'count' => 1, 'spread' => false, 'keywords' => [3], 'negated' => true],
+            ['api' => 'assert_called_with', 'line' => 33, 'count' => 1, 'spread' => false, 'keywords' => ['a'], 'negated' => true],
         ];
 
         $matchers = TestDouble::fromNode(self::node('test_double', $attributes))?->members[0]->calledWith ?? [];
 
-        assertSame([[29, true, false], [30, false, false], [32, true, true]], array_map(static fn($matcher): array => [$matcher->line, $matcher->negated, $matcher->spread], $matchers));
+        assertSame([[29, true, false], [30, false, false], [33, true, false]], array_map(static fn($matcher): array => [$matcher->line, $matcher->negated, $matcher->spread], $matchers));
     }
 
     public function testReadsMatcherKeywords(): void
@@ -205,20 +212,107 @@ final class TestDoubleTest extends KnossosTestCase
         assertSame(false, $double->members[0]->calledWith[0]->spread);
     }
 
-    public function testAMalformedKeywordListMakesTheMatcherSpread(): void
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function unbindableKeywords(): array
+    {
+        return [
+            'null' => [null],
+            'not an array' => ['user'],
+            'not a list' => [['a' => 'user']],
+            'a non-string name' => [[3]],
+            'an empty name' => [['']],
+            'more keywords than arguments' => [['user', 'token']],
+        ];
+    }
+
+    #[DataProvider('unbindableKeywords')]
+    public function testAKeywordListThatCannotBindRejectsTheMatcherNotTheDouble(mixed $keywords): void
     {
         $attributes = self::attributes();
         $attributes['members'][0]['called_with'] = [
-            ['api' => 'assert_called_with', 'line' => 29, 'count' => 1, 'spread' => false, 'keywords' => [3]],
-            ['api' => 'assert_called_with', 'line' => 30, 'count' => 1, 'spread' => false, 'keywords' => 'user'],
+            ['api' => 'assert_called_with', 'line' => 29, 'count' => 1, 'spread' => false, 'keywords' => $keywords],
+            ['api' => 'assert_called_with', 'line' => 30, 'count' => 1, 'spread' => false, 'keywords' => ['user']],
         ];
 
         $double = TestDouble::fromNode(self::node('test_double', $attributes));
 
-        assertSame(2, count($double?->members[0]->calledWith ?? []));
-        assertSame(true, $double->members[0]->calledWith[0]->spread);
-        assertSame([], $double->members[0]->calledWith[0]->keywords);
-        assertSame(true, $double->members[0]->calledWith[1]->spread);
+        assertSame([30], array_map(static fn($matcher): int => $matcher->line, $double?->members[0]->calledWith ?? []));
+    }
+
+    public function testAKeywordCountEqualToTheArgumentCountIsKept(): void
+    {
+        $attributes = self::attributes();
+        $attributes['members'][0]['called_with'] = [['api' => 'assert_called_with', 'line' => 29, 'count' => 2, 'spread' => false, 'keywords' => ['user', 'token']]];
+
+        assertSame(['user', 'token'], TestDouble::fromNode(self::node('test_double', $attributes))?->members[0]->calledWith[0]->keywords);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function requiredDoubleKeys(): array
+    {
+        return array_combine(self::DOUBLE_KEYS, array_map(static fn(string $key): array => [$key], self::DOUBLE_KEYS));
+    }
+
+    #[DataProvider('requiredDoubleKeys')]
+    public function testADoubleMissingASchemaRequiredKeyIsNoFact(string $key): void
+    {
+        $attributes = self::attributes();
+        unset($attributes[$key]);
+
+        assertNull(TestDouble::fromNode(self::node('test_double', $attributes)));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function requiredMemberKeys(): array
+    {
+        return array_combine(self::MEMBER_KEYS, array_map(static fn(string $key): array => [$key], self::MEMBER_KEYS));
+    }
+
+    #[DataProvider('requiredMemberKeys')]
+    public function testAMemberMissingASchemaRequiredKeyMakesTheDoubleNoFact(string $key): void
+    {
+        $attributes = self::attributes();
+        unset($attributes['members'][0][$key]);
+
+        assertNull(TestDouble::fromNode(self::node('test_double', $attributes)));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function requiredMatcherKeys(): array
+    {
+        return array_combine(self::MATCHER_KEYS, array_map(static fn(string $key): array => [$key], self::MATCHER_KEYS));
+    }
+
+    #[DataProvider('requiredMatcherKeys')]
+    public function testAMatcherMissingASchemaRequiredKeyIsDropped(string $key): void
+    {
+        $matcher = ['api' => 'toHaveBeenCalledWith', 'line' => 29, 'count' => 1, 'spread' => false];
+        unset($matcher[$key]);
+        $attributes = self::attributes();
+        $attributes['members'][0]['called_with'] = [$matcher];
+
+        assertSame([], TestDouble::fromNode(self::node('test_double', $attributes))?->members[0]->calledWith);
+    }
+
+    public function testAMemberOnALineBelowOneIsNoFact(): void
+    {
+        foreach ([0, -1] as $line) {
+            $attributes = self::attributes();
+            $attributes['members'][0]['line'] = $line;
+
+            assertNull(TestDouble::fromNode(self::node('test_double', $attributes)), (string) $line);
+        }
+        $attributes = self::attributes();
+        $attributes['members'][0]['line'] = 1;
+        assertSame(1, TestDouble::fromNode(self::node('test_double', $attributes))?->members[0]->line);
     }
 
     public function testReadsAPinnedType(): void

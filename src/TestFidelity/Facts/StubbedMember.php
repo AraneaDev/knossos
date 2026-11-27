@@ -34,12 +34,17 @@ final readonly class StubbedMember
         if (!is_array($raw)) {
             return null;
         }
+        foreach (['name', 'line', 'api', 'returns'] as $required) {
+            if (!array_key_exists($required, $raw)) {
+                return null;
+            }
+        }
         $name = $raw['name'] ?? null;
         $line = $raw['line'] ?? null;
         $api = $raw['api'] ?? null;
         $params = $raw['params'] ?? null;
-        $rawReturns = $raw['returns'] ?? [];
-        if (!is_string($name) || $name === '' || !is_int($line) || !is_string($api) || !in_array($api, self::APIS, true)) {
+        $rawReturns = $raw['returns'];
+        if (!is_string($name) || $name === '' || !is_int($line) || $line < 1 || !is_string($api) || !in_array($api, self::APIS, true)) {
             return null;
         }
         if (($params !== null && (!is_array($params) || !array_is_list($params))) || !is_array($rawReturns) || !array_is_list($rawReturns)) {
