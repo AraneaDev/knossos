@@ -83,7 +83,7 @@ final class YamlDocumentTest extends KnossosTestCase
 
     public function testPlainScalarsResolveAsTheCoreSchemaDoes(): void
     {
-        $yaml = "a: ~\nb: null\nc:\nd: true\ne: False\nf: 12\ng: -3\nh: 0x1F\ni: 0o17\nj: 1.5\nk: .inf\nl: yes\nm: 2026-11-26\nn: '12'\no: \"tab\\there\"\np: it's fine\nq: http://example.com:80/x\nr: +7\ns: 1e3\nt: 'it''s'\n";
+        $yaml = "a: ~\nb: null\nc:\nd: true\ne: False\nf: 12\ng: -3\nh: 0x1F\ni: 0o17\nj: 1.5\nk: .inf\nl: yes\nm: 2026-11-26\nn: '12'\no: \"tab\\there\"\np: it's fine\nq: http://example.com:80/x\nr: +7\ns: 1.0e+3\nt: 'it''s'\n";
 
         $root = YamlDocument::parse($yaml)?->root;
         self::assertSame(
@@ -98,7 +98,8 @@ final class YamlDocumentTest extends KnossosTestCase
 
     public function testAScalarWhoseKindDependsOnTheYamlVersionIsAmbiguous(): void
     {
-        $words = ['yes', 'No', 'ON', 'off', 'y', 'N', '1_000', '-1_000.5', '0b101', '0o17', '010', '08', '1:30', '12:30:00'];
+        // An exponent unsigned or after no dot is a string to YAML 1.1 (PyYAML), a float to 1.2.
+        $words = ['yes', 'No', 'ON', 'off', 'y', 'N', '1_000', '-1_000.5', '0b101', '0o17', '010', '08', '1:30', '12:30:00', '1e3', '1.5e3', '1e+3', '-1E-3', '.5e3', '1.e3', '1.5e03'];
         $root = YamlDocument::parse(implode("\n", array_map(static fn(int $at, string $word): string => 'k' . $at . ': ' . $word, array_keys($words), $words)) . "\n")?->root;
 
         foreach ($words as $at => $word) {
@@ -106,8 +107,8 @@ final class YamlDocumentTest extends KnossosTestCase
         }
         // In a flow collection too; and the core schema's own kinds stay as they were.
         self::assertSame([Value::AMBIGUOUS, Value::AMBIGUOUS], array_column(array_map(static fn(Value $item): array => ['kind' => $item->kind], YamlDocument::parse('[yes, 1_000]')?->root->items() ?? []), 'kind'));
-        $plain = YamlDocument::parse("a: 0\nb: 10\nc: true\nd: 0x1F\ne: yesterday\nf: '010'\ng: 1.5\n")?->root;
-        self::assertSame([Value::INT, Value::INT, Value::BOOL, Value::INT, Value::STRING, Value::STRING, Value::FLOAT], array_map(static fn(string $key): ?string => $plain?->get($key)?->kind, ['a', 'b', 'c', 'd', 'e', 'f', 'g']));
+        $plain = YamlDocument::parse("a: 0\nb: 10\nc: true\nd: 0x1F\ne: yesterday\nf: '010'\ng: 1.5\nh: 1.5e+3\ni: .5e-3\nj: -1.0E+3\n")?->root;
+        self::assertSame([Value::INT, Value::INT, Value::BOOL, Value::INT, Value::STRING, Value::STRING, Value::FLOAT, Value::FLOAT, Value::FLOAT, Value::FLOAT], array_map(static fn(string $key): ?string => $plain?->get($key)?->kind, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']));
     }
 
     public function testALongFlowCollectionIsReadInLinearTime(): void
@@ -190,6 +191,13 @@ final class YamlDocumentTest extends KnossosTestCase
             'directive' => "%YAML 1.2\n---\na: 1\n",
             'complex key' => "? a\n: 1\n",
             'tab indentation' => "a:\n\tb: 1\n",
+            // YAML 1.2 reads a tab after a key's colon as a space and PyYAML refuses it: never a guess.
+            'tab after a key' => "name:\tAda\n",
+            'tab after a key, two lines' => "name:\tAda\nage:\t3\n",
+            'tab after the space after a key' => "a: \tb\n",
+            'tab after a quoted key' => "\"a\":\tb\n",
+            'tab after a key in an item' => "- a:\tb\n",
+            'tab after a colon in a value' => "a: b:\tc\n",
             'multi-line plain scalar' => "a: one\n  two\n",
             'multi-line quoted scalar' => "a: \"one\n  two\"\n",
             'duplicate key' => "a: 1\na: 2\n",
@@ -208,6 +216,12 @@ final class YamlDocumentTest extends KnossosTestCase
         self::assertSame('duplicate key', $reason);
         YamlDocument::parse("a: 1\n---\nb: 2\n", $reason);
         self::assertSame('multiple documents', $reason);
+        YamlDocument::parse("name:\tAda\n", $reason);
+        self::assertSame('tab after a key', $reason);
+        YamlDocument::parse("\"a\":\tb\n", $reason);
+        self::assertSame('tab after a key', $reason);
+        // A tab inside a quoted value is the value's own.
+        self::assertSame(['a' => "b\tc"], self::plain(YamlDocument::parse("a: \"b\tc\"\n")?->root));
     }
 
     public function testNestingIsBounded(): void

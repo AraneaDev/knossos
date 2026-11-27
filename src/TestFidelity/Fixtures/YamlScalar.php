@@ -15,7 +15,9 @@ use UnexpectedValueException;
  * is {@see Value::AMBIGUOUS}, and no kind is judged against it: `yes`, `no`,
  * `on`, `off`, `y` and `n` in any case (booleans to YAML 1.1, strings to
  * 1.2), digits with `_` (`1_000`), `0b` and `0o` integers, a legacy octal
- * (`010`) and a sexagesimal number (`1:30`).
+ * (`010`), a sexagesimal number (`1:30`), and an exponent that is unsigned or
+ * follows no dot (`1e3`, `1.5e3`, `1e+3`: strings to YAML 1.1, which writes
+ * `1.0e+3`).
  */
 final class YamlScalar
 {
@@ -23,7 +25,7 @@ final class YamlScalar
     private const ESCAPES = ['0' => "\0", 'a' => "\x07", 'b' => "\x08", 't' => "\t", "\t" => "\t", 'n' => "\n", 'v' => "\x0b", 'f' => "\x0c", 'r' => "\r", 'e' => "\x1b", ' ' => ' ', '"' => '"', '/' => '/', '\\' => '\\', 'N' => "\u{85}", '_' => "\u{a0}", 'L' => "\u{2028}", 'P' => "\u{2029}"];
 
     /** Plain scalars a YAML 1.1 loader reads as another kind than a YAML 1.2 one. */
-    private const AMBIGUOUS = '/^(?:y|n|yes|no|on|off|[-+]?(?:0b[01_]+|0o[0-7_]+|0[0-9_]+|[0-9][0-9_]*_[0-9_]*(?:\.[0-9_]*)?|[0-9]+(?::[0-5]?[0-9])+(?:\.[0-9_]*)?))$/iD';
+    private const AMBIGUOUS = '/^(?:y|n|yes|no|on|off|[-+]?(?:0b[01_]+|0o[0-7_]+|0[0-9_]+|[0-9][0-9_]*_[0-9_]*(?:\.[0-9_]*)?|[0-9]+(?::[0-5]?[0-9])+(?:\.[0-9_]*)?|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)e[0-9]+|[0-9]+e[-+][0-9]+))$/iD';
 
     private function __construct() {}
 
@@ -41,7 +43,7 @@ final class YamlScalar
 
             return Value::scalar($scalar, $line);
         }
-        if (str_contains($text, ': ') || str_starts_with($text, '? ') || str_starts_with($text, '- ') || $text[0] === '@' || $text[0] === '`' || $text[0] === '%') {
+        if (str_contains($text, ': ') || str_contains($text, ":\t") || str_starts_with($text, '? ') || str_starts_with($text, '- ') || $text[0] === '@' || $text[0] === '`' || $text[0] === '%') {
             throw new UnexpectedValueException('unsupported plain scalar');
         }
         if (preg_match(self::AMBIGUOUS, $text) === 1) {

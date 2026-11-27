@@ -16,9 +16,9 @@ use UnexpectedValueException;
  *
  * What it does not read makes the file unparsable, never a guess: an anchor,
  * an alias or a tag (none is ever expanded), a merge key, a complex key, a
- * directive, a second document, a tab in indentation, a plain or quoted
- * scalar over several lines, and a duplicate key. One leading `---` is a
- * document start and is read past. Nesting deeper than
+ * directive, a second document, a tab in indentation or after a key's
+ * colon, a plain or quoted scalar over several lines, and a duplicate key.
+ * One leading `---` is a document start and is read past. Nesting deeper than
  * {@see self::MAX_DEPTH} is unparsable, so no file can exhaust the stack.
  */
 final class YamlDocument
@@ -335,9 +335,9 @@ final class YamlDocument
             [$key, $length] = YamlScalar::quoted($text, 0);
             $after = ltrim(substr($text, $length), ' ');
 
-            return $after !== '' && $after[0] === ':' && (strlen($after) === 1 || $after[1] === ' ') ? [$key, trim(substr($after, 1))] : null;
+            return $after !== '' && $after[0] === ':' && (strlen($after) === 1 || str_contains(" \t", $after[1])) ? [$key, self::value(substr($after, 1))] : null;
         }
-        if (preg_match('/^(.*?):(?: |$)/', $text, $match) !== 1) {
+        if (preg_match('/^(.*?):(?:[ \t]|$)/', $text, $match) !== 1) {
             return null;
         }
         $key = rtrim($match[1]);
@@ -348,7 +348,20 @@ final class YamlDocument
             throw new UnexpectedValueException('anchor, alias or tag');
         }
 
-        return [$key, trim(substr($text, strlen($match[0])))];
+        return [$key, self::value(substr($text, strlen($match[1]) + 1))];
+    }
+
+    /**
+     * What follows a key's colon, trimmed. A tab between them refuses the
+     * file: YAML 1.2 reads it as a space, PyYAML refuses it.
+     */
+    private static function value(string $rest): string
+    {
+        if (str_contains(substr($rest, 0, strspn($rest, " \t")), "\t")) {
+            throw new UnexpectedValueException('tab after a key');
+        }
+
+        return trim($rest);
     }
 
     /** Whether a line's content is a sequence item. */
