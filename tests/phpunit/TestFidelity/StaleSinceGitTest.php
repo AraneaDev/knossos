@@ -36,7 +36,7 @@ final class StaleSinceGitTest extends KnossosTestCase
     /** `Wall`'s `impl`, in a file of its own, mocked by `automock` in a test build. */
     private const WALL_IMPL = "#[cfg(test)]\nuse mockall::automock;\n\nuse crate::wall::Wall;\n\n#[cfg_attr(test, automock)]\nimpl Wall {\n    pub fn tick(&self) -> u64 {\n        1\n    }\n}\n";
 
-    private const SERVICE ="export class UserService {\n  getProfile(id: string): string {\n    return id;\n  }\n\n  touched(): void {}\n}\n";
+    private const SERVICE = "export class UserService {\n  getProfile(id: string): string {\n    return id;\n  }\n\n  touched(): void {}\n}\n";
 
     public function testAChangedTargetFileWithAnUntouchedTestFires(): void
     {
@@ -183,11 +183,13 @@ final class StaleSinceGitTest extends KnossosTestCase
         self::assertSame([['src/wall_tests.rs', 5, 'STALE_SINCE', 'warning', $stale]], self::stale($this->audit($repo, scope: 'git-diff')));
         // The impl's file as committed: nothing changed, nothing stale.
         file_put_contents($repo . '/src/wall_impl.rs', self::WALL_IMPL);
-        self::assertSame([], self::stale($this->audit($repo, scope: 'git-diff')));
+        $committed = $this->audit($repo, scope: 'git-diff');
+        self::assertSame([], self::stale($committed));
         // The test file changed with the impl: reviewed, so silent.
         file_put_contents($repo . '/src/wall_impl.rs', str_replace('        1', '        3', self::WALL_IMPL));
         file_put_contents($repo . '/src/wall_tests.rs', "// reviewed\n", FILE_APPEND);
-        self::assertSame([], self::stale($this->audit($repo, scope: 'git-diff')));
+        $reviewed = $this->audit($repo, scope: 'git-diff');
+        self::assertSame([], self::stale($reviewed));
     }
 
     public function testAStaleDoubleOnABranchWithNoCommitIsStaleSinceTheEmptyTree(): void
