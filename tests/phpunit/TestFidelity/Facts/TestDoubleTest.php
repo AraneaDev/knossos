@@ -178,6 +178,22 @@ final class TestDoubleTest extends KnossosTestCase
         assertSame(false, $read(['compile_checked' => 1]));
     }
 
+    public function testReadsWhetherAMatcherIsNegated(): void
+    {
+        // G3-02: a matcher read through `.not`; a flag that is no boolean drops the matcher, and keeps the double.
+        $attributes = self::attributes();
+        $attributes['members'][0]['called_with'] = [
+            ['api' => 'toHaveBeenCalledWith', 'line' => 29, 'count' => 0, 'spread' => false, 'negated' => true],
+            ['api' => 'toHaveBeenCalledWith', 'line' => 30, 'count' => 1, 'spread' => false],
+            ['api' => 'toHaveBeenCalledWith', 'line' => 31, 'count' => 1, 'spread' => false, 'negated' => 'yes'],
+            ['api' => 'assert_called_with', 'line' => 32, 'count' => 1, 'spread' => false, 'keywords' => [3], 'negated' => true],
+        ];
+
+        $matchers = TestDouble::fromNode(self::node('test_double', $attributes))?->members[0]->calledWith ?? [];
+
+        assertSame([[29, true, false], [30, false, false], [32, true, true]], array_map(static fn($matcher): array => [$matcher->line, $matcher->negated, $matcher->spread], $matchers));
+    }
+
     public function testReadsMatcherKeywords(): void
     {
         $attributes = self::attributes();

@@ -220,6 +220,32 @@ final class TautologyRuleTest extends KnossosTestCase
         ));
     }
 
+    public function testTheFirstVacuousNegationOfALineIsKeptAndEveryLineHasItsOwn(): void
+    {
+        $matcher = static fn(int $line): array => [['api' => 'toHaveBeenCalledWith', 'line' => $line, 'count' => 0, 'spread' => false, 'negated' => true]];
+        $signature = ['signature' => ['params' => [['name' => 'x', 'type' => 'number']], 'returns' => 'number']];
+        $graph = DriftFixtures::graph(
+            [DriftFixtures::method('rate', $signature), DriftFixtures::method('total', $signature)],
+            [DriftFixtures::stub('rate', calledWith: $matcher(8)), DriftFixtures::stub('total', calledWith: $matcher(8)), DriftFixtures::stub('total', calledWith: $matcher(11))],
+        );
+
+        assertSame(['8 rate', '11 total'], array_map(
+            static fn(TestFinding $finding): string => $finding->evidence->startLine . ' ' . $finding->attributes['member'],
+            [...(new TautologyRule())->findings($graph)],
+        ));
+    }
+
+    public function testANegatedCallMatcherOnAMemberWithARestParameterIsSilent(): void
+    {
+        // As for arity drift, a rest parameter leaves the count unjudged, a required one before it too.
+        $graph = DriftFixtures::graph(
+            [DriftFixtures::method('rate', ['signature' => ['params' => [['name' => 'x', 'type' => 'number'], ['name' => 'more', 'type' => 'number[]', 'variadic' => true]], 'returns' => 'number']])],
+            [DriftFixtures::stub('rate', calledWith: [['api' => 'toHaveBeenCalledWith', 'line' => 8, 'count' => 0, 'spread' => false, 'negated' => true]])],
+        );
+
+        assertSame([], [...(new TautologyRule())->findings($graph)]);
+    }
+
     public function testANegatedCallMatcherSomeCallCouldMeetIsSilent(): void
     {
         $matcher = static fn(array $fields): array => [['api' => 'toHaveBeenCalledWith', 'line' => 8, 'count' => 0, 'spread' => false, 'negated' => true, ...$fields]];

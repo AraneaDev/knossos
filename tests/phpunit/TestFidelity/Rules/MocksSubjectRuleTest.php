@@ -94,6 +94,10 @@ final class MocksSubjectRuleTest extends KnossosTestCase
         $case = DriftFixtures::node('test_case', CaseFixtures::FILE . '#test:10', $name, ['name' => $name, 'production_calls' => 2, 'subjects' => ['src/db.ts'], 'assertions' => []], 10);
 
         assertSame("vi.mock replaces src/db.ts, which the test '" . $name . "' exercises", self::judge([$case], CaseFixtures::double(3, 'vi.mock', self::MODULE_MOCK), $db)[0]->message);
+        // 130 of them are cut at a character, never inside one.
+        $long = str_repeat('é', 130);
+        $cut = DriftFixtures::node('test_case', CaseFixtures::FILE . '#test:10', $long, ['name' => $long, 'production_calls' => 2, 'subjects' => ['src/db.ts'], 'assertions' => []], 10);
+        assertSame("vi.mock replaces src/db.ts, which the test '" . str_repeat('é', 119) . "…' exercises", self::judge([$cut], CaseFixtures::double(3, 'vi.mock', self::MODULE_MOCK), $db)[0]->message);
     }
 
     public function testANameTwoSubjectsShareNamesNeitherByItself(): void

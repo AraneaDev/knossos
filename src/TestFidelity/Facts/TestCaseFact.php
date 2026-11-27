@@ -23,7 +23,7 @@ final readonly class TestCaseFact
         public array $subjects,
         public ?bool $shouldPanic,
         public array $assertions,
-        public bool $fails = false,
+        public bool $fails,
     ) {}
 
     /**

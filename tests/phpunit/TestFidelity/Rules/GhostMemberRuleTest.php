@@ -244,6 +244,12 @@ final class GhostMemberRuleTest extends KnossosTestCase
         assertSame('vi.spyOn stubs ' . str_repeat('a', 24) . '…; did you mean ' . $present . '?', $message);
         assertSame(120, mb_strlen($message));
         assertSame('vi.spyOn stubs refund, which UserService no longer has', self::judge(DriftFixtures::graph([DriftFixtures::method('totalCents')], [DriftFixtures::stub('refund')]))[0]->message, 'a short message is not cut');
+        // The room the suggestion takes is counted in characters: 33 two-byte-and-ASCII ones are 49 of the 120.
+        $wide = str_repeat('é', 31) . 'xy';
+        $head = 'vi.spyOn stubs ' . str_repeat('é', 31) . 'x, which UserService no longer has';
+        $message = self::judge(DriftFixtures::graph([DriftFixtures::method($wide)], [DriftFixtures::stub(str_repeat('é', 31) . 'x')]))[0]->message;
+        assertSame(mb_substr($head, 0, 70) . '…; did you mean ' . $wide . '?', $message);
+        assertSame(120, mb_strlen($message));
     }
 
     public function testOfTwoNamesAsNearTheAlphabeticallyFirstIsSuggested(): void
