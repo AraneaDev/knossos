@@ -45,6 +45,9 @@ final class FixtureDrift
     /** How many types deep a nested record is read (`staleFixtures.ts:382`). */
     private const MAX_NESTING = 4;
 
+    /** The longest name, in bytes, a near-name suggestion is sought for or made from: edit distance is quadratic. */
+    public const MAX_SUGGESTED = 128;
+
     /** @var array<string, OnRequestFinding> by key, in the order found */
     private array $findings = [];
 
@@ -175,15 +178,25 @@ final class FixtureDrift
     /**
      * The candidate nearest `$name` by edit distance, within Nemesis's
      * threshold (`staleFixtures.ts:668-694`); null when none is that near.
+     * A name or candidate over {@see self::MAX_SUGGESTED} bytes is never
+     * measured, and one whose length alone puts it past the threshold is
+     * skipped unmeasured, so a fixture's huge key or value costs no
+     * quadratic work.
      *
      * @param list<string> $candidates
      */
     private static function nearest(string $name, array $candidates): ?string
     {
+        if (strlen($name) > self::MAX_SUGGESTED) {
+            return null;
+        }
         $threshold = max(2, intdiv(strlen($name) * 2, 5));
         $best = null;
         $distance = PHP_INT_MAX;
         foreach ($candidates as $candidate) {
+            if (strlen($candidate) > self::MAX_SUGGESTED || abs(strlen($candidate) - strlen($name)) > $threshold) {
+                continue;
+            }
             $edits = levenshtein($name, $candidate);
             if ($edits <= $threshold && $edits < $distance) {
                 [$best, $distance] = [$candidate, $edits];

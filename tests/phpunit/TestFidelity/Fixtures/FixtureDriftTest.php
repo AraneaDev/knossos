@@ -280,6 +280,54 @@ final class FixtureDriftTest extends KnossosTestCase
         self::assertSame(["kind_mismatch 1 Fixture 'consignments.fixture.json' has 'weightKg' as string but Parcel declares 'float'."], self::drift('{"parcelId": 1, "weightKg": "heavy"}', 'Parcel', [$parcel]));
     }
 
+    /**
+     * A near name is sought only between names of at most
+     * FixtureDrift::MAX_SUGGESTED bytes, so a huge key costs no quadratic
+     * edit distance; the finding stands without its suggestion.
+     */
+    public function testANearNameIsSoughtOnlyForANameWithinTheCap(): void
+    {
+        $at = FixtureDrift::MAX_SUGGESTED;
+        $field = str_repeat('a', $at - 1) . 'b';
+        $said = static fn(string $sub, string $name, string $tail): string => $sub === 'missing_required'
+            ? "missing_required 1 Fixture 'consignments.fixture.json' is missing required field '{$name}' of Long.{$tail}"
+            : "unknown_key 1 Fixture 'consignments.fixture.json' has field '{$name}' which no longer exists on Long.{$tail}";
+
+        $near = str_repeat('a', $at);
+        self::assertSame(
+            [$said('missing_required', $field, " Did you mean '{$near}'?"), $said('unknown_key', $near, " Did you mean '{$field}'?")],
+            self::drift('{"' . $near . '": "x"}', 'Long', [self::ts('Long', [$field => self::field('string')])]),
+        );
+        // A key one byte over the cap is never measured, though two edits from the field.
+        $over = str_repeat('a', $at + 1);
+        self::assertSame(
+            [$said('missing_required', $field, ''), $said('unknown_key', $over, '')],
+            self::drift('{"' . $over . '": "x"}', 'Long', [self::ts('Long', [$field => self::field('string')])]),
+        );
+        // Nor is a field over the cap, one edit from the key.
+        $long = $over . 'b';
+        $key = $over . 'a';
+        self::assertSame(
+            [$said('missing_required', $long, ''), $said('unknown_key', $key, '')],
+            self::drift('{"' . $key . '": "x"}', 'Long', [self::ts('Long', [$long => self::field('string')])]),
+        );
+        // A huge key is left unmeasured against a short field too.
+        $huge = str_repeat('k', 200_000);
+        self::assertSame(
+            [$said('missing_required', 'name', ''), $said('unknown_key', $huge, '')],
+            self::drift('{"' . $huge . '": "x"}', 'Long', [self::ts('Long', ['name' => self::field('string')])]),
+        );
+        // Within the cap, a length difference of the threshold itself is still near; one past it is not.
+        self::assertSame(
+            [$said('missing_required', 'abcde', " Did you mean 'abcdefg'?"), $said('unknown_key', 'abcdefg', " Did you mean 'abcde'?")],
+            self::drift('{"abcdefg": "x"}', 'Long', [self::ts('Long', ['abcde' => self::field('string')])]),
+        );
+        self::assertSame(
+            [$said('missing_required', 'abcde', ''), $said('unknown_key', 'abcdefgh', " Did you mean 'abcde'?")],
+            self::drift('{"abcdefgh": "x"}', 'Long', [self::ts('Long', ['abcde' => self::field('string')])]),
+        );
+    }
+
     public function testFindingsPointAtTheirKeysAndAreSaidOnce(): void
     {
         $user = self::ts('UserRecord', ['id' => self::field('string'), 'name' => self::field('string'), 'note' => self::field(null, false)]);
