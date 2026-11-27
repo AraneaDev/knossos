@@ -1414,6 +1414,7 @@ php	tests/phpunit/TestFidelity/TestFindingSuppressionsTest.php
 php	tests/phpunit/TestFidelity/TestRuleCatalogTest.php
 php	tests/phpunit/TestFidelity/TurnTestFindingsTest.php
 php	tests/phpunit/TestFidelity/TypeScriptAcceptanceTest.php
+php	tests/phpunit/TestFidelity/TypeScriptHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/TypeScriptTestCaseFlowTest.php
 php	tests/phpunit/TestFidelity/TypeScriptTestFactsTest.php
 php	tests/phpunit/Watch/ExternalScanProbeTest.php
