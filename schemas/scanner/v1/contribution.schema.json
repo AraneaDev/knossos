@@ -67,6 +67,11 @@
               "description": "True when members cannot be complete (a base type that does not resolve, an index signature).",
               "type": "boolean"
             },
+            "private_names": {
+              "description": "A class node: those of its member_names that are ECMAScript private members (`#name`), sorted; a member named by the string '#name' is public and not listed. Sent only when there is one.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
             "fields": { "$ref": "#/$defs/fieldList" },
             "fields_open": {
               "description": "True when a wire name may differ from a field's name or a field may come from elsewhere (a base outside the scan, an intersection or spread that does not resolve, a decorator or attribute that renames, flatten, an alias generator).",

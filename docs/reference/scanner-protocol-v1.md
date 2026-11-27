@@ -246,7 +246,11 @@ type checker, so a core can tell a name that is gone from one that has no node
 of its own (`export const`, `export { a as b }`, accessors, constructor
 parameter properties, static members). `exports` names every export, the
 default export as `"default"`, and follows `export *` and aliases; `member_names`
-names every member the type declares or inherits. A list is sent only when the
+names every member the type declares or inherits. A class node may also carry
+`private_names`, those of its `member_names` that are ECMAScript private members
+(`#name`): a member named by the string `'#name'` is spelled the same but is
+public, so a reader takes a `#` name as private only when `private_names` lists
+it, and a class that sends none has none. A list is sent only when the
 worker could read it, and a list that cannot be complete says so with
 `exports_open: true` (an `export *` from a module that does not resolve, an
 `export =`) or `member_names_open: true` (a base type that does not resolve, an

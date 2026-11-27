@@ -53,8 +53,9 @@ final class VisibilityBreachRuleTest extends KnossosTestCase
 
     public function testAnEcmaScriptPrivateMemberIsDefinite(): void
     {
-        // A `#name` member is no property: no double can reach it.
-        $graph = DriftFixtures::graph([DriftFixtures::method('#hash')], [DriftFixtures::stub('#hash')]);
+        // A `#name` member is no property: no double can reach it. The worker
+        // lists it in `private_names`, without a node of its own.
+        $graph = DriftFixtures::graph([], [DriftFixtures::stub('#hash')], targetAttributes: ['member_names' => ['#hash', 'open'], 'private_names' => ['#hash']]);
 
         $findings = [...(new VisibilityBreachRule())->findings($graph)];
 
@@ -64,14 +65,25 @@ final class VisibilityBreachRuleTest extends KnossosTestCase
         assertSame(['member' => '#hash', 'visibility' => 'private'], $findings[0]->attributes);
     }
 
-    public function testAnEcmaScriptPrivateNameTheMemberListHoldsIsDefinite(): void
+    public function testAMemberNamedByTheStringHashNameIsPublic(): void
     {
-        // The worker lists a `#name` member without a node of its own.
-        $graph = DriftFixtures::graph([], [DriftFixtures::stub('#hash')], targetAttributes: ['member_names' => ['#hash']]);
+        // G1-27: `'#x'(): number` is a public method spelled like a private one,
+        // with a node of its own and in the member list, but not in `private_names`.
+        $quoted = DriftFixtures::graph([DriftFixtures::method('#x')], [DriftFixtures::stub('#x')], targetAttributes: ['member_names' => ['#hidden', '#x'], 'private_names' => ['#hidden']]);
+        $unlisted = DriftFixtures::graph([], [DriftFixtures::stub('#c')], targetAttributes: ['member_names' => ['#c']]);
+        $listedElsewhere = DriftFixtures::graph([], [DriftFixtures::stub('#c')], targetAttributes: ['member_names' => ['#c'], 'private_names' => 'not a list']);
 
-        $findings = [...(new VisibilityBreachRule())->findings($graph)];
+        assertSame([], [...(new VisibilityBreachRule())->findings($quoted)]);
+        assertSame([], [...(new VisibilityBreachRule())->findings($unlisted)]);
+        assertSame([], [...(new VisibilityBreachRule())->findings($listedElsewhere)]);
+    }
 
-        assertSame([[FindingConfidence::Definite, '#hash is private; a double cannot replace it']], array_map(static fn($finding): array => [$finding->confidence, $finding->message], $findings));
+    public function testOnlyAHashNameIsEcmaScriptPrivate(): void
+    {
+        // A list naming a member without `#` makes no breach of it.
+        $graph = DriftFixtures::graph([DriftFixtures::method('open')], [DriftFixtures::stub('open')], targetAttributes: ['member_names' => ['open'], 'private_names' => ['open']]);
+
+        assertSame([], [...(new VisibilityBreachRule())->findings($graph)]);
     }
 
     public function testAStubbedNameOfNoMemberIsNoBreach(): void

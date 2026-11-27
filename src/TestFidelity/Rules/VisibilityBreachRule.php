@@ -9,8 +9,9 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
 /**
  * A double replaces a member that is not part of its class's public interface.
  *
- * An ECMAScript private member (`#name`) is no property at all, so no double
- * can replace it: definite. A member declared `private` or `protected` is
+ * An ECMAScript private member (`#name`, one the target's `private_names`
+ * lists) is no property at all, so no double can replace it: definite. A
+ * member named by the string `'#name'` is an ordinary public one. A member declared `private` or `protected` is
  * hidden at compile time only, and `vi.spyOn(s as any, 'name')` does replace
  * it at run time, so the double works but reaches past the public interface:
  * a warning. A worker marks only those two keywords; a member with neither
@@ -97,17 +98,15 @@ final readonly class VisibilityBreachRule extends DriftRule
     }
 
     /**
-     * Whether the stub names a `#name` member the target declares: a node of
-     * that name, or the name in the target's member list (a worker emits no
-     * node of its own for an ECMAScript private member).
+     * Whether the stub names an ECMAScript private member (`#name`) of the
+     * target: one its `private_names` lists. A member named by the string
+     * `'#name'` is spelled the same but is public, so the spelling alone says
+     * nothing, and a target that lists no private names has none (G1-27).
      */
     private static function isHashPrivate(DriftPair $pair): bool
     {
-        if (!str_starts_with($pair->stub->name, '#')) {
-            return false;
-        }
-        $names = $pair->target->attributes['member_names'] ?? null;
+        $names = $pair->target->attributes['private_names'] ?? null;
 
-        return $pair->member !== null || (is_array($names) && in_array($pair->stub->name, $names, true));
+        return str_starts_with($pair->stub->name, '#') && is_array($names) && in_array($pair->stub->name, $names, true);
     }
 }
