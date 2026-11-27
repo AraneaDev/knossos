@@ -384,6 +384,7 @@ final class PythonAcceptanceTest extends KnossosTestCase
 
         assertCount(7, self::findings($first));
         assertCount(7, $ids($first));
+        self::assertNotEmpty($ids($first), 'A determinism test over zero findings proves nothing.');
         assertSame($ids($first), $ids($second));
         assertSame(self::findings($first), self::findings($second));
     }

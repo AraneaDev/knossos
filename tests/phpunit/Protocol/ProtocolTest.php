@@ -19,6 +19,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\SchemaSubset;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 final class ProtocolTest extends KnossosTestCase
@@ -472,7 +473,7 @@ final class ProtocolTest extends KnossosTestCase
         $badMember = self::wireNode('test_case', ['name' => 'x', 'production_calls' => 0, 'subjects' => [], 'assertions' => [['api' => 'toBe', 'line' => 1, 'operands' => [['source' => 'telepathy']]]]]);
 
         assertSame(['$.attributes: missing target'], $this->nodeSchemaErrors($double));
-        assertSame(1, count($this->nodeSchemaErrors($badMember)));
+        assertSame(['$.attributes.assertions[0].operands[0].source: not one of ["mock-config","mock-call","production","literal","parameter","unknown"]'], $this->nodeSchemaErrors($badMember));
     }
 
     #[Group('protocol')]
@@ -487,7 +488,31 @@ final class ProtocolTest extends KnossosTestCase
             'members' => [['line' => 8, 'api' => 'spyOn', 'returns' => []]],
         ]);
 
-        assertSame(1, count($this->nodeSchemaErrors($double)));
+        assertSame(['$.attributes.members[0]: missing name'], $this->nodeSchemaErrors($double));
+    }
+
+    /**
+     * @return array<string, array{mixed, list<string>}>
+     */
+    public static function malformedMembers(): array
+    {
+        return [
+            'a string' => ['x', ['$.attributes.members[0]: expected object']],
+            'null' => [null, ['$.attributes.members[0]: expected object']],
+            'an empty object' => [[], ['$.attributes.members[0]: missing name', '$.attributes.members[0]: missing line', '$.attributes.members[0]: missing api', '$.attributes.members[0]: missing returns']],
+            'line zero' => [['name' => 'a', 'line' => 0, 'api' => 'spyOn', 'returns' => []], ['$.attributes.members[0].line: below 1']],
+            'no returns' => [['name' => 'a', 'line' => 1, 'api' => 'spyOn'], ['$.attributes.members[0]: missing returns']],
+            'returns not a list' => [['name' => 'a', 'line' => 1, 'api' => 'spyOn', 'returns' => 'x'], ['$.attributes.members[0].returns: expected array']],
+        ];
+    }
+
+    #[Group('protocol')]
+    #[DataProvider('malformedMembers')]
+    public function testAMalformedStubbedMemberIsAnExactSchemaErrorAndNeverAThrow(mixed $member, array $errors): void
+    {
+        $double = self::wireNode('test_double', ['framework' => 'vitest', 'pattern' => 'vi.spyOn', 'target' => ['kind' => 'class'], 'automock' => false, 'invocations' => 0, 'members' => [$member]]);
+
+        assertSame($errors, $this->nodeSchemaErrors($double));
     }
 
     #[Group('protocol')]

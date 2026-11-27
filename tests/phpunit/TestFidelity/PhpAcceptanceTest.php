@@ -418,6 +418,7 @@ final class PhpAcceptanceTest extends KnossosTestCase
 
         self::assertGreaterThan(20, count(self::findings($first)));
         assertCount(count(self::findings($first)), $ids($first));
+        self::assertNotEmpty($ids($first), 'A determinism test over zero findings proves nothing.');
         assertSame($ids($first), $ids($second));
     }
 

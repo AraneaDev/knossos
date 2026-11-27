@@ -53,7 +53,8 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
 
             $page = $service->auditTests($projectId, limit: 1, offset: 1);
             assertSame([$items[1]], $page->data['items']);
-            assertSame($items[1]['id'] ?? null, $page->data['items'][0]['id'] ?? null);
+            self::assertIsString($page->data['items'][0]['id'] ?? null);
+            self::assertNotSame($items[0]['id'], $page->data['items'][0]['id'], 'An offset of 1 skips the first finding.');
         } finally {
             $this->removeTempTree($root);
         }
@@ -188,6 +189,9 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
 
             assertSame([], $result->data['items']);
             assertSame(0, $result->data['total']);
+            // The summary counts the project, never the filtered page: the filter empties the items, not the TypeScript counts.
+            assertSame($service->auditTests($projectId)->data['summary']['by_language']['typescript'], $result->data['summary']['by_language']['typescript']);
+            assertSame(['definite' => 0, 'warning' => 0], $result->data['summary']['by_language']['php']);
         } finally {
             $this->removeTempTree($root);
         }

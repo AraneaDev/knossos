@@ -310,6 +310,7 @@ final class RustAcceptanceTest extends KnossosTestCase
         [$second] = $this->scannedAt($root);
 
         assertNotSame([], self::findings($first));
+        self::assertNotEmpty($ids($first), 'A determinism test over zero findings proves nothing.');
         assertSame($ids($first), $ids($second));
         assertSame(self::findings($first), self::findings($second));
     }
