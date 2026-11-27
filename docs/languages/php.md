@@ -222,7 +222,10 @@ own semantics:
   PHP itself, makes drift a warning at most. A class built into PHP and pinned
   with `new` is what PHP's own Reflection, run in the worker, says it extends
   and implements, so `new \DateTimeImmutable()` fits `\DateTimeInterface`;
-  a project class is never loaded to ask. A facade double names no class,
+  a project class is never loaded to ask. A class, interface, trait or enum
+  several files declare is read from the project's declaration rather than a
+  `vendor/` copy; two project declarations that differ leave it unknown, so
+  nothing is held against it. A facade double names no class,
   so nothing it stubs is held against one.
 
 ## Field facts

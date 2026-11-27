@@ -24,7 +24,8 @@ use Knossos\TestFidelity\Facts\TestDouble;
  * A PHP worker cannot know across files whether a name is a class, an
  * interface, a trait or an enum, so it names every double's target
  * `php:class:<FQCN>`; such a reference, and any PHP type reference, resolves
- * to the class-like node of that name, in any case, as PHP resolves names.
+ * to the class-like node of that name, in any case, as PHP resolves names,
+ * from the declaration `PhpTypeDeclarations` picks when several files hold one.
  *
  * A Python base outside the project is an unseen ancestor, whose names are
  * unknown, except `abc.ABC`, `typing.Protocol` and `typing.Generic`, which
@@ -105,7 +106,7 @@ final readonly class TestFidelityGraph
     public static function fromContributions(array $contributions): self
     {
         $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = $visibilityChanged = $callables = [];
-        foreach ($contributions as $contribution) {
+        foreach (PhpTypeDeclarations::preferred($contributions) as $contribution) {
             foreach ($contribution->nodes as $node) {
                 if (isset($nodes[$node->localId])) {
                     continue;

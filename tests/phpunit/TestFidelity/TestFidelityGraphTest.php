@@ -10,8 +10,11 @@ use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\Origin;
 use Knossos\Scanner\Protocol\ScanContribution;
+use Knossos\TestFidelity\Rules\GhostMemberRule;
 use Knossos\TestFidelity\TestFidelityGraph;
+use Knossos\TestFidelity\TestFinding;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\TestFidelity\Rules\DriftFixtures;
 use Knossos\Tests\Phpunit\TestFidelity\Rules\PythonFixtures;
 
 use function PHPUnit\Framework\assertFalse;
@@ -369,6 +372,49 @@ final class TestFidelityGraphTest extends KnossosTestCase
         assertTrue($graph->hasUnseenAncestor($colour));
         assertFalse($graph->hasClosedLineage($colour));
         assertSame([], $graph->knownBaseNames($colour));
+    }
+
+    /**
+     * One FQCN declared under `vendor/` and in the project is read from the
+     * project's declaration, whichever comes first, and nothing the vendor
+     * copy declares leaks into it; two project declarations that differ in
+     * more than their lines leave the type unknown, so nothing is judged
+     * against it (G3-11).
+     */
+    public function testAPhpTypeDeclaredTwiceIsReadFromTheProjectsOwnDeclaration(): void
+    {
+        $declare = static function (string $file, array $methods, array $attributes = ['member_names' => []]): ScanContribution {
+            $type = DriftFixtures::phpType('class', 'App\Repo', $attributes, $file);
+            $nodes = array_map(static fn(string $name): NodeFact => DriftFixtures::phpMethod($type, $name, ['signature' => ['params' => []]]), $methods);
+
+            return new ScanContribution('knossos.php:file:' . $file, [$type, ...$nodes], array_map(static fn(NodeFact $node): EdgeFact => DriftFixtures::edge('contains', $type, $node->localId), $nodes));
+        };
+        $double = new NodeFact('php:test_double:tests/RepoTest.php#double:6:3', 'test_double', 'tests/RepoTest.php#double:6:3', 'createMock', Origin::Ast, Confidence::Certain, new Evidence('tests/RepoTest.php', 6, 6), [
+            'framework' => 'phpunit', 'pattern' => 'createMock', 'target' => ['kind' => 'class', 'export' => 'App\Repo'], 'automock' => false, 'invocations' => 0,
+            'members' => [['name' => 'gone', 'line' => 7, 'api' => 'method', 'returns' => []]],
+        ]);
+        $test = new ScanContribution('knossos.php:file:tests/RepoTest.php', [$double], [self::edge('doubles', $double, 'php:class:App\Repo')]);
+        $graph = static fn(ScanContribution ...$contributions): TestFidelityGraph => TestFidelityGraph::fromContributions([...$contributions, $test]);
+        $ghosts = static fn(TestFidelityGraph $graph): array => array_map(static fn(TestFinding $finding): string => $finding->message, [...(new GhostMemberRule())->findings($graph)]);
+        $vendor = $declare('vendor/acme/repo/src/Repo.php', ['find', 'gone'], ['member_names' => ['find', 'gone']]);
+        $src = $declare('src/Repo.php', ['find'], ['member_names' => ['find']]);
+
+        $preferred = $graph($vendor, $src);
+        $repo = $preferred->phpType('app\repo');
+        assertSame('src/Repo.php', $repo?->evidence->relativePath);
+        assertSame(['find'], array_map(static fn(NodeFact $child): string => $child->displayName, $preferred->children($repo)));
+        assertNull($preferred->member($repo, 'gone'));
+        assertSame(['createMock stubs gone, which Repo no longer has'], $ghosts($graph($src, $vendor)), 'The project declaration is read in either order.');
+
+        $copy = $declare('src/Copy/Repo.php', ['find'], ['member_names' => ['find']]);
+        assertSame('src/Repo.php', $graph($src, $copy)->phpType('App\Repo')?->evidence->relativePath, 'Two project declarations alike but for where they are keep the first.');
+        $other = $declare('lib/Repo.php', ['find', 'gone'], ['member_names' => ['find', 'gone']]);
+        $differing = $graph($src, $vendor, $other);
+        assertNull($differing->phpType('App\Repo'));
+        assertFalse($differing->has('php:class:App\Repo'));
+        assertFalse($differing->has('php:method:App\Repo::find'));
+        assertSame([], $ghosts($differing), 'Two project declarations that differ leave the type unknown: silence.');
+        assertSame('vendor/acme/repo/src/Repo.php', $graph($vendor)->phpType('App\Repo')?->evidence->relativePath, 'A vendor declaration alone is still read.');
     }
 
     public function testAProjectNodeUnderAKnownBaseNameIsTheNodeItself(): void
