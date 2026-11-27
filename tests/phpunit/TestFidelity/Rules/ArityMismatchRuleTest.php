@@ -387,8 +387,8 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         // A subclass that leaves the name to its one base is judged against that def.
         assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge([], ['py:class:app.repo.Base'], [['Base', ['run'], $two, []]]));
         assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge([], ['py:class:app.repo.B'], [['B', [], null, ['py:class:app.repo.Base']], ['Base', ['run'], $two, []]]));
-        // A def on the class itself answers first, whatever its bases; under a base outside the project, which may rewrite it, only as a warning (U1, G4-12).
-        assertSame(['warning run needs 2 argument(s); the matcher expects 1'], $judge(['run'], ['py:external_symbol:logging.Handler', 'py:class:app.repo.Base'], [['Base', ['other'], null, []]], [['run', PythonFixtures::signature($two)]]));
+        // A def on the class itself answers first, whatever its bases.
+        assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge(['run'], ['py:external_symbol:logging.Handler', 'py:class:app.repo.Base'], [['Base', ['other'], null, []]], [['run', PythonFixtures::signature($two)]]));
         assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge(['run'], ['py:class:app.repo.Base'], [['Base', ['other'], null, []]], [['run', PythonFixtures::signature($two)]]));
     }
 

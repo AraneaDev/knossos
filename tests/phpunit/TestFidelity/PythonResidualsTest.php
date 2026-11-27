@@ -57,6 +57,27 @@ final class PythonResidualsTest extends KnossosTestCase
         assertSame(['GHOST_MEMBER/missing_export/definite@tests/test_cross_file.py:25'], self::findingsIn($pdo, 'tests/test_cross_file.py'));
     }
 
+    /**
+     * The writer reads the target's file: when `config.py` gains the class
+     * `startup.py` writes, a rescan parses the writer again, so its write
+     * opens the new class and `:20` stays silent (Fix round 1).
+     */
+    public function testATargetGainingTheClassTheWriterWritesParsesTheWriterAgain(): void
+    {
+        [$pdo, $service, $root] = $this->scanned();
+        $target = $root . '/src/config.py';
+        $original = (string) file_get_contents($target);
+        file_put_contents($target, "FLAG = 0\n\n\ndef flag() -> int:\n    return FLAG\n");
+        $service->scan($root);
+
+        file_put_contents($target, $original);
+        $rescanned = $service->scan($root);
+
+        // The target, its writer and the test that reads it are parsed again.
+        assertSame(3, $rescanned->data['parsed_files']);
+        assertSame(['GHOST_MEMBER/missing_export/definite@tests/test_cross_file.py:25'], self::findingsIn($pdo, 'tests/test_cross_file.py'));
+    }
+
     public function testAMatcherListingTheReceiverOfACallThroughTheClassIsNoMismatch(): void
     {
         [$pdo] = $this->scanned();

@@ -21,8 +21,10 @@ namespace Knossos\TestFidelity;
  *
  * A base outside the project whose metaclass or `__init_subclass__` may
  * rewrite its subclasses' methods cannot be read (G4-12). Those known to keep
- * every signature a def writes are a builtin, the bases above, and `enum`'s
- * and Django's model base (`ABCMeta`, `EnumMeta` and the model metaclass).
+ * every signature a def writes are a builtin, a base of the standard library
+ * (`logging.Handler`, `threading.Thread`, `collections.abc.Mapping`: its
+ * metaclasses, `ABCMeta` and `EnumMeta` among them, keep them), and Django's
+ * model base.
  */
 final class PythonBases
 {
@@ -39,8 +41,41 @@ final class PythonBases
     /** What `abc.ABCMeta` gives each class it makes, the pure-Python `_py_abc`'s caches included. */
     private const ABC_NAMES = ['_abc_cache', '_abc_caches_clear', '_abc_impl', '_abc_negative_cache', '_abc_negative_cache_version', '_abc_registry', '_abc_registry_clear', '_dump_registry', 'register'];
 
-    /** Bases outside the project, besides the known ones and the builtins, whose metaclass keeps every signature a def writes. */
-    private const PLAIN = ['enum.Enum', 'enum.IntEnum', 'enum.StrEnum', 'enum.Flag', 'enum.IntFlag', 'django.db.models.Model', 'django.db.models.base.Model'];
+    /** Bases outside the project and the standard library whose metaclass keeps every signature a def writes. */
+    private const PLAIN = ['django.db.models.Model', 'django.db.models.base.Model'];
+
+    /**
+     * The standard library's public top-level modules: Python 3.14's
+     * `sys.stdlib_module_names`, those that start with an underscore left out,
+     * with the modules 3.12 and 3.13 removed added, as the worker runs on 3.11
+     * and later.
+     */
+    private const STDLIB = [
+        'abc', 'aifc', 'annotationlib', 'antigravity', 'argparse', 'array', 'ast', 'asynchat', 'asyncio',
+        'asyncore', 'atexit', 'audioop', 'base64', 'bdb', 'binascii', 'bisect', 'builtins', 'bz2', 'cProfile',
+        'calendar', 'cgi', 'cgitb', 'chunk', 'cmath', 'cmd', 'code', 'codecs', 'codeop', 'collections',
+        'colorsys', 'compileall', 'compression', 'concurrent', 'configparser', 'contextlib', 'contextvars',
+        'copy', 'copyreg', 'crypt', 'csv', 'ctypes', 'curses', 'dataclasses', 'datetime', 'dbm', 'decimal',
+        'difflib', 'dis', 'distutils', 'doctest', 'email', 'encodings', 'ensurepip', 'enum', 'errno',
+        'faulthandler', 'fcntl', 'filecmp', 'fileinput', 'fnmatch', 'fractions', 'ftplib', 'functools', 'gc',
+        'genericpath', 'getopt', 'getpass', 'gettext', 'glob', 'graphlib', 'grp', 'gzip', 'hashlib', 'heapq',
+        'hmac', 'html', 'http', 'idlelib', 'imaplib', 'imghdr', 'imp', 'importlib', 'inspect', 'io',
+        'ipaddress', 'itertools', 'json', 'keyword', 'lib2to3', 'linecache', 'locale', 'logging', 'lzma',
+        'mailbox', 'mailcap', 'marshal', 'math', 'mimetypes', 'mmap', 'modulefinder', 'msilib', 'msvcrt',
+        'multiprocessing', 'netrc', 'nis', 'nntplib', 'nt', 'ntpath', 'nturl2path', 'numbers', 'opcode',
+        'operator', 'optparse', 'os', 'ossaudiodev', 'pathlib', 'pdb', 'pickle', 'pickletools', 'pipes',
+        'pkgutil', 'platform', 'plistlib', 'poplib', 'posix', 'posixpath', 'pprint', 'profile', 'pstats', 'pty',
+        'pwd', 'py_compile', 'pyclbr', 'pydoc', 'pydoc_data', 'pyexpat', 'queue', 'quopri', 'random', 're',
+        'readline', 'reprlib', 'resource', 'rlcompleter', 'runpy', 'sched', 'secrets', 'select', 'selectors',
+        'shelve', 'shlex', 'shutil', 'signal', 'site', 'smtpd', 'smtplib', 'sndhdr', 'socket', 'socketserver',
+        'spwd', 'sqlite3', 'sre_compile', 'sre_constants', 'sre_parse', 'ssl', 'stat', 'statistics', 'string',
+        'stringprep', 'struct', 'subprocess', 'sunau', 'symtable', 'sys', 'sysconfig', 'syslog', 'tabnanny',
+        'tarfile', 'telnetlib', 'tempfile', 'termios', 'textwrap', 'this', 'threading', 'time', 'timeit',
+        'tkinter', 'token', 'tokenize', 'tomllib', 'trace', 'traceback', 'tracemalloc', 'tty', 'turtle',
+        'turtledemo', 'types', 'typing', 'unicodedata', 'unittest', 'urllib', 'uu', 'uuid', 'venv', 'warnings',
+        'wave', 'weakref', 'webbrowser', 'winreg', 'winsound', 'wsgiref', 'xdrlib', 'xml', 'xmlrpc', 'zipapp',
+        'zipfile', 'zipimport', 'zlib', 'zoneinfo',
+    ];
 
     private function __construct() {}
 
@@ -60,7 +95,7 @@ final class PythonBases
         return self::KNOWN[self::qualifiedName($reference) ?? ''] ?? null;
     }
 
-    /** Whether a base outside the project, by reference, is known to keep every signature its subclasses' defs write: a builtin, a known base, `enum`'s or Django's model base. */
+    /** Whether a base outside the project, by reference, is known to keep every signature its subclasses' defs write: a builtin, a base of the standard library, or Django's model base. */
     public static function keepsSignatures(string $reference): bool
     {
         $name = self::qualifiedName($reference);
@@ -68,6 +103,7 @@ final class PythonBases
             return false;
         }
 
-        return isset(self::KNOWN[$name]) || in_array($name, self::PLAIN, true) || preg_match('/^(?:builtins\.)?[A-Za-z_][A-Za-z0-9_]*$/D', $name) === 1;
+        return isset(self::KNOWN[$name]) || in_array($name, self::PLAIN, true) || in_array(explode('.', $name)[0], self::STDLIB, true)
+            || preg_match('/^(?:builtins\.)?[A-Za-z_][A-Za-z0-9_]*$/D', $name) === 1;
     }
 }

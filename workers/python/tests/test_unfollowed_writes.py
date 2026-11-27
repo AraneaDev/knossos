@@ -26,6 +26,11 @@ def _nodes(project, scan_collect, source: str, path: str = "m.py") -> dict[str, 
     [
         # G4-02: an alias of the receiver, an instance written outside the class.
         ("class C:\n    def __init__(self):\n        me = self\n        me.extra = 1\n", "m.C", "self_alias"),
+        (
+            'class C:\n    def __init__(self):\n        me = self\n        setattr(me, "extra", 1)\n',
+            "m.C",
+            "self_alias",
+        ),
         ("class C:\n    pass\n\n\nC().extra = 1\n", "m.C", "instance_write"),
         # G4-05: a nested class written, a class held as a parameter default.
         # A nested class takes its own name in the module (`m.I`).
@@ -62,6 +67,11 @@ def test_a_class_written_in_a_way_the_worker_does_not_follow_names_the_pattern(
         ('import builtins\n\nbuiltins.exec("LATE = 1")\n', "builtins_exec"),
         # G4-08: code that may write a caller's locals.
         ("import sys\n\n\ndef poke():\n    sys._getframe(1).f_locals['x'] = 2\n", "frame_write"),
+        ("import sys\n\n\ndef poke():\n    del sys._getframe(1).f_locals['x']\n", "frame_write"),
+        ("import sys\n\n\ndef poke():\n    sys._getframe(1).f_locals.update(x=2)\n", "frame_write"),
+        # Bound to a name or handed to a call, it may be written out of sight.
+        ("import sys\n\n\ndef poke():\n    seen = sys._getframe(1).f_locals\n    seen['x'] = 2\n", "frame_write"),
+        ("import sys\n\n\ndef poke(write):\n    write(sys._getframe(1).f_locals)\n", "frame_write"),
     ],
 )
 def test_a_module_written_in_a_way_the_worker_does_not_follow_names_the_pattern(
@@ -85,3 +95,30 @@ def test_plain_classes_and_modules_name_no_pattern(project, scan_collect) -> Non
     nodes = _nodes(project, scan_collect, source)
 
     assert ("unfollowed_writes" in nodes["m.C"], "unfollowed_writes" in nodes["m"]) == (False, False)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # A frame's locals read, never written (Fix round 1).
+        "import sys\n\n\ndef peek():\n    return sys._getframe(1).f_locals.get('x')\n",
+        "import sys\n\n\ndef peek():\n    return sys._getframe(1).f_locals['x']\n",
+    ],
+)
+def test_a_module_that_only_reads_a_frames_locals_names_no_pattern(project, scan_collect, source: str) -> None:
+    assert "unfollowed_writes" not in _nodes(project, scan_collect, source)["m"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # An alias of the receiver nothing is written through: a traversal, a builder (Fix round 1).
+        "class C:\n    parent = None\n\n    def root(self):\n        node = self\n"
+        "        while node.parent:\n            node = node.parent\n        return node\n",
+        "class C:\n    def build(self):\n        result = self\n        return result\n",
+        # A class held as a parameter default that is only called.
+        "class C:\n    pass\n\n\ndef f(k=C):\n    return k()\n",
+    ],
+)
+def test_a_holder_nothing_is_written_through_names_no_pattern(project, scan_collect, source: str) -> None:
+    assert "unfollowed_writes" not in _nodes(project, scan_collect, source)["m.C"]

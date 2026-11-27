@@ -68,6 +68,10 @@ final class PythonUnfollowedWritesTest extends KnossosTestCase
     {
         assertSame(['call_arity warning external_base'], self::arity([], 'py:external_symbol:framework.Model'));
         assertSame(['call_arity warning external_base'], self::arity([], 'py:class:framework.Model'));
+        // A base of the standard library keeps the signatures its subclasses' defs write (Fix round 1).
+        foreach (['py:external_symbol:logging.Handler', 'py:class:threading.Thread', 'py:external_symbol:json.JSONEncoder', 'py:external_symbol:collections.abc.Mapping'] as $base) {
+            assertSame([$base, ['call_arity definite']], [$base, self::arity([], $base)]);
+        }
         // A builtin, a known base, `enum`'s and Django's keep the signature a def writes.
         foreach (['py:class:Exception', 'py:external_symbol:builtins.dict', 'py:external_symbol:abc.ABC', 'py:class:enum.Enum', 'py:external_symbol:django.db.models.Model'] as $base) {
             assertSame([$base, ['call_arity definite']], [$base, self::arity([], $base)]);
@@ -94,10 +98,14 @@ final class PythonUnfollowedWritesTest extends KnossosTestCase
         $written = CaseFixtures::assertion('assert ==', [CaseFixtures::operand('literal', ['text' => '2']), CaseFixtures::operand('literal', ['text' => '3'])]);
 
         assertSame(['constant definite'], self::constants([$local], null));
-        assertSame(['constant warning frame_write'], self::constants([$local], 'src/app/frames.py'));
+        // The test calls into the module that writes frames, or its file imports it.
+        assertSame(['constant warning frame_write'], self::constants([$local], 'src/app/frames.py', subjects: ['src/app/frames.py']));
+        assertSame(['constant warning frame_write'], self::constants([$local], 'src/app/frames.py', imported: true));
+        // A test that neither calls into nor imports it keeps its constant (Fix round 1).
+        assertSame(['constant definite'], self::constants([$local], 'src/app/frames.py'));
         // A constant written out is no local a frame write can change; the test's own frame access is the worker's to see.
-        assertSame(['constant definite'], self::constants([$written], 'src/app/frames.py'));
-        assertSame(['constant definite'], self::constants([$local], 'tests/test_frames.py'));
+        assertSame(['constant definite'], self::constants([$written], 'src/app/frames.py', subjects: ['src/app/frames.py']));
+        assertSame(['constant definite'], self::constants([$local], 'tests/test_frames.py', subjects: ['tests/test_frames.py']));
     }
 
     /**
@@ -131,17 +139,21 @@ final class PythonUnfollowedWritesTest extends KnossosTestCase
     }
 
     /**
-     * The tautology findings of a Python test case, with a module writing frames at `$frames` when given.
+     * The tautology findings of a Python test case, with a module writing frames at `$frames` when given,
+     * which the case calls into when `$subjects` names it, or its file imports.
      *
      * @param list<array<string, mixed>> $assertions
+     * @param list<string> $subjects
      * @return list<string>
      */
-    private static function constants(array $assertions, ?string $frames): array
+    private static function constants(array $assertions, ?string $frames, array $subjects = [], bool $imported = false): array
     {
-        $case = PythonFixtures::node('test_case', 'tests/test_repo.py#test:10', ['name' => 'test_it', 'production_calls' => 1, 'subjects' => [], 'assertions' => $assertions], 'tests/test_repo.py');
+        $case = PythonFixtures::node('test_case', 'tests/test_repo.py#test:10', ['name' => 'test_it', 'production_calls' => 1, 'subjects' => $subjects, 'assertions' => $assertions], 'tests/test_repo.py');
         $production = $frames === null ? [] : [PythonFixtures::node('module', 'app.frames', ['exports' => [], 'unfollowed_writes' => ['frame_write']], $frames)];
+        $module = PythonFixtures::node('module', 'tests.test_repo', [], 'tests/test_repo.py');
+        $imports = $imported ? [PythonFixtures::edge('imports', $module, 'py:module:app.frames')] : [];
 
-        return self::described((new TautologyRule())->findings(CaseFixtures::graph([$case], $production)));
+        return self::described((new TautologyRule())->findings(CaseFixtures::graph([$case, $module], $production, $imports)));
     }
 
     /**

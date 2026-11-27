@@ -372,13 +372,16 @@ on it is a **warning**, never a definite, naming the pattern as its
 `residual`. A ghost or arity on a target with none of them stays definite.
 
 - **Instance writes outside the class** (G4-02). A name written on an instance
-  through an alias of `self` (`me = self; me.save = …`, `self_alias`), on an
+  through an alias of `self` (`me = self; me.save = …`, `self_alias`; an
+  alias nothing is written through, such as `node = self` in a traversal, is
+  none), on an
   instance built right there, in the class's file or another
   (`C().extra = 1`, `instance_write`), or by a module through an import of
   itself (`import m; m.x = 1` inside `m`, `module_self_write`) is not listed.
 - **Class writes the worker does not follow** (G4-05). A write to a nested
   class (`O.I.x = 1`, `nested_class_write`), a class held as a parameter
-  default (`def f(k=C): k.x = 1`, `default_holder`), a class handed to a call
+  default the function writes through (`def f(k=C): k.x = 1`,
+  `default_holder`; `def f(k=C): return k()` is none), a class handed to a call
   named like a read-only builtin but bound to something else
   (`rebound_builtin`), `builtins.exec` or `builtins.eval` (`builtins_exec`,
   every class of the module and the module), and a frame hack whose result is
@@ -386,18 +389,22 @@ on it is a **warning**, never a definite, naming the pattern as its
   A double of a nested class names it through its outer class
   (`Outer.Inner`), which the worker lists under its own name, so it is not
   judged at all.
-- **A frame write from another module** (G4-08). Production code that reads a
-  frame's `f_locals` (`sys._getframe(1).f_locals["x"] = v`, which writes
-  through on Python 3.13 and later) is marked `frame_write`, and while the
-  scan holds such a production module, a `constant` a test's local holds is a
-  warning. Frame access in the test file itself is seen, and a constant
-  written out (`assert 1 == 2`) is no local a frame can change.
+- **A frame write from another module** (G4-08). Production code that may
+  write a frame's `f_locals` (`sys._getframe(1).f_locals["x"] = v`, which
+  writes through on Python 3.13 and later; a `del`, a writing method such as
+  `update`, or the mapping bound to a name, handed to a call or returned) is
+  marked `frame_write`; a read (`f_locals.get("x")`) is not. A `constant` a
+  test's local holds is a warning in a test that calls into, or whose file
+  imports, such a production module; any other test keeps its definite.
+  Frame access in the test file itself is seen, and a constant written out
+  (`assert 1 == 2`) is no local a frame can change.
 - **A metaclass outside the project that may rewrite methods** (G4-12). A base
   the scan does not hold may rewrite its subclasses' signatures through its
   metaclass or `__init_subclass__`, so an arity mismatch under one is a
-  warning, as `external_base`. A builtin, `abc.ABC`, `typing.Protocol`,
-  `typing.Generic`, `enum`'s bases and Django's `Model` keep the signatures
-  their defs write, and stay definite.
+  warning, as `external_base`. A builtin, a base of the standard library
+  (`abc.ABC`, `enum.Enum`, `logging.Handler`, `threading.Thread`,
+  `collections.abc.Mapping`) and Django's `Model` keep the signatures their
+  defs write, and stay definite.
 
 These are accepted, and each costs a missed finding, as stated:
 

@@ -56,6 +56,7 @@ final readonly class TestFidelityGraph
      * @param array<string, string> $phpTypes lower-case FQCN => the reference of the PHP class-like node of that name
      * @param array<string, array<string, true>> $visibilityChanged type reference => lower-case names of the methods whose visibility a trait use there changes
      * @param PhpCallableReach $callables the PHP methods production hands on as callable values
+     * @param array<string, array<string, true>> $imports file => the references its `imports` edges name
      */
     private function __construct(
         private array $nodes,
@@ -69,6 +70,7 @@ final readonly class TestFidelityGraph
         private array $phpTypes,
         private array $visibilityChanged,
         private PhpCallableReach $callables,
+        private array $imports,
     ) {}
 
     /**
@@ -81,7 +83,7 @@ final readonly class TestFidelityGraph
      */
     public static function fromContributions(array $contributions): self
     {
-        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = $visibilityChanged = [];
+        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = $visibilityChanged = $imports = [];
         $contributions = PhpTypeDeclarations::preferred($contributions);
         foreach ($contributions as $contribution) {
             foreach ($contribution->nodes as $node) {
@@ -106,6 +108,8 @@ final readonly class TestFidelityGraph
             foreach ($contribution->edges as $edge) {
                 if ($edge->kind === 'doubles') {
                     $targets[$edge->sourceReference] ??= $edge->targetReference;
+                } elseif ($edge->kind === 'imports') {
+                    $imports[$edge->evidence->relativePath][$edge->targetReference] = true;
                 } elseif ($edge->kind === 'contains') {
                     $children[$edge->sourceReference][] = $edge->targetReference;
                 } elseif (in_array($edge->kind, self::INHERITANCE_KINDS, true)) {
@@ -125,7 +129,7 @@ final readonly class TestFidelityGraph
             $byFile[self::fileOf($case->canonicalName)][] = $case;
         }
 
-        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents, $phpTypes, $visibilityChanged, PhpCallableReach::of($contributions));
+        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents, $phpTypes, $visibilityChanged, PhpCallableReach::of($contributions), $imports);
     }
 
     /**
@@ -536,13 +540,15 @@ final readonly class TestFidelityGraph
             || (self::isPython($node) && preg_match('#(?:^|/)site-packages/#', $path) === 1);
     }
 
-    /** Whether a Python production module of the scan reads a frame's `f_locals`, through which it may write a caller's locals (G4-08, `PythonResiduals`). */
-    public function writesPythonFrames(): bool
+    /** Whether a Python test calls into, or its file imports, a production module that may write a caller's frame locals (G4-08, `PythonResiduals`). */
+    public function reachesPythonFrameWriter(TestCaseFact $case): bool
     {
         $tests = new TestModuleRule();
-        foreach ($this->nodes as $node) {
+        $file = self::fileOf($case->canonicalName);
+        foreach ($this->nodes as $reference => $node) {
             $reasons = $node->attributes['unfollowed_writes'] ?? null;
-            if ($node->kind === 'module' && self::isPython($node) && is_array($reasons) && in_array(PythonResiduals::FRAME_WRITE, $reasons, true) && $tests->classify($node) === []) {
+            $reached = in_array($node->evidence->relativePath, $case->subjects, true) || isset($this->imports[$file][$reference]);
+            if ($reached && $node->kind === 'module' && self::isPython($node) && is_array($reasons) && in_array(PythonResiduals::FRAME_WRITE, $reasons, true) && $tests->classify($node) === []) {
                 return true;
             }
         }

@@ -19,12 +19,12 @@ use Knossos\TestFidelity\Facts\Assertion;
  *   read-only builtin, `builtins.exec`, an assigned frame hack. The graph's
  *   view adds `instance_write` for an instance another file writes.
  * - An arity mismatch on a class with a base the scan does not hold, other than
- *   a builtin, `abc.ABC`, `typing.Protocol`, `typing.Generic`, `enum`'s or
- *   Django's model base (`PythonBases::keepsSignatures()`): its metaclass or
+ *   a builtin, a base of the standard library or Django's model base
+ *   (`PythonBases::keepsSignatures()`): its metaclass or
  *   `__init_subclass__` may rewrite the signature (G4-12), as `external_base`.
- * - A `constant` that a local holds, in a scan where a production module reads
- *   a frame's `f_locals` and may so write a caller's locals (G4-08), as
- *   `frame_write`.
+ * - A `constant` that a local holds, in a test that calls into, or whose
+ *   file imports, a production module that may write a frame's `f_locals`,
+ *   and so a caller's locals (G4-08), as `frame_write`.
  *
  * Anything else keeps its confidence: the downgrade is narrow, by the pattern.
  */

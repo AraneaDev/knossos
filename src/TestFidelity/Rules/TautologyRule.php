@@ -100,8 +100,8 @@ final readonly class TautologyRule implements TestFidelityRule
                     }
                 }
                 $finding = $case->fails || isset($vacuous[$node->evidence->relativePath . ':' . $assertion->line]) ? null : self::judge($assertion, $case, $node, $doubles, TestFidelityGraph::isPython($node), TestFidelityGraph::isRust($node));
-                // U1, G4-08: production that writes a caller's frame may change the constant a Python local holds.
-                if ($finding?->subRule === 'constant' && TestFidelityGraph::isPython($node) && PythonResiduals::readsLocal($assertion) && $graph->writesPythonFrames()) {
+                // U1, G4-08: production the test reaches that writes a caller's frame may change the constant a Python local holds.
+                if ($finding?->subRule === 'constant' && TestFidelityGraph::isPython($node) && PythonResiduals::readsLocal($assertion) && $graph->reachesPythonFrameWriter($case)) {
                     $finding = PythonResiduals::downgraded($finding, PythonResiduals::FRAME_WRITE);
                 }
                 if ($finding !== null) {

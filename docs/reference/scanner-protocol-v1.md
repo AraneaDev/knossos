@@ -313,18 +313,23 @@ stays as it is, and the target counts as naming `instance_write` below.
 A Python class or module node may carry `unfollowed_writes`, sorted: the
 patterns of a write the worker sees but does not follow, by the user's
 decision of 2026-11-27, so a list may lack a name, or a def its signature,
-without being marked open. On a class: `self_alias` (a method binds its
-receiver to another name, `me = self`), `instance_write` (`C().x = 1` in its
-file), `nested_class_write` (`O.I.x = 1`), `default_holder` (`def f(k=C)`),
+without being marked open. On a class: `self_alias` (a method writes an
+attribute through another name it binds its receiver to,
+`me = self; me.x = 1`), `instance_write` (`C().x = 1` in its file),
+`nested_class_write` (`O.I.x = 1`), `default_holder` (a function writes
+through a parameter whose default holds the class, `def f(k=C): k.x = 1`),
 `rebound_builtin` (the class handed to a call named like a read-only builtin
 that the module binds to something else), `builtins_exec` (`builtins.exec` or
 `builtins.eval` in the module) and `assigned_frame_hack` (a class-body
 assignment that reaches a frame). On a module: `module_self_write`
 (`import m; m.x = 1` inside `m`), `builtins_exec`, and `frame_write` (code
-that reads a frame's `f_locals`, so may write a caller's locals). A reader
+that may write a frame's `f_locals`, so a caller's locals: a store or `del`
+through a subscript of it, a writing method such as `update`, or the mapping
+bound to a name, handed to a call or returned; a read is none). A reader
 reports a ghost or an arity mismatch whose target's lineage names one, and a
-`constant` a test's local holds while a production module names
-`frame_write`, as a warning only, never as a definite.
+`constant` a test's local holds in a test that calls into, or whose file
+imports, a production module naming `frame_write`, as a warning only, never
+as a definite.
 
 A PHP class, interface, trait or enum node may carry `member_names` too: the
 methods it declares itself, its `@method` docblock names, its trait-use aliases
