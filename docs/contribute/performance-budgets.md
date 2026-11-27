@@ -131,7 +131,13 @@ checkout does (the worker starts with `-B`, so it writes no bytecode). That is
 112.8% of base, which was accepted against the 110% the plan held it to
 (Ruling P22; gap G4-16). The difference is the worker's start: compiling the
 test-facts modules adds about 70ms, while scanning the six files in the worker
-takes less time than at base.
+takes less time than at base. Every install now compiles the worker's
+checked-hash bytecode with the host's `python3` (`PythonBytecode`, the user's
+decision U2), and the gap sweep measured it again on one machine, alternating
+three trees with their own dependencies, four runs each of five rounds:
+`9dd4b250` 0.753s, the sweep's head compiled from source 0.881s (117.0%), and
+the same head with its installed bytecode 0.758s, 100.6% of base. The Python
+worker's own stage (`scanner_python`) took 306ms, 400ms and 286ms.
 
 `test_fidelity_rescan_one_file_rust` measures the same for Rust, with
 `MockLedger` doubles that mockall's `#[automock]` generates for one trait,
