@@ -63,6 +63,18 @@
               "type": "array",
               "items": { "type": "string" }
             },
+            "foreign_writes": {
+              "description": "A Python module node: each name the file writes on a project module or class that another file declares (`config.FLAG = 1`, `Settings.debug = True`, a `setattr`), sorted; `target` is that module's or class's reference and `name` the name written, absent for a `setattr` whose name no literal spells. A reader opens the target's list on any of them. The writer's reads name the target's file.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["target"],
+                "properties": {
+                  "target": { "type": "string", "minLength": 1 },
+                  "name": { "type": "string", "minLength": 1 }
+                }
+              }
+            },
             "member_names_open": {
               "description": "True when members cannot be complete (a base type that does not resolve, an index signature).",
               "type": "boolean"

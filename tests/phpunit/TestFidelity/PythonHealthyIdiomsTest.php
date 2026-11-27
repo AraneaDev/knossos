@@ -71,6 +71,8 @@ use PHPUnit\Framework\Attributes\Group;
  * twin, a plain base whose subclass's mismatch stays definite.
  * `tests/test_allowed.py` holds the decorators and metaclasses that rewrite
  * nothing: `dataclass`, `total_ordering`, `abc.ABC`, `enum.unique`.
+ * `tests/test_foreign.py` patches a module global only another file writes
+ * (`flags.VERBOSE = True` in `boot.py`), which that write opens (G4-03).
  *
  * `src/probes/` and the `tests/test_probe_*.py` files hold the final review's
  * probes, each passing under real pytest: a member Python's lookup answers

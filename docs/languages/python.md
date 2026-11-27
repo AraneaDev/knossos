@@ -343,14 +343,18 @@ no production code.
 
 ### What the Python rules do not see
 
+A write from another file (G4-03) is seen: the worker reads one file at a
+time, so the writer's module node names each write it makes on a project
+module or class another file declares (`m.FLAG = 1`, `C.x = 1`,
+`m.C.x = 1`, a literal `setattr`) in `foreign_writes`, and the target's list
+is then open. A def such a write rebinds (`Repo.save = wrap(Repo.save)`, or a
+package's `m.f = partial(m.f, 1)`) has its arity judged no more, and a
+`setattr` whose name no literal spells leaves every def of the target
+unjudged. The writer reads the target's file, so a change to either file is
+judged again.
+
 These are accepted, and each costs a missed finding or a false one, as stated:
 
-- **Writes from another file** (G4-03). The worker reads one file at a time,
-  so `C.x = 1` in another module, or `m.FLAG = 1` from outside `m`, adds a
-  name it never sees: a double of that name reads as a definite ghost. A
-  rebind from another file (`Repo.save = wrap(Repo.save)`, or a package's
-  `m.f = partial(m.f, 1)`) leaves the def's signature standing for a name that
-  holds another, so its arity is judged against the wrong signature.
 - **A frame write from another module** (G4-08). Production code that writes a
   caller's locals (`sys._getframe(1).f_locals["x"] = v`, which writes through
   on Python 3.13 and later) can change a test's local the worker took as a

@@ -19,6 +19,7 @@ from .ast_helpers import (
 )
 from .class_members import ClassMembers, assigned_self_attributes, merge_member_names, module_exports, visibility
 from .fields import FieldFacts, merge_field_facts
+from .foreign_writes import ForeignWrites
 from .frameworks import DjangoFactEnricher, FastApiFactEnricher, FlaskFactEnricher, PythonFrameworkRoleEnricher
 from .launches import LaunchRecorder
 from .module_index import ProjectModuleIndex
@@ -225,8 +226,9 @@ class PythonAstFactCollector(ast.NodeVisitor):
         # Known before any call is visited: a call may precede the class.
         self.protocols |= declared_protocols(self.tree, self.name)
         self.visit(self.tree)
-        self.facts.nodes[self.module_id]["attributes"] |= module_exports(
-            self.tree, self.is_package, self.members.dynamic
+        self.facts.nodes[self.module_id]["attributes"] |= (
+            module_exports(self.tree, self.is_package, self.members.dynamic)
+            | ForeignWrites(self.tree, self.name, self.aliases, self.index).attributes()
         )
         if self.serves_app:
             self.facts.nodes[self.module_id]["attributes"]["executable"] = True

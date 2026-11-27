@@ -115,6 +115,8 @@ final readonly class TestFidelityGraph
                 }
             }
         }
+        // G4-03: a Python list another file writes to is open in this view of it.
+        $nodes = PythonForeignWrites::applied($contributions, $nodes, $children);
         ksort($doubles, SORT_STRING);
         ksort($testCases, SORT_STRING);
         $byFile = [];

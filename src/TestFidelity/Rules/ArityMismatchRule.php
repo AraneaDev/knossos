@@ -33,11 +33,10 @@ use Knossos\TestFidelity\TestFinding;
  * decision), and silent for a decorated member, whose signature a decorator
  * may have replaced. Accepted residual: a Python call made unbound,
  * `Repo.save(repo, x)`, records the receiver, so a matcher written for it
- * reads as one argument too many. So is a rebind from another file
- * (`Repo.save = wrap(Repo.save)` in another module), which no worker sees: the
- * def's signature is then judged for a name that holds another (the residual
- * GHOST_MEMBER records for cross-file writes), and so is a package rebinding a
- * submodule's function (`m.f = partial(m.f, 1)` in `pkg/__init__.py`). Silent
+ * reads as one argument too many. A rebind from another file
+ * (`Repo.save = wrap(Repo.save)` in another module, or a package's
+ * `m.f = partial(m.f, 1)`) marks the def decorated in the graph's view
+ * (`PythonForeignWrites`, G4-03), so it is not judged. Silent
  * for a Python class whose lineage carries `methods_rewritable` (a project
  * metaclass, an `__init_subclass__`, a class decorator or call that may
  * replace its methods; Ruling P21). Residual (G4-12): a base outside the

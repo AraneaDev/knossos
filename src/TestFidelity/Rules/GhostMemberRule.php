@@ -31,12 +31,10 @@ use Knossos\TestFidelity\TestFinding;
  * whose list is open (a metaclass, `__init_subclass__`, a dynamic base) leaves
  * every subclass open, however closed its own list.
  *
- * Accepted residual: a write from another file (`C.x = 1` in another module,
- * `m.FLAG = 1` from outside `m`) adds a name no worker sees, so a double of
- * that name reads as a ghost. The worker sees only writes in the class's or
- * the module's own file. The same residual reaches ARITY_MISMATCH: a rebind
- * from another file (`Repo.save = wrap(Repo.save)`) leaves the def's signature
- * standing for a name that now holds another.
+ * A write from another file (`C.x = 1` in another module, `m.FLAG = 1` from
+ * outside `m`) adds a name no worker lists: the writer names it in
+ * `foreign_writes`, and the graph's view of the target is open
+ * (`PythonForeignWrites`, G4-03), so a double of that name is no ghost.
  */
 final readonly class GhostMemberRule extends DriftRule
 {

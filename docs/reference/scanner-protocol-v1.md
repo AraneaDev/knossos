@@ -290,6 +290,24 @@ declaration hands the module; `exports_open` is set for `import *`, a module
 package: a submodule becomes the package's attribute once imported, and is
 never listed. Neither list holds a dunder name (`__x__`).
 
+A Python worker reads one file at a time, so a write from another file adds a
+name neither list holds. A Python module node may carry `foreign_writes`, each
+name its file writes on a project module or class that another file declares,
+sorted: `{target, name?}`, where `target` is the module's or class's reference
+(`py:module:config`, `py:class:config.Settings`) and `name` the name written,
+absent for a `setattr` whose name no literal spells. Only a target the file
+reaches through an import counts, written as an attribute (`config.FLAG = 1`,
+`Settings.debug = True`, `config.Settings.debug = True`, `del`, `+=`) or by
+`setattr`; a target the worker cannot resolve to a project module or a class
+one declares (its own module, a class nested in another, a module outside the
+project), and a dunder name, give none. The writer's `reads` name the
+target's file, so a change to either rescans the writer. A reader opens the
+target's list on any entry, as a write in the target's own file does: no name
+on it is judged absent, and a subclass inherits the open list. The def a
+written name holds may be replaced, so its signature says nothing; an entry
+without `name` may replace any def of the class (as `methods_rewritable`) or
+of the module.
+
 A PHP class, interface, trait or enum node may carry `member_names` too: the
 methods it declares itself, its `@method` docblock names, its trait-use aliases
 and an enum's built-ins. Inherited names come from its `extends`, `implements`
