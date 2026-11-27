@@ -209,6 +209,7 @@ php	src/Git/GitOutputLimitExceeded.php
 php	src/Git/GitProcessRunner.php
 php	src/Git/GitProcessRunnerInterface.php
 php	src/Git/GitWorkingTreeProvider.php
+php	src/Git/NotAWorkTree.php
 php	src/Git/ProcessGitHistoryProvider.php
 php	src/Git/ProcessGitWorkingTreeProvider.php
 php	src/Install/GitHubReleaseSource.php
@@ -814,6 +815,7 @@ php	tests/phpunit/Git/GitProcessRunnerHardeningTest.php
 php	tests/phpunit/Git/ProcessGitProviderLimitsTest.php
 php	tests/phpunit/Git/ProcessGitProviderTest.php
 php	tests/phpunit/Git/RecordingGitRunner.php
+php	tests/phpunit/Git/WorkTreeCheckTest.php
 php	tests/phpunit/InfectionExclusionsTest.php
 php	tests/phpunit/Install/FakeProbe.php
 php	tests/phpunit/Install/ForbiddenSource.php

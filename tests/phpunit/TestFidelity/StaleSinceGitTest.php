@@ -122,6 +122,11 @@ final class StaleSinceGitTest extends KnossosTestCase
         $all = $this->audit($repo, scope: 'git-diff', limit: 2, offset: 1);
         self::assertSame([[self::GHOST, 6, 'STALE_SINCE', 'warning'], ['tests/planted.test.ts', 4, 'TAUTOLOGY', 'definite']], self::positions($all));
         self::assertSame([4, 3], [$all->data['total'], $all->data['pagination']['next_offset']]);
+        // G6-08a: by_language counts what the scope holds, as total does.
+        foreach ([$narrowed, $both, $all] as $result) {
+            self::assertSame($result->data['total'], self::counted($result));
+        }
+        self::assertSame(3, self::counted($this->audit($repo, tier: 'scan')));
     }
 
     public function testWithoutGitDiffNoStaleSince(): void
@@ -158,6 +163,29 @@ final class StaleSinceGitTest extends KnossosTestCase
             $this->assertFails($repo, 'HEAD', 'git-diff scope failed against HEAD: ');
         });
         self::assertStringContainsString('knossos scan head: git could not answer', $logged);
+    }
+
+    public function testAStaleDoubleOnABranchWithNoCommitIsStaleSinceTheEmptyTree(): void
+    {
+        // G6-08a: with HEAD naming no commit, the changed set is read against the empty tree, and the message says so.
+        $repo = $this->repository();
+        $pdo = $this->freshTestDatabase();
+        $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$repo]))->scan($repo)->projectId;
+        $reader = new class implements GitWorkingTreeProvider {
+            public bool $born = false;
+
+            public function changes(string $projectRoot, ?string $baseRef, int $maxFiles, int $timeoutMs): array
+            {
+                return ['paths' => ['src/UserService.ts'], 'renames' => [], 'truncated' => false, 'born' => $this->born];
+            }
+        };
+        $service = ArchitectureQueryService::forDatabase($pdo, gitWorkingTree: $reader)->services()->testFidelityQueries;
+
+        $unborn = $service->auditTests($projectId, scope: 'git-diff');
+        self::assertSame([[self::GHOST, 6, 'STALE_SINCE', 'warning', str_replace('since HEAD', 'since the empty tree', self::STALE)]], self::stale($unborn));
+        self::assertSame(['base_ref' => 'HEAD', 'changed_files' => 1], $unborn->data['git']);
+        $reader->born = true;
+        self::assertSame([[self::GHOST, 6, 'STALE_SINCE', 'warning', self::STALE]], self::stale($service->auditTests($projectId, scope: 'git-diff')));
     }
 
     public function testABadBaseRefIsAnError(): void
@@ -330,6 +358,12 @@ final class StaleSinceGitTest extends KnossosTestCase
             static fn(array $item): array => [$item['file'], $item['line'], $item['category'], $item['confidence'], $item['message']],
             array_filter($result->data['items'], static fn(array $item): bool => $item['category'] === 'STALE_SINCE'),
         ));
+    }
+
+    /** The findings `summary.by_language` counts, every language and confidence. */
+    private static function counted(ResultEnvelope $result): int
+    {
+        return array_sum(array_map(static fn(array $counts): int => (int) ($counts['definite'] ?? 0) + (int) ($counts['warning'] ?? 0), $result->data['summary']['by_language']));
     }
 
     /**

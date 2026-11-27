@@ -46,12 +46,11 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
         if ($baseRef !== null && preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/@{}~^:+-]{0,199}$/D', $baseRef) !== 1) {
             throw new RuntimeException('base_ref contains unsupported characters.');
         }
-        // Outside a work tree `git diff` turns into `diff --no-index` and fails with its usage text;
-        // this fails first, with git's own "not a git repository".
-        $this->runner->run([...$git, 'rev-parse', '--is-inside-work-tree'], $timeoutMs, 'working-tree query');
+        $this->assertWorkTree($git, $timeoutMs);
         $diff = [...$git, 'diff', '--name-status', '-z', '--no-ext-diff', '--find-renames', '--relative'];
         $paths = [];
         $renames = [];
+        $born = true;
         if ($baseRef !== null) {
             $revision = trim($this->runner->run([...$git, 'rev-parse', '--verify', $baseRef . '^{commit}'], $timeoutMs, 'working-tree query'));
             if (preg_match('/^[a-f0-9]{40,64}$/D', $revision) !== 1) {
@@ -61,6 +60,7 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
         } elseif ($this->born($git, $timeoutMs)) {
             $this->collect($this->runner->run([...$diff, 'HEAD', '--', '.'], $timeoutMs, 'working-tree query'), $paths, $renames);
         } else {
+            $born = false;
             $this->collect($this->runner->run([...$diff, '--cached', '--', '.'], $timeoutMs, 'working-tree query'), $paths, $renames);
             $this->collect($this->runner->run([...$diff, '--', '.'], $timeoutMs, 'working-tree query'), $paths, $renames);
         }
@@ -84,7 +84,29 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
         $paths = array_map('strval', array_keys($paths));
         sort($paths, SORT_STRING);
         $truncated = count($paths) > $maxFiles;
-        return ['paths' => array_slice($paths, 0, $maxFiles), 'renames' => $renames, 'truncated' => $truncated];
+        return ['paths' => array_slice($paths, 0, $maxFiles), 'renames' => $renames, 'truncated' => $truncated, 'born' => $born];
+    }
+
+    /**
+     * Fail unless the project root is in a work tree. Outside one `git diff`
+     * turns into `diff --no-index` and fails with its usage text; this fails
+     * first, with git's own "not a git repository", and reads a "false"
+     * (git run inside a `.git` directory) as no work tree too (G6-08a).
+     *
+     * @param non-empty-list<string> $git the git prefix that runs in the project root
+     *
+     * @throws NotAWorkTree when the check fails or answers anything but "true"
+     */
+    private function assertWorkTree(array $git, int $timeoutMs): void
+    {
+        try {
+            $inside = trim($this->runner->run([...$git, 'rev-parse', '--is-inside-work-tree'], $timeoutMs, 'working-tree query'));
+        } catch (Throwable $error) {
+            throw new NotAWorkTree($error->getMessage(), previous: $error);
+        }
+        if ($inside === 'false') {
+            throw new NotAWorkTree('Git working-tree query unavailable: not inside a git work tree.');
+        }
     }
 
     /**

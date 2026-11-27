@@ -46,6 +46,9 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
     /** The ref a git-diff without `base_ref` is read against, as the result names it. */
     private const DEFAULT_REF = 'HEAD';
 
+    /** What a `STALE_SINCE` message names as its ref when `HEAD` names no commit: the changes were read against nothing. */
+    private const EMPTY_TREE = 'the empty tree';
+
     /** How many changed files git may name; more is an error (the working-tree reader's own cap). */
     private const MAX_CHANGED = 1000;
 
@@ -86,7 +89,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $tier = self::validated($limit, $offset, $confidence, $category, $tier, $scope, $baseRef, $timeoutMs);
         $deadline = $this->now() + $timeoutMs * 1_000_000;
         $ref = $baseRef ?? self::DEFAULT_REF;
-        $changed = $scope === 'git-diff' ? $this->changed((string) $project['root_realpath'], $baseRef, $deadline) : null;
+        [$changed, $born] = $scope === 'git-diff' ? $this->changed((string) $project['root_realpath'], $baseRef, $deadline) : [null, true];
         $suppressions = ActiveTestFindings::suppressionsOf((string) $project['root_realpath']);
         $filters = ['path_prefix' => $pathPrefix, 'confidence' => $confidence, 'category' => $category];
         $scan = $tier !== TestRuleCatalog::ON_REQUEST;
@@ -95,7 +98,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
         $fixtures = $tier === TestRuleCatalog::SCAN || ($category !== null && $category !== OnRequestCategory::FixtureDrift->value) ? ['findings' => [], 'languages' => [], 'partial' => false, 'factless' => []]
             : ($this->fixtures ?? new FixtureCheckService($this->pdo, $this->clock))->findings($projectId, (string) $project['root_realpath'], $deadline);
         $onRequest = array_values(array_filter(
-            [...OverMocking::findings($input), ...StaleSince::findings($input, $ref), ...$fixtures['findings']],
+            [...OverMocking::findings($input), ...StaleSince::findings($input, $born ? $ref : self::EMPTY_TREE), ...$fixtures['findings']],
             static fn(OnRequestFinding $finding): bool => !$suppressions->suppresses($finding->ruleId, $finding->category->value, $finding->subRule, $finding->file),
         ));
         $findings = new ActiveTestFindings($this->pdo, $projectId, $suppressions);
@@ -109,7 +112,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
             'items' => $items,
             'total' => $total,
             'partial' => $input->partial || $fixtures['partial'],
-            'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions, $scan, $onRequest, $input->testFiles + $fixtures['languages'], OverMocking::languagesWithoutImports($input), $fixtures['factless'])],
+            'summary' => ['by_language' => $this->byLanguage($projectId, $suppressions, $scan, $changed, $onRequest, $input->testFiles + $fixtures['languages'], OverMocking::languagesWithoutImports($input), $fixtures['factless'])],
             'suppressions_invalid' => $suppressions->invalid(),
             'pagination' => ['offset' => $offset, 'next_offset' => $next],
         ];
@@ -172,10 +175,11 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
 
     /**
      * The project files changed since `$baseRef` (the working tree against
-     * `HEAD` when null), staged, unstaged and untracked alike. Every failure
-     * to read them is an error: an empty set would read as a clean diff.
+     * `HEAD` when null), staged, unstaged and untracked alike, and whether
+     * `HEAD` names a commit. Every failure to read them is an error: an empty
+     * set would read as a clean diff.
      *
-     * @return list<string>
+     * @return array{list<string>, bool}
      */
     private function changed(string $root, ?string $baseRef, int $deadline): array
     {
@@ -192,7 +196,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
             throw new InvalidArgumentException(sprintf('git-diff scope failed against %s: more than %d files changed; pick a nearer base_ref.', $baseRef ?? self::DEFAULT_REF, self::MAX_CHANGED));
         }
 
-        return $changes['paths'];
+        return [$changes['paths'], $changes['born'] ?? true];
     }
 
     /**
@@ -287,21 +291,23 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
     /**
      * The finding counts per confidence of the tiers listed, for each packaged
      * language and any other a finding's node names. A filter narrows the
-     * items, not what the project holds; what the project suppresses is not
-     * held. A language whose test files the on-request tier could not judge
+     * items, not what the project holds; scope `git-diff` narrows both, to the
+     * stored findings in or about a changed file, so the counts agree with
+     * `total` (G6-08a); what the project suppresses is not held. A language whose test files the on-request tier could not judge
      * says why under `notes`.
      *
+     * @param ?list<string> $changed the changed files in scope `git-diff`, else null
      * @param list<OnRequestFinding> $onRequest the on-request findings the project holds
      * @param array<string, string> $languages each test file's language
      * @param list<string> $silent the languages `OVER_MOCKING` could not judge
      * @param list<string> $factless the languages with no type that carries field facts for `FIXTURE_DRIFT`
      * @return array<string, array<string, int|list<string>>>
      */
-    private function byLanguage(string $projectId, TestFindingSuppressions $suppressions, bool $scan, array $onRequest, array $languages, array $silent, array $factless = []): array
+    private function byLanguage(string $projectId, TestFindingSuppressions $suppressions, bool $scan, ?array $changed, array $onRequest, array $languages, array $silent, array $factless = []): array
     {
         $zeros = array_fill_keys(TestRuleCatalog::confidences(), 0);
         $byLanguage = array_fill_keys(PackagedLanguages::languages(), $zeros);
-        $counts = $scan ? $this->storedCounts($projectId, $suppressions) : [];
+        $counts = $scan ? $this->storedCounts($projectId, $suppressions, $changed) : [];
         foreach ($onRequest as $finding) {
             $counts[] = ['language' => $languages[$finding->file], 'confidence' => $finding->confidence->value, 'findings' => 1];
         }
@@ -324,16 +330,26 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
     }
 
     /**
-     * The stored findings the project holds, counted per node language and confidence.
+     * The stored findings the project holds, counted per node language and
+     * confidence; with `$changed`, only those whose file or target's file is
+     * one of them, as {@see self::page()} lists them.
      *
+     * @param ?list<string> $changed
      * @return list<array{language: string, confidence: string, findings: int}>
      */
-    private function storedCounts(string $projectId, TestFindingSuppressions $suppressions): array
+    private function storedCounts(string $projectId, TestFindingSuppressions $suppressions, ?array $changed): array
     {
         $parameters = [];
         [$suppressed, $values] = $suppressions->sqlCondition('tf');
         $condition = ActiveTestFindings::named($suppressed, $values, $parameters);
-        $statement = $this->pdo->prepare("SELECT n.language, tf.confidence, COUNT(*) AS findings FROM test_findings tf JOIN nodes n ON n.id = tf.node_id WHERE tf.project_id = :project AND {$condition} GROUP BY n.language, tf.confidence");
+        $narrowed = '';
+        if ($changed !== null) {
+            $narrowed = ' AND (f.relative_path IN (SELECT value FROM json_each(:changed)) OR tfile.relative_path IN (SELECT value FROM json_each(:changed)))';
+            $parameters['changed'] = json_encode($changed, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        }
+        $statement = $this->pdo->prepare('SELECT n.language, tf.confidence, COUNT(*) AS findings FROM test_findings tf JOIN nodes n ON n.id = tf.node_id '
+            . 'LEFT JOIN files f ON f.id = tf.file_id LEFT JOIN nodes t ON t.id = tf.target_node_id LEFT JOIN files tfile ON tfile.id = t.file_id '
+            . "WHERE tf.project_id = :project AND {$condition}{$narrowed} GROUP BY n.language, tf.confidence");
         $statement->execute($parameters + ['project' => $projectId]);
 
         return array_map(static fn(array $row): array => ['language' => (string) $row['language'], 'confidence' => (string) $row['confidence'], 'findings' => (int) $row['findings']], $statement->fetchAll(PDO::FETCH_ASSOC));
