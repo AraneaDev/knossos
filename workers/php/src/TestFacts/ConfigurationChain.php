@@ -176,14 +176,15 @@ final class ConfigurationChain
     /**
      * Apply what a call that keeps the double does to it: the members
      * `onlyMethods()` lists, the ones `addMethods()` gives the double as its
-     * own, Mockery's protected opt-in.
+     * own (PHPUnit 9's `setMethods()` too, which adds any the class lacks),
+     * Mockery's protected opt-in.
      */
     private static function kept(DoubleRecord $double, string $name, Expr\MethodCall|Expr\StaticCall $call): void
     {
         $listed = self::argument($call, 0);
-        if (($name === 'onlymethods' || $name === 'setmethods') && $listed instanceof Expr\Array_) {
+        if ($name === 'onlymethods' && $listed instanceof Expr\Array_) {
             DoubleFactories::listed($double, $listed, 'partial');
-        } elseif ($name === 'addmethods' && $listed instanceof Expr\Array_) {
+        } elseif (($name === 'addmethods' || $name === 'setmethods') && $listed instanceof Expr\Array_) {
             DoubleFactories::listed($double, $listed, 'addMethods');
         } elseif ($name === 'shouldallowmockingprotectedmethods') {
             $double->allowsProtected = true;

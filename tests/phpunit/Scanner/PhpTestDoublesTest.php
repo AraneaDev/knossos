@@ -267,6 +267,17 @@ final class PhpTestDoublesTest extends KnossosTestCase
         assertSame(['getMockForAbstractClass', false, []], $summary($doubles[35]));
     }
 
+    /** PHPUnit 9's `setMethods()` adds a method the class lacks, as `addMethods()` does, so its names go under that api; `onlyMethods()` keeps `partial` (G3-37). */
+    public function testSetMethodsNamesAreAddedMethods(): void
+    {
+        [$test] = $this->scan('healthy-idioms', ['tests/OldTest.php']);
+        $apis = static fn(TestDouble $double): array => array_map(static fn(StubbedMember $member): array => [$member->name, $member->api], $double->members);
+        $doubles = $this->doubles($test);
+
+        assertSame([['find', 'addMethods'], ['legacy', 'addMethods']], $apis($doubles[12]));
+        assertSame([['find', 'partial'], ['legacy', 'partial']], $apis($doubles[26]));
+    }
+
     /**
      * A callback written in place gives its member the replacement's
      * parameters (the first one wins), and `willReturnSelf()` pins an

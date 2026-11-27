@@ -443,7 +443,8 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `{name, line, api, params?, returns}` where `api` is how the test names the
   member (`spyOn`, `mockFactoryKey`, `objectLiteralKey`, `instance-member`,
   PHPUnit's `method`, `configured`, `partial` and `addMethods` (a name the
-  double adds to its class, which is never a ghost), Mockery's `shouldReceive`
+  double adds to its class, which is never a ghost; PHPUnit 9's `setMethods()`
+  sends its names so, as it adds any the class lacks), Mockery's `shouldReceive`
   and, for a member a spy assertion names, `shouldHaveReceived`, `prophecy`, Python's `patch`, `patch.object`,
   `patch.multiple`, `patch.dict`, `spy` and `setattr` (the name the patch form
   or `monkeypatch.setattr` replaces), `attribute` (a name read through a

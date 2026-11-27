@@ -129,8 +129,10 @@ values `willReturn()` and `andReturn()` pin them to and the argument counts
 `with()` expects. Mockery's `anyArgs()`, `noArgs()`, `andAnyOtherArgs()` and
 `andAnyOthers()`, and Prophecy's `Argument::cetera()`, leave the count open.
 The names PHPUnit's `addMethods()` lists are the double's own and never a
-ghost. `willReturnSelf()` and `andReturnSelf()` pin an instance of the class
-the double stands in for, and a function written in place for
+ghost, and so are those of PHPUnit 9's `setMethods()`, which adds any the
+class lacks; a name `onlyMethods()` lists must be the class's.
+`willReturnSelf()` and `andReturnSelf()` pin an instance of the class the
+double stands in for, and a function written in place for
 `willReturnCallback()` or `andReturnUsing()` gives the member its
 parameters. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
 `m`, and the arguments it is given or `->with()` lists after it are counted the

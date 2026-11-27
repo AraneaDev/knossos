@@ -18,7 +18,8 @@ use Knossos\TestFidelity\TestFinding;
  * whose ancestor's list is open or missing, a member found through
  * inheritance, a name a further type of the double may offer (Mockery's
  * `mock(A::class, B::class)`). A name PHPUnit's `addMethods()` adds is the
- * double's own and never a ghost. A PHP name is matched in any case, as PHP
+ * double's own and never a ghost; the worker sends PHPUnit 9's `setMethods()`
+ * names so too, since it adds any the class lacks. A PHP name is matched in any case, as PHP
  * matches method names.
  *
  * A Python dunder (`__x__`) is never judged, on a class or a module: it is a

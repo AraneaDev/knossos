@@ -28,6 +28,8 @@ use PHPUnit\Framework\Attributes\Group;
  * - every type `Mockery::mock(A::class, B::class)` or `'A, B'` names is the
  *   double's, so a member of `B` is no ghost;
  * - a name PHPUnit's `addMethods()` adds is the double's own;
+ * - a name PHPUnit 9's `setMethods()` lists adds a method the class lacks,
+ *   so it is no ghost, though one `onlyMethods()` lists is (G3-37);
  * - Mockery's `anyArgs()`, `noArgs()`, `andAnyOtherArgs()` and
  *   `andAnyOthers()` leave the argument count open (Ruling R19);
  * - `willReturnSelf()`/`andReturnSelf()` on `void` is a warning (Ruling R18);
@@ -67,6 +69,8 @@ final class PhpHealthyIdiomsTest extends KnossosTestCase
             'RETURN_DRIFT/return_type/definite@tests/ExtraTest.php:21',
             // Genuine: the trait double's missing() is no member of Counts; its protected step() is reachable.
             'GHOST_MEMBER/missing_member/definite@tests/ExtraTest.php:30',
+            // Genuine: onlyMethods() names only methods the class has, and Repo has no legacy() (G3-37).
+            'GHOST_MEMBER/missing_member/definite@tests/OldTest.php:26',
             // Genuine: self() takes no argument.
             'ARITY_MISMATCH/call_arity/definite@tests/MailerTest.php:26',
             // Ruling R18: a self pin on void breaks nothing at run time.
