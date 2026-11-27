@@ -81,6 +81,25 @@ final readonly class ActiveTestFindings
     }
 
     /**
+     * How many findings match, by confidence and then category, in one query.
+     *
+     * @param Filters $filters
+     * @return array<string, array<string, int>>
+     */
+    public function countsByConfidenceAndCategory(array $filters = []): array
+    {
+        [$where, $parameters] = $this->where($filters);
+        $statement = $this->pdo->prepare('SELECT tf.confidence, tf.category, COUNT(*) AS n ' . self::FROM . " WHERE {$where} GROUP BY tf.confidence, tf.category");
+        $statement->execute($parameters);
+        $counts = [];
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $counts[(string) $row['confidence']][(string) $row['category']] = (int) $row['n'];
+        }
+
+        return $counts;
+    }
+
+    /**
      * The matching findings from `$offset` on, `$limit` of them when one is given.
      *
      * @param Filters $filters

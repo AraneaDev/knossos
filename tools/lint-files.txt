@@ -651,6 +651,7 @@ php	tests/phpunit/Bundle/BundleSchemaAgreementTest.php
 php	tests/phpunit/Bundle/BundleTest.php
 php	tests/phpunit/Bundle/GraphBundleDecoderTest.php
 php	tests/phpunit/Bundle/GraphBundleServiceTest.php
+php	tests/phpunit/Bundle/ImportedBundleScannerSetTest.php
 php	tests/phpunit/Bundle/PortableGraphImporterTest.php
 php	tests/phpunit/Bundle/RedactionMapTest.php
 php	tests/phpunit/Cancellation/CancellationTokenTest.php

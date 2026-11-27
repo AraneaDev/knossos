@@ -42,7 +42,7 @@ final class SnapshotFacts
     public static function condition(string $table, ?string $alias = null): string
     {
         $native = $alias === null || !in_array($table, EnrichedFacts::TABLES, true)
-            ? EnrichedFacts::nativeCondition($table)
+            ? EnrichedFacts::nativeCondition($table, $alias)
             : ' AND ' . EnrichedFacts::excludeSql($alias);
 
         return $native . self::derivedCondition($table, $alias ?? $table);

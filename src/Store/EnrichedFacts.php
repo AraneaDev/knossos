@@ -47,12 +47,13 @@ final class EnrichedFacts
      * left out of the counts that describe the project, so a failing enricher
      * never moves a diagnostics budget.
      *
-     * @param string $table an unaliased table name, which is also the alias the condition tests
+     * @param string $table an unaliased table name, which is also the alias the condition tests unless `$alias` says otherwise
+     * @param string|null $alias the alias `diagnostics` is read under; the other tables are tested through {@see self::excludeSql()}
      */
-    public static function nativeCondition(string $table): string
+    public static function nativeCondition(string $table, ?string $alias = null): string
     {
         if ($table === 'diagnostics') {
-            return " AND diagnostics.owner_key NOT LIKE '" . self::OWNER_PREFIX . "%'";
+            return ' AND ' . ($alias ?? $table) . ".owner_key NOT LIKE '" . self::OWNER_PREFIX . "%'";
         }
 
         return in_array($table, self::TABLES, true) ? ' AND ' . self::excludeSql($table) : '';
