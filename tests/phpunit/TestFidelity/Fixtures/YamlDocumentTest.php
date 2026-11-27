@@ -113,17 +113,30 @@ final class YamlDocumentTest extends KnossosTestCase
     public function testALongFlowCollectionIsReadInLinearTime(): void
     {
         // A flow sequence over 30,000 lines: each line's brackets are scanned once, not all the text so far.
-        $yaml = "[\n" . str_repeat("1,\n", 30_000) . "1]\n";
-        $started = hrtime(true);
-        $root = YamlDocument::parse($yaml)?->root;
-        $seconds = (hrtime(true) - $started) / 1e9;
+        $sequence = static fn(int $lines): string => "[\n" . str_repeat("1,\n", $lines) . "1]\n";
+        self::assertSame(30_001, count(YamlDocument::parse($sequence(30_000))?->root->items() ?? []));
+        $map = static fn(int $lines): string => "{\n" . implode(",\n", array_map(static fn(int $at): string => "'k" . $at . "': \"v\"", range(1, $lines))) . "}\n";
+        self::assertSame(30_000, count(YamlDocument::parse($map(30_000))?->root->keys() ?? []));
+        // Four times the lines take about four times as long when the read is linear and sixteen
+        // times when it is quadratic. A ratio, not a wall-clock limit, so a slow or loaded host
+        // (or a coverage run) cannot fail it; the best of three readings per size drops a stray pause.
+        foreach (['sequence' => $sequence, 'map' => $map] as $shape => $document) {
+            $ratio = self::fastest(static fn(): mixed => YamlDocument::parse($document(30_000))) / self::fastest(static fn(): mixed => YamlDocument::parse($document(7_500)));
+            self::assertLessThan(8.0, $ratio, $shape);
+        }
+    }
 
-        self::assertSame(30_001, count($root?->items() ?? []));
-        self::assertLessThan(1.0, $seconds);
-        $map = "{\n" . implode(",\n", array_map(static fn(int $at): string => "'k" . $at . "': \"v\"", range(1, 30_000))) . "}\n";
-        $started = hrtime(true);
-        self::assertSame(30_000, count(YamlDocument::parse($map)?->root->keys() ?? []));
-        self::assertLessThan(1.0, (hrtime(true) - $started) / 1e9);
+    /** The fastest of three timed calls, in seconds. */
+    private static function fastest(\Closure $call): float
+    {
+        $best = INF;
+        for ($run = 0; $run < 3; ++$run) {
+            $started = hrtime(true);
+            $call();
+            $best = min($best, (hrtime(true) - $started) / 1e9);
+        }
+
+        return $best;
     }
 
     public function testBlockScalars(): void
