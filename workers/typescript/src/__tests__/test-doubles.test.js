@@ -383,10 +383,14 @@ describe("what makes no double or member", () => {
 
     it("recognises test modules by directory and by file name", () => {
         const source = "import { vi } from 'vitest';\nvi.fn();\n";
+        // A `.test` that does not end the stem is no test name, as the core
+        // reads it (G1-04); `ThingTest` and `test_thing` are.
         const { nodes } = scan({
             "src/a.test.ts": source,
             "src/b.spec.ts": source,
             "src/c.test.helper.ts": source,
+            "src/ThingTest.ts": source,
+            "src/test_thing.ts": source,
             "src/__tests__/d.ts": source,
             "src/__mocks__/e.ts": source,
             "test/f.ts": source,
@@ -403,12 +407,13 @@ describe("what makes no double or member", () => {
                 ),
             ].sort(),
         ).toEqual([
+            "src/ThingTest.ts",
             "src/__mocks__/e.ts",
             "src/__tests__/d.ts",
             "src/a.test.ts",
             "src/b.spec.ts",
-            "src/c.test.helper.ts",
             "src/test/h.ts",
+            "src/test_thing.ts",
             "test/f.ts",
         ]);
     });

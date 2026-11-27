@@ -1886,6 +1886,7 @@ js	workers/typescript/src/__tests__/test-case-twins.test.js
 js	workers/typescript/src/__tests__/test-cases.test.js
 js	workers/typescript/src/__tests__/test-doubles.test.js
 js	workers/typescript/src/__tests__/test-facts-failure.test.js
+js	workers/typescript/src/__tests__/test-module-paths.test.js
 js	workers/typescript/src/__tests__/typescript-fact-utils.test.js
 js	workers/typescript/src/__tests__/untyped-member-calls.test.js
 js	workers/typescript/src/__tests__/worker-startup.test.js

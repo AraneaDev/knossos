@@ -1,8 +1,10 @@
 /**
  * Whether a file is test code, by the conventions the core's
- * `TestModuleRule` reads from its path: a directory a test runner owns, or a
- * `*.test.*` or `*.spec.*` file name. Only such a file's mocks are test
- * doubles; a `vi.fn()` in product code is something else.
+ * `TestModuleRule::isTestPath` reads from its path, and with the same
+ * answers: a directory a test runner owns, or a test file name (`*.test.*`,
+ * `*.spec.*`, `test_*`, `*_test`, `*Test`). Only such a file's mocks are test
+ * doubles; a `vi.fn()` in product code is something else. One table of paths
+ * (`tests/Fixtures/test-module-paths.json`) holds both to the same answers.
  */
 
 /** Directories that hold tests wherever they are nested. */
@@ -27,8 +29,28 @@ export function isTestModule(relative) {
             return true;
         // `src/test/` is the one test directory a source root holds.
         if (lower === "test" && previous === "src") return true;
+        // Laravel's model factories are test support.
+        if (lower === "factories" && previous === "database") return true;
         if (SOURCE_ROOTS.includes(lower)) underSourceRoot = true;
         previous = lower;
     }
-    return /\.(?:test|spec)\./i.test(file);
+    return isTestFileName(file);
+}
+
+/**
+ * Whether a file name is a test's: its stem, the name less its last
+ * extension, ends in `.test` or `.spec` (`a.test.ts`, never `a.test.helpers.ts`),
+ * starts `test_` or ends `_test`, or ends in `Test` at a word boundary
+ * (`ThingTest`, never `contest`).
+ */
+function isTestFileName(file) {
+    const stem = file.replace(/\.[^.]+$/, "");
+    const lower = stem.toLowerCase();
+    return (
+        lower.endsWith(".test") ||
+        lower.endsWith(".spec") ||
+        lower.startsWith("test_") ||
+        lower.endsWith("_test") ||
+        /(?:^|[^A-Za-z])Test$|[a-z0-9]Test$/.test(stem)
+    );
 }
