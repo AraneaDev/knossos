@@ -16,10 +16,10 @@ import {
     dottedName,
     PIN_APIS,
     rootIdentifier,
+    SPIES,
     stripCast,
 } from "./test-double-syntax.js";
 
-const SPIES = new Set(["vi.spyOn", "jest.spyOn"]);
 const IMPLEMENTATION_APIS = new Set([
     "mockImplementation",
     "mockImplementationOnce",

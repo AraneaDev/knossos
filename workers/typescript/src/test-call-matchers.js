@@ -16,6 +16,7 @@ import {
     dottedName,
     objectKey,
     rootIdentifier,
+    SPIES,
     stripCast,
 } from "./test-double-syntax.js";
 
@@ -29,7 +30,6 @@ const WHOLE = new Set([
     "lastCalledWith",
 ]);
 const AFTER_CALL_NUMBER = new Set(["toHaveBeenNthCalledWith", "nthCalledWith"]);
-const SPIES = new Set(["vi.spyOn", "jest.spyOn"]);
 const MODIFIERS = new Set(["not", "resolves", "rejects"]);
 
 /**
@@ -58,13 +58,24 @@ export function recordCallMatchers(file) {
         ts.forEachChild(node, visit);
     };
     visit(file.sourceFile);
-    const facts = file.context.accumulator.nodesById;
+    const accumulator = file.context.accumulator;
     for (const double of file.doubles) {
-        const attributes = facts.get(double.id)?.attributes;
-        double.members.forEach((member, index) => {
-            if (found.has(member))
-                attributes.members[index].called_with = found.get(member);
-        });
+        // A double whose node was not kept (one past a component's own text) has no member facts to add to.
+        const members = accumulator.attribute(double.id, "members");
+        if (
+            members === undefined ||
+            !double.members.some((member) => found.has(member))
+        )
+            continue;
+        accumulator.setAttribute(
+            double.id,
+            "members",
+            members.map((fact, index) =>
+                found.has(double.members[index])
+                    ? { ...fact, called_with: found.get(double.members[index]) }
+                    : fact,
+            ),
+        );
     }
 }
 

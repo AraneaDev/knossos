@@ -112,6 +112,22 @@ export class FactAccumulator {
         return true;
     }
 
+    /** One attribute of a kept node; undefined when no node has the id or it has no such attribute. */
+    attribute(id, key) {
+        return this.nodesById.get(id)?.attributes[key];
+    }
+
+    /**
+     * Set one attribute of a kept node, as a later pass of the file learns
+     * it (the test a double was made in); false when no node has the id.
+     */
+    setAttribute(id, key, value) {
+        const fact = this.nodesById.get(id);
+        if (fact === undefined) return false;
+        fact.attributes[key] = value;
+        return true;
+    }
+
     addEdge(
         kind,
         source,

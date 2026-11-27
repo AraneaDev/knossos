@@ -21,6 +21,26 @@ describe("FactAccumulator nodes", () => {
         });
     });
 
+    // A later pass of the file (the tests' facts naming a double's test)
+    // writes onto a kept node through these, never into the node map.
+    it("reads and sets one attribute of a kept node, and says when there is none", () => {
+        const acc = make();
+        acc.addNode("id1", "test_double", "D", "D", {}, { pattern: "vi.fn" });
+
+        expect(acc.attribute("id1", "pattern")).toBe("vi.fn");
+        expect(acc.attribute("id1", "test_case")).toBeUndefined();
+        expect(acc.attribute("gone", "pattern")).toBeUndefined();
+        expect(acc.setAttribute("id1", "test_case", "f.ts#test:3")).toBe(true);
+        expect(acc.setAttribute("gone", "test_case", "f.ts#test:3")).toBe(
+            false,
+        );
+        expect(acc.nodes).toHaveLength(1);
+        expect(acc.nodes[0].attributes).toEqual({
+            pattern: "vi.fn",
+            test_case: "f.ts#test:3",
+        });
+    });
+
     it("preserves a passed origin (e.g. framework_convention)", () => {
         const acc = make();
         acc.addNode("id2", "route", "R", "R", {}, {}, "framework_convention");

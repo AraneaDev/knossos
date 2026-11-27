@@ -208,15 +208,16 @@ class TestCaseFile {
 
     /** Name the test on each double made inside it. */
     claimDoubles(test, canonical) {
-        const nodes = this.context.accumulator.nodesById;
         for (const double of this.doubles) {
             if (
                 double.node.pos >= test.fn.pos &&
                 double.node.end <= test.fn.end
-            ) {
-                const fact = nodes.get(double.id);
-                if (fact !== undefined) fact.attributes.test_case = canonical;
-            }
+            )
+                this.context.accumulator.setAttribute(
+                    double.id,
+                    "test_case",
+                    canonical,
+                );
         }
     }
 }

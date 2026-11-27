@@ -21,8 +21,12 @@ import { isTestModule } from "./test-module-paths.js";
 import {
     dottedName,
     MOCK_FACTORIES,
+    MOCKED,
+    MODULE_AUTOMOCKS,
+    MODULE_MOCKS,
     PIN_APIS,
     rootIdentifier,
+    SPIES,
     stripCast,
 } from "./test-double-syntax.js";
 
@@ -32,15 +36,10 @@ const FRAMEWORK_SPECIFIER = /^(vitest|@vitest\/.*|jest|@jest\/.*)$/;
 /** Calls that make a double: what they are handed builds the double. */
 const DOUBLE_MAKERS = new Set([
     ...MOCK_FACTORIES,
-    "vi.spyOn",
-    "jest.spyOn",
-    "vi.mocked",
-    "jest.mocked",
-    "vi.mock",
-    "jest.mock",
-    "jest.doMock",
-    "vi.importMock",
-    "jest.requireMock",
+    ...SPIES,
+    ...MOCKED,
+    ...MODULE_MOCKS,
+    ...MODULE_AUTOMOCKS,
     "vi.stubGlobal",
 ]);
 
