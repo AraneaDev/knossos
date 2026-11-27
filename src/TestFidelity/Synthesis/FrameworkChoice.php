@@ -109,7 +109,11 @@ final class FrameworkChoice
         return array_merge(...array_values(self::FRAMEWORKS));
     }
 
-    /** @param list<string> $frameworks */
+    /**
+     * The frameworks as a message lists them: comma-separated, the last after `or`.
+     *
+     * @param list<string> $frameworks
+     */
     private static function listed(array $frameworks): string
     {
         $last = array_pop($frameworks);

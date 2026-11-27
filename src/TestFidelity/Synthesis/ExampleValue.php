@@ -83,7 +83,11 @@ final readonly class ExampleValue
         return ['typescript' => 'undefined', 'php' => 'null', 'python' => 'None'][$this->language] ?? 'todo!()';
     }
 
-    /** @return Example */
+    /**
+     * A value as it is, with nothing unknown in it and no import; null for no value.
+     *
+     * @return Example
+     */
     private static function plain(?string $value): array
     {
         return ['value' => $value, 'unknown' => [], 'imports' => []];
@@ -109,7 +113,11 @@ final readonly class ExampleValue
         return ['value' => $format($values), 'unknown' => $unknown, 'imports' => $imports];
     }
 
-    /** @return Example */
+    /**
+     * The example value of a TypeScript type, written in `$file`, `$depth` records deep.
+     *
+     * @return Example
+     */
     private function typescript(string $type, string $file, int $depth): array
     {
         $zero = ['number' => '0', 'bigint' => '0n', 'string' => "''", 'boolean' => 'false', 'true' => 'true', 'false' => 'false', 'null' => 'null', 'undefined' => 'undefined', 'void' => 'undefined', 'any' => 'undefined', 'unknown' => 'undefined', 'object' => '{}', 'symbol' => 'Symbol()'];
@@ -185,7 +193,11 @@ final readonly class ExampleValue
         return self::joined(array_values($parts), static fn(array $values): string => $values === [] ? '{}' : '{ ' . implode(', ', array_map(static fn(string $name, string $value): string => $name . ': ' . $value, array_keys($parts), $values)) . ' }');
     }
 
-    /** @return Example */
+    /**
+     * The example value of a PHP type, written in `$file`, `$depth` records deep.
+     *
+     * @return Example
+     */
     private function php(string $type, string $file, int $depth): array
     {
         if (str_starts_with($type, '?')) {
@@ -212,7 +224,11 @@ final readonly class ExampleValue
         return $this->record($type, $file, $depth);
     }
 
-    /** @return Example */
+    /**
+     * The example value of a Python annotation, written in `$file`, `$depth` records deep.
+     *
+     * @return Example
+     */
     private function python(string $type, string $file, int $depth): array
     {
         $union = TypeText::split($type, '|');
@@ -253,7 +269,11 @@ final readonly class ExampleValue
         return $generic === null ? $this->record($type, $file, $depth) : $this->placeholder($type);
     }
 
-    /** @return Example */
+    /**
+     * The example value of a Rust type, written in `$file`, `$depth` records deep.
+     *
+     * @return Example
+     */
     private function rust(string $type, string $file, int $depth): array
     {
         if ($type === '()') {

@@ -70,7 +70,12 @@ final class MockValueTypes
         return is_array($row) && $row['kind'] === 'module' ? (string) $row['canonical_name'] : null;
     }
 
-    /** @return Record|EnumCase|null */
+    /**
+     * The record or enum a type name written in `$file` names: the one in that file, else the only
+     * one in the project; null when none or several do.
+     *
+     * @return Record|EnumCase|null
+     */
     private function find(string $type, string $file): ?array
     {
         $type = ltrim($type, '\\');
@@ -102,7 +107,12 @@ final class MockValueTypes
         return $this->record($loaded['graph'], $node, (string) $chosen['id']);
     }
 
-    /** @return EnumCase|null */
+    /**
+     * A value of the enum node `$node` (graph id `$id`): its first case, with the import it needs;
+     * null when it has no case or the language has no form for one.
+     *
+     * @return EnumCase|null
+     */
     private function enum(NodeFact $node, string $id): ?array
     {
         $cases = array_keys(EnumCases::ofNode($node)?->cases() ?? []);
@@ -119,7 +129,12 @@ final class MockValueTypes
         };
     }
 
-    /** @return Record|null */
+    /**
+     * The record node `$node` (graph id `$id`) as a template builds it: its fields and how to import
+     * it; null when its list is not whole, it is generic, or its language cannot build it.
+     *
+     * @return Record|null
+     */
     private function record(TestFidelityGraph $graph, NodeFact $node, string $id): ?array
     {
         $fields = FieldLists::of($graph, $node)?->fields();

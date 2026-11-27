@@ -11,14 +11,7 @@ use Knossos\Query\SignatureLine;
 use Knossos\Result\ResultEnvelope;
 use Knossos\Scanner\PackagedLanguages;
 use Knossos\Scanner\Protocol\NodeFact;
-use Knossos\TestFidelity\Synthesis\FrameworkChoice;
-use Knossos\TestFidelity\Synthesis\MockMember;
-use Knossos\TestFidelity\Synthesis\MockMembers;
-use Knossos\TestFidelity\Synthesis\MockTemplate;
-use Knossos\TestFidelity\Synthesis\PhpTemplate;
-use Knossos\TestFidelity\Synthesis\PythonTemplate;
-use Knossos\TestFidelity\Synthesis\RustTemplate;
-use Knossos\TestFidelity\Synthesis\TypeScriptTemplate;
+use Knossos\TestFidelity\Synthesis\{FrameworkChoice, MockMember, MockMembers, MockTemplate, PhpTemplate, PythonTemplate, RustTemplate, TypeScriptTemplate};
 use PDO;
 
 /**

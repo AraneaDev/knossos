@@ -29,6 +29,7 @@ final readonly class PythonTemplate implements MockTemplate
      */
     public function __construct(private Closure $lookup, private string $import, private string $bound) {}
 
+    /** An autospecced unittest.mock or pytest-mock double and its return values; {@see MockTemplate::render()}. */
     public function render(MockMembers $members, string $framework, bool $values): string
     {
         $target = $members->target;
@@ -64,6 +65,7 @@ final readonly class PythonTemplate implements MockTemplate
         return implode("\n", $lines) . "\n";
     }
 
+    /** {@inheritDoc} */
     public function member(MockMembers $members, MockMember $member, string $framework, bool $values): array
     {
         $pytest = $framework === 'pytest-mock';

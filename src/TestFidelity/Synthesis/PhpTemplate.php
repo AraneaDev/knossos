@@ -31,6 +31,7 @@ final readonly class PhpTemplate implements MockTemplate
     /** @param Closure(string, string): (Record|EnumCase|null) $lookup */
     public function __construct(private Closure $lookup) {}
 
+    /** A PHPUnit, Mockery or Prophecy double and its stubs; {@see MockTemplate::render()}. */
     public function render(MockMembers $members, string $framework, bool $values): string
     {
         $target = $members->target;
@@ -54,6 +55,7 @@ final readonly class PhpTemplate implements MockTemplate
         return implode("\n", $lines) . "\n";
     }
 
+    /** {@inheritDoc} */
     public function member(MockMembers $members, MockMember $member, string $framework, bool $values): array
     {
         $unknown = [];

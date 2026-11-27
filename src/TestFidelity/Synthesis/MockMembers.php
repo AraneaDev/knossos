@@ -332,7 +332,12 @@ final readonly class MockMembers
         return $members;
     }
 
-    /** @param array<string, mixed> $attributes */
+    /**
+     * Whether a member is a constructor, a static or class member or a magic method, none of which an
+     * instance double stubs.
+     *
+     * @param array<string, mixed> $attributes
+     */
     private static function isConstructorOrStatic(string $name, array $attributes, string $language): bool
     {
         $decorators = is_array($attributes['decorators'] ?? null) ? $attributes['decorators'] : [];

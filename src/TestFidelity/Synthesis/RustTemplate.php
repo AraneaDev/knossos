@@ -37,6 +37,7 @@ final readonly class RustTemplate implements MockTemplate
     /** @param Closure(string, string): (Record|EnumCase|null) $lookup */
     public function __construct(private Closure $lookup) {}
 
+    /** A `mock!` block and its expectations, or a hand-written fake; {@see MockTemplate::render()}. */
     public function render(MockMembers $members, string $framework, bool $values): string
     {
         $target = $members->target;
@@ -117,6 +118,7 @@ final readonly class RustTemplate implements MockTemplate
         return implode("\n", $lines) . "\n";
     }
 
+    /** {@inheritDoc} */
     public function member(MockMembers $members, MockMember $member, string $framework, bool $values): array
     {
         if ($member->kind !== 'method') {
@@ -197,7 +199,11 @@ final readonly class RustTemplate implements MockTemplate
         return sprintf('const %s: %s = %s;', $member->name, (string) $member->type, $zero['value'] ?? 'todo!()');
     }
 
-    /** @return list<string> */
+    /**
+     * What in an associated type or constant the template leaves as a placeholder.
+     *
+     * @return list<string>
+     */
     private static function associatedUnknown(MockMember $member): array
     {
         if (($member->kind === 'type' && $member->implTrait !== null) || is_string($member->signature['value'] ?? null)) {
@@ -285,6 +291,7 @@ final readonly class RustTemplate implements MockTemplate
         return array_map(static fn(array $param): string => self::unused((string) ($param['name'] ?? '_')), $member->params());
     }
 
+    /** A closure parameter's name, prefixed with `_` so an unused one raises no warning. */
     private static function unused(string $name): string
     {
         return $name === '_' || str_starts_with($name, '_') ? $name : '_' . $name;

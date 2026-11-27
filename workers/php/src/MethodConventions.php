@@ -5,10 +5,7 @@ declare(strict_types=1);
 namespace KnossosPhpScanner;
 
 use PhpParser\Node;
-use PhpParser\Node\Expr;
-use PhpParser\Node\Identifier;
-use PhpParser\Node\Name;
-use PhpParser\Node\Stmt;
+use PhpParser\Node\{Expr, Identifier, Name, Stmt};
 
 /**
  * What a method's own declaration says about how it is reached: a framework

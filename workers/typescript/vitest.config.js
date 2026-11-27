@@ -18,6 +18,12 @@ export default defineConfig({
         // fork near its live set at no cost in speed; measured on one 6 GB
         // host, the heaviest file's peak fell from about 770 MB to 455 MB.
         execArgv: ["--max-old-space-size=256"],
+        // A test that builds a TypeScript program takes 2-4s on its own, and
+        // V8 coverage (`npm run test:coverage`) about doubles that: on one
+        // 8-core host, 47 such tests took 6-9s and failed vitest's default
+        // 5s limit, though each one passed given the time. The limit is for a
+        // hang, so it sits well clear of that.
+        testTimeout: 30_000,
         globals: false,
         coverage: {
             provider: "v8",

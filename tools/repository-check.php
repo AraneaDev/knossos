@@ -5,6 +5,12 @@ declare(strict_types=1);
 require __DIR__ . '/lib/git-ignore.php';
 
 $root = dirname(__DIR__);
+// Fixtures that are invalid JSON on purpose: `check_fixtures` must report each
+// as unparsable (CheckFixturesToolTest, OnRequestAcceptanceTest).
+$invalidOnPurpose = [
+    'tests/Fixtures/test-fidelity/fixtures/healthy/tests/fixtures/invalid.json',
+    'tests/Fixtures/test-fidelity/fixtures/nemesis-invalid/test/fixtures-invalid/invalid.json',
+];
 $errors = [];
 $files = repositoryFiles($root);
 foreach ($files as $relative) {
@@ -13,7 +19,7 @@ foreach ($files as $relative) {
         $errors[] = "$relative exceeds the 2 MB repository limit";
     }
     $extension = strtolower(pathinfo($relative, PATHINFO_EXTENSION));
-    if ($extension === 'json' && !str_starts_with(basename($relative), 'tsconfig')) {
+    if ($extension === 'json' && !str_starts_with(basename($relative), 'tsconfig') && !in_array($relative, $invalidOnPurpose, true)) {
         try {
             json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
         } catch (JsonException $error) {

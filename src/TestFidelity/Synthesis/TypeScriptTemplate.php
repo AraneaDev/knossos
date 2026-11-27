@@ -32,6 +32,7 @@ final readonly class TypeScriptTemplate implements MockTemplate
     /** @param Closure(string, string): (Record|EnumCase|null) $lookup */
     public function __construct(private Closure $lookup) {}
 
+    /** An object literal of `vi.fn()` or `jest.fn()` stubs; {@see MockTemplate::render()}. */
     public function render(MockMembers $members, string $framework, bool $values): string
     {
         $target = $members->target;
@@ -52,6 +53,7 @@ final readonly class TypeScriptTemplate implements MockTemplate
         return implode("\n", $lines) . "\n";
     }
 
+    /** {@inheritDoc} */
     public function member(MockMembers $members, MockMember $member, string $framework, bool $values): array
     {
         $examples = new ExampleValue('typescript', $this->lookup, $framework === 'jest' ? 'jest.fn()' : 'vi.fn()');
@@ -107,8 +109,11 @@ final readonly class TypeScriptTemplate implements MockTemplate
         return ['rendered' => sprintf("  // %s\n  %s: %s,", self::methodLine($member), $key, $stub), 'unknown' => $unknown, 'imports' => $imports];
     }
 
-    /** `$type` with `this`, which has no meaning in an object literal's stub (TS2526), as the checked type. */
-    /** @param list<string> $unknown where the narrowing is listed */
+    /**
+     * `$type` with `this`, which has no meaning in an object literal's stub (TS2526), as the checked type.
+     *
+     * @param list<string> $unknown where the narrowing is listed
+     */
     private static function thisless(string $type, MockMembers $members, array &$unknown): string
     {
         $narrowed = TypeText::substitute($type, ['this'], self::checked($members));
@@ -148,6 +153,7 @@ final readonly class TypeScriptTemplate implements MockTemplate
         return sprintf('%s%s%s(%s)%s', $member->async() ? 'async ' : '', $member->name, $generics, implode(', ', $params), $member->returns() === null ? '' : ': ' . $member->returns());
     }
 
+    /** A property's line in the comment above its stub: its name, `?` when optional, and its type. */
     private static function propertyLine(MockMember $member): string
     {
         return $member->name . ($member->optional ? '?' : '') . ($member->type === null ? '' : ': ' . $member->type);
