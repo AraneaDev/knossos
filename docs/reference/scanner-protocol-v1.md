@@ -378,7 +378,7 @@ non-class symbol of another project module, or an unresolved name that is no
 builtin), and the causes that open `member_names`, but for `__getattr__` and
 `__getattribute__`. An `Enum` sends `cases`, with `value`
 when every case is a string or integer literal and no `_missing_`, `__new__`,
-`__init__` or `_generate_next_value_` in its same-file lineage may give another; an Enum whose members its body may not show sends none.
+`__init__` or `_generate_next_value_` in its same-file lineage may give another; an Enum whose members its body may not show sends none, and so does one with a nested class, a member before Python 3.13 and not after.
 
 A Rust named-field struct that derives `Deserialize` (directly or through
 `cfg_attr`) sends its fields, `type` as written; one without the derive sends

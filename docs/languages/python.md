@@ -412,7 +412,8 @@ validator may reach before the type check (`field_validator` in mode
 `before`, `wrap` or `plain`, v1 `validator(pre=True)`, or a `BeforeValidator`,
 `PlainValidator` or `WrapValidator` in its `Annotated` metadata) keeps its
 name but sends no type, so a fixture's kind for it is never judged. An `Enum`
-sends its cases and is never a fixture's type.
+sends its cases and is never a fixture's type. One with a nested class sends
+none: that class is a member before Python 3.13 and not after.
 
 The list is open for an alias (`alias`, `validation_alias`,
 `serialization_alias`), a `model_config` or `class Config`, a field call with

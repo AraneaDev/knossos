@@ -29,7 +29,8 @@ use Knossos\TestFidelity\Facts\TestDouble;
  *
  * A Python base outside the project is an unseen ancestor, whose names are
  * unknown, except `abc.ABC`, `typing.Protocol` and `typing.Generic`, which
- * are seen and add only their metaclass's names (`knownBaseNames()`).
+ * are seen and add only their metaclass's names (`knownBaseNames()`,
+ * `PythonBases`).
  */
 final readonly class TestFidelityGraph
 {
@@ -41,29 +42,6 @@ final readonly class TestFidelityGraph
 
     /** A PHP type reference: `php:<kind>:<FQCN>`, the name captured. */
     private const PHP_TYPE_REFERENCE = '/^php:(?:class|interface|trait|enum):\\\\?(.+)$/sD';
-
-    /**
-     * The Python bases outside the project that add no member a double may
-     * stub but these (their metaclass's own on 3.14, the one version
-     * checked, with the pure-Python `_py_abc` caches added; a lookup on the
-     * class reaches them, so `patch.object(C, "register")` replaces one,
-     * though `dir(C)` and a `spec=C` list none),
-     * so a class inheriting from one keeps a complete name list:
-     * `abc.ABC`, `typing.Protocol` and `typing.Generic`, by qualified name.
-     * Every other base outside the project (`enum.Enum`, `typing.NamedTuple`,
-     * `typing.TypedDict`, `Exception`) is unseen, its names unknown.
-     */
-    private const PYTHON_KNOWN_BASES = [
-        'abc.ABC' => self::ABC_NAMES,
-        'typing.Protocol' => [...self::ABC_NAMES, '_is_protocol', '_is_runtime_protocol'],
-        'typing.Generic' => ['_is_protocol'],
-    ];
-
-    /** What `abc.ABCMeta` gives each class it makes, the pure-Python `_py_abc`'s caches included. */
-    private const ABC_NAMES = ['_abc_cache', '_abc_caches_clear', '_abc_impl', '_abc_negative_cache', '_abc_negative_cache_version', '_abc_registry', '_abc_registry_clear', '_dump_registry', 'register'];
-
-    /** A Python reference to a class outside the project: `py:external_symbol:<name>` (`from abc import ABC`) or `py:class:<name>` (`abc.ABC`), the name captured. */
-    private const PYTHON_BASE_REFERENCE = '/^py:(?:external_symbol|class):(.+)$/sD';
 
     /**
      * @param array<string, NodeFact> $nodes every node by reference; the first contribution to emit one wins
@@ -307,11 +285,7 @@ final readonly class TestFidelityGraph
      */
     private function knownBase(string $reference): ?array
     {
-        if (isset($this->nodes[$reference]) || preg_match(self::PYTHON_BASE_REFERENCE, $reference, $match) !== 1) {
-            return null;
-        }
-
-        return self::PYTHON_KNOWN_BASES[$match[1]] ?? null;
+        return isset($this->nodes[$reference]) ? null : PythonBases::knownNames($reference);
     }
 
     /**

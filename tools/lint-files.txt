@@ -587,6 +587,7 @@ php	src/TestFidelity/PhpCallableReach.php
 php	src/TestFidelity/PhpTypeDeclarations.php
 php	src/TestFidelity/PhpTypeFit.php
 php	src/TestFidelity/PythonAnnotation.php
+php	src/TestFidelity/PythonBases.php
 php	src/TestFidelity/PythonTypeFit.php
 php	src/TestFidelity/Rules/ArityMismatchRule.php
 php	src/TestFidelity/Rules/CallArity.php
@@ -1314,6 +1315,7 @@ php	tests/phpunit/Store/ScanGitHeadTest.php
 php	tests/phpunit/Store/SnapshotArchiveFiguresTest.php
 php	tests/phpunit/Store/SnapshotArchiveMemoryTest.php
 php	tests/phpunit/Store/SnapshotCompressionTest.php
+php	tests/phpunit/Store/SnapshotFactsConditionTest.php
 php	tests/phpunit/Store/SnapshotPayloadBinaryTest.php
 php	tests/phpunit/Store/SnapshotPayloadTest.php
 php	tests/phpunit/Store/SqliteConnectionTest.php

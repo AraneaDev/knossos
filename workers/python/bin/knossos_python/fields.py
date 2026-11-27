@@ -297,7 +297,8 @@ class FieldFacts:
         """An Enum's ``cases``, sorted by name, each with ``value`` when every case is a string or integer literal.
 
         An Enum whose members this body may not show (a decorator, a keyword,
-        a base it cannot read, an ``_ignore_``, a tuple target, a statement
+        a base it cannot read, an ``_ignore_``, a tuple target, a nested
+        class, which only Python 3.13 and later leave out, a statement
         that may bind names, :meth:`ClassMembers.opens_fields`'s causes) sends
         none, and so does one over a class of this file that does. A
         :data:`VALUE_HOOKS` method on the Enum or any class of its lineage,
@@ -315,7 +316,9 @@ class FieldFacts:
             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         for item in node.body:
-            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if isinstance(item, ast.ClassDef):
+                return {}  # A nested class is a member before 3.13 and not after (G6-08e).
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             if isinstance(item, ast.Pass) or (isinstance(item, ast.Expr) and _string_value(item.value) is not None):
                 continue

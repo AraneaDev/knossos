@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Knossos\TestFidelity\Facts;
 
 use Knossos\Scanner\Protocol\NodeFact;
+use Knossos\TestFidelity\PythonBases;
 use Knossos\TestFidelity\TestFidelityGraph;
 
 /**
@@ -30,9 +31,6 @@ final class FieldLists
 {
     /** The Python bases outside the project whose subclasses' annotations are fields, and which declare none. */
     private const PYTHON_ROOTS = ['pydantic.BaseModel', 'pydantic.main.BaseModel', 'typing.TypedDict', 'typing_extensions.TypedDict'];
-
-    /** A Python reference to a class outside the project, the name captured. */
-    private const PYTHON_REFERENCE = '/^py:(?:external_symbol|class):(.+)$/sD';
 
     /** A Rust reference to serde's `Deserialize` trait, under any path. */
     private const DESERIALIZE_REFERENCE = '/^rust:(?:external_)?interface:(?:.*::)?Deserialize$/sD';
@@ -87,6 +85,6 @@ final class FieldLists
     /** Whether a parent reference names a Python root the scan does not hold. */
     private static function isPythonRoot(TestFidelityGraph $graph, string $parent): bool
     {
-        return !$graph->has($parent) && preg_match(self::PYTHON_REFERENCE, $parent, $match) === 1 && in_array($match[1], self::PYTHON_ROOTS, true);
+        return !$graph->has($parent) && in_array(PythonBases::qualifiedName($parent), self::PYTHON_ROOTS, true);
     }
 }
