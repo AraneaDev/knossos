@@ -589,6 +589,7 @@ php	src/TestFidelity/PhpTypeFit.php
 php	src/TestFidelity/PythonAnnotation.php
 php	src/TestFidelity/PythonBases.php
 php	src/TestFidelity/PythonForeignWrites.php
+php	src/TestFidelity/PythonResiduals.php
 php	src/TestFidelity/PythonTypeFit.php
 php	src/TestFidelity/PythonUnboundCalls.php
 php	src/TestFidelity/Rules/ArityMismatchRule.php
@@ -1388,6 +1389,7 @@ php	tests/phpunit/TestFidelity/PythonResidualsTest.php
 php	tests/phpunit/TestFidelity/PythonSelfScanTest.php
 php	tests/phpunit/TestFidelity/PythonTypeFitTest.php
 php	tests/phpunit/TestFidelity/PythonUnboundCallsTest.php
+php	tests/phpunit/TestFidelity/PythonUnfollowedWritesTest.php
 php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/CaseFixtures.php

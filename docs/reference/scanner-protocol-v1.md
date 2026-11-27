@@ -306,7 +306,25 @@ target's list on any entry, as a write in the target's own file does: no name
 on it is judged absent, and a subclass inherits the open list. The def a
 written name holds may be replaced, so its signature says nothing; an entry
 without `name` may replace any def of the class (as `methods_rewritable`) or
-of the module.
+of the module. An entry with `instance: true` writes an instance built right
+there (`Far().x = 1`), which a reader does not follow: the target's list
+stays as it is, and the target counts as naming `instance_write` below.
+
+A Python class or module node may carry `unfollowed_writes`, sorted: the
+patterns of a write the worker sees but does not follow, by the user's
+decision of 2026-11-27, so a list may lack a name, or a def its signature,
+without being marked open. On a class: `self_alias` (a method binds its
+receiver to another name, `me = self`), `instance_write` (`C().x = 1` in its
+file), `nested_class_write` (`O.I.x = 1`), `default_holder` (`def f(k=C)`),
+`rebound_builtin` (the class handed to a call named like a read-only builtin
+that the module binds to something else), `builtins_exec` (`builtins.exec` or
+`builtins.eval` in the module) and `assigned_frame_hack` (a class-body
+assignment that reaches a frame). On a module: `module_self_write`
+(`import m; m.x = 1` inside `m`), `builtins_exec`, and `frame_write` (code
+that reads a frame's `f_locals`, so may write a caller's locals). A reader
+reports a ghost or an arity mismatch whose target's lineage names one, and a
+`constant` a test's local holds while a production module names
+`frame_write`, as a warning only, never as a definite.
 
 A PHP class, interface, trait or enum node may carry `member_names` too: the
 methods it declares itself, its `@method` docblock names, its trait-use aliases

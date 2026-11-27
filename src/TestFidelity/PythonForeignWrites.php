@@ -23,12 +23,20 @@ use Knossos\Scanner\Protocol\ScanContribution;
  * literal spells may replace any of them, which marks a class
  * `methods_rewritable` and every function of a module `decorated`.
  *
+ * An entry marked `instance` writes an instance built right there
+ * (`Far().x = 1`), which no reader follows (U1, G4-02): the target's list
+ * stays as it is, and its `unfollowed_writes` gains `instance_write`, so a
+ * finding that rests on it is a warning (`PythonResiduals`).
+ *
  * The writer's contribution names the target's file among its reads, so a
  * change to either file is judged again: the graph is built from every
  * contribution, cached ones included. A malformed entry is ignored.
  */
 final class PythonForeignWrites
 {
+    /** The key an instance written stands under among a target's names, which no name can be. */
+    private const INSTANCE = "\0instance";
+
     private function __construct() {}
 
     /**
@@ -47,7 +55,11 @@ final class PythonForeignWrites
                 continue;
             }
             $module = $node->kind === 'module';
-            $nodes[$target] = self::with($node, [$module ? 'exports_open' : 'member_names_open' => true, ...(!$module && isset($names['']) ? ['methods_rewritable' => true] : [])]);
+            $instance = isset($names[self::INSTANCE]);
+            unset($names[self::INSTANCE]);
+            $reasons = is_array($node->attributes['unfollowed_writes'] ?? null) ? $node->attributes['unfollowed_writes'] : [];
+            $opened = $names === [] ? [] : [$module ? 'exports_open' : 'member_names_open' => true, ...(!$module && isset($names['']) ? ['methods_rewritable' => true] : [])];
+            $nodes[$target] = self::with($node, [...$opened, ...($instance ? ['unfollowed_writes' => array_values(array_unique([...$reasons, 'instance_write']))] : [])]);
             foreach ($children[$target] ?? [] as $reference) {
                 $child = $nodes[$reference] ?? null;
                 $written = $child !== null && (isset($names[$child->displayName]) || ($module && isset($names[''])));
@@ -61,7 +73,7 @@ final class PythonForeignWrites
     }
 
     /**
-     * Every target another file writes to, with the names written; `''` for a name no literal spells.
+     * Every target another file writes to, with the names written; `''` for a name no literal spells, `INSTANCE` for an instance written.
      *
      * @param list<ScanContribution> $contributions
      * @return array<string, array<string, true>>
@@ -79,7 +91,7 @@ final class PythonForeignWrites
                     $target = is_array($entry) ? $entry['target'] ?? null : null;
                     $name = is_array($entry) ? $entry['name'] ?? '' : null;
                     if (is_string($target) && str_starts_with($target, 'py:') && is_string($name)) {
-                        $writes[$target][$name] = true;
+                        $writes[$target][($entry['instance'] ?? false) === true ? self::INSTANCE : $name] = true;
                     }
                 }
             }

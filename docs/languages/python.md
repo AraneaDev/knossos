@@ -360,18 +360,42 @@ lists it is no arity mismatch, while one argument more still is, and so is the
 receiver of a method production calls only bound. A static or class method
 called through its class is held to one argument more as well, a missed check.
 
-These are accepted, and each costs a missed finding or a false one, as stated:
+Some writes the worker sees but does not follow, by the user's decision of
+2026-11-27 (U1): the list stays as it is, the node names the pattern in
+`unfollowed_writes`, and a ghost, an arity mismatch or a `constant` that rests
+on it is a **warning**, never a definite, naming the pattern as its
+`residual`. A ghost or arity on a target with none of them stays definite.
 
-- **A frame write from another module** (G4-08). Production code that writes a
-  caller's locals (`sys._getframe(1).f_locals["x"] = v`, which writes through
-  on Python 3.13 and later) can change a test's local the worker took as a
-  constant, and give a false `constant` definite. Frame access in the test
-  file itself is seen.
-- **A metaclass outside the project that rewrites methods** (G4-12). A base
-  the scan does not hold is never taken to rewrite its subclasses' methods, so
-  a framework metaclass or base `__init_subclass__` that does can give a false
-  definite arity. The common ones (`ABCMeta`, `EnumMeta`, Django's model
-  metaclass) keep the signatures their defs write.
+- **Instance writes outside the class** (G4-02). A name written on an instance
+  through an alias of `self` (`me = self; me.save = …`, `self_alias`), on an
+  instance built right there, in the class's file or another
+  (`C().extra = 1`, `instance_write`), or by a module through an import of
+  itself (`import m; m.x = 1` inside `m`, `module_self_write`) is not listed.
+- **Class writes the worker does not follow** (G4-05). A write to a nested
+  class (`O.I.x = 1`, `nested_class_write`), a class held as a parameter
+  default (`def f(k=C): k.x = 1`, `default_holder`), a class handed to a call
+  named like a read-only builtin but bound to something else
+  (`rebound_builtin`), `builtins.exec` or `builtins.eval` (`builtins_exec`,
+  every class of the module and the module), and a frame hack whose result is
+  assigned in the class body (`assigned_frame_hack`) leave the list closed.
+  A double of a nested class names it through its outer class
+  (`Outer.Inner`), which the worker lists under its own name, so it is not
+  judged at all.
+- **A frame write from another module** (G4-08). Production code that reads a
+  frame's `f_locals` (`sys._getframe(1).f_locals["x"] = v`, which writes
+  through on Python 3.13 and later) is marked `frame_write`, and while the
+  scan holds such a production module, a `constant` a test's local holds is a
+  warning. Frame access in the test file itself is seen, and a constant
+  written out (`assert 1 == 2`) is no local a frame can change.
+- **A metaclass outside the project that may rewrite methods** (G4-12). A base
+  the scan does not hold may rewrite its subclasses' signatures through its
+  metaclass or `__init_subclass__`, so an arity mismatch under one is a
+  warning, as `external_base`. A builtin, `abc.ABC`, `typing.Protocol`,
+  `typing.Generic`, `enum`'s bases and Django's `Model` keep the signatures
+  their defs write, and stay definite.
+
+These are accepted, and each costs a missed finding, as stated:
+
 - **A spec'd double's pin read back** (G4-14). `m = Mock(spec=C)`,
   `m.f.return_value = 7`, then `assert m.f() == 7` is an echo, but a spec'd
   double gives no pinned value, so it is silent.
@@ -384,17 +408,6 @@ These are accepted, and each costs a missed finding or a false one, as stated:
   handed to `codecs.CodecInfo`) and 1 of Knossos's own 30. A class a same-file
   alias holds (Ruling P23) adds up to 179 more in the standard library, and
   none in Knossos.
-- **Instance writes outside the class** (G4-02). A name written on an instance
-  through an alias of `self` (`me = self; me.save = …`), on an instance from
-  outside (`C().extra = 1`), or by a module through an import of itself
-  (`import m; m.x = 1` inside `m`) is not listed. A double of that name reads
-  as a definite ghost, and a def it rebinds keeps its arity judged.
-- **Class writes the worker does not follow** (G4-05). A write to a nested
-  class (`O.I.x = 1`), a class held as a parameter default
-  (`def f(k=C): k.x = 1`), a call named like a read-only builtin but bound to
-  something else, `builtins.exec`, and a frame hack whose result is assigned
-  leave the list closed: a double of the name written reads as a definite
-  ghost.
 
 Not read at all: a `@property` patched without `PropertyMock`; a
 constructor's arguments asserted through the class double

@@ -18,6 +18,11 @@ namespace Knossos\TestFidelity;
  * list. Every other base outside the project (`enum.Enum`,
  * `typing.NamedTuple`, `typing.TypedDict`, `Exception`) is unseen, its names
  * unknown.
+ *
+ * A base outside the project whose metaclass or `__init_subclass__` may
+ * rewrite its subclasses' methods cannot be read (G4-12). Those known to keep
+ * every signature a def writes are a builtin, the bases above, and `enum`'s
+ * and Django's model base (`ABCMeta`, `EnumMeta` and the model metaclass).
  */
 final class PythonBases
 {
@@ -33,6 +38,9 @@ final class PythonBases
 
     /** What `abc.ABCMeta` gives each class it makes, the pure-Python `_py_abc`'s caches included. */
     private const ABC_NAMES = ['_abc_cache', '_abc_caches_clear', '_abc_impl', '_abc_negative_cache', '_abc_negative_cache_version', '_abc_registry', '_abc_registry_clear', '_dump_registry', 'register'];
+
+    /** Bases outside the project, besides the known ones and the builtins, whose metaclass keeps every signature a def writes. */
+    private const PLAIN = ['enum.Enum', 'enum.IntEnum', 'enum.StrEnum', 'enum.Flag', 'enum.IntFlag', 'django.db.models.Model', 'django.db.models.base.Model'];
 
     private function __construct() {}
 
@@ -50,5 +58,16 @@ final class PythonBases
     public static function knownNames(string $reference): ?array
     {
         return self::KNOWN[self::qualifiedName($reference) ?? ''] ?? null;
+    }
+
+    /** Whether a base outside the project, by reference, is known to keep every signature its subclasses' defs write: a builtin, a known base, `enum`'s or Django's model base. */
+    public static function keepsSignatures(string $reference): bool
+    {
+        $name = self::qualifiedName($reference);
+        if ($name === null) {
+            return false;
+        }
+
+        return isset(self::KNOWN[$name]) || in_array($name, self::PLAIN, true) || preg_match('/^(?:builtins\.)?[A-Za-z_][A-Za-z0-9_]*$/D', $name) === 1;
     }
 }

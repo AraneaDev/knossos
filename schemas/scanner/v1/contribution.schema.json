@@ -64,16 +64,22 @@
               "items": { "type": "string" }
             },
             "foreign_writes": {
-              "description": "A Python module node: each name the file writes on a project module or class that another file declares (`config.FLAG = 1`, `Settings.debug = True`, a `setattr`), sorted; `target` is that module's or class's reference and `name` the name written, absent for a `setattr` whose name no literal spells. A reader opens the target's list on any of them. The writer's reads name the target's file.",
+              "description": "A Python module node: each name the file writes on a project module or class that another file declares (`config.FLAG = 1`, `Settings.debug = True`, a `setattr`), sorted; `target` is that module's or class's reference and `name` the name written, absent for a `setattr` whose name no literal spells; `instance` true for an instance built right there (`Far().x = 1`), which leaves the list as it is. A reader opens the target's list on any other. The writer's reads name the target's file.",
               "type": "array",
               "items": {
                 "type": "object",
                 "required": ["target"],
                 "properties": {
                   "target": { "type": "string", "minLength": 1 },
-                  "name": { "type": "string", "minLength": 1 }
+                  "name": { "type": "string", "minLength": 1 },
+                  "instance": { "type": "boolean" }
                 }
               }
+            },
+            "unfollowed_writes": {
+              "description": "A Python class or module node: the patterns of a write the worker sees but does not follow, sorted (a class: self_alias, instance_write, nested_class_write, default_holder, rebound_builtin, builtins_exec, assigned_frame_hack; a module: module_self_write, builtins_exec, frame_write). A reader reports a finding that rests on one as a warning only.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
             },
             "member_names_open": {
               "description": "True when members cannot be complete (a base type that does not resolve, an index signature).",

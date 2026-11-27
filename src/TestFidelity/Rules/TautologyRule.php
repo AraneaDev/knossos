@@ -7,7 +7,7 @@ namespace Knossos\TestFidelity\Rules;
 use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\Facts\{Assertion, Operand, TestCaseFact, TestDouble};
-use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph, TestFidelityRule, TestFinding};
+use Knossos\TestFidelity\{FindingCategory, FindingConfidence, PythonResiduals, TestFidelityGraph, TestFidelityRule, TestFinding};
 
 /**
  * An assertion that cannot fail, or a stub nothing can run: Momus's TAUT-001
@@ -100,6 +100,10 @@ final readonly class TautologyRule implements TestFidelityRule
                     }
                 }
                 $finding = $case->fails || isset($vacuous[$node->evidence->relativePath . ':' . $assertion->line]) ? null : self::judge($assertion, $case, $node, $doubles, TestFidelityGraph::isPython($node), TestFidelityGraph::isRust($node));
+                // U1, G4-08: production that writes a caller's frame may change the constant a Python local holds.
+                if ($finding?->subRule === 'constant' && TestFidelityGraph::isPython($node) && PythonResiduals::readsLocal($assertion) && $graph->writesPythonFrames()) {
+                    $finding = PythonResiduals::downgraded($finding, PythonResiduals::FRAME_WRITE);
+                }
                 if ($finding !== null) {
                     yield $finding;
                 }

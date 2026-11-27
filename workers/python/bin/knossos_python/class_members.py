@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
 from .ast_helpers import dotted
+from .unfollowed_writes import UnfollowedWrites
 
 Resolve = Callable[[str], str | None]
 
@@ -367,6 +368,7 @@ class ClassMembers:
         self._bindings: Counter[str] | None = None
         self._rebound: set[ast.AST] | None = None
         self._owners: dict[int, ast.ClassDef] = {}
+        self._unfollowed: UnfollowedWrites | None = None
         self.dynamic = runs_dynamic_code(tree)
 
     def rebound(self, node: ast.FunctionDef | ast.AsyncFunctionDef, superseded: set[ast.AST]) -> bool:
@@ -422,10 +424,14 @@ class ClassMembers:
         opened = scan.opened or scan.hooked or unseen_base or bool(node.keywords) or self.dynamic
         opened = opened or not all(self.closed_decorator(decorator) for decorator in node.decorator_list)
         opened = opened or node.name in self.written_names()
+        if self._unfollowed is None:
+            self._unfollowed = UnfollowedWrites(self.tree, self.bindings(), READ_ONLY_CALLS)
+        unfollowed = self._unfollowed.reasons(node)
         return (
             {"member_names": sorted(name for name in names if not is_dunder(name))}
             | ({"member_names_open": True} if opened else {})
             | ({"methods_rewritable": True} if self.methods_rewritable(node) else {})
+            | ({"unfollowed_writes": unfollowed} if unfollowed else {})
         )
 
     def opens_fields(self, node: ast.ClassDef) -> bool:
@@ -553,10 +559,13 @@ def merge_member_names(attributes: dict[str, Any], found: dict[str, Any]) -> Non
     """Fold a class's names into the attributes of a node that may already hold another declaration's.
 
     Two classes of one name (``if``/``else`` branches, a function-local class)
-    share a node, so it offers the names of either, open if either is, and
-    rewritable if either is.
+    share a node, so it offers the names of either, open if either is,
+    rewritable if either is, and the unfollowed writes of both.
     """
     attributes["member_names"] = sorted({*attributes.get("member_names", []), *found["member_names"]})
     for flag in ("member_names_open", "methods_rewritable"):
         if attributes.get(flag) or found.get(flag):
             attributes[flag] = True
+    unfollowed = {*attributes.get("unfollowed_writes", []), *found.get("unfollowed_writes", [])}
+    if unfollowed:
+        attributes["unfollowed_writes"] = sorted(unfollowed)

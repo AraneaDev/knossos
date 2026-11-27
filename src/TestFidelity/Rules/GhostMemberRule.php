@@ -7,6 +7,7 @@ namespace Knossos\TestFidelity\Rules;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
+use Knossos\TestFidelity\PythonResiduals;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\TestFidelity\TestFinding;
 
@@ -35,6 +36,10 @@ use Knossos\TestFidelity\TestFinding;
  * outside `m`) adds a name no worker lists: the writer names it in
  * `foreign_writes`, and the graph's view of the target is open
  * (`PythonForeignWrites`, G4-03), so a double of that name is no ghost.
+ * A write the worker sees but does not follow (`unfollowed_writes`: an alias
+ * of `self`, an instance written, a nested class written, and the rest of
+ * `PythonResiduals`) leaves the list closed, so a ghost on a target whose
+ * lineage names one is a warning with that `residual` (U1, G4-02, G4-05).
  */
 final readonly class GhostMemberRule extends DriftRule
 {
@@ -110,14 +115,15 @@ final readonly class GhostMemberRule extends DriftRule
             DriftText::clean($pair->target->displayName),
         ), DriftText::MAX_LENGTH - mb_strlen($suffix));
 
-        return $pair->finding(
+        // U1: a list a write the worker does not follow may lack the name, so the ghost is a warning.
+        return PythonResiduals::downgraded($pair->finding(
             FindingCategory::GhostMember,
             FindingConfidence::Definite,
             self::ID,
             $pair->target->kind === 'module' ? 'missing_export' : 'missing_member',
             $head . $suffix,
             $suggestion === null ? [] : ['suggestion' => DriftText::clean($suggestion)],
-        );
+        ), $python ? PythonResiduals::unfollowed($pair->target, $graph) : null);
     }
 
     /**

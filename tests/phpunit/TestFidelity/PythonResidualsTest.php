@@ -69,6 +69,31 @@ final class PythonResidualsTest extends KnossosTestCase
     }
 
     /**
+     * U1 (the user's decision of 2026-11-27): each write `docs/languages/python.md`
+     * lists as not followed (G4-02, G4-05, G4-08, G4-12) gives a warning, never a
+     * definite; a plain class beside them keeps its definite ghost and arity.
+     */
+    public function testAFindingThatRestsOnAWriteNotFollowedIsAWarning(): void
+    {
+        [$pdo] = $this->scanned();
+
+        // A nested class's double names `Outer.Inner`, which the worker lists as `unfollowed.Inner`: it gives nothing.
+        assertSame([
+            'ARITY_MISMATCH/call_arity/definite@tests/test_unfollowed.py:71',
+            'ARITY_MISMATCH/call_arity/warning@tests/test_unfollowed.py:54 external_base',
+            'GHOST_MEMBER/missing_export/warning@tests/test_unfollowed.py:24 module_self_write',
+            'GHOST_MEMBER/missing_member/definite@tests/test_unfollowed.py:66',
+            'GHOST_MEMBER/missing_member/warning@tests/test_unfollowed.py:14 self_alias',
+            'GHOST_MEMBER/missing_member/warning@tests/test_unfollowed.py:19 instance_write',
+            'GHOST_MEMBER/missing_member/warning@tests/test_unfollowed.py:34 default_holder',
+            'GHOST_MEMBER/missing_member/warning@tests/test_unfollowed.py:39 rebound_builtin',
+            'GHOST_MEMBER/missing_member/warning@tests/test_unfollowed.py:44 builtins_exec',
+            'GHOST_MEMBER/missing_member/warning@tests/test_unfollowed.py:49 assigned_frame_hack',
+            'TAUTOLOGY/constant/warning@tests/test_unfollowed.py:62 frame_write',
+        ], self::findingsIn($pdo, 'tests/test_unfollowed.py'));
+    }
+
+    /**
      * A fresh scan of a copy of the fixture.
      *
      * @return array{PDO, ProjectScanService, string}
@@ -85,18 +110,22 @@ final class PythonResidualsTest extends KnossosTestCase
     }
 
     /**
-     * The active scan's findings in one file as `category/sub_rule/confidence@file:line`, sorted.
+     * The active scan's findings in one file as `category/sub_rule/confidence@file:line`, with the residual a warning rests on (U1), sorted.
      *
      * @return list<string>
      */
     private static function findingsIn(PDO $pdo, string $file): array
     {
         $statement = $pdo->prepare(
-            'SELECT f.category, f.sub_rule, f.confidence, fl.relative_path, f.start_line FROM test_findings f '
+            'SELECT f.category, f.sub_rule, f.confidence, fl.relative_path, f.start_line, f.attributes_json FROM test_findings f '
             . 'JOIN projects p ON p.id = f.project_id AND f.last_scan_id = p.active_scan_id JOIN files fl ON fl.id = f.file_id WHERE fl.relative_path = ?',
         );
         $statement->execute([$file]);
-        $findings = array_map(static fn(array $row): string => vsprintf('%s/%s/%s@%s:%d', $row), $statement->fetchAll(PDO::FETCH_NUM));
+        $findings = array_map(static function (array $row): string {
+            $residual = json_decode((string) array_pop($row), true)['residual'] ?? null;
+
+            return vsprintf('%s/%s/%s@%s:%d', $row) . (is_string($residual) ? ' ' . $residual : '');
+        }, $statement->fetchAll(PDO::FETCH_NUM));
         sort($findings);
 
         return $findings;

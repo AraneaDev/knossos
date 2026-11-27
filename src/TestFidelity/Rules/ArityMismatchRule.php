@@ -7,6 +7,7 @@ namespace Knossos\TestFidelity\Rules;
 use Knossos\TestFidelity\Facts\CallMatcher;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
+use Knossos\TestFidelity\PythonResiduals;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\TestFidelity\TestFinding;
 
@@ -41,8 +42,11 @@ use Knossos\TestFidelity\TestFinding;
  * (`PythonForeignWrites`, G4-03), so it is not judged. Silent
  * for a Python class whose lineage carries `methods_rewritable` (a project
  * metaclass, an `__init_subclass__`, a class decorator or call that may
- * replace its methods; Ruling P21). Residual (G4-12): a base outside the
- * project is never taken to rewrite, though its metaclass may. Silent, too,
+ * replace its methods; Ruling P21). A base outside the project is never
+ * taken to rewrite, though its metaclass may (G4-12), so a mismatch under one
+ * that may (`PythonResiduals::rewritingBase()`), or on a target whose lineage
+ * names a write the worker does not follow (`unfollowed_writes`), is a
+ * warning with that `residual` (U1). Silent, too,
  * where Python's lookup may answer the name with another binding than the
  * def found (Ruling P24, `TestFidelityGraph::answersCertainly()`): another
  * class of the lineage lists the name, or the def is inherited past a base
@@ -71,7 +75,15 @@ final readonly class ArityMismatchRule extends DriftRule
         // G4-10: production calls the method through its class, which hands the receiver over as an argument.
         $unbound = ($pair->member?->attributes['called_unbound'] ?? false) === true;
 
-        return $this->signature($pair, $declared, $takesMore, $unbound) ?? $this->calls($pair, $declared, $takesMore, $unbound);
+        $finding = $this->signature($pair, $declared, $takesMore, $unbound) ?? $this->calls($pair, $declared, $takesMore, $unbound);
+
+        return TestFidelityGraph::isPython($pair->target) ? PythonResiduals::downgraded($finding, self::residual($pair, $graph)) : $finding;
+    }
+
+    /** U1: the write the worker does not follow, or the base it cannot read, that may have changed a Python signature. */
+    private static function residual(DriftPair $pair, TestFidelityGraph $graph): ?string
+    {
+        return PythonResiduals::unfollowed($pair->target, $graph) ?? (PythonResiduals::rewritingBase($pair->target, $graph) ? PythonResiduals::EXTERNAL_BASE : null);
     }
 
     /** Whether production hands the stubbed PHP method on as a callable value through the target or a type it inherits from (G3-31). */

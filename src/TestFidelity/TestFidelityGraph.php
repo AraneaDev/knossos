@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\TestFidelity;
 
+use Knossos\Classification\TestModuleRule;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\TestFidelity\Facts\TestCaseFact;
@@ -476,8 +477,8 @@ final readonly class TestFidelityGraph
      * inherits (Ruling P21): it or an ancestor the scan holds carries
      * `methods_rewritable` (a project metaclass, an `__init_subclass__`, a
      * class decorator or call that may replace methods). A base outside the
-     * project is not taken to rewrite: a residual (G4-12), since its metaclass
-     * or hook cannot be read.
+     * project is not taken to rewrite, since its metaclass or hook cannot be
+     * read; an arity mismatch under one is a warning instead (G4-12, U1).
      */
     public function hasRewritableLineage(NodeFact $owner): bool
     {
@@ -533,6 +534,20 @@ final readonly class TestFidelityGraph
 
         return ($node->attributes['external'] ?? false) === true || str_starts_with($node->kind, 'external_') || str_starts_with($path, 'vendor/')
             || (self::isPython($node) && preg_match('#(?:^|/)site-packages/#', $path) === 1);
+    }
+
+    /** Whether a Python production module of the scan reads a frame's `f_locals`, through which it may write a caller's locals (G4-08, `PythonResiduals`). */
+    public function writesPythonFrames(): bool
+    {
+        $tests = new TestModuleRule();
+        foreach ($this->nodes as $node) {
+            $reasons = $node->attributes['unfollowed_writes'] ?? null;
+            if ($node->kind === 'module' && self::isPython($node) && is_array($reasons) && in_array(PythonResiduals::FRAME_WRITE, $reasons, true) && $tests->classify($node) === []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Whether a node reference names a node some contribution of the scan emitted. */
