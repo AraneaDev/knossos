@@ -73,6 +73,17 @@ final class FieldFactsSchemaTest extends KnossosTestCase
         ], $lists);
     }
 
+    /** The schema says what the PHP worker sends and FixtureTypes compares: a class name fully qualified. */
+    public function testTheSchemaSaysAPhpFieldTypeIsFullyQualified(): void
+    {
+        $schema = json_decode((string) file_get_contents(self::repositoryRoot() . '/schemas/scanner/v1/contribution.schema.json'), true, 512, JSON_THROW_ON_ERROR);
+
+        assertSame(
+            "The field's type as the source writes it, but a PHP class name fully qualified; absent when it writes none.",
+            $schema['$defs']['fieldList']['items']['properties']['type']['description'],
+        );
+    }
+
     public function testTheRustWorkerOutputOnTheFixturesValidates(): void
     {
         if (!is_executable(self::rustWorkerBinary())) {

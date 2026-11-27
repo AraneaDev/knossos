@@ -161,7 +161,7 @@
         "properties": {
           "name": { "type": "string", "minLength": 1 },
           "type": {
-            "description": "The field's type as the source writes it; absent when it writes none.",
+            "description": "The field's type as the source writes it, but a PHP class name fully qualified; absent when it writes none.",
             "type": "string"
           },
           "required": {

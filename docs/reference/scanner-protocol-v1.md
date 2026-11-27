@@ -299,7 +299,8 @@ those members' visibility as unknown.
 All of it optional. A class, interface, trait, type alias or Rust struct node
 may carry `fields`: the fields a deserialiser fills, sorted by name, each
 `{name, type?, required, line, visibility?}`. `type` is the type as the source
-writes it and is absent when it writes none; `required` says whether a
+writes it, but with a PHP class name fully qualified, and is absent when it
+writes none; `required` says whether a
 deserialiser needs the key; `visibility` is `protected` or `private` for a
 field so declared, and absent (public) otherwise. A reader takes a non-public
 field as a known key, never as one a fixture must hold. A node that declares an enum (`enum` for TypeScript and PHP,
