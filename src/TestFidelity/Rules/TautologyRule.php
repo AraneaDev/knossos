@@ -200,7 +200,7 @@ final readonly class TautologyRule implements TestFidelityRule
             return null;
         }
 
-        return ['unconfigured_spy', FindingConfidence::Warning, 'the spy is not stubbed and the test runs no production code, so nothing could have called it', ['double' => $spy->canonicalName]];
+        return ['unconfigured_spy', FindingConfidence::Warning, 'the spy is not stubbed and the test runs no production code, so nothing could have called it', ['double' => DriftText::clean($spy->canonicalName)]];
     }
 
     /**

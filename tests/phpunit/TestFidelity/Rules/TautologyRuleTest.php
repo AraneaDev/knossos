@@ -175,6 +175,16 @@ final class TautologyRuleTest extends KnossosTestCase
         assertSame(['zero_reach'], self::subRules(self::judge($case(false), $pinned)), 'the control');
     }
 
+    public function testTheDoubleAnUnconfiguredSpyNamesIsCleaned(): void
+    {
+        // G1-18: the attribute is worker text, as the message is.
+        $name = CaseFixtures::FILE . "#double:6:5\x1b[2J";
+        $spy = DriftFixtures::node('test_double', $name, 'vi.spyOn', ['framework' => 'vitest', 'pattern' => 'vi.spyOn', 'target' => ['kind' => 'instance-member', 'member' => 'total'], 'automock' => false, 'invocations' => 0, 'members' => [CaseFixtures::member('total', 0)]], 6);
+        $case = CaseFixtures::testCase([CaseFixtures::assertion('toHaveBeenCalled', [CaseFixtures::operand('mock-call', ['double' => $name, 'unconfigured_spy' => true])])]);
+
+        assertSame([['api' => 'toHaveBeenCalled', 'double' => CaseFixtures::FILE . '#double:6:5 [2J']], array_map(static fn(TestFinding $finding): array => $finding->attributes, self::judge($spy, $case)));
+    }
+
     public function testANegatedCallMatcherNoCallCanMeetIsAVacuousAssertion(): void
     {
         // G3-02: `expect(spy).not.toHaveBeenCalledWith()` for `rate(x)` holds that no call lists nothing, which none can.
