@@ -185,8 +185,9 @@ function runTestFidelityScenario(string $scenario, string $directory, float $lim
  * Run an on-request scenario under `$directory`: generate its corpus (and,
  * for `audit_tests`, commit it to git and edit its first two services in
  * every language), scan it cold, then time the scenario's query five times.
- * A round whose answer holds no item, or checked other fixture files than
- * the corpus holds, fails the run; the median round is the measurement.
+ * A round whose answer holds fewer items than the scenario's `least_items`,
+ * or checked other fixture files than the corpus holds, fails the run; the
+ * median round is the measurement.
  *
  * @return array<string, mixed>
  */

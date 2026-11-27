@@ -152,9 +152,9 @@ function benchmarkScenarioViolations(string $scenario, float $limit, float $seco
 
 /**
  * Why an on-request scenario's query does not measure what it is for, or
- * null when it does: a run that reported no item, or checked other than the
- * fixture files its corpus holds, would time a cheaper answer and pass for
- * the wrong reason.
+ * null when it does: a run that reported fewer items than the scenario's
+ * `least_items`, or checked other than the fixture files its corpus holds,
+ * would time a cheaper answer and pass for the wrong reason.
  */
 function benchmarkQueryScenarioError(string $scenario, int $round, mixed $items, mixed $checked): ?string
 {
