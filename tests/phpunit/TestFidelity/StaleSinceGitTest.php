@@ -33,7 +33,10 @@ final class StaleSinceGitTest extends KnossosTestCase
 
     private const STALE = 'stale since HEAD: UserService changed, tests/ghost.test.ts untouched; review: getProfil';
 
-    private const SERVICE = "export class UserService {\n  getProfile(id: string): string {\n    return id;\n  }\n\n  touched(): void {}\n}\n";
+    /** `Wall`'s `impl`, in a file of its own, mocked by `automock` in a test build. */
+    private const WALL_IMPL = "#[cfg(test)]\nuse mockall::automock;\n\nuse crate::wall::Wall;\n\n#[cfg_attr(test, automock)]\nimpl Wall {\n    pub fn tick(&self) -> u64 {\n        1\n    }\n}\n";
+
+    private const SERVICE ="export class UserService {\n  getProfile(id: string): string {\n    return id;\n  }\n\n  touched(): void {}\n}\n";
 
     public function testAChangedTargetFileWithAnUntouchedTestFires(): void
     {
@@ -163,6 +166,28 @@ final class StaleSinceGitTest extends KnossosTestCase
             $this->assertFails($repo, 'HEAD', 'git-diff scope failed against HEAD: ');
         });
         self::assertStringContainsString('knossos scan head: git could not answer', $logged);
+    }
+
+    /** G6-08b: a Rust type whose `impl` lives in another file goes stale when only that file changed, through the real Rust worker. */
+    #[Group('rust-scanner')]
+    public function testARustImplInAnotherFileMakesItsMockStale(): void
+    {
+        if (!is_file(self::rustWorkerBinary())) {
+            self::markTestSkipped('The Rust worker binary is not built.');
+        }
+        $repo = $this->rustRepository();
+        // Only the impl's file changed; the struct's own file did not.
+        file_put_contents($repo . '/src/wall_impl.rs', str_replace('        1', '        2', self::WALL_IMPL));
+
+        $stale = 'stale since HEAD: Wall changed, src/wall_tests.rs untouched; review: tick';
+        self::assertSame([['src/wall_tests.rs', 5, 'STALE_SINCE', 'warning', $stale]], self::stale($this->audit($repo, scope: 'git-diff')));
+        // The impl's file as committed: nothing changed, nothing stale.
+        file_put_contents($repo . '/src/wall_impl.rs', self::WALL_IMPL);
+        self::assertSame([], self::stale($this->audit($repo, scope: 'git-diff')));
+        // The test file changed with the impl: reviewed, so silent.
+        file_put_contents($repo . '/src/wall_impl.rs', str_replace('        1', '        3', self::WALL_IMPL));
+        file_put_contents($repo . '/src/wall_tests.rs', "// reviewed\n", FILE_APPEND);
+        self::assertSame([], self::stale($this->audit($repo, scope: 'git-diff')));
     }
 
     public function testAStaleDoubleOnABranchWithNoCommitIsStaleSinceTheEmptyTree(): void
@@ -301,6 +326,29 @@ final class StaleSinceGitTest extends KnossosTestCase
             $this->git($repo, ['add', '-A']);
             $this->git($repo, ['commit', '--quiet', '-m', 'base']);
         }
+
+        return (string) realpath($repo);
+    }
+
+    /**
+     * A committed scratch crate: `Wall` in `src/wall.rs`, its `automock`ed
+     * `impl` in `src/wall_impl.rs`, and a test doubling it at `src/wall_tests.rs:5`.
+     */
+    private function rustRepository(): string
+    {
+        if (self::locateGit() === null) {
+            self::markTestSkipped('git is not available on this host.');
+        }
+        $repo = self::scratchPath('knossos-stale-rust');
+        mkdir($repo . '/src', 0o777, true);
+        file_put_contents($repo . '/Cargo.toml', "[package]\nname = \"walls\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dev-dependencies]\nmockall = \"0.13\"\n");
+        file_put_contents($repo . '/src/lib.rs', "pub mod wall;\nmod wall_impl;\n#[cfg(test)]\nmod wall_tests;\n");
+        file_put_contents($repo . '/src/wall.rs', "pub struct Wall;\n");
+        file_put_contents($repo . '/src/wall_impl.rs', self::WALL_IMPL);
+        file_put_contents($repo . '/src/wall_tests.rs', "use crate::wall_impl::MockWall;\n\n#[test]\nfn ticks() {\n    let mut wall = MockWall::new();\n    wall.expect_tick().returning(|| 1);\n    assert_eq!(wall.tick(), 1);\n}\n");
+        $this->git($repo, ['init', '--quiet']);
+        $this->git($repo, ['add', '-A']);
+        $this->git($repo, ['commit', '--quiet', '-m', 'base']);
 
         return (string) realpath($repo);
     }

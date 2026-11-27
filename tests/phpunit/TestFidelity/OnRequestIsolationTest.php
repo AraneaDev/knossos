@@ -19,7 +19,7 @@ use PHPUnit\Framework\Attributes\Group;
  * On-request findings are computed when asked and never stored, so no surface
  * that reads stored findings may see one (Review Focus 1): the count the gate
  * and `audit_tests` share, the dashboard, the turn brief, the gate's metric
- * and SARIF, and `snapshot_diff`.
+ * and SARIF, `snapshot_diff` and `architecture_trends`.
  *
  * A planted test file that only `OVER_MOCKING` judges, a change to a
  * doubled class's file that only `STALE_SINCE` judges, and a fixture whose
@@ -119,6 +119,8 @@ final class OnRequestIsolationTest extends KnossosTestCase
             }
             // And no surface saw it.
             self::assertGreaterThanOrEqual(1, $without['count'], 'the fixture has stored findings to compare');
+            self::assertCount(2, $without['trends']);
+            self::assertGreaterThanOrEqual(1, $without['trends'][1][0], 'the trend has definite findings to compare');
             foreach (array_keys($without) as $surface) {
                 self::assertSame($without[$surface], $with[$surface], $surface);
             }
@@ -153,6 +155,14 @@ final class OnRequestIsolationTest extends KnossosTestCase
             'gate_checks' => $gate['checks'],
             'sarif' => $sarif,
             'snapshot_diff' => $services->diffQueries->snapshotDiff($projectId, $baseline)->data['test_findings'],
+            // G6-08b: the baseline's and the active snapshot's test-finding counts; each turn adds a point between them.
+            'trends' => array_map(
+                static fn(array $point): array => [$point['definite_test_findings'], $point['stale_test_findings']],
+                array_values(array_filter(
+                    $services->gateQueries->architectureTrends($projectId, 20)->data['series'],
+                    static fn(array $point): bool => $point['scan_id'] === $baseline || ($point['active'] ?? false) === true,
+                )),
+            ),
             'audit_scan' => $services->testFidelityQueries->auditTests($projectId, limit: 200)->data['items'],
         ];
     }
