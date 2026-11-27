@@ -44,7 +44,11 @@ use PHPUnit\Framework\Attributes\Group;
  * `__eq__` under test compared with themselves, `parametrize` arguments, a
  * conditional and a `finally` binding, `side_effect` and `reset_mock` over a
  * pin, an `AsyncMock` member not awaited, and a pin read back through a
- * fixture and through `setUp`. Ruling P5: a false definite the rules give
+ * fixture and through `setUp`. Three more each guard one rule of a local's
+ * literal (G4-09): a nested reader run before its local is bound again (one
+ * binding), a binding in a branch read after it (the binding that reaches
+ * the use), and a pin read back in a nested helper (the same function).
+ * Ruling P5: a false definite the rules give
  * before Task 5's gates is listed here as "cleared by Task 5"; none is.
  *
  * Now the rules judge Python (Task 5), `tests/test_planted.py` sets each

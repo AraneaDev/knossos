@@ -181,3 +181,31 @@ class TestHeldEcho(TestCase):
     def test_an_echo_through_set_up(self):
         self.assertEqual(self.repo.method("k"), "x")
         self.assertEqual(Repo().method("k"), "k")
+
+
+def test_a_nested_reader_runs_before_its_local_is_rebound():
+    expected = Repo().method("a")
+
+    def check():
+        assert expected == "a"
+
+    check()
+    expected = "b"
+    assert Repo().method(expected) == "b"
+
+
+def test_a_binding_in_a_branch_read_after_it(tmp_path):
+    if tmp_path.exists():
+        found = "k"
+    assert found == "k"
+    assert Repo().method("k") == "k"
+
+
+def test_a_pin_read_back_in_a_nested_helper():
+    double = mock.Mock(return_value="k")
+
+    def check():
+        assert double() == "k"
+
+    check()
+    assert Repo().method(check) is check
