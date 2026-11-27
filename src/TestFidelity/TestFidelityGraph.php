@@ -250,7 +250,7 @@ final readonly class TestFidelityGraph
         return $reference === null ? null : $this->nodes[$reference];
     }
 
-    /** @return list<string> the lower-case classes through which production hands a PHP method of this name (in any case) on as a callable value, `[$repo, 'save']` */
+    /** The lower-case classes through which production hands a PHP method of this name, in any case, on as a callable value (`[$repo, 'save']`). @return list<string> */
     public function callableClasses(string $method): array
     {
         return $this->callables[strtolower($method)] ?? [];

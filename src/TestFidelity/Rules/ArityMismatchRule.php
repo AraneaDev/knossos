@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Knossos\TestFidelity\Rules;
 
-use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\TestFidelityGraph;
@@ -77,9 +76,14 @@ final readonly class ArityMismatchRule extends DriftRule
         if (!TestFidelityGraph::isPhp($pair->target)) {
             return false;
         }
-        $types = array_map(static fn(NodeFact $type): string => strtolower(ltrim($type->canonicalName, '\\')), $graph->lineage($pair->target));
+        $classes = $graph->callableClasses($pair->stub->name);
+        foreach ($graph->lineage($pair->target) as $type) {
+            if (in_array(strtolower(ltrim($type->canonicalName, '\\')), $classes, true)) {
+                return true;
+            }
+        }
 
-        return array_intersect($types, $graph->callableClasses($pair->stub->name)) !== [];
+        return false;
     }
 
     /** A call matcher on the member lists a count the member cannot meet. */
