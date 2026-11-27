@@ -118,6 +118,7 @@ final class TestFindingsCountedTest extends KnossosTestCase
         assertCount(0, $section['removed']);
         assertSame(true, $section['truncated']);
         assertSame(true, $tight->truncated);
+        assertSame(false, $tight->data['bounds']['changes_truncated'], 'the graph fit; only the findings overflowed');
         $roomy = $diffs->snapshotDiff($project, $from, 'active', $graph + $found);
         assertCount($found, $roomy->data['test_findings']['added']);
         assertSame(false, $roomy->data['test_findings']['truncated']);
@@ -138,6 +139,78 @@ final class TestFindingsCountedTest extends KnossosTestCase
         assertSame([null, null], [$series[0]['definite_test_findings'], $series[0]['stale_test_findings']]);
         assertSame(1, $series[1]['definite_test_findings']);
         assertSame(1, $series[1]['stale_test_findings']);
+    }
+
+    /** The graph's own overflow is the change truncation, whatever the findings do. */
+    public function testChangesTruncatedSaysTheGraphOverflowed(): void
+    {
+        [$pdo, $service, $root] = $this->healthy();
+        $baseline = $service->scan($root);
+        $this->unheal($root);
+        $service->scan($root);
+        $diffs = ArchitectureQueryService::forDatabase($pdo)->services()->diffQueries;
+
+        $cut = $diffs->snapshotDiff($baseline->projectId, (string) $baseline->snapshotId, 'active', 1);
+        $whole = $diffs->snapshotDiff($baseline->projectId, (string) $baseline->snapshotId, 'active', 1000);
+
+        assertSame([true, true], [$cut->data['bounds']['changes_truncated'], $cut->truncated]);
+        assertSame([false, false], [$whole->data['bounds']['changes_truncated'], $whole->truncated]);
+    }
+
+    /** A definite finding that is not a stale mock counts as definite and not as stale, in the series. */
+    public function testTrendsSplitStaleFromDefinite(): void
+    {
+        [$pdo, $service, $root] = $this->healthy();
+        $first = $service->scan($root);
+        $this->unheal($root);
+        $service->scan($root);
+
+        $series = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->architectureTrends($first->projectId)->data['series'];
+
+        assertSame([0, 0], [$series[0]['definite_test_findings'], $series[0]['stale_test_findings']]);
+        assertSame(true, $series[1]['stale_test_findings'] >= 1);
+        assertSame(true, $series[1]['stale_test_findings'] < $series[1]['definite_test_findings'], 'the vacuous double is definite, not stale');
+    }
+
+    /** The release note says its detail was cut only when the change list was, not when only the findings overflowed. */
+    public function testTheReleaseNoteSaysTruncatedOnlyForTheChangeList(): void
+    {
+        [$pdo, $service, $root] = $this->healthy();
+        $first = $service->scan($root);
+        $this->unheal($root);
+        $service->scan($root);
+        $trends = ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries;
+
+        $quiet = $trends->architectureTrends($first->projectId, 10, (string) $first->snapshotId)->data['release_notes'];
+        assertSame(false, str_contains($quiet['markdown'], 'truncated'));
+        assertSame(false, $quiet['truncated']);
+
+        for ($at = 0; $at < 101; $at++) {
+            file_put_contents($root . "/src/Bulk{$at}.ts", "export const bulk{$at} = {$at};\n");
+        }
+        $service->scan($root);
+        $loud = $trends->architectureTrends($first->projectId, 10, (string) $first->snapshotId)->data['release_notes'];
+        assertSame(true, str_contains($loud['markdown'], 'Detail output was truncated by the 100-change release-note bound.'));
+        assertSame(true, $loud['truncated']);
+    }
+
+    /** The diff and the trends say when the project's suppressions could not be read, as the other surfaces do. */
+    public function testDiffAndTrendsCarryTheInvalidSuppressionsMessage(): void
+    {
+        [$pdo, $service, $root] = $this->healthy();
+        $baseline = $service->scan($root);
+        file_put_contents($root . '/src/Extra.ts', "export const extra = 1;\n");
+        $service->scan($root);
+        $queries = ArchitectureQueryService::forDatabase($pdo)->services();
+        $diff = fn() => $queries->diffQueries->snapshotDiff($baseline->projectId, (string) $baseline->snapshotId);
+        $trends = fn() => $queries->gateQueries->architectureTrends($baseline->projectId);
+        assertSame([null, null], [$diff()->data['suppressions_invalid'], $trends()->data['suppressions_invalid']]);
+
+        file_put_contents($root . '/knossos.json', '{"version": 1, "test_finding_suppressions": [{"nope": 1}]}');
+
+        $message = $diff()->data['suppressions_invalid'];
+        assertSame(true, is_string($message) && $message !== '');
+        assertSame($message, $trends()->data['suppressions_invalid']);
     }
 
     public function testTrendsCountZeroForARecordedSnapshotWithNoFindings(): void

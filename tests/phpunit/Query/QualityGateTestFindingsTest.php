@@ -98,6 +98,42 @@ final class QualityGateTestFindingsTest extends KnossosTestCase
         assertSame([true, 'baseline_has_no_test_findings', false], [$check['indeterminate'], $check['indeterminate_reason'], $check['passed']]);
     }
 
+    /** Nothing was budgeted and the baseline has no record: the count is unknown, not "every finding is new". */
+    public function testAnUnbudgetedMetricIsNullWhenTheBaselineHasNoRecord(): void
+    {
+        [$pdo, $service, $root] = $this->unhealthy();
+        $baseline = $service->scan($root);
+        file_put_contents($root . '/src/Extra.ts', "export const extra = 1;\n");
+        $service->scan($root);
+        $pdo->exec('UPDATE scan_snapshots SET test_findings_recorded = 0');
+        $pdo->exec('DELETE FROM snapshot_test_findings');
+
+        $gate = $this->gate($pdo, $baseline->projectId, (string) $baseline->snapshotId, ['new_cycles' => 0]);
+
+        assertSame(true, array_key_exists('new_definite_test_findings', $gate->data['metrics']));
+        assertSame(null, $gate->data['metrics']['new_definite_test_findings']);
+        assertSame(true, $gate->data['passed']);
+        $proposed = $this->gate($pdo, $baseline->projectId, (string) $baseline->snapshotId, ['new_cycles' => 0], false, true)->data['proposed_baseline']['budgets'];
+        assertSame(false, array_key_exists('new_definite_test_findings', $proposed), 'an unknown count is not proposed as a budget');
+    }
+
+    /** The gate says when the project's suppressions could not be read, as audit_tests and the dashboard do. */
+    public function testTheGateCarriesTheInvalidSuppressionsMessage(): void
+    {
+        [$pdo, $service, $root] = $this->healthy();
+        $baseline = $service->scan($root);
+        file_put_contents($root . '/src/Extra.ts', "export const extra = 1;\n");
+        $service->scan($root);
+        $clean = $this->gate($pdo, $baseline->projectId, (string) $baseline->snapshotId, self::BUDGET)->data;
+        assertSame(null, $clean['suppressions_invalid']);
+
+        file_put_contents($root . '/knossos.json', '{"version": 1, "test_finding_suppressions": [{"nope": 1}]}');
+
+        $broken = $this->gate($pdo, $baseline->projectId, (string) $baseline->snapshotId, self::BUDGET)->data;
+        $message = $broken['suppressions_invalid'];
+        assertSame(true, is_string($message) && $message !== '');
+    }
+
     public function testAJudgedScanWithNoFindingsArchivesARecordAndPasses(): void
     {
         [$pdo, $service, $root] = $this->healthy();
@@ -213,8 +249,8 @@ final class QualityGateTestFindingsTest extends KnossosTestCase
     }
 
     /** @param array<string, int> $budgets */
-    private function gate(PDO $pdo, string $projectId, string $baseline, array $budgets, bool $sarif = false): ResultEnvelope
+    private function gate(PDO $pdo, string $projectId, string $baseline, array $budgets, bool $sarif = false, bool $propose = false): ResultEnvelope
     {
-        return ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->qualityGate($projectId, $baseline, $budgets, [], $sarif);
+        return ArchitectureQueryService::forDatabase($pdo)->services()->gateQueries->qualityGate($projectId, $baseline, $budgets, [], $sarif, $propose);
     }
 }

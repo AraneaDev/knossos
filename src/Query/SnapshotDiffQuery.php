@@ -113,6 +113,8 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
         $sections['components']['rename_candidates'] = array_slice($renameCandidates, 0, $taken);
         $sections['components']['counts']['rename_candidates'] = $renameCount;
         $truncated = $truncated || $taken < $renameCount;
+        // The graph's own overflow, apart from the findings': a reader that prints only the changes asks this one.
+        $changesTruncated = $truncated;
 
         // What is left of the budget after the graph's changes; findings are not graph facts, so they stay out of the totals above.
         $findings = TestFindingsDiff::of($this->pdo, $project, $from['metadata']['scan_id'], $to['metadata']['scan_id'], max(0, $remaining - $taken));
@@ -123,7 +125,8 @@ final readonly class SnapshotDiffQuery extends AbstractArchitectureQueryService
             $to['metadata']['scan_id'],
             sprintf('Compared snapshots with %d added, removed, changed, or moved fact%s.', $total, $total === 1 ? '' : 's'),
             ['from' => $from['metadata'], 'to' => $to['metadata'], 'changes' => $sections, 'confidence_changes' => $confidence, 'test_findings' => $findings['section'],
-                'bounds' => ['max_changes' => $maxChanges, 'reported_changes' => $maxChanges - $remaining, 'total_changes' => $total]],
+                'suppressions_invalid' => $findings['suppressions_invalid'],
+                'bounds' => ['max_changes' => $maxChanges, 'reported_changes' => $maxChanges - $remaining, 'total_changes' => $total, 'changes_truncated' => $changesTruncated]],
             warnings: ['Rename candidates are conservative exact kind/display-name heuristics, not proven identity.'],
             truncated: $truncated,
         );

@@ -172,7 +172,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'snapshot_diff',
                 'title' => 'Snapshot diff',
-                'description' => 'See what changed architecturally between two scans. Use after a rescan to review added/removed components and relationships instead of eyeballing a code diff. `test_findings` counts the test findings each side has that the other lacks (`not_recorded` when a side kept none).',
+                'description' => 'See what changed architecturally between two scans. Use after a rescan to review added/removed components and relationships instead of eyeballing a code diff. `test_findings` counts the test findings each side has that the other lacks (`not_recorded` when a side kept none), counted as distinct keys rather than the dashboard\'s one row per finding; `bounds.changes_truncated` says whether the graph\'s own changes were cut; `suppressions_invalid` says why a malformed knossos.json suppressed nothing.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -190,7 +190,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'quality_gate',
                 'title' => 'Architecture quality gate',
-                'description' => 'Check architecture budgets against a baseline in CI. Use to fail a build on regressions (new cycles, boundary breaks) rather than reviewing them by hand.',
+                'description' => 'Check architecture budgets against a baseline in CI. Use to fail a build on regressions (new cycles, boundary breaks) rather than reviewing them by hand. `metrics.new_definite_test_findings` is null when the baseline kept no test findings and no budget names it; `suppressions_invalid` says why a malformed knossos.json suppressed nothing. Test findings count as distinct keys, not the dashboard\'s one row per finding.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -210,7 +210,7 @@ final readonly class ToolCatalog
             [
                 'name' => 'architecture_trends',
                 'title' => 'Architecture trends',
-                'description' => 'See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot\'s figures in the graph database; a very large snapshot is a `partial` point with a `reason`. Every point carries `definite_test_findings` and `stale_test_findings`, null when that snapshot kept no record.',
+                'description' => 'See how architecture metrics moved over recent scans. Use for release notes or to spot slow structural drift. Caches each snapshot\'s figures in the graph database; a very large snapshot is a `partial` point with a `reason`. Every point carries `definite_test_findings` and `stale_test_findings`, null when that snapshot kept no record, counted as distinct keys rather than the dashboard\'s one row per finding. `suppressions_invalid` says why a malformed knossos.json suppressed nothing.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [

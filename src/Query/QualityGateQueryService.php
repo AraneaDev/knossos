@@ -116,7 +116,9 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
         }
         // A set difference of distinct keys: a line that moved keeps its key, and two doubles that
         // say the same thing in one file count once, as the archive keeps them.
-        $actual['new_definite_test_findings'] = count(array_diff_key(array_column($activeDefinite, 'key', 'key'), $baselineKeys));
+        // A baseline with no record has nothing to be new against: unknown, not "every key is new". A budget on it still counts, and fails as indeterminate.
+        $newFindings = count(array_diff_key(array_column($activeDefinite, 'key', 'key'), $baselineKeys));
+        $actual['new_definite_test_findings'] = $baselineFindings === null && !array_key_exists('new_definite_test_findings', $budgets) ? null : $newFindings;
         unset($activeDefinite, $baselineKeys);
         $policyResult = null;
         $boundaryIndeterminate = false;
@@ -153,9 +155,9 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
             $passed = $passed && $checkPassed;
         }
         $data = ['passed' => $passed, 'baseline_snapshot' => $baseline['scan_id'], 'active_snapshot' => $current['scan_id'],
-            'checks' => $checks, 'metrics' => $actual];
+            'checks' => $checks, 'metrics' => $actual, 'suppressions_invalid' => $suppressions->invalid()];
         if ($proposeBaseline) {
-            $data['proposed_baseline'] = ['budgets' => $actual, 'requires_review' => true, 'applied' => false];
+            $data['proposed_baseline'] = ['budgets' => array_filter($actual, static fn(?int $value): bool => $value !== null), 'requires_review' => true, 'applied' => false];
         }
         if ($sarif) {
             $results = [];
@@ -388,7 +390,8 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
                 'config_hash' => $snapshot['config_hash'], 'counts' => $figures['counts'], 'metrics' => $figures['metrics']];
         }
         // Counted from the findings each snapshot was archived with, outside the figures cache: a suppression edit reaches every point.
-        $findings = new SnapshotFindingsView($this->pdo, $projectId, (string) $project['active_scan_id'], ActiveTestFindings::suppressionsOf((string) $project['root_realpath']));
+        $suppressions = ActiveTestFindings::suppressionsOf((string) $project['root_realpath']);
+        $findings = new SnapshotFindingsView($this->pdo, $projectId, (string) $project['active_scan_id'], $suppressions);
         foreach ($series as $at => $point) {
             $series[$at] = $point + $findings->counts((string) $point['scan_id']);
         }
@@ -411,13 +414,13 @@ final readonly class QualityGateQueryService extends AbstractArchitectureQuerySe
                     $relationships['moved'],
                     $diff->data['confidence_changes']['raised'],
                     $diff->data['confidence_changes']['lowered'],
-                    $diff->truncated ? "- Detail output was truncated by the 100-change release-note bound.\n" : '',
+                    $diff->data['bounds']['changes_truncated'] ? "- Detail output was truncated by the 100-change release-note bound.\n" : '',
                 ),
-                'changes' => $diff->data['changes'], 'truncated' => $diff->truncated,
+                'changes' => $diff->data['changes'], 'truncated' => $diff->data['bounds']['changes_truncated'],
             ];
         }
         return [new ResultEnvelope($projectId, $project['active_scan_id'] ?? '', sprintf('Reported architecture trends across %d snapshot%s.', count($series), count($series) === 1 ? '' : 's'), [
-            'series' => $series, 'release_notes' => $releaseNotes, 'bounds' => ['limit' => $limit, 'available_truncated' => $listed->truncated],
+            'series' => $series, 'release_notes' => $releaseNotes, 'suppressions_invalid' => $suppressions->invalid(), 'bounds' => ['limit' => $limit, 'available_truncated' => $listed->truncated],
         ], warnings: ['Trend metrics are bounded static signals and scanner/config fingerprint changes can affect comparability.'], truncated: $listed->truncated || ($releaseNotes['truncated'] ?? false)), $computed];
     }
 
