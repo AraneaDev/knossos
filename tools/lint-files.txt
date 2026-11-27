@@ -1389,6 +1389,7 @@ php	tests/phpunit/TestFidelity/Rules/MocksSubjectRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/PythonFixtures.php
 php	tests/phpunit/TestFidelity/Rules/ReturnDriftRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/TautologyRuleTest.php
+php	tests/phpunit/TestFidelity/Rules/VacuousNegationTest.php
 php	tests/phpunit/TestFidelity/Rules/VisibilityBreachRuleTest.php
 php	tests/phpunit/TestFidelity/RustAcceptanceTest.php
 php	tests/phpunit/TestFidelity/RustHealthyIdiomsTest.php

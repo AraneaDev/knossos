@@ -358,7 +358,6 @@ final class TestModuleRuleTest extends TestCase
         assertSame([], (new TestModuleRule())->classify($this->makeNode('workers/rust/src/resolve.rs', ['test' => false])));
     }
 
-    /** @param array<string, scalar|null|array<mixed>> $attributes */
     /**
      * The TypeScript worker reads only a test file's mocks as doubles, so it
      * must call the same paths test code as this rule does (G1-04): one table
@@ -373,6 +372,7 @@ final class TestModuleRuleTest extends TestCase
         assertSame($table['paths'], array_map(fn(array $row): array => [$row[0], $rule->classify($this->makeNode($row[0])) !== []], $table['paths']));
     }
 
+    /** @param array<string, scalar|null|array<mixed>> $attributes */
     private function makeNode(string $relativePath, array $attributes = []): NodeFact
     {
         return new NodeFact(

@@ -8,7 +8,6 @@ use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\Rules\TautologyRule;
-use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\TestFidelity\TestFinding;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
@@ -154,6 +153,23 @@ final class TautologyRuleTest extends KnossosTestCase
         assertSame(['constant definite a literal is compared with a literal, both constants; the assertion cannot fail'], $messages([CaseFixtures::operand('literal'), CaseFixtures::operand('literal')], true), 'two literals without text are not shown the same');
     }
 
+    public function testANegatedStrictOrderingOfAConstantWithItselfCannotFail(): void
+    {
+        // Fix round 1: `expect(1).not.toBeGreaterThan(1)` always passes; only a matcher that holds for equal values cannot pass.
+        $one = CaseFixtures::operand('literal', ['text' => '1']);
+        $verdict = static fn(string $api): array => array_map(
+            static fn(TestFinding $finding): string => $finding->message,
+            self::judge(CaseFixtures::testCase([CaseFixtures::assertion($api, [$one, $one], true)], 1)),
+        );
+
+        foreach (['toBeGreaterThan', 'toBeLessThan'] as $api) {
+            assertSame(['1 is compared with 1, both constants; the assertion cannot fail'], $verdict($api), $api);
+        }
+        foreach (['toBe', 'toEqual', 'toStrictEqual', 'toBeGreaterThanOrEqual', 'toBeLessThanOrEqual'] as $api) {
+            assertSame(['1 is compared with 1, both constants; the assertion cannot pass'], $verdict($api), $api);
+        }
+    }
+
     public function testATestThatIsMeantToFailIsNeverATautology(): void
     {
         // G1-10: `it.fails` passes only when its body fails, so an assertion that always fails is its point.
@@ -183,97 +199,6 @@ final class TautologyRuleTest extends KnossosTestCase
         $case = CaseFixtures::testCase([CaseFixtures::assertion('toHaveBeenCalled', [CaseFixtures::operand('mock-call', ['double' => $name, 'unconfigured_spy' => true])])]);
 
         assertSame([['api' => 'toHaveBeenCalled', 'double' => CaseFixtures::FILE . '#double:6:5 [2J']], array_map(static fn(TestFinding $finding): array => $finding->attributes, self::judge($spy, $case)));
-    }
-
-    public function testANegatedCallMatcherNoCallCanMeetIsAVacuousAssertion(): void
-    {
-        // G3-02: `expect(spy).not.toHaveBeenCalledWith()` for `rate(x)` holds that no call lists nothing, which none can.
-        $findings = [...(new TautologyRule())->findings(self::rateGraph([['api' => 'toHaveBeenCalledWith', 'line' => 8, 'count' => 0, 'spread' => false, 'negated' => true]]))];
-
-        assertCount(1, $findings);
-        self::assertFinding($findings[0], 'vacuous_negation', FindingConfidence::Warning);
-        assertSame('rate needs 1 argument(s); the negated toHaveBeenCalledWith expects 0, so it cannot fail', $findings[0]->message);
-        assertSame([8, 'tests/a.test.ts'], [$findings[0]->evidence->startLine, $findings[0]->evidence->relativePath]);
-        assertSame(['member' => 'rate', 'api' => 'toHaveBeenCalledWith'], $findings[0]->attributes);
-        assertSame(['ts:test_double:tests/a.test.ts#double:6:3', 'ts:class:src/UserService.ts#UserService'], [$findings[0]->doubleOrCaseReference, $findings[0]->targetReference]);
-    }
-
-    public function testAVacuousNegationIsTheOneFindingOfItsAssertion(): void
-    {
-        // The assertion on that line would be mock-only too; the narrower finding wins, and another line keeps its own.
-        $assertions = [
-            CaseFixtures::assertion('toHaveBeenCalledWith', [CaseFixtures::operand('mock-call', ['double' => 'tests/a.test.ts#double:6:3'])], true, 8),
-            CaseFixtures::assertion('toHaveBeenCalled', [CaseFixtures::operand('mock-call', ['double' => 'tests/a.test.ts#double:6:3'])], false, 9),
-        ];
-        $case = DriftFixtures::node('test_case', 'tests/a.test.ts#test:5', 'checks', ['name' => 'checks', 'production_calls' => 0, 'subjects' => [], 'assertions' => $assertions], 5);
-        $matchers = [['api' => 'toHaveBeenCalledWith', 'line' => 8, 'count' => 0, 'spread' => false, 'negated' => true]];
-        // Two stubs of the member, each with the matcher: one finding for the line.
-        $graph = DriftFixtures::graph(
-            [DriftFixtures::method('rate', ['signature' => ['params' => [['name' => 'x', 'type' => 'number']], 'returns' => 'number']])],
-            [DriftFixtures::stub('rate', calledWith: $matchers), DriftFixtures::stub('rate', calledWith: $matchers)],
-            extra: [$case],
-        );
-
-        assertSame(['mock_only 9', 'vacuous_negation 8'], array_map(
-            static fn(TestFinding $finding): string => $finding->subRule . ' ' . $finding->evidence->startLine,
-            [...(new TautologyRule())->findings($graph)],
-        ));
-    }
-
-    public function testTheFirstVacuousNegationOfALineIsKeptAndEveryLineHasItsOwn(): void
-    {
-        $matcher = static fn(int $line): array => [['api' => 'toHaveBeenCalledWith', 'line' => $line, 'count' => 0, 'spread' => false, 'negated' => true]];
-        $signature = ['signature' => ['params' => [['name' => 'x', 'type' => 'number']], 'returns' => 'number']];
-        $graph = DriftFixtures::graph(
-            [DriftFixtures::method('rate', $signature), DriftFixtures::method('total', $signature)],
-            [DriftFixtures::stub('rate', calledWith: $matcher(8)), DriftFixtures::stub('total', calledWith: $matcher(8)), DriftFixtures::stub('total', calledWith: $matcher(11))],
-        );
-
-        assertSame(['8 rate', '11 total'], array_map(
-            static fn(TestFinding $finding): string => $finding->evidence->startLine . ' ' . $finding->attributes['member'],
-            [...(new TautologyRule())->findings($graph)],
-        ));
-    }
-
-    public function testANegatedCallMatcherOnAMemberWithARestParameterIsSilent(): void
-    {
-        // As for arity drift, a rest parameter leaves the count unjudged, a required one before it too.
-        $graph = DriftFixtures::graph(
-            [DriftFixtures::method('rate', ['signature' => ['params' => [['name' => 'x', 'type' => 'number'], ['name' => 'more', 'type' => 'number[]', 'variadic' => true]], 'returns' => 'number']])],
-            [DriftFixtures::stub('rate', calledWith: [['api' => 'toHaveBeenCalledWith', 'line' => 8, 'count' => 0, 'spread' => false, 'negated' => true]])],
-        );
-
-        assertSame([], [...(new TautologyRule())->findings($graph)]);
-    }
-
-    public function testANegatedCallMatcherSomeCallCouldMeetIsSilent(): void
-    {
-        $matcher = static fn(array $fields): array => [['api' => 'toHaveBeenCalledWith', 'line' => 8, 'count' => 0, 'spread' => false, 'negated' => true, ...$fields]];
-        $judge = static fn(array $matchers, array $params = [['name' => 'x', 'type' => 'number']]): array => self::subRules([...(new TautologyRule())->findings(self::rateGraph($matchers, params: $params))]);
-
-        assertSame([], $judge($matcher(['negated' => false])), 'a plain matcher with too few is arity drift, not this');
-        assertSame([], $judge($matcher(['count' => 1])));
-        assertSame([], $judge($matcher(['count' => 2])), 'too many is arity drift, not this');
-        assertSame([], $judge($matcher(['spread' => true])));
-        assertSame([], $judge($matcher([]), [['name' => 'xs', 'type' => 'number[]', 'variadic' => true]]));
-        assertSame([], $judge($matcher([]), [['name' => 'x', 'type' => 'number', 'optional' => true]]));
-        assertSame(['vacuous_negation'], $judge($matcher(['api' => 'toHaveBeenNthCalledWith'])), 'the control');
-    }
-
-    /**
-     * `UserService.rate(x)` spied in `tests/a.test.ts`, with the given call matchers on it.
-     *
-     * @param list<array<string, mixed>> $calledWith
-     * @param list<NodeFact> $extra further test nodes
-     * @param list<array<string, mixed>> $params
-     */
-    private static function rateGraph(array $calledWith, array $extra = [], array $params = [['name' => 'x', 'type' => 'number']]): TestFidelityGraph
-    {
-        return DriftFixtures::graph(
-            [DriftFixtures::method('rate', ['signature' => ['params' => $params, 'returns' => 'number']])],
-            [DriftFixtures::stub('rate', calledWith: $calledWith)],
-            extra: $extra,
-        );
     }
 
     public function testMockOnlyIsWarning(): void

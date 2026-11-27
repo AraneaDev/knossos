@@ -23,3 +23,13 @@ it('rejects', async () => {
   await expect(Promise.reject(new Error('x'))).rejects.toThrow('x');
   expect(useCalc(new Calc(), [1])).toBe(2);
 });
+
+// Healthy (G1-10): `it.fails` passes only because an assertion fails, so a
+// vacuous one in it is no tautology.
+it.fails('a vacuous assertion meant to fail', () => {
+  const c = new Calc();
+  const spy = vi.spyOn(c, 'rate');
+  c.total([1]);
+  expect(spy).not.toHaveBeenCalledWith();
+  expect(spy).toHaveBeenCalledTimes(2);
+});

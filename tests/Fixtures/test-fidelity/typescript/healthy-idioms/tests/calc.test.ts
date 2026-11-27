@@ -13,3 +13,8 @@ describe('calc', () => {
   it.concurrent('concurrent constant', () => { expect(1).toBe(1); });
   it('one', () => { expect(2).toBe(2); }); it('two', () => { expect(3).toBe(3); });
 });
+
+// Genuine (G1-17): a strict ordering does not hold of 1 and 1, so under `.not` it cannot fail.
+it('never exceeds itself', () => {
+  expect(1).not.toBeGreaterThan(1);
+});

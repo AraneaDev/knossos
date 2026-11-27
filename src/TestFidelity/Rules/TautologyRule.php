@@ -20,14 +20,16 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
  * double, not an assertion, so it stands apart.
  *
  * Two constants under `.not` with the same text (`expect(true).not.toBe(true)`)
- * cannot pass rather than cannot fail, and are said so, still as `constant`
- * (G1-17). A call matcher under `.not` that lists fewer arguments than the
+ * cannot pass rather than cannot fail, and are said so, still as `constant`,
+ * under a matcher that holds for equal values (`toBe`, `toEqual`, the
+ * non-strict orderings); `expect(1).not.toBeGreaterThan(1)` cannot fail (G1-17). A call matcher under `.not` that lists fewer arguments than the
  * member requires (`expect(spy).not.toHaveBeenCalledWith()` for `rate(x)`)
  * holds that no call lists them, which none can: `vacuous_negation`, a warning,
  * and no arity drift (`CallArity::vacuous()`, G3-02). A test the runner
  * expects to fail (Vitest's `it.fails`, `fails`) passes only when an assertion
- * fails, so none of its assertions is judged, nor a double it answers for
- * zero-reach, as for a Rust `should_panic` test (G1-10).
+ * fails, so none of its assertions is judged, nor a vacuous negated matcher
+ * within its lines, nor a double it answers for zero-reach, as for a Rust
+ * `should_panic` test (G1-10).
  *
  * Where the facts run out it is silent: an operand with no text cannot be
  * shown equal to anything, a negated matcher is not a self-comparison, and a
@@ -63,6 +65,9 @@ final readonly class TautologyRule implements TestFidelityRule
 
     /** Mockery's spy assertions, which hold a call against a spy as `toHaveBeenCalled*` does. */
     private const SPY_ASSERTIONS = ['shouldHaveReceived', 'shouldNotHaveReceived'];
+
+    /** The matchers that hold of a value compared with itself, so under `.not` two equal constants cannot pass (G1-17); a strict ordering does not hold, so under `.not` it cannot fail. */
+    private const EQUAL_HOLDING_APIS = ['toBe', 'toEqual', 'toStrictEqual', 'toBeGreaterThanOrEqual', 'toBeLessThanOrEqual'];
 
     /** Where an operand's value comes from a double. */
     private const MOCK_SOURCES = ['mock-config', 'mock-call'];
@@ -150,8 +155,8 @@ final readonly class TautologyRule implements TestFidelityRule
             return ['mock_echo', FindingConfidence::Definite, 'the assertion compares the stubbed value ' . DriftText::clean($echoed) . ' with itself; it cannot fail', []];
         }
         if ($left->source === 'literal' && $right->source === 'literal' && !in_array($assertion->api, $python ? self::PYTHON_CONSTANT_APIS : self::CONSTANT_APIS, true)) {
-            // A negated comparison of one constant with itself always fails (G1-17).
-            $verdict = $assertion->negated && $left->text !== null && $left->text === $right->text ? 'the assertion cannot pass' : 'the assertion cannot fail';
+            // A negated comparison of one constant with itself always fails, under a matcher that holds for equal values (G1-17).
+            $verdict = $assertion->negated && $left->text !== null && $left->text === $right->text && in_array($assertion->api, self::EQUAL_HOLDING_APIS, true) ? 'the assertion cannot pass' : 'the assertion cannot fail';
 
             return ['constant', FindingConfidence::Definite, sprintf('%s is compared with %s, both constants; %s', DriftText::clean($left->text ?? 'a literal'), DriftText::clean($right->text ?? 'a literal'), $verdict), []];
         }
@@ -214,14 +219,49 @@ final readonly class TautologyRule implements TestFidelityRule
     private static function vacuousNegations(TestFidelityGraph $graph): array
     {
         $found = [];
+        $failing = self::failingRanges($graph);
         foreach (DriftScope::pairs($graph) as $pair) {
             $finding = self::vacuousNegation($pair);
-            if ($finding !== null) {
+            if ($finding !== null && !self::within($failing[$finding->evidence->relativePath] ?? [], $finding->evidence->startLine)) {
                 $found[$finding->evidence->relativePath . ':' . $finding->evidence->startLine] ??= $finding;
             }
         }
 
         return $found;
+    }
+
+    /**
+     * The lines of every test the runner expects to fail (`it.fails`), by file.
+     *
+     * @return array<string, list<array{int, int}>>
+     */
+    private static function failingRanges(TestFidelityGraph $graph): array
+    {
+        $ranges = [];
+        foreach ($graph->testCases() as $case) {
+            if ($case->fails) {
+                $evidence = $graph->nodeOf($case)->evidence;
+                $ranges[$evidence->relativePath][] = [$evidence->startLine, $evidence->endLine];
+            }
+        }
+
+        return $ranges;
+    }
+
+    /**
+     * Whether a line falls within one of the ranges.
+     *
+     * @param list<array{int, int}> $ranges
+     */
+    private static function within(array $ranges, int $line): bool
+    {
+        foreach ($ranges as [$start, $end]) {
+            if ($line >= $start && $line <= $end) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** The finding on one stubbed member's first vacuous negated call matcher, or null (only the TypeScript worker sends a negated one). */

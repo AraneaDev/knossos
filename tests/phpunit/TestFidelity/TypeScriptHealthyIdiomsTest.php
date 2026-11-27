@@ -21,8 +21,10 @@ use PHPUnit\Framework\Attributes\Group;
  *   that function's (G1-09);
  * - `it.fails` passes only when an assertion fails, so none of its assertions
  *   is a tautology, though `it.concurrent`, `it.skipIf()` and both tests of one
- *   line are read as tests (G1-10);
- * - `expect(true).not.toBe(true)` cannot pass, and says so (G1-17);
+ *   line are read as tests (G1-10); a vacuous negated matcher in an
+ *   `it.fails` test is no tautology either;
+ * - `expect(true).not.toBe(true)` cannot pass, and says so, though
+ *   `expect(1).not.toBeGreaterThan(1)` cannot fail (G1-17);
  * - `expect(spy).not.toHaveBeenCalledWith()` for a member that needs an
  *   argument cannot fail: a vacuous assertion, not arity drift, though the
  *   same matcher without `.not` is drift; `.rejects` is read (G3-02);
@@ -54,6 +56,8 @@ final class TypeScriptHealthyIdiomsTest extends KnossosTestCase
             'TAUTOLOGY/self_comparison/definite@tests/calc.test.ts:13 1 is compared with itself; the assertion cannot fail',
             'TAUTOLOGY/self_comparison/definite@tests/calc.test.ts:14 2 is compared with itself; the assertion cannot fail',
             'TAUTOLOGY/self_comparison/definite@tests/calc.test.ts:14 3 is compared with itself; the assertion cannot fail',
+            // Genuine (G1-17): a strict ordering under `.not` of a constant with itself cannot fail.
+            'TAUTOLOGY/constant/definite@tests/calc.test.ts:19 1 is compared with 1, both constants; the assertion cannot fail',
             // Genuine (G1-09): every return of the stub is 4.
             'TAUTOLOGY/mock_echo/definite@tests/echo.test.ts:20 the assertion compares the stubbed value 4 with itself; it cannot fail',
             // Genuine (G1-19): the test's path names the legacy module it mocks.
