@@ -120,7 +120,7 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
             sprintf('%d test-fidelity finding%s.', $total, $total === 1 ? '' : 's'),
             $changed === null ? $data : $data + ['git' => ['base_ref' => $ref, 'changed_files' => count($changed)]],
             [],
-            [...self::warnings($input, $scan, $tier !== TestRuleCatalog::SCAN, $timeoutMs, $category, $changed), ...($fixtures['partial'] ? [sprintf('FIXTURE_DRIFT was cut short by timeout_ms %d or a bound on the walk; the list holds what was checked by then.', $timeoutMs)] : [])],
+            [...self::warnings($input, $tier !== TestRuleCatalog::SCAN, $timeoutMs, $category, $changed), ...($fixtures['partial'] ? [sprintf('FIXTURE_DRIFT was cut short by timeout_ms %d or a bound on the walk; the list holds what was checked by then.', $timeoutMs)] : [])],
             $next !== null,
         );
     }
@@ -238,14 +238,14 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
      * @param ?list<string> $changed
      * @return list<string>
      */
-    private static function warnings(OnRequestInput $input, bool $scan, bool $onRequest, int $timeoutMs, ?string $category, ?array $changed): array
+    private static function warnings(OnRequestInput $input, bool $onRequest, int $timeoutMs, ?string $category, ?array $changed): array
     {
         $warnings = [];
         if ($input->partial) {
+            // The cut drops the whole graph input; stored and fixture findings are listed all the same.
             $warnings[] = sprintf(
-                'On-request findings were cut short by %s; the list holds %s.',
+                'On-request findings were cut short by %s; the list holds no OVER_MOCKING or STALE_SINCE finding.',
                 $input->cutBy === 'timeout_ms' ? sprintf('timeout_ms %d', $timeoutMs) : 'the row cap on a graph read',
-                $scan ? 'the stored findings only' : 'none of them',
             );
         }
         if ($onRequest && $changed === null && ($category === null || $category === OnRequestCategory::StaleSince->value)) {
