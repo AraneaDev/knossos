@@ -262,7 +262,7 @@ final class CheckFixturesToolTest extends KnossosTestCase
      * only record type here.
      */
     #[Group('rust-scanner')]
-    public function testAWorkerWithoutFieldFactsIsNamedNotSilent(): void
+    public function testALanguageWithoutFieldFactsIsNamedNotSilent(): void
     {
         $this->withScan('factless-rust', function (ToolService $tools, string $projectId): void {
             $note = ['FIXTURE_DRIFT: no type with field facts from knossos.rust'];
