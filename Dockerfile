@@ -179,7 +179,10 @@ LABEL org.opencontainers.image.title="Knossos" \
 
 # The source both images carry, from the sources stage above.
 COPY --from=sources /opt/knossos/ ./
+# The Python worker's bytecode, compiled by the image's own Python (G4-16):
+# checked-hash, so a source changed later never runs from stale bytecode.
 RUN composer dump-autoload --no-dev --optimize --no-interaction --no-scripts \
+    && python3 -I -m compileall -q --invalidation-mode checked-hash /opt/knossos/workers/python/bin \
     && composer dump-autoload --working-dir=workers/php --no-dev --optimize --no-interaction --no-scripts \
     && chmod 0755 \
     /opt/knossos/bin/knossos \

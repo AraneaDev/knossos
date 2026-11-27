@@ -5,7 +5,12 @@ other languages. The worker needs Python 3.11 or newer. The bundled worker uses
 only the standard-library `ast` module and starts with the isolated,
 bytecode-disabled flags `-I -B`, plus `-W ignore::SyntaxWarning` so that the
 parser's warnings about invalid escapes in your source stay off stderr. It
-never imports or runs your project.
+never imports or runs your project. `-B` keeps it from writing bytecode while
+it scans, so each install (`install.sh`, `tools/install`, the container image
+and `knossos self-update`) compiles the worker's own package once, with the
+host's `python3`, as checked-hash `.pyc` files: the worker then starts without
+compiling its package, and a source changed after install runs from the
+source, never from stale bytecode.
 
 ## What the scanner reads
 

@@ -177,6 +177,8 @@ final class SelfUpdater
             throw new InstallException(sprintf('Checksum mismatch for %s (expected %s, got %s); nothing was changed', $asset, $expected, (string) $actual));
         }
         $partial = $this->versions->unpack($scratch . '/' . $asset, $version);
+        // The Python worker's bytecode, by this host's Python; the worker runs from its source without it (G4-16).
+        PythonBytecode::compile($partial);
         $failure = $this->probe->doctor($partial, $this->scratch('doctor'));
         if ($failure !== null) {
             $this->versions->discard($partial);

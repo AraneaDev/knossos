@@ -216,6 +216,7 @@ php	src/Install/InstallException.php
 php	src/Install/Installation.php
 php	src/Install/Launcher.php
 php	src/Install/ProcessReleaseProbe.php
+php	src/Install/PythonBytecode.php
 php	src/Install/ReleaseAsset.php
 php	src/Install/ReleaseProbe.php
 php	src/Install/ReleaseSource.php
@@ -822,6 +823,7 @@ php	tests/phpunit/Install/InstallFailurePathsTest.php
 php	tests/phpunit/Install/InstallFixtures.php
 php	tests/phpunit/Install/InstallationTest.php
 php	tests/phpunit/Install/ProcessReleaseProbeTest.php
+php	tests/phpunit/Install/PythonWorkerBytecodeTest.php
 php	tests/phpunit/Install/ReleaseAssetTest.php
 php	tests/phpunit/Install/ReleaseTarballSourcesTest.php
 php	tests/phpunit/Install/SelfUpdateRefreshTest.php

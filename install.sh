@@ -1552,6 +1552,14 @@ main() {
         if ! bad_link=$(check_release_links "$PARTIAL"); then
             die "unsafe release, ${bad_link:-the link check could not run}; nothing was changed"
         fi
+        # The Python worker's bytecode, compiled once by this host's own Python
+        # so the worker does not compile its package on every start (G4-16).
+        # Checked-hash: a source changed later runs from the source, never
+        # from stale bytecode. Without it the worker still runs, more slowly.
+        if [ -d "$PARTIAL/workers/python/bin" ]; then
+            python3 -I -m compileall -q --invalidation-mode checked-hash "$PARTIAL/workers/python/bin" >/dev/null 2>&1 </dev/null \
+                || warn 'could not precompile the Python worker; it compiles its source on every start'
+        fi
         if [ ! -x "$PARTIAL/bin/knossos" ] || [ "$(cat "$PARTIAL/VERSION" 2>/dev/null)" != "$VERSION" ]; then
             die "$ASSET does not hold a complete release of $VERSION; nothing was changed"
         fi
