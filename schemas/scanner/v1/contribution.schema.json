@@ -429,8 +429,19 @@
             "evidence": true,
             "attributes": true
           }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "calls" } } },
+          "then": { "properties": { "attributes": { "$ref": "#/$defs/callsAttributes" } } }
         }
       ]
+    },
+    "callsAttributes": {
+      "description": "What a calls edge may carry beyond the attributes every edge may: `callable`, true when the code hands the target method on as a callable value (PHP's `[$repo, 'save']`, `'App\\Repo::save'` or `$repo->save(...)`) rather than calling it there, so it may be called with more arguments than it takes.",
+      "type": "object",
+      "properties": {
+        "callable": { "type": "boolean" }
+      }
     },
     "diagnostic": {
       "type": "object",

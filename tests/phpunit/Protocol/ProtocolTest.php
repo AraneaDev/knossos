@@ -498,4 +498,20 @@ final class ProtocolTest extends KnossosTestCase
             assertSame(1, count($this->nodeSchemaErrors(self::wireNode('class', $attributes))), (string) json_encode($attributes));
         }
     }
+
+    /** A `calls` edge may say it hands its target on as a callable value, as a boolean only (G3-31). */
+    #[Group('protocol')]
+    public function testContributionSchemaReadsACallableCallsEdge(): void
+    {
+        $schema = json_decode((string) file_get_contents(self::repositoryRoot() . '/schemas/scanner/v1/contribution.schema.json'), true, 512, JSON_THROW_ON_ERROR);
+        $edge = static fn(string $kind, array $attributes): array => [
+            'kind' => $kind, 'source' => 'php:method:App\\Walker::each', 'target' => 'php:method:App\\Repo::save', 'origin' => 'ast', 'confidence' => 'probable',
+            'evidence' => ['path' => 'src/Walker.php', 'start_line' => 9, 'end_line' => 9], 'attributes' => $attributes,
+        ];
+        $errors = static fn(array $wire): array => SchemaSubset::errors(['$ref' => '#/$defs/edge'], $wire, $schema);
+
+        assertSame([], $errors($edge('calls', ['speculative' => true, 'callable' => true])));
+        assertSame([], $errors($edge('references', ['callable' => 'any'])), 'Only a calls edge reads it.');
+        assertSame(1, count($errors($edge('calls', ['callable' => 'yes']))));
+    }
 }

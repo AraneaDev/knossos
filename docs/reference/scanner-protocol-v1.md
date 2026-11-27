@@ -488,6 +488,15 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
 - `doubles` edge: from a `test_double` to the production class, interface,
   function, method or module it replaces, with the confidence the worker has in
   that link. A `contains` edge ties a module to its doubles and test cases.
+- `calls` edge: may carry `callable: true` when the code hands the target
+  method on as a callable value rather than calling it there (PHP's
+  `[$repo, 'save']`, `[Repo::class, 'save']`, `'App\Repo::save'`,
+  `Closure::fromCallable()` of one of those, or `$repo->save(...)`;
+  `callsAttributes` in the schema). Whatever it is handed to may call it with
+  more arguments than it takes, as `array_walk()` passes a third, so a reader
+  holds no count above the method's parameters against it, though a count
+  below what it requires still is. The PHP worker sends one for an array or
+  string callable as a probable, speculative edge, kept only when it resolves.
 
 A fact whose attributes break the schema is dropped by the readers rather than
 failing the scan.

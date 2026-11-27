@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\TestFidelity\Rules;
 
+use Knossos\Scanner\Protocol\Confidence;
+use Knossos\Scanner\Protocol\EdgeFact;
+use Knossos\Scanner\Protocol\Origin;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\Rules\ArityMismatchRule;
 use Knossos\TestFidelity\TestFidelityGraph;
@@ -370,6 +373,38 @@ final class ArityMismatchRuleTest extends KnossosTestCase
 
         assertSame(['warning open takes 2 argument(s); the double passes 3'], self::messages($untyped));
         assertSame('signature', $untyped[0]->subRule);
+    }
+
+    /**
+     * A PHP method production hands on as a callable (`array_walk($xs, [$repo, 'save'], 7)`)
+     * may be called with more arguments than it takes, so neither a matcher
+     * nor a replacement listing more is held against it; fewer still is
+     * (G3-31). Reached through a type of the target's lineage it counts, through
+     * another class or for another name it does not.
+     */
+    public function testAPhpMethodReachedAsACallableMayTakeMoreArguments(): void
+    {
+        $save = ['signature' => ['params' => [['name' => 'name', 'type' => 'string'], ['name' => 'flags', 'type' => 'int']], 'returns' => 'bool']];
+        $tooMany = ['name' => 'save', 'line' => 15, 'api' => 'method', 'returns' => [], 'called_with' => [['api' => 'with', 'line' => 15, 'count' => 3, 'spread' => false]]];
+        $replacement = ['name' => 'save', 'line' => 15, 'api' => 'method', 'returns' => [], 'params' => [['name' => 'a', 'type' => 'string'], ['name' => 'b', 'type' => 'int'], ['name' => 'c', 'type' => 'int']]];
+        $tooFew = ['name' => 'save', 'line' => 15, 'api' => 'shouldReceive', 'returns' => [], 'called_with' => [['api' => 'with', 'line' => 15, 'count' => 1, 'spread' => false]]];
+        $walker = DriftFixtures::phpType('class', 'App\Walker', [], 'src/Walker.php');
+        $reach = static fn(string $target, bool $callable = true): EdgeFact => new EdgeFact('calls', 'php:method:App\Walker::each', $target, Origin::Ast, Confidence::Probable, $walker->evidence, $callable ? ['speculative' => true, 'callable' => true] : []);
+        $parent = DriftFixtures::phpType('interface', 'App\Saves', ['member_names' => []], 'src/Saves.php');
+        $lineage = [DriftFixtures::edge('implements', DriftFixtures::phpType('class', 'App\UserService'), $parent->localId)];
+        $graph = static fn(array $member, array $edges, array $extra = [], array $double = []): TestFidelityGraph => DriftFixtures::phpGraph([['save', $save]], [$member], $double, extra: [$walker, ...$extra], extraEdges: $edges);
+
+        assertSame([], self::findings($graph($tooMany, [$reach('php:method:App\UserService::save')])));
+        assertSame([], self::findings($graph($tooMany, [$reach('php:method:\app\userservice::SAVE')])), 'PHP names match in any case.');
+        assertSame([], self::findings($graph($replacement, [$reach('php:method:App\UserService::save')])));
+        assertSame([], self::findings($graph($tooMany, [$reach('php:method:App\Saves::save'), ...$lineage], [$parent])), 'Reached through an interface the target implements.');
+        assertSame(['definite save needs 2 argument(s); the matcher expects 1'], self::messages(self::findings($graph($tooFew, [$reach('php:method:App\UserService::save')], [], ['framework' => 'mockery']))));
+        assertSame(['definite save takes 2 argument(s); the matcher expects 3'], self::messages(self::findings($graph($tooMany, []))), 'Called only directly, it takes no extra.');
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method:App\UserService::save', false)])));
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method:App\UserService::find')])));
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method:App\Other::save')])));
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method_of_property:App\UserService::save')])));
+        assertCount(1, self::findings($graph($replacement, [])));
     }
 
     /** @return list<\Knossos\TestFidelity\TestFinding> */

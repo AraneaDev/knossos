@@ -191,6 +191,7 @@ final class FactCollector extends NodeVisitorAbstract
         } elseif ($node instanceof Expr\Array_) {
             $this->launchedFile($node);
         }
+        $this->callableReach($node);
         if ($node instanceof Stmt\ClassLike || $node instanceof Stmt\Property || $node instanceof Stmt\ClassMethod) {
             $this->annotationReferences($node);
         }
@@ -722,7 +723,7 @@ final class FactCollector extends NodeVisitorAbstract
         }
         $source = $this->currentSource();
         $class = $this->resolvedClassName($node->class);
-        $this->addEdge('calls', $source, self::reference('method', $class . '::' . $node->name->toString()), $node);
+        $this->addEdge('calls', $source, self::reference('method', $class . '::' . $node->name->toString()), $node, 'certain', $node->isFirstClassCallable() ? ['callable' => true] : []);
         $this->classReference($node->class, $node);
         $this->eagerLoads($node, $class);
     }
@@ -870,27 +871,41 @@ final class FactCollector extends NodeVisitorAbstract
         if (!$argument instanceof Node\Arg || $argument->unpack) {
             return;
         }
-        $value = $argument->value;
-        $visitor = null;
-        if ($value instanceof Expr\New_ && $value->class instanceof Name) {
-            $visitor = $this->resolvedClassName($value->class);
-        } elseif ($value instanceof Expr\Variable && $value->name === 'this') {
-            $visitor = $this->currentClass()['name'] ?? null;
-        } elseif ($value instanceof Expr\Variable && is_string($value->name)) {
-            $visitor = $this->variables->type($value->name);
-        } elseif (
-            ($value instanceof Expr\PropertyFetch || $value instanceof Expr\NullsafePropertyFetch)
-            && $value->var instanceof Expr\Variable
-            && $value->var->name === 'this'
-            && $value->name instanceof Identifier
-        ) {
-            $visitor = $this->propertyType($value->name->toString());
-        }
+        $visitor = $this->valueClass($argument->value);
         if ($visitor === null) {
             return;
         }
         foreach (self::VISITOR_HOOKS as $hook) {
             $this->addEdge('calls', $this->currentSource(), self::reference('method', $visitor . '::' . $hook), $evidence, 'probable', ['speculative' => true, 'dispatch' => 'PhpParser\\NodeTraverser']);
+        }
+    }
+
+    /**
+     * The class of an object the code holds, where it shows it: built inline,
+     * `$this`, or held in a typed variable or `$this` property. `new Y()`
+     * names its class inline, so unlike a variable assigned earlier nothing
+     * could reassign it; an anonymous class has no name.
+     */
+    private function valueClass(Expr $value): ?string
+    {
+        return match (true) {
+            $value instanceof Expr\New_ && $value->class instanceof Name => $this->resolvedClassName($value->class),
+            $value instanceof Expr\Variable && $value->name === 'this' => $this->currentClass()['name'] ?? null,
+            $value instanceof Expr\Variable && is_string($value->name) => $this->variables->type($value->name),
+            ($value instanceof Expr\PropertyFetch || $value instanceof Expr\NullsafePropertyFetch) && $value->var instanceof Expr\Variable && $value->var->name === 'this' && $value->name instanceof Identifier => $this->propertyType($value->name->toString()),
+            default => null,
+        };
+    }
+
+    /** A method handed on as a callable value (`CallableReach`): a speculative `calls` edge marked `callable`, since PHP may pass it more arguments than it takes. */
+    private function callableReach(Node $node): void
+    {
+        if (!$node instanceof Expr\Array_ && !$node instanceof Node\Scalar\String_) {
+            return;
+        }
+        $method = CallableReach::method($node, $this->valueClass(...), $this->resolvedClassName(...));
+        if ($method !== null) {
+            $this->addEdge('calls', $this->currentSource(), self::reference('method', $method), $node, 'probable', ['speculative' => true, 'callable' => true]);
         }
     }
 
@@ -902,45 +917,23 @@ final class FactCollector extends NodeVisitorAbstract
         }
         $source = $this->currentSource();
 
-        $class = null;
-        // Declared param/property types stay certain; a type inferred from a
-        // local `$x = new Y` assignment is only ever probable (the variable may
-        // be conditional or reassigned before the call).
-        $confidence = 'certain';
-        if ($node->var instanceof Expr\New_) {
-            // `(new Y())->m()` names its receiver inline, so — unlike a variable
-            // assigned earlier — there is nothing that could reassign it before
-            // the call. An anonymous class has no name and is skipped.
-            $class = $node->var->class instanceof Name
-                ? $this->resolvedClassName($node->var->class)
-                : null;
-        } elseif ($node->var instanceof Expr\Variable && is_string($node->var->name)) {
-            if ($node->var->name === 'this') {
-                $class = $this->currentClass()['name'] ?? null;
-            } else {
-                $class = $this->variables->type($node->var->name);
-                $confidence = $this->variables->confidence($node->var->name);
-            }
-        } elseif (
-            ($node->var instanceof Expr\PropertyFetch || $node->var instanceof Expr\NullsafePropertyFetch)
-            && $node->var->var instanceof Expr\Variable
-            && $node->var->var->name === 'this'
-            && $node->var->name instanceof Identifier
-        ) {
-            $class = $this->propertyType($node->var->name->toString());
-        } elseif ($node->var instanceof Expr\MethodCall || $node->var instanceof Expr\StaticCall) {
-            // `$this->make()->use()`: the receiver is the inner call itself, so
-            // its declared return type names it with nothing in between that
-            // could have reassigned it.
-            $class = $this->receivers->returnedType($node->var, $this->currentClass());
-        }
+        // A declared parameter or property type stays certain; one inferred
+        // from a local `$x = new Y` assignment is only ever probable (the
+        // variable may be conditional or reassigned before the call). In
+        // `$this->make()->use()` the receiver is the inner call itself, so its
+        // declared return type names it with nothing in between to reassign it.
+        $receiver = $node->var;
+        $class = $receiver instanceof Expr\MethodCall || $receiver instanceof Expr\StaticCall
+            ? $this->receivers->returnedType($receiver, $this->currentClass())
+            : $this->valueClass($receiver);
+        $confidence = $receiver instanceof Expr\Variable && is_string($receiver->name) && $receiver->name !== 'this' ? $this->variables->confidence($receiver->name) : 'certain';
         $this->eagerLoads($node, $class ?? $this->eloquent->builderRoot($node->var));
         if ($class !== null && $node->name->toString() === 'addVisitor' && self::isTraverser($class) && isset($node->args[0])) {
             $this->traverserHooks($node->args[0], $node);
         }
 
         if ($class !== null) {
-            $this->addEdge('calls', $source, self::reference('method', $class . '::' . $node->name->toString()), $node, $confidence);
+            $this->addEdge('calls', $source, self::reference('method', $class . '::' . $node->name->toString()), $node, $confidence, $node->isFirstClassCallable() ? ['callable' => true] : []);
 
             return;
         }

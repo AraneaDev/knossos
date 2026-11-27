@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\TestFidelity\Rules;
 
+use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\TestFidelityGraph;
@@ -22,6 +23,11 @@ use Knossos\TestFidelity\TestFinding;
  * A call matcher that lists more arguments than the member takes, or, where the
  * matcher is exact, fewer than it requires, is a `call_arity` finding. The count
  * is syntax on both sides, so it is definite; a spread matcher is silent. A
+ * PHP method production hands on as a callable (`[$repo, 'save']`, a
+ * `calls` edge marked `callable`) through the target or a type it inherits
+ * from may be called with more arguments than it takes, so neither more
+ * matcher arguments nor more replacement parameters are reported for it,
+ * though too few still are (G3-31). A
  * Python matcher is bound by keyword name and parameter kind as well
  * (`PythonCallBinding`), definite with or without `autospec` (the user's
  * decision), and silent for a decorated member, whose signature a decorator
@@ -57,14 +63,29 @@ final readonly class ArityMismatchRule extends DriftRule
         if ($pair->member !== null && !$graph->answersCertainly($pair->target, $pair->member)) {
             return null;
         }
+        if ($declared === null) {
+            return null;
+        }
+        $takesMore = self::reachedAsCallable($pair, $graph);
 
-        return $declared === null ? null : $this->signature($pair, $declared) ?? $this->calls($pair, $declared);
+        return $this->signature($pair, $declared, $takesMore) ?? $this->calls($pair, $declared, $takesMore);
+    }
+
+    /** Whether production hands the stubbed PHP method on as a callable value through the target or a type it inherits from (G3-31). */
+    private static function reachedAsCallable(DriftPair $pair, TestFidelityGraph $graph): bool
+    {
+        if (!TestFidelityGraph::isPhp($pair->target)) {
+            return false;
+        }
+        $types = array_map(static fn(NodeFact $type): string => strtolower(ltrim($type->canonicalName, '\\')), $graph->lineage($pair->target));
+
+        return array_intersect($types, $graph->callableClasses($pair->stub->name)) !== [];
     }
 
     /** A call matcher on the member lists a count the member cannot meet. */
-    private function calls(DriftPair $pair, SignatureShape $declared): ?TestFinding
+    private function calls(DriftPair $pair, SignatureShape $declared, bool $takesMore): ?TestFinding
     {
-        $violation = CallArity::violation($pair->stub->calledWith, $declared, DriftText::clean($pair->stub->name), $pair->double->framework, TestFidelityGraph::isPython($pair->target));
+        $violation = CallArity::violation($pair->stub->calledWith, $declared, DriftText::clean($pair->stub->name), $pair->double->framework, TestFidelityGraph::isPython($pair->target), $takesMore);
 
         return $violation === null ? null : $pair->finding(
             FindingCategory::ArityMismatch,
@@ -77,10 +98,10 @@ final readonly class ArityMismatchRule extends DriftRule
     }
 
     /** The double declares more required parameters than the member takes. */
-    private function signature(DriftPair $pair, SignatureShape $declared): ?TestFinding
+    private function signature(DriftPair $pair, SignatureShape $declared, bool $takesMore): ?TestFinding
     {
         $actual = SignatureShape::ofParams($pair->stub->params);
-        if ($actual === null || $declared->isVariadic() || $actual->requiredCount() <= count($declared->params)) {
+        if ($takesMore || $actual === null || $declared->isVariadic() || $actual->requiredCount() <= count($declared->params)) {
             return null;
         }
 

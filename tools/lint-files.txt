@@ -1208,6 +1208,7 @@ php	tests/phpunit/Scanner/LaravelExecutionFactsTest.php
 php	tests/phpunit/Scanner/LimitsTest.php
 php	tests/phpunit/Scanner/PackagedWorkerConformanceTest.php
 php	tests/phpunit/Scanner/PhpAuditFixturesTest.php
+php	tests/phpunit/Scanner/PhpCallableReachTest.php
 php	tests/phpunit/Scanner/PhpCommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/PhpFieldsTest.php
 php	tests/phpunit/Scanner/PhpLivewireBladeTest.php
@@ -1465,6 +1466,7 @@ php	tools/trivy-allowlist.php
 php	tools/worker-constants.php
 php	workers/php/bin/worker
 php	workers/php/src/AstDepth.php
+php	workers/php/src/CallableReach.php
 php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
 php	workers/php/src/Fields.php

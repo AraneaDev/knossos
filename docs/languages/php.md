@@ -139,8 +139,13 @@ parameters. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
 same way. A member whose name is computed, such as `method($name)`, is left
 out. A method whose own body calls `func_get_args()`, `func_num_args()` or
 `func_get_arg()` takes any number of arguments, and its signature says
-`"variadic": true`. In a Pest file, a double that `beforeEach()` assigns to a
-`$this` property serves every test of the file.
+`"variadic": true`. A method the code hands on as a callable value
+(`array_walk($xs, [$repo, 'save'], 7)`, `[Repo::class, 'save']`,
+`'App\Repo::save'` or `$repo->save(...)`) is reached through a `calls` edge
+marked `callable`, since what it is handed to may pass it more arguments than
+it takes; a class a string names must be qualified, as a list of two bare
+words is more often data. In a Pest file, a double that `beforeEach()` assigns
+to a `$this` property serves every test of the file.
 
 ## Test cases
 

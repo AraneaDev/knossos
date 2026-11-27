@@ -38,6 +38,9 @@ final readonly class TestFidelityGraph
     /** The node kinds a PHP type reference may name. */
     private const PHP_TYPE_KINDS = ['class', 'interface', 'trait', 'enum'];
 
+    /** A PHP method reference: `php:method:<FQCN>::<name>`, the class and the name captured. */
+    private const PHP_METHOD_REFERENCE = '/^php:method:\\\\?(.+)::([^:]+)$/sD';
+
     /** A PHP type reference: `php:<kind>:<FQCN>`, the name captured. */
     private const PHP_TYPE_REFERENCE = '/^php:(?:class|interface|trait|enum):\\\\?(.+)$/sD';
 
@@ -75,6 +78,7 @@ final readonly class TestFidelityGraph
      * @param array<string, list<string>> $parents type reference => the types it extends, implements or uses, in edge order
      * @param array<string, string> $phpTypes lower-case FQCN => the reference of the PHP class-like node of that name
      * @param array<string, array<string, true>> $visibilityChanged type reference => lower-case names of the methods whose visibility a trait use there changes
+     * @param array<string, list<string>> $callables lower-case PHP method name => the lower-case classes a `calls` edge marked `callable` reaches it through
      */
     private function __construct(
         private array $nodes,
@@ -87,6 +91,7 @@ final readonly class TestFidelityGraph
         private array $parents,
         private array $phpTypes,
         private array $visibilityChanged,
+        private array $callables,
     ) {}
 
     /**
@@ -99,7 +104,7 @@ final readonly class TestFidelityGraph
      */
     public static function fromContributions(array $contributions): self
     {
-        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = $visibilityChanged = [];
+        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = $visibilityChanged = $callables = [];
         foreach ($contributions as $contribution) {
             foreach ($contribution->nodes as $node) {
                 if (isset($nodes[$node->localId])) {
@@ -125,6 +130,8 @@ final readonly class TestFidelityGraph
                     $targets[$edge->sourceReference] ??= $edge->targetReference;
                 } elseif ($edge->kind === 'contains') {
                     $children[$edge->sourceReference][] = $edge->targetReference;
+                } elseif ($edge->kind === 'calls' && ($edge->attributes['callable'] ?? false) === true && preg_match(self::PHP_METHOD_REFERENCE, strtolower($edge->targetReference), $method) === 1) {
+                    $callables[$method[2]][] = $method[1];
                 } elseif (in_array($edge->kind, self::INHERITANCE_KINDS, true)) {
                     $parents[$edge->sourceReference][] = $edge->targetReference;
                     foreach (self::changedNames($edge->attributes) as $name) {
@@ -140,7 +147,7 @@ final readonly class TestFidelityGraph
             $byFile[self::fileOf($case->canonicalName)][] = $case;
         }
 
-        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents, $phpTypes, $visibilityChanged);
+        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents, $phpTypes, $visibilityChanged, $callables);
     }
 
     /**
@@ -240,6 +247,12 @@ final readonly class TestFidelityGraph
         $reference = $this->phpTypes[strtolower(ltrim($name, '\\'))] ?? null;
 
         return $reference === null ? null : $this->nodes[$reference];
+    }
+
+    /** @return list<string> the lower-case classes through which production hands a PHP method of this name (in any case) on as a callable value, `[$repo, 'save']` */
+    public function callableClasses(string $method): array
+    {
+        return $this->callables[strtolower($method)] ?? [];
     }
 
     /** Whether a node came from the PHP worker, whose class and member names PHP matches in any case. */
