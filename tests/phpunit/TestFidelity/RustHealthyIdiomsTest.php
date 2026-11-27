@@ -62,6 +62,11 @@ use PHPUnit\Framework\Attributes\Group;
  * mock, and a mocked `new` whose context builds the mock. The member
  * `pretty` compares through `pretty_assertions`, still read as assertions
  * (re-review 1 ruling), with a planted `constant` beside its healthy twin.
+ * The members `pretty-renamed` (a Cargo `package =` rename) and
+ * `pretty-extern` (`extern crate … as pretty_assertions`) put another crate
+ * under that name, whose comparisons are not read (G5-07). The member
+ * `nested-manifest` holds another package's manifest in its module tree,
+ * reached by plain `mod`, whose macro declares the name (G5-04).
  *
  * `src/thermometer.rs` fakes a trait by hand (Task 4): a fake handed to
  * production and a stateful fake, beside a planted `mock_echo` (definite) of

@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [workspace]
-members = ["glob-macros", "core-module", "path-beyond", "shadow-assert", "gated", "pretty"]
+members = ["glob-macros", "core-module", "path-beyond", "shadow-assert", "gated", "pretty", "pretty-renamed", "pretty-extern", "nested-manifest"]
 
 [dev-dependencies]
 faux = "0.1"

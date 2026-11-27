@@ -51,6 +51,9 @@ const STANDARD_MACROS: [&str; 18] = [
 /// their names do, with a different message.
 const PRETTY_ASSERTIONS: [&str; 2] = ["assert_eq", "assert_ne"];
 
+/// The crate [`PRETTY_ASSERTIONS`] are of.
+const PRETTY_CRATE: &str = "pretty_assertions";
+
 /// The crates a frozen macro may be named through.
 const STANDARD_CRATES: [&str; 2] = ["std", "core"];
 
@@ -69,6 +72,15 @@ pub(crate) struct MacroShadows {
     /// name: a `#[macro_use] extern crate`, or an `extern crate` or a `mod`
     /// named one of [`STANDARD_NAMES`].
     pub(crate) opens_all: bool,
+    /// The names a `use` binds to `pretty_assertions`' `assert_eq` and
+    /// `assert_ne` under their own names: frozen only in a package whose
+    /// `pretty_assertions` is the real crate (G5-07, see
+    /// [`MacroShadows::shadowing`]).
+    pub(crate) pretty: BTreeSet<String>,
+    /// Whether the file may bind `pretty_assertions` to something else: an
+    /// `extern crate other as pretty_assertions`, a `mod` of that name, or
+    /// a `use` binding it to another path.
+    pub(crate) renames_pretty: bool,
 }
 
 impl MacroShadows {
@@ -86,6 +98,16 @@ impl MacroShadows {
         self.opens_all || self.names.contains(name)
     }
 
+    /// The names these may put another macro under, in a package whose
+    /// `pretty_assertions` is the real crate when `pretty_real`.
+    pub(crate) fn shadowing(&self, pretty_real: bool) -> BTreeSet<String> {
+        let mut names = self.names.clone();
+        if !pretty_real {
+            names.extend(self.pretty.iter().cloned());
+        }
+        names
+    }
+
     /// Record the names `tree`, under the path segments `prefix`, binds.
     fn add_use_tree(&mut self, tree: &syn::UseTree, prefix: &mut Vec<String>) {
         match tree {
@@ -96,15 +118,30 @@ impl MacroShadows {
             }
             syn::UseTree::Name(node) => {
                 let name = ident_name(&node.ident);
-                if name == "self" {
-                    self.names.extend(prefix.last().cloned());
-                } else if !is_same_comparison(prefix, &name, &name) {
-                    self.names.insert(name);
+                let bound = if name == "self" {
+                    prefix.last().cloned()
+                } else {
+                    Some(name.clone())
+                };
+                // `use ::pretty_assertions;` and `use pretty_assertions::{self}`
+                // bind the crate itself.
+                let itself = (prefix.is_empty() && name == PRETTY_CRATE)
+                    || (prefix.as_slice() == [PRETTY_CRATE] && name == "self");
+                self.renames_pretty |= bound.as_deref() == Some(PRETTY_CRATE) && !itself;
+                if is_same_comparison(prefix, &name, &name) {
+                    self.pretty.insert(name);
+                } else {
+                    self.names.extend(bound);
                 }
             }
             syn::UseTree::Rename(node) => {
                 let rename = ident_name(&node.rename);
-                if !is_same_comparison(prefix, &ident_name(&node.ident), &rename) {
+                let leaf = ident_name(&node.ident);
+                self.renames_pretty |=
+                    rename == PRETTY_CRATE && !(prefix.is_empty() && leaf == PRETTY_CRATE);
+                if is_same_comparison(prefix, &leaf, &rename) {
+                    self.pretty.insert(rename);
+                } else {
                     self.names.insert(rename);
                 }
             }
@@ -123,9 +160,9 @@ impl MacroShadows {
 /// Whether `use PREFIX::LEAF as BOUND` brings in a comparison macro that
 /// compares as the standard one of the same name: `pretty_assertions`'s
 /// `assert_eq` and `assert_ne`, under their own names. Such a `use`
-/// leaves the name frozen.
+/// leaves the name frozen where `pretty_assertions` is the real crate.
 fn is_same_comparison(prefix: &[String], leaf: &str, bound: &str) -> bool {
-    prefix == ["pretty_assertions"] && leaf == bound && PRETTY_ASSERTIONS.contains(&leaf)
+    prefix == [PRETTY_CRATE] && leaf == bound && PRETTY_ASSERTIONS.contains(&leaf)
 }
 
 impl Visit<'_> for MacroShadows {
@@ -139,7 +176,9 @@ impl Visit<'_> for MacroShadows {
     fn visit_item_mod(&mut self, node: &syn::ItemMod) {
         // `mod core { pub use other::*; }` makes `core::todo!` another
         // crate's: a path-qualified macro is no glob import.
-        self.opens_all |= STANDARD_NAMES.contains(&ident_name(&node.ident).as_str());
+        let name = ident_name(&node.ident);
+        self.opens_all |= STANDARD_NAMES.contains(&name.as_str());
+        self.renames_pretty |= name == PRETTY_CRATE;
         syn::visit::visit_item_mod(self, node);
     }
 
@@ -153,6 +192,11 @@ impl Visit<'_> for MacroShadows {
             .rename
             .as_ref()
             .is_some_and(|(_, rename)| STANDARD_NAMES.contains(&ident_name(rename).as_str()));
+        // `extern crate other as pretty_assertions;` puts another crate
+        // under the name (G5-07).
+        self.renames_pretty |= node.rename.as_ref().is_some_and(|(_, rename)| {
+            ident_name(rename) == PRETTY_CRATE && ident_name(&node.ident) != PRETTY_CRATE
+        });
         self.opens_all |= node.attrs.iter().any(|attr| {
             attr.path().is_ident("macro_use")
                 || (attr.path().is_ident("cfg_attr")
@@ -248,14 +292,16 @@ pub(crate) fn compiled_elsewhere<'a>(
 
 /// The package whose files may shadow a standard macro in `relative` and
 /// be shadowed by it: the directory of the deepest manifest above it.
-/// [`ANY_PACKAGE`] when that cannot be shown: no manifest owns the file, or
-/// it is one of the files `elsewhere` (see [`compiled_elsewhere`]).
+/// [`ANY_PACKAGE`] when that cannot be shown: no manifest owns the file, it
+/// is one of the files `elsewhere` (see [`compiled_elsewhere`]), or its
+/// package sits in another's module tree (see
+/// [`Layout::in_nested_package`]).
 pub(crate) fn macro_package(
     layout: &Layout,
     relative: &str,
     elsewhere: &BTreeSet<String>,
 ) -> String {
-    if elsewhere.contains(relative) {
+    if elsewhere.contains(relative) || layout.in_nested_package(relative) {
         return ANY_PACKAGE.to_owned();
     }
     layout
@@ -302,4 +348,27 @@ pub(crate) fn loads_unseen_file(
                 .is_none_or(|file| !known.contains_key(&file))
         })
     })
+}
+
+/// The package keys (see [`macro_package`]) whose `pretty_assertions` is
+/// the real crate, from every indexed file's key and what it brings in
+/// (`keyed`): the package's manifest depends on it under that name (see
+/// [`Layout::pretty_assertions`]), and no file of the package, nor one
+/// any package's may be, binds the name to something else. A file whose
+/// package cannot be shown is in none (G5-07).
+pub(crate) fn pretty_real(layout: &Layout, keyed: &[(String, MacroShadows)]) -> BTreeSet<String> {
+    let renamed: BTreeSet<&str> = keyed
+        .iter()
+        .filter(|(_, shadows)| shadows.renames_pretty)
+        .map(|(key, _)| key.as_str())
+        .collect();
+    if renamed.contains(ANY_PACKAGE) {
+        return BTreeSet::new();
+    }
+    layout
+        .pretty_assertions
+        .iter()
+        .map(|directory| format!("package:{directory}"))
+        .filter(|key| !renamed.contains(key.as_str()))
+        .collect()
 }

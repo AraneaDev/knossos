@@ -19,6 +19,7 @@ use crate::params::ScanRequest;
 use crate::protocol::Contribution;
 use crate::reads::{read_safely, record_read};
 use crate::source_hash::sha256_hex;
+use crate::test_facts::MacroShadows;
 use crate::visit::{Declarations, ModuleGates};
 
 mod neighbours;
@@ -59,7 +60,7 @@ struct FileIndex {
     /// The names only a private `use` of the file binds.
     private_exports: BTreeSet<String>,
     /// What the file may shadow a standard macro with, indexed or not.
-    macro_shadows: crate::test_facts::MacroShadows,
+    macro_shadows: MacroShadows,
     /// The mocks the file generates, see [`crate::visit::GeneratedMock`].
     generated_mocks: BTreeMap<String, crate::visit::GeneratedMock>,
     /// The traits the file declares, and its modules a macro may declare
@@ -117,7 +118,7 @@ impl FileIndex {
             export_alternatives,
             globs,
             private_exports,
-            macro_shadows: crate::test_facts::MacroShadows::of(items),
+            macro_shadows: MacroShadows::of(items),
             generated_mocks,
             traits: (traits, opaque_modules),
         }
@@ -348,21 +349,32 @@ pub(crate) fn index_project(
     }
     let mut declarations = Declarations::new();
     let elsewhere = crate::test_facts::compiled_elsewhere(&placed, &mods, included.keys());
-    for (relative, module, index) in &indexed {
+    // A file that does not parse is still one of its package's, which may
+    // define a macro once it does.
+    let keyed: Vec<(String, MacroShadows)> = indexed
+        .iter()
+        .map(|(relative, _, index)| {
+            (
+                crate::test_facts::macro_package(&placed, relative, &elsewhere),
+                index
+                    .as_ref()
+                    .map(|index| index.macro_shadows.clone())
+                    .unwrap_or_default(),
+            )
+        })
+        .collect();
+    let pretty_real = crate::test_facts::pretty_real(&placed, &keyed);
+    for ((relative, module, index), (key, shadows)) in indexed.iter().zip(&keyed) {
         if let Some(index) = index {
             let file_gated = test_modules.gate_of_file(relative, module).is_some();
             declarations.absorb(index, file_gated);
         }
-        // A file that does not parse is still one of its package's, which
-        // may define a macro once it does.
-        let shadows = index.as_ref().map(|index| index.macro_shadows.clone());
-        let shadows = shadows.unwrap_or_default();
         let declared = mods.get(relative).map_or(&[][..], Vec::as_slice);
         declarations.add_macro_shadows(
             relative,
-            &crate::test_facts::macro_package(&placed, relative, &elsewhere),
+            key,
             &crate::test_facts::macro_modules(module, declared),
-            &shadows.names,
+            &shadows.shadowing(pretty_real.contains(key)),
             shadows.opens_all
                 || crate::test_facts::loads_unseen_file(&placed, relative, declared, &mods),
         );

@@ -1,8 +1,9 @@
 //! Reading the request's Cargo manifests into the project's [`Layout`].
 //!
-//! Only the `name` keys of `[package]` and `[lib]`, and the `path` keys of
-//! the `[[bin]]`, `[[example]]`, `[[bench]]` and `[[test]]` targets, are read,
-//! without a TOML parser. Each manifest is a read every file of the request depends on, so
+//! Only the `name` keys of `[package]` and `[lib]`, the `path` keys of
+//! the `[[bin]]`, `[[example]]`, `[[bench]]` and `[[test]]` targets, and
+//! the `pretty_assertions` dependency (see [`pretty`]) are read, without a
+//! TOML parser. Each manifest is a read every file of the request depends on, so
 //! it is recorded in `input_hashes` like any other.
 
 use std::collections::BTreeMap;
@@ -11,6 +12,9 @@ use std::path::Path;
 use crate::layout::Layout;
 use crate::reads::{read_bounded, record_read};
 use crate::source_hash::sha256_hex;
+use pretty::pretty_dependency;
+
+mod pretty;
 
 /// The crate roots and names declared by the request's manifest `config_files`.
 ///
@@ -37,6 +41,10 @@ pub(crate) fn cargo_crates(
     input_hashes: &mut BTreeMap<String, Option<String>>,
 ) -> Layout {
     let mut cargo = Layout::default();
+    // Whether some workspace manifest names `pretty_assertions`, and
+    // whether one names another package for it.
+    let mut workspace = (false, false);
+    let mut pretty = Vec::new();
     for config in config_files {
         // The manifest names the crate, so its bytes feed facts: recorded by
         // the hash of the raw bytes read, or null when the read failed or went
@@ -53,6 +61,9 @@ pub(crate) fn cargo_crates(
         let Ok(contents) = String::from_utf8(bytes) else {
             continue;
         };
+        let dependency = pretty_dependency(&contents);
+        workspace.0 |= dependency.workspace;
+        workspace.1 |= dependency.workspace_foreign;
         let Some(name) = manifest_crate_name(&contents) else {
             continue;
         };
@@ -60,6 +71,7 @@ pub(crate) fn cargo_crates(
             Some((directory, _)) => format!("{directory}/"),
             None => String::new(),
         };
+        pretty.push((directory.clone(), dependency));
         for candidate in [
             format!("{directory}src/lib.rs"),
             format!("{directory}src/main.rs"),
@@ -83,6 +95,14 @@ pub(crate) fn cargo_crates(
         }
         cargo.packages.push((directory, crate_name));
     }
+    // An inherited dependency is the workspace's, trusted only when no
+    // workspace manifest names another package for it.
+    let workspace_real = workspace.0 && !workspace.1;
+    cargo.pretty_assertions = pretty
+        .into_iter()
+        .filter(|(_, dependency)| dependency.is_real(workspace_real))
+        .map(|(directory, _)| directory)
+        .collect();
 
     cargo
 }

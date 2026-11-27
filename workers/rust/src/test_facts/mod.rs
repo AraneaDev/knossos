@@ -48,7 +48,7 @@ pub(crate) use input::TestInput;
 use locals::{FileConsts, LocalLiterals};
 use macros::Frozen;
 pub(crate) use macros::{
-    compiled_elsewhere, loads_unseen_file, macro_modules, macro_package, MacroShadows,
+    compiled_elsewhere, loads_unseen_file, macro_modules, macro_package, pretty_real, MacroShadows,
 };
 use operands::OperandReader;
 use output::CaseFact;
