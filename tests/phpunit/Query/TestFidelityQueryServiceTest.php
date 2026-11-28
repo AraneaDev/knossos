@@ -267,6 +267,7 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
      * A graph read past its row cap cuts the load as the deadline does, and
      * the warning names the cap, not a timeout that did not happen.
      */
+    #[Group('slow')]
     public function testARowCapIsPartialAndSaysSo(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');

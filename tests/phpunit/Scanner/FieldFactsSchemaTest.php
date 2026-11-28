@@ -15,6 +15,8 @@ use Knossos\Tests\Phpunit\Support\SchemaSubset;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertSame;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Each worker's `fields` and `cases` fit the wire schema over the
  * fixture-drift tree, and the core reads each list it sends; an open list
@@ -22,6 +24,7 @@ use function PHPUnit\Framework\assertSame;
  */
 final class FieldFactsSchemaTest extends KnossosTestCase
 {
+    #[Group('slow')]
     public function testWorkerOutputOnTheFixturesValidates(): void
     {
         $lists = $this->lists(['ts', 'php', 'py']);

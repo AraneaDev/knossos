@@ -24,6 +24,7 @@ final class DiffScaleTest extends KnossosTestCase
 {
     #[Group('query')]
     #[RunInSeparateProcess]
+    #[Group('slow')]
     public function testADiffOfTwoGraphsAtTheRowLimitWithEveryRowChangedFitsIn768Megabytes(): void
     {
         ini_set('memory_limit', '768M');

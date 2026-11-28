@@ -54,6 +54,7 @@ final class TypescriptDeepImportChainTest extends KnossosTestCase
      * whole request near 1500 files, and a thread's default 4 MB stack gives
      * out between 4000 and 6000. Only the enlarged stack scans this chain.
      */
+    #[Group('slow')]
     public function testAnEightThousandFileImportChainScansWithFacts(): void
     {
         $this->writeChain(8000);

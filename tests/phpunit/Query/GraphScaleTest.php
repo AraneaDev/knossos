@@ -27,6 +27,7 @@ final class GraphScaleTest extends KnossosTestCase
 {
     #[Group('query')]
     #[RunInSeparateProcess]
+    #[Group('slow')]
     public function testArchitectureHealthAtItsDefaultNodeCeilingFitsIn512Megabytes(): void
     {
         ini_set('memory_limit', '512M');
@@ -44,6 +45,7 @@ final class GraphScaleTest extends KnossosTestCase
 
     #[Group('query')]
     #[RunInSeparateProcess]
+    #[Group('slow')]
     public function testDependencyCyclesAtItsNodeAndEdgeCeilingsFitsIn512Megabytes(): void
     {
         ini_set('memory_limit', '512M');

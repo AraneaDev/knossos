@@ -147,6 +147,7 @@ final class IncrementalReadsScanTest extends KnossosTestCase
      * nothing. Edited while it has no cache row, it counts as added, and an
      * added TypeScript file rebuilds every file of its scanner.
      */
+    #[Group('slow')]
     public function testAFileTheLastScanCouldNotCacheIsRescannedAloneUntilItChanges(): void
     {
         self::requireNode();

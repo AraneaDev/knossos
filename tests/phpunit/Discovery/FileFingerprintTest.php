@@ -202,6 +202,7 @@ final class FileFingerprintTest extends \Knossos\Tests\Phpunit\KnossosTestCase
         assertSame(hash('sha256', $contents), $fingerprint->contentHash);
     }
 
+    #[Group('slow')]
     public function testComputingDistinctFilesDoesNotLeakLinuxFileDescriptors(): void
     {
         if (PHP_OS_FAMILY !== 'Linux' || !is_dir('/proc/self/fd')) {

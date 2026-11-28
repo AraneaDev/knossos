@@ -103,6 +103,7 @@ final class PropertyTest extends KnossosTestCase
      * seeds, as the weekly Mutation workflow does.
      */
     #[Group('property')]
+    #[Group('slow')]
     public function testSeededEditSequencesKeepIncrementalAndFullGraphsEquivalent(): void
     {
         $languages = [

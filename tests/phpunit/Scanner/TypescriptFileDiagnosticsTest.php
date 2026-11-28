@@ -63,6 +63,7 @@ final class TypescriptFileDiagnosticsTest extends KnossosTestCase
         self::assertSame($this->graphSignature($full), $this->graphSignature($pdo));
     }
 
+    #[Group('slow')]
     public function testAnEditInOneOfSeveralProgramsMatchesAFullScan(): void
     {
         foreach (['p1', 'p2', 'p3'] as $package) {

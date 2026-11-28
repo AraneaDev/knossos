@@ -5,6 +5,12 @@
   deliberately no default/unit split: the previous two-suite layout let a
   narrowed testsuite selection silently skip every test under tests/phpunit/Mcp
   (the most integration-heavy tests in the tree), which hid real gaps.
+
+  For the same reason no group is excluded here. `slow` marks each test over
+  five seconds (tools/tag-slow-tests.php checks and writes it) and
+  `test-fidelity` the test-fidelity suites; a local loop selects with them,
+  as docs/contribute/quality.md describes, while `composer test`, CI and
+  Infection run every test.
 -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"

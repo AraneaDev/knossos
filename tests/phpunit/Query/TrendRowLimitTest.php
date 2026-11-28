@@ -26,6 +26,7 @@ use PHPUnit\Framework\Attributes\Group;
 final class TrendRowLimitTest extends KnossosTestCase
 {
     #[Group('query')]
+    #[Group('slow')]
     public function testAnActiveSnapshotPastTheRowLimitLosesItsTrendPointNotTheDashboard(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture('turn-brief');

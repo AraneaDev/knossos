@@ -651,7 +651,7 @@ final class McpTest extends KnossosTestCase
         assertSame($projectId, $envelope->projectId);
     }
 
-    #[Group('mcp')]
+    #[Group('mcp'), Group('slow')]
     public function testNestedBoundaryAndListArgumentsAreTrimmedToo(): void
     {
         // boundariesArgument() called string() only for its side effect and

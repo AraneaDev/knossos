@@ -55,6 +55,7 @@ final class SnapshotDiffArchiveTest extends KnossosTestCase
      */
     #[Group('query')]
     #[RunInSeparateProcess]
+    #[Group('slow')]
     public function testAHighlyCompressibleArchiveIsDiffedWithoutHoldingItsPayload(): void
     {
         [$pdo, $repository, $ids] = $this->storeFixture();

@@ -40,6 +40,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
         parent::tearDown();
     }
 
+    #[Group('slow')]
     public function testAnOrdinaryEditInOneOfTwoProgramsRescansOnlyThatFile(): void
     {
         $this->write('tsconfig.json', '{"files": []}');
@@ -65,6 +66,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
         $this->assertMatchesAFullScan($pdo);
     }
 
+    #[Group('slow')]
     public function testAnOrdinaryEditInOneProgramRescansOnlyItsReaders(): void
     {
         $this->write('tsconfig.json', '{"compilerOptions": {"strict": true, "module": "esnext", "moduleResolution": "bundler"}, "include": ["src"]}');
@@ -95,6 +97,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
     }
 
     #[DataProvider('globalImportEdits')]
+    #[Group('slow')]
     public function testAGlobalImportEditedInAFileTwoConfigsIncludeReachesBothPrograms(string $before, string $after): void
     {
         $config = '{"compilerOptions": {"strict": true, "module": "esnext", "moduleResolution": "bundler"}, "include": [".", "../shared"]}';
@@ -130,6 +133,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
      * @param array<string, string> $files
      */
     #[DataProvider('filesNoConfigIncludes')]
+    #[Group('slow')]
     public function testAnOrdinaryEditOfAFileNoConfigIncludesRescansOnlyThatFile(array $files): void
     {
         foreach ($files as $relative => $contents) {
@@ -181,6 +185,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
         ]];
     }
 
+    #[Group('slow')]
     public function testAnEditedFileNoConfigIncludesStillSeesTheGlobalsItsNeighboursDeclare(): void
     {
         $this->write('tsconfig.json', '{"compilerOptions": {"strict": true}, "include": ["src"]}');
@@ -200,6 +205,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
         $this->assertMatchesAFullScan($pdo);
     }
 
+    #[Group('slow')]
     public function testASequenceOfLeafEditsRescansOnlyEachEditedFileAndItsReaders(): void
     {
         $this->write('tsconfig.json', '{"compilerOptions": {"strict": true, "module": "esnext", "moduleResolution": "bundler"}, "include": ["src"]}');
@@ -234,6 +240,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
      * @param list<array<string, string>> $earlier edits made before the one under test, each followed by a scan
      */
     #[DataProvider('editsBeforeThePackageSwitch')]
+    #[Group('slow')]
     public function testAReadMadeForAnotherProgramsFileUnderThisProgramsResolutionStaysWithTheRequest(array $earlier): void
     {
         // shared/b.ts belongs to p1, where `~/c` is p1/lib/c.ts. In p2's
@@ -283,6 +290,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
      * @param list<array<string, string>> $earlier edits made before the one under test, each followed by a scan
      */
     #[DataProvider('editsBeforeTheManifestSwitch')]
+    #[Group('slow')]
     public function testAReadMadeInTheFallbackProgramForAFileAConfigsProgramEmitsStaysWithTheRequest(array $earlier): void
     {
         // No config lists shared/x.ts, so p1's program emits it through
@@ -331,6 +339,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
      * @param list<array<string, string>> $steps edits made in turn, each followed by a scan
      */
     #[DataProvider('importerEditsThatMoveAFileNoConfigLists')]
+    #[Group('slow')]
     public function testAnImportersEditThatMovesAFileNoConfigListsBetweenProgramsRescansIt(array $files, array $steps): void
     {
         // No config lists shared/x.ts. With main.ts importing it, p1's program
@@ -396,6 +405,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
      * @param list<string> $rescanned what each step rescans
      */
     #[DataProvider('importsBetweenFilesOfTwoFallbackGroups')]
+    #[Group('slow')]
     public function testAFallbackProgramEmitsOnlyTheFilesOfItsOwnGroup(array $files, array $steps, string $unlisted, string $group, array $rescanned): void
     {
         // Two fallback groups: packages/p1, under p1's tsconfig whose paths
@@ -465,6 +475,7 @@ final class TypescriptProgramEnvironmentTest extends KnossosTestCase
         ];
     }
 
+    #[Group('slow')]
     public function testAnEditToAListedLeafRescansTheLeafItsReadersAndTheFilesNoConfigLists(): void
     {
         $this->write('tsconfig.json', '{"files": []}');

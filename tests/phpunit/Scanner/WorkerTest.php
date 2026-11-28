@@ -157,6 +157,7 @@ final class WorkerTest extends KnossosTestCase
     }
 
     #[Group('worker')]
+    #[Group('slow')]
     public function testProductionWorkerExecutionPolicyPermitsValidRequestsBeyondFiveSecondsWithinAFiniteCeiling(): void
     {
         $policy = new WorkerExecutionPolicy();

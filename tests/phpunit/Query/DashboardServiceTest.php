@@ -448,7 +448,7 @@ final class DashboardServiceTest extends KnossosTestCase
         }
     }
 
-    #[Group('query')]
+    #[Group('query'), Group('slow')]
     public function testTheTrendKeepsTheTwentyNewestSnapshots(): void
     {
         [$pdo, , $root] = $this->scanTempFixture(self::FIXTURE);

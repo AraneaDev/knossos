@@ -83,6 +83,7 @@ final class TypescriptNodeModulesVerificationTest extends KnossosTestCase
         parent::tearDown();
     }
 
+    #[Group('slow')]
     public function testAStableProjectWithPlainAndPnpmPackagesScansFullAcrossRequestsWithNothingDegraded(): void
     {
         $pdo = $this->freshTestDatabase();
@@ -104,6 +105,7 @@ final class TypescriptNodeModulesVerificationTest extends KnossosTestCase
     }
 
     /** A successful dependency declaration read is persisted and participates in freshness. */
+    #[Group('slow')]
     public function testAChangedNodeModulesDeclarationMakesTheGraphStale(): void
     {
         $pdo = $this->freshTestDatabase();
@@ -124,6 +126,7 @@ final class TypescriptNodeModulesVerificationTest extends KnossosTestCase
     }
 
     /** A dependency change must invalidate importing-file cache reuse on the next scan. */
+    #[Group('slow')]
     public function testAChangedNodeModulesDeclarationForcesTheNextIncrementalScanToRebuild(): void
     {
         $pdo = $this->freshTestDatabase();
@@ -138,11 +141,13 @@ final class TypescriptNodeModulesVerificationTest extends KnossosTestCase
         assertSame(0, $result->data['unchanged_files']);
     }
 
+    #[Group('slow')]
     public function testAPlainPackageDeclarationChangedBeforeTheWorkerReadsItAndRestoredBeforeCommitFailsTheScan(): void
     {
         $this->assertChangedAndRestoredFailsTheScan('node_modules/plain/index.d.ts', ['node_modules/plain/index.d.ts']);
     }
 
+    #[Group('slow')]
     public function testAPnpmPackageDeclarationChangedBeforeTheWorkerReadsItAndRestoredBeforeCommitFailsTheScan(): void
     {
         $this->assertChangedAndRestoredFailsTheScan(self::PNPM . '/index.d.ts', [self::PNPM . '/index.d.ts', 'node_modules/dep/index.d.ts']);

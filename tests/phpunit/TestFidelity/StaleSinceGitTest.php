@@ -105,6 +105,7 @@ final class StaleSinceGitTest extends KnossosTestCase
         self::assertSame(1, $result->data['git']['changed_files']);
     }
 
+    #[Group('slow')]
     public function testGitDiffNarrowsScanItemsToChangedFiles(): void
     {
         $repo = $this->repository();
@@ -132,6 +133,7 @@ final class StaleSinceGitTest extends KnossosTestCase
         self::assertSame(3, self::counted($this->audit($repo, tier: 'scan')));
     }
 
+    #[Group('slow')]
     public function testWithoutGitDiffNoStaleSince(): void
     {
         $repo = $this->repository();
@@ -215,6 +217,7 @@ final class StaleSinceGitTest extends KnossosTestCase
         self::assertSame([[self::GHOST, 6, 'STALE_SINCE', 'warning', self::STALE]], self::stale($service->auditTests($projectId, scope: 'git-diff')));
     }
 
+    #[Group('slow')]
     public function testABadBaseRefIsAnError(): void
     {
         $repo = $this->repository();

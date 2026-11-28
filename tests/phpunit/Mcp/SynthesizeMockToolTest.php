@@ -89,6 +89,7 @@ final class SynthesizeMockToolTest extends KnossosTestCase
         });
     }
 
+    #[Group('slow')]
     public function testFrameworkSources(): void
     {
         $this->withScan(function (ToolService $tools, string $projectId): void {

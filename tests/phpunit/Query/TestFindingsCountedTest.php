@@ -173,6 +173,7 @@ final class TestFindingsCountedTest extends KnossosTestCase
     }
 
     /** The release note says its detail was cut only when the change list was, not when only the findings overflowed. */
+    #[Group('slow')]
     public function testTheReleaseNoteSaysTruncatedOnlyForTheChangeList(): void
     {
         [$pdo, $service, $root] = $this->healthy();

@@ -44,6 +44,7 @@ final class TypescriptGlobalEditTest extends KnossosTestCase
      * @param array<string, string> $edits what the edit writes
      */
     #[DataProvider('globalEdits')]
+    #[Group('slow')]
     public function testAnEditThatChangesWhatAFileDeclaresGloballyMatchesAFullScan(array $files, array $edits, string $reader): void
     {
         $this->write('tsconfig.json', '{"compilerOptions": {"strict": true, "module": "esnext", "moduleResolution": "bundler"}, "include": ["src"]}' . "\n");

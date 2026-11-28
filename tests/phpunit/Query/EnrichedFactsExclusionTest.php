@@ -123,6 +123,7 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         assertSame(['raised' => 0, 'lowered' => 0], $diff->data['confidence_changes']);
     }
 
+    #[Group('slow')]
     public function testQualityGateUnaffected(): void
     {
         $budgets = ['new_cycles' => 0, 'boundary_violations' => 0, 'hub_degree_growth' => 0, 'unreferenced_candidates' => 0, 'error_diagnostics' => 0];
@@ -201,6 +202,7 @@ final class EnrichedFactsExclusionTest extends KnossosTestCase
         assertSame($plain, $enriched);
     }
 
+    #[Group('slow')]
     public function testEnricherDiagnosticsLeaveGateAndSummaryCounts(): void
     {
         $budgets = ['error_diagnostics' => 0, 'warning_diagnostics' => 0];

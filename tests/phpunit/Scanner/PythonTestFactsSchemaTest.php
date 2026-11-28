@@ -24,6 +24,7 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('python-scanner')]
 final class PythonTestFactsSchemaTest extends KnossosTestCase
 {
+    #[Group('slow')]
     public function testWorkerOutputOnTheFixturesValidates(): void
     {
         $schema = json_decode((string) file_get_contents(self::repositoryRoot() . '/schemas/scanner/v1/contribution.schema.json'), true, 512, JSON_THROW_ON_ERROR);

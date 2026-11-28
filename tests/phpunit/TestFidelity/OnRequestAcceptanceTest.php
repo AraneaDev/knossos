@@ -258,6 +258,7 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
      * are Momus's MOCK-001 files, less and plus the numbered departures.
      */
     #[DataProvider('languageSuites')]
+    #[Group('slow')]
     public function testOverMockingAgainstMomus(string $suite): void
     {
         $momus = [];

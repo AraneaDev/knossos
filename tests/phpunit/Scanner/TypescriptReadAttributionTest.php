@@ -119,6 +119,7 @@ final class TypescriptReadAttributionTest extends KnossosTestCase
      * its own answer outgrows a frame, so it is left out and its row names
      * nothing it read. A change to `src/n.ts` still reaches its importer.
      */
+    #[Group('slow')]
     public function testALeftOutModuleIsRebuiltWithItsReadersOnAnyTypescriptChange(): void
     {
         $functions = '';

@@ -76,6 +76,7 @@ final class OnRequestIsolationTest extends KnossosTestCase
         parent::tearDown();
     }
 
+    #[Group('slow')]
     public function testOnRequestFindingsReachNoSurface(): void
     {
         $root = self::scratchPath('knossos-stale-on-request-isolation');
