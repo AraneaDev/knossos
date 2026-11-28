@@ -56,7 +56,7 @@ final class RescanFatalTest extends KnossosTestCase
     public function testAMemoryFatalLeavesItsMessageInTheLog(): void
     {
         // The core needs about 10M before it scans anything, and one of these
-        // classes still scans within 10M; forty of them outgrow 12M in about a
+        // classes still scans within 10M; forty of them outgrow 16M in about a
         // second, where 1,500 one-method classes took 20M and over a minute.
         for ($i = 0; $i < 40; $i++) {
             $next = ($i + 1) % 40;
@@ -67,7 +67,7 @@ final class RescanFatalTest extends KnossosTestCase
             file_put_contents($this->directory . "/project/src/C{$i}.php", "<?php\nnamespace App;\nfinal class C{$i} {{$methods} }\n");
         }
 
-        [$exit] = $this->rescan('12M');
+        [$exit] = $this->rescan('16M');
 
         assertSame(255, $exit);
         $kept = (new ScanFailureLog($this->directory . '/data/scan-failures.jsonl'))->recent(5);
