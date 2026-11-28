@@ -310,6 +310,7 @@ final class FolderFactsBuilderTest extends KnossosTestCase
      * The bound is 1,500 ms where a developer machine measures about 370 ms: CI runs under pcov on
      * slower runners. It catches a change of complexity class, not a regression of tens of milliseconds.
      */
+    #[Group('slow')]
     public function testRowsForARealisticGraphAreBuiltQuickly(): void
     {
         $this->pdo->prepare('INSERT INTO files (id, project_id, relative_path, content_hash, size, mtime, language, scanner_version, last_scan_id, line_count) VALUES (?, ?, ?, ?, 1, 1, ?, ?, ?, 9)')
