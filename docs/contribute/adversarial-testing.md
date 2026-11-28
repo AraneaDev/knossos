@@ -107,3 +107,33 @@ the suite already kills. `phpunit.xml` therefore sets `failOnWarning="true"`,
 and `tests/phpunit/FailOnWarningTest.php` keeps it that way. A surviving mutant
 you cannot reproduce by hand is a signal to check this before writing a test
 for it.
+
+## Rust worker mutants
+
+[cargo-mutants](https://mutants.rs/) mutates the Rust worker and judges each
+mutant against its `cargo test` suite. Its settings live in
+`workers/rust/.cargo/mutants.toml`: a timeout of three times the unmutated test
+run, and one exclusion, the heartbeat's clock check, which no test can observe
+without waiting out real seconds. The worker has no logging code to exclude.
+Like Infection, it is in no `tools/quality` profile. The weekly `Mutation`
+workflow's `cargo-mutants` job runs every mutant in four round-robin shards and
+uploads each shard's `mutants.out`; it reports and does not gate, because the
+Rust worker has no floor yet.
+
+Locally, mutate only what your change touched. Write the diff relative to the
+crate, because cargo-mutants matches its paths against `src/...` and a plain
+`git diff` names them from the repository root, which matches nothing. Keep
+TMPDIR off `/tmp`, a small tmpfs, since cargo-mutants copies the crate into it
+for every build, and share one `CARGO_TARGET_DIR` across worktrees so each run
+reuses the dependency builds:
+
+```sh
+cd workers/rust
+git diff --relative origin/main > /home/tim/.cache/knossos-rust.diff
+TMPDIR=/home/tim/.cache/knossos-tmp \
+CARGO_TARGET_DIR=/home/tim/.cache/knossos-cargo-target \
+  cargo mutants --in-diff /home/tim/.cache/knossos-rust.diff
+```
+
+Run it while no PHPUnit run is going: both lean on every core, and a mutant
+that times out under that load reads as a missed one.

@@ -1,0 +1,38 @@
+# cargo-mutants configuration for the Rust worker
+# (https://mutants.rs/). It is not part of any tools/quality profile: a full
+# run takes far longer than a push should wait. The weekly Mutation workflow
+# runs it in shards; locally, mutate only what a change touched:
+#
+#   cd workers/rust
+#   git diff --relative origin/main > /home/tim/.cache/knossos-rust.diff
+#   TMPDIR=/home/tim/.cache/knossos-tmp \
+#   CARGO_TARGET_DIR=/home/tim/.cache/knossos-cargo-target \
+#     cargo mutants --in-diff /home/tim/.cache/knossos-rust.diff
+#
+# `--relative` matters: cargo-mutants matches the diff's paths against the
+# crate's own (`src/...`), and a plain `git diff` names them from the
+# repository root (`workers/rust/src/...`), which matches nothing.
+#
+# A shared CARGO_TARGET_DIR outside the worktree lets every worktree and
+# every mutants run reuse one build cache. TMPDIR is off /tmp because /tmp is
+# a small tmpfs and cargo-mutants copies the tree there for each build.
+# See docs/contribute/adversarial-testing.md.
+
+# A mutant times out at this multiple of the unmutated test run. The suite
+# runs the worker over fixture trees, so its time varies with the machine's
+# load; three times its measured length leaves room for a busy runner without
+# letting a mutant that loops hold a shard for long.
+timeout_multiplier = 3.0
+
+exclude_globs = [
+    # The heartbeat only decides when a `scan/heartbeat` goes out, after a
+    # second of quiet. A mutant of its clock check sends the beat sooner,
+    # later or never, which no test can observe without waiting out real
+    # seconds, and the core's own inactivity tests cover what a missing beat
+    # does to a scan.
+    "src/heartbeat.rs",
+]
+
+# The worker has no logging code of its own to exclude: its only log lines are
+# the two `eprintln!` calls in src/main.rs, and cargo-mutants does not mutate
+# a macro call.
