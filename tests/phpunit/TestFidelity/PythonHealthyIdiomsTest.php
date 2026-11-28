@@ -91,6 +91,12 @@ use PHPUnit\Framework\Attributes\Group;
  * `tests/test_route.py` matches an `Enum` parameter by its case and by
  * `Leg("air")`: silent, as the Python worker sends no matcher literals
  * (G3-19).
+ *
+ * `tests/test_nested_writes.py` doubles a nested class (`Outer.Inner`) whose
+ * names are written outside its body, in its file and from another (G4-05's
+ * `nested_class_write`), through the outer class, a string target, an alias
+ * and `create_autospec`: silent, never a definite, as U1 binds, since a
+ * double of a nested class names no target the rules judge (W-3).
  */
 #[Group('test-fidelity')]
 #[Group('python-scanner')]
