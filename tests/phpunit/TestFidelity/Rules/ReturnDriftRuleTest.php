@@ -189,4 +189,83 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertSame([FindingConfidence::Definite], array_map(static fn($finding) => $finding->confidence, $self('willReturn', 'void')), 'A stated value on void stays definite.');
         assertSame([FindingConfidence::Definite], array_map(static fn($finding) => $finding->confidence, $self('willReturnSelf', 'int')), 'The double itself is no int.');
     }
+
+    /**
+     * Each finding of one Python double pinning `$pins` on `Repo.total`, its confidence and message.
+     *
+     * @param list<array<string, mixed>> $pins
+     * @param array<string, mixed> $attributes further attributes of the member node
+     * @param array<string, mixed>|null $classAttributes the class's attributes; by default its complete name list
+     * @return list<string>
+     */
+    private static function python(array $pins, ?string $returns = 'int', array $attributes = [], ?array $classAttributes = null): array
+    {
+        $graph = PythonFixtures::graph([['total', PythonFixtures::signature([], $returns) + $attributes]], [PythonFixtures::stub('total', $pins)], ownerAttributes: $classAttributes);
+
+        return array_map(static fn($finding): string => $finding->confidence->value . ' ' . $finding->message, [...(new ReturnDriftRule())->findings($graph)]);
+    }
+
+    public function testPythonRefusalIsAWarning(): void
+    {
+        // Python never enforces an annotation, and a mock returns what it is given (the user's decision).
+        assertSame(['warning total returns int; the double pins a value it does not admit (return_value)'], self::python([PythonFixtures::pin('str')]));
+        assertSame(['warning total returns int; the double pins a value it does not admit (return_value)'], self::python([['api' => 'return_value', 'line' => 8, 'once' => false, 'assignable' => false, 'typed' => true]]));
+        assertSame([], self::python([PythonFixtures::pin('int'), PythonFixtures::pin('bool', 'side_effect')]));
+        assertSame([], self::python([PythonFixtures::pin('unknown')]));
+        assertSame([], self::python([PythonFixtures::pin('str')], 'Iterator[int]'));
+        assertSame([], self::python([PythonFixtures::pin('str')], null));
+    }
+
+    public function testPythonMemberOfARewritableClassIsSilent(): void
+    {
+        // Ruling P21: the method may not return what its annotation says once something has rewritten it.
+        assertSame([], self::python([PythonFixtures::pin('str')], 'int', [], ['member_names' => ['total'], 'methods_rewritable' => true]));
+        // The flag is Python's alone.
+        $typescript = DriftFixtures::graph(
+            [DriftFixtures::method('total', ['signature' => ['params' => [], 'returns' => 'number']])],
+            [DriftFixtures::stub('total', null, [['api' => 'mockReturnValue', 'line' => 9, 'once' => false, 'assignable' => false, 'typed' => true]])],
+            targetAttributes: ['member_names' => ['total'], 'methods_rewritable' => true],
+        );
+        assertCount(1, [...(new ReturnDriftRule())->findings($typescript)]);
+    }
+
+    public function testAPythonPinIsJudgedOnlyAgainstTheDefThatCertainlyAnswers(): void
+    {
+        // Ruling P24: `class Repo(Base): total = _other` shadows Base's `total() -> int`; a subclass that does not keeps it judged.
+        $judge = static function (array $ownNames): array {
+            $owner = PythonFixtures::node('class', 'app.repo.Repo');
+            $base = PythonFixtures::node('class', 'app.repo.Base', ['member_names' => ['total']]);
+            $total = PythonFixtures::method($base, 'total', PythonFixtures::signature([], 'int'));
+            $graph = PythonFixtures::graph([], [PythonFixtures::stub('total', [PythonFixtures::pin('str')])], ownerAttributes: ['member_names' => $ownNames], extra: [$base, $total], extraEdges: [
+                PythonFixtures::edge('extends', $owner, $base->localId), PythonFixtures::edge('contains', $base, $total->localId),
+            ]);
+
+            return array_map(static fn(\Knossos\TestFidelity\TestFinding $finding): string => $finding->message, [...(new ReturnDriftRule())->findings($graph)]);
+        };
+
+        assertSame([], $judge(['total']));
+        assertSame(['total returns int; the double pins a value it does not admit (return_value)'], $judge([]));
+    }
+
+    public function testPythonDecoratedMemberIsSilent(): void
+    {
+        assertSame([], self::python([PythonFixtures::pin('str')], 'int', ['decorated' => true]));
+        assertSame([], self::python([PythonFixtures::pin('str')], 'int', ['overloaded' => true]));
+    }
+
+    public function testPythonReplacementIsNoReturnPin(): void
+    {
+        // `new=` replaces the member itself: a callable stands in for it, and nothing it returns is pinned.
+        assertSame([], self::python([PythonFixtures::pin('str', 'new')]));
+        assertSame(['warning total returns int; the double pins a value it does not admit (return_value)'], self::python([PythonFixtures::pin('str', 'new'), PythonFixtures::pin('str')]));
+    }
+
+    public function testAPythonMemberAModuleOnlyImportsIsNotJudged(): void
+    {
+        // `patch.multiple(m, f=…)` keeps `m` as the owner; `f` is m's import, no node of m's, so drift and arity are silent (carried item e).
+        $graph = PythonFixtures::graph([['own', PythonFixtures::signature([], 'int')]], [PythonFixtures::stub('imported', [PythonFixtures::pin('str')], [PythonFixtures::matcher(9)])], kind: 'module', ownerAttributes: ['exports' => ['imported', 'own']]);
+
+        assertSame([], [...(new ReturnDriftRule())->findings($graph)]);
+        assertSame([], [...(new \Knossos\TestFidelity\Rules\ArityMismatchRule())->findings($graph)]);
+    }
 }

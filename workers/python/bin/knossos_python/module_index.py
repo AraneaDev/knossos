@@ -13,10 +13,12 @@ from .ast_helpers import (
     dotted,
     module_statements,
     optional_inner,
+    reexports,
     ref,
     router_constructors,
     top_level_declarations,
 )
+from .class_members import rebinding_names
 from .exclusions import Exclusions
 from .fixtures import path_loading_fixtures
 from .module_layout import QUALIFIED, ModuleLayout
@@ -292,26 +294,21 @@ class ProjectModuleIndex(ReadRecorder):
         package re-exports what its submodules declare: ``from app import
         config; config.staging_dir()`` reaches ``app.config.paths.staging_dir``
         through ``app/config/__init__.py``. A star import brings the source's
-        public names. A module's own declaration of a name wins. The
+        public names. A module's own declaration of a name wins, and a name it
+        binds again (``kw = partial(kw, 1)``, a ``global kw``) is not the import's. The
         declarations are cached before this runs, so modules importing each
         other resolve without recursing.
         """
+        rebound = rebinding_names(tree)
         for child in module_statements(tree):
-            if not isinstance(child, ast.ImportFrom):
-                continue
-            source = absolute_import(module, child.level, child.module, is_package)
-            if not source:
-                continue
-            exported = self.module_declarations(source)
-            for alias in child.names:
-                if alias.name == "*":
-                    for name, target in exported.items():
-                        if not name.startswith("_"):
-                            declarations.setdefault(name, target)
-                    continue
-                reexported = exported.get(alias.name)
-                if reexported is not None:
-                    declarations.setdefault(alias.asname or alias.name, reexported)
+            source = (
+                absolute_import(module, child.level, child.module, is_package)
+                if isinstance(child, ast.ImportFrom)
+                else None
+            )
+            if isinstance(child, ast.ImportFrom) and source:
+                for name, target in reexports(child, self.module_declarations(source), rebound):
+                    declarations.setdefault(name, target)
 
     def _add_returns(self, tree: ast.Module, name: str, declarations: dict[str, str], imported: dict[str, str]) -> None:
         """Record the project class each top-level function and method says it returns.

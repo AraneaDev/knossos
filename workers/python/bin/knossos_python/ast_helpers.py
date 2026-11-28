@@ -355,3 +355,19 @@ def positional_string(call: ast.Call, position: int) -> str | None:
 def keyword_string(call: ast.Call, name: str) -> str | None:
     value = next((item.value for item in call.keywords if item.arg == name), None)
     return value.value if isinstance(value, ast.Constant) and isinstance(value.value, str) else None
+
+
+def reexports(child: ast.ImportFrom, exported: dict[str, str], rebound: frozenset[str]) -> Iterator[tuple[str, str]]:
+    """The names an ``import from`` binds to project declarations, each with the declaration it names.
+
+    ``exported`` is the source module's declarations: a star import brings its
+    public names. A name the importing module binds again (``rebound``) is
+    left out, since it may then hold something else.
+    """
+    for alias in child.names:
+        if alias.name == "*":
+            pairs = [(name, target) for name, target in exported.items() if not name.startswith("_")]
+        else:
+            target = exported.get(alias.name)
+            pairs = [] if target is None else [(alias.asname or alias.name, target)]
+        yield from ((name, target) for name, target in pairs if name not in rebound)

@@ -1,0 +1,3 @@
+class Other:
+    def save(self, name):
+        ...

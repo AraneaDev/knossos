@@ -72,10 +72,11 @@ file and scans again, five times, and holds the median incremental scan to
 reaches fails the run, so a scenario cannot pass by timing a smaller rescan.
 The report lists each round under `scenarios`.
 
-| scenario                            | corpus                                                      | incremental scan |
-| ----------------------------------- | ----------------------------------------------------------- | ---------------: |
-| `test_fidelity_rescan_one_file`     | one TypeScript class, five test files with 20 doubles of it |               8s |
-| `test_fidelity_rescan_one_file_php` | one PHP class, five test files with 20 doubles of it        |               2s |
+| scenario                               | corpus                                                      | incremental scan |
+| -------------------------------------- | ----------------------------------------------------------- | ---------------: |
+| `test_fidelity_rescan_one_file`        | one TypeScript class, five test files with 20 doubles of it |               8s |
+| `test_fidelity_rescan_one_file_php`    | one PHP class, five test files with 20 doubles of it        |               2s |
+| `test_fidelity_rescan_one_file_python` | one Python class, five test files with 20 doubles of it     |               4s |
 
 `test_fidelity_rescan_one_file` measures what test fidelity adds to a rescan:
 the edit makes the production file and all five test files parse again
@@ -106,6 +107,23 @@ It was accepted against commit `de719356`, the base of PHP test facts, where
 the PHP worker reported none: 0.492s there and 0.508s with them, within the
 110% of base (0.541s) it was held to, each figure a median of three runs of
 five rounds.
+
+`test_fidelity_rescan_one_file_python` measures the same for Python, with
+spec'd `unittest.mock` doubles, `patch.object()` and `patch()`. The corpus sits
+at the corpus root, since the Python worker reads its source roots from the
+scanned root. Each test file reads the class's module to resolve what it
+patches, so the edit parses the class and all five test files again
+(`parsed_files` is 6 in every round). Its limit follows the same headroom: in
+one run `small` measured 2.69s against its 10s (3.71 times) and the scenario
+0.82s, so 0.82s × 3.71 = 3.04s, rounded up: 4s. Against commit `9dd4b250`,
+the base of Python test facts, where the Python worker reported none, it
+measured 0.717s there and 0.809s with them, each figure a median of three runs
+of five rounds, with the worker compiled from source on every run as a fresh
+checkout does (the worker starts with `-B`, so it writes no bytecode). That is
+112.8% of base, which was accepted against the 110% the plan held it to
+(Ruling P22; gap G4-16). The difference is the worker's start: compiling the
+test-facts modules adds about 70ms, while scanning the six files in the worker
+takes less time than at base.
 
 Timing and RSS values vary with hardware, load, filesystem, and cold runtime
 caches. Compare trends from equivalent pinned runners. Tightening a budget

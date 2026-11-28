@@ -25,6 +25,10 @@ use Knossos\TestFidelity\Facts\TestDouble;
  * interface, a trait or an enum, so it names every double's target
  * `php:class:<FQCN>`; such a reference, and any PHP type reference, resolves
  * to the class-like node of that name, in any case, as PHP resolves names.
+ *
+ * A Python base outside the project is an unseen ancestor, whose names are
+ * unknown, except `abc.ABC`, `typing.Protocol` and `typing.Generic`, which
+ * are seen and add only their metaclass's names (`knownBaseNames()`).
  */
 final readonly class TestFidelityGraph
 {
@@ -36,6 +40,29 @@ final readonly class TestFidelityGraph
 
     /** A PHP type reference: `php:<kind>:<FQCN>`, the name captured. */
     private const PHP_TYPE_REFERENCE = '/^php:(?:class|interface|trait|enum):\\\\?(.+)$/sD';
+
+    /**
+     * The Python bases outside the project that add no member a double may
+     * stub but these (their metaclass's own on 3.14, the one version
+     * checked, with the pure-Python `_py_abc` caches added; a lookup on the
+     * class reaches them, so `patch.object(C, "register")` replaces one,
+     * though `dir(C)` and a `spec=C` list none),
+     * so a class inheriting from one keeps a complete name list:
+     * `abc.ABC`, `typing.Protocol` and `typing.Generic`, by qualified name.
+     * Every other base outside the project (`enum.Enum`, `typing.NamedTuple`,
+     * `typing.TypedDict`, `Exception`) is unseen, its names unknown.
+     */
+    private const PYTHON_KNOWN_BASES = [
+        'abc.ABC' => self::ABC_NAMES,
+        'typing.Protocol' => [...self::ABC_NAMES, '_is_protocol', '_is_runtime_protocol'],
+        'typing.Generic' => ['_is_protocol'],
+    ];
+
+    /** What `abc.ABCMeta` gives each class it makes, the pure-Python `_py_abc`'s caches included. */
+    private const ABC_NAMES = ['_abc_cache', '_abc_caches_clear', '_abc_impl', '_abc_negative_cache', '_abc_negative_cache_version', '_abc_registry', '_abc_registry_clear', '_dump_registry', 'register'];
+
+    /** A Python reference to a class outside the project: `py:external_symbol:<name>` (`from abc import ABC`) or `py:class:<name>` (`abc.ABC`), the name captured. */
+    private const PYTHON_BASE_REFERENCE = '/^py:(?:external_symbol|class):(.+)$/sD';
 
     /**
      * @param array<string, NodeFact> $nodes every node by reference; the first contribution to emit one wins
@@ -221,6 +248,56 @@ final readonly class TestFidelityGraph
         return str_starts_with($node->localId, 'php:');
     }
 
+    /** Whether a node came from the Python worker. */
+    public static function isPython(NodeFact $node): bool
+    {
+        return str_starts_with($node->localId, 'py:');
+    }
+
+    /** The Python class the scan holds under a qualified name (`app.models.Invoice`), or null when it holds none. */
+    public function pythonClass(string $qualifiedName): ?NodeFact
+    {
+        return $this->nodes['py:class:' . $qualifiedName] ?? null;
+    }
+
+    /**
+     * The names the known Python bases outside the project (`abc.ABC`,
+     * `typing.Protocol`, `typing.Generic`) give `$owner` through its lineage,
+     * sorted; empty when it inherits from none.
+     *
+     * @return list<string>
+     */
+    public function knownBaseNames(NodeFact $owner): array
+    {
+        $names = [];
+        foreach ($this->reachable($owner)[0] as $type) {
+            foreach ($this->parents[$type] ?? [] as $parent) {
+                $names = [...$names, ...($this->knownBase($parent) ?? [])];
+            }
+        }
+        $names = array_values(array_unique($names));
+        sort($names, SORT_STRING);
+
+        return $names;
+    }
+
+    /**
+     * The names a known Python base outside the project gives, when a parent
+     * reference names one (Ruling P8: `py:external_symbol:abc.ABC` and
+     * `py:class:abc.ABC` alike) and no contribution emits a node under it;
+     * null for any other reference.
+     *
+     * @return list<string>|null
+     */
+    private function knownBase(string $reference): ?array
+    {
+        if (isset($this->nodes[$reference]) || preg_match(self::PYTHON_BASE_REFERENCE, $reference, $match) !== 1) {
+            return null;
+        }
+
+        return self::PYTHON_KNOWN_BASES[$match[1]] ?? null;
+    }
+
     /**
      * Whether PHP type `$class` is `$type`: itself, or a type it reaches
      * through `extends` and `implements` (a trait it uses is no type it is).
@@ -260,7 +337,9 @@ final readonly class TestFidelityGraph
      *
      * Walks `uses_trait`, `extends` and `implements` edges breadth first, so
      * the nearest declaration wins, and visits each type once, so a cyclic
-     * hierarchy (which a malformed contribution can carry) terminates.
+     * hierarchy (which a malformed contribution can carry) terminates. That
+     * is not Python's lookup order: `answersCertainly()` says whether the
+     * node found is the one Python answers with.
      */
     public function member(NodeFact $owner, string $name): ?NodeFact
     {
@@ -275,6 +354,40 @@ final readonly class TestFidelityGraph
         }
 
         return null;
+    }
+
+    /**
+     * Whether `$member`, the node `member()` found on `$owner`, is for certain
+     * the one a lookup of its name answers with (Ruling P24). Always for a
+     * TypeScript or PHP owner. For a Python one, Python's lookup (the C3 MRO,
+     * a class-body or `self.` binding) decides, which a breadth-first walk
+     * does not model, so only when no other type of the lineage lists the
+     * name in `member_names` and the def is the owner's own or the owner has
+     * no unseen ancestor, which may come first in the MRO.
+     */
+    public function answersCertainly(NodeFact $owner, NodeFact $member): bool
+    {
+        if (!self::isPython($owner)) {
+            return true;
+        }
+        $declarer = null;
+        foreach ($this->lineage($owner) as $type) {
+            if ($declarer === null && in_array($member->localId, $this->children[$type->localId] ?? [], true)) {
+                $declarer = $type;
+            } elseif (self::listsMember($type, $member->displayName)) {
+                return false;
+            }
+        }
+
+        return $declarer !== null && ($declarer->localId === $owner->localId || !$this->hasUnseenAncestor($owner));
+    }
+
+    /** Whether a type's `member_names` list holds `$name`. */
+    private static function listsMember(NodeFact $type, string $name): bool
+    {
+        $names = $type->attributes['member_names'] ?? null;
+
+        return is_array($names) && in_array($name, $names, true);
     }
 
     /**
@@ -322,6 +435,45 @@ final readonly class TestFidelityGraph
     }
 
     /**
+     * Whether only the scan's own nodes can answer a name on `$owner`: it has
+     * no unseen ancestor, and it and every ancestor send a `member_names`
+     * list that is not marked open (a `__getattr__`, a metaclass, a builtin
+     * base).
+     */
+    public function hasClosedLineage(NodeFact $owner): bool
+    {
+        if ($this->hasUnseenAncestor($owner)) {
+            return false;
+        }
+        foreach ($this->lineage($owner) as $type) {
+            if (!is_array($type->attributes['member_names'] ?? null) || ($type->attributes['member_names_open'] ?? false) !== false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether something may have rewritten the methods `$owner` declares or
+     * inherits (Ruling P21): it or an ancestor the scan holds carries
+     * `methods_rewritable` (a project metaclass, an `__init_subclass__`, a
+     * class decorator or call that may replace methods). A base outside the
+     * project is not taken to rewrite: a residual (G4-12), since its metaclass
+     * or hook cannot be read.
+     */
+    public function hasRewritableLineage(NodeFact $owner): bool
+    {
+        foreach ($this->lineage($owner) as $type) {
+            if (($type->attributes['methods_rewritable'] ?? false) === true) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The references reachable from `$owner` through inheritance edges, itself
      * first and nearest first (breadth first, each once, so a cyclic
      * hierarchy terminates), and whether one of them is unseen or external.
@@ -336,7 +488,8 @@ final readonly class TestFidelityGraph
         $unseen = false;
         for ($i = 0; $i < count($queue); $i++) {
             foreach ($this->parents[$queue[$i]] ?? [] as $parent) {
-                if ($follows !== null && !$follows($parent)) {
+                // A known Python base outside the project is seen, and adds no ancestor (`knownBaseNames()` gives its names).
+                if (($follows !== null && !$follows($parent)) || $this->knownBase($parent) !== null) {
                     continue;
                 }
                 $node = $this->resolve($parent);
@@ -351,10 +504,18 @@ final readonly class TestFidelityGraph
         return [$queue, $unseen];
     }
 
-    /** Whether a node stands for something outside the project: marked external, an `external_` kind, or declared under `vendor/`. */
+    /**
+     * Whether a node stands for something outside the project: marked
+     * external, an `external_` kind, declared under `vendor/`, or for a
+     * Python node, installed under a `site-packages/` directory (a virtual
+     * environment inside the project).
+     */
     private static function isOutside(NodeFact $node): bool
     {
-        return ($node->attributes['external'] ?? false) === true || str_starts_with($node->kind, 'external_') || str_starts_with($node->evidence->relativePath, 'vendor/');
+        $path = $node->evidence->relativePath;
+
+        return ($node->attributes['external'] ?? false) === true || str_starts_with($node->kind, 'external_') || str_starts_with($path, 'vendor/')
+            || (self::isPython($node) && preg_match('#(?:^|/)site-packages/#', $path) === 1);
     }
 
     /** Whether a node reference names a node some contribution of the scan emitted. */
@@ -369,8 +530,9 @@ final readonly class TestFidelityGraph
      *
      * True when the target node is marked external or declared in a `.d.ts`
      * file or under `vendor/`, when the double's edge names an external node
-     * no contribution emits (a lib global such as `console`) or a PHP class
-     * the scan does not hold (one in `vendor/` or PHP's own), or when the double has
+     * no contribution emits (a lib global such as `console`), a PHP class
+     * the scan does not hold (one in `vendor/` or PHP's own) or any Python
+     * reference the scan does not hold, or when the double has
      * no target and names a bare package specifier (`axios`, `@scope/pkg`,
      * `node:fs`). A relative or absolute path, or a path alias (`@/…`, `~/…`,
      * `#…`), is inside the project even when it does not resolve, which is
@@ -382,8 +544,8 @@ final readonly class TestFidelityGraph
         if ($target !== null) {
             return self::isOutside($target) || str_ends_with($target->evidence->relativePath, '.d.ts');
         }
-        // An owner no contribution emits and a worker named as external (a lib global such as `console` or `Date`), or a PHP class the project does not declare.
-        if (preg_match('/^(?:[^:]+:external_|php:)/', $this->targets[$this->nodeOf($double)->localId] ?? '') === 1) {
+        // An owner no contribution emits and a worker named as external (a lib global such as `console` or `Date`), or a PHP class or a Python module or class the project does not declare.
+        if (preg_match('/^(?:[^:]+:external_|php:|py:)/', $this->targets[$this->nodeOf($double)->localId] ?? '') === 1) {
             return true;
         }
         $specifier = $double->target['specifier'] ?? '';

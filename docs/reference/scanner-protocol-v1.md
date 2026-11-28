@@ -185,6 +185,18 @@ Every packaged worker sends it. TypeScript and Rust types are the text as
 written; PHP types are the native declarations with class names resolved
 (`?App\Model\User`), and a docblock is not read; Python types are the
 annotations as written, and `*args` and `**kwargs` keep their stars in `name`.
+A Python parameter may carry `kind`, `positional_only` (before a `/`) or
+`keyword_only` (after `*` or `*args`), omitted for an ordinary one. A Python
+function or method carries `"decorated": true` when it has a decorator outside
+`staticmethod`, `classmethod`, `abstractmethod`, `override`, `final`,
+`functools.cache` and `functools.lru_cache`: a decorator may change the
+signature, so a reader must not judge a call against it. It is set too when the
+def's module or class body binds its name again (`f = wrap(f)`, a `def` in
+another branch, a fallback import, a function's `global f`, a method's
+`self.m = …`), which may leave the name holding another signature. `"overloaded": true`
+is also set on a Python def that `@overload` stubs precede. A Python method
+carries `visibility`: `protected` for `_x`, `private` for `__x` where it is not
+a dunder, omitted otherwise.
 A Rust parameter bound by a pattern rather than a name is listed as `_`. A node
 whose function cannot be read, such as a property assigned the result of a
 call, has no `signature`.
@@ -203,6 +215,39 @@ worker could read it, and a list that cannot be complete says so with
 `export =`) or `member_names_open: true` (a base type that does not resolve, an
 index signature). A reader judges a name absent only from a list that is
 present, complete and not open; a node without one says nothing.
+
+A Python class node may carry `member_names` and a module node `exports`, with
+the same `member_names_open` and `exports_open` flags. `member_names` lists its
+defs, class-body bindings, nested classes, the names in `__slots__`, `self.` and
+`cls.` writes (`setattr` with a literal name included) and `_C__x` for each
+`__x`; `member_names_open` is set when a name may come from elsewhere
+(`__getattr__`, `__getattribute__`, `__init_subclass__`, a class keyword such as
+a metaclass, a decorator other than `dataclass` or `final`, a base that gives no
+`extends` edge other than `object`, `Generic[…]` and `Protocol[…]`, a base whose
+name the module binds more than once, a non-literal `setattr`, a write to
+`__dict__` or `vars()`, a class body with a `for`, `while`, `with`, `match`,
+`exec`, `locals()` or a bare call, a module write to the class, the class
+handed to a call other than a read-only builtin such as `isinstance`, its
+name stored in another binding, a display, a `for` iterable or a
+comprehension, or returned (`Alias = C`, `REGISTRY = {"c": C}`), a
+rebinding of its name, or module-level `exec`, `eval`, `globals()` or
+`vars()`). Type parameters (`class C[T]`) keep it closed. Inherited names come
+from the class's `extends` edges: a reader takes a name as absent only when
+every ancestor is in the scan with a list that is complete and not open, so an
+external or open ancestor leaves it unknown. A Python class also carries
+`"methods_rewritable": true`, only when true, where its methods or a
+subclass's may not keep the signature their def writes: a metaclass other than
+`type`, `abc.ABCMeta` or `enum.EnumMeta`, an `__init_subclass__`, a class
+decorator other than `dataclass`, `final`, `total_ordering`,
+`runtime_checkable` or `enum.unique`, the class written, handed to a call or
+held by another name in its module, or a module that runs dynamic code. A reader carries it down the
+class's `extends` edges, as it does an open list; a base outside the project
+is not taken to rewrite. `exports` lists every top-level
+binding in both branches of an `if` or `try` and the names a `global`
+declaration hands the module; `exports_open` is set for `import *`, a module
+`__getattr__`, `globals()`, `exec`, `eval`, `sys.modules`, and on every
+package: a submodule becomes the package's attribute once imported, and is
+never listed. Neither list holds a dunder name (`__x__`).
 
 A PHP class, interface, trait or enum node may carry `member_names` too: the
 methods it declares itself, its `@method` docblock names, its trait-use aliases
@@ -247,8 +292,11 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
 `schemas/scanner/v1/contribution.schema.json`.
 
 - `test_double`, named `<file>#double:<line>:<col>`: a mock, spy, stub or fake.
-  `framework` (`vitest`, `jest`, `phpunit`, `mockery`, `pest` or `prophecy`), `pattern` (how it was made, such as
-  `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`), `target`
+  `framework` (`vitest`, `jest`, `phpunit`, `mockery`, `pest`, `prophecy`, `unittest`,
+  `pytest-mock` or `pytest`), `pattern` (how it was made, such as
+  `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`; a Python worker
+  writes `<module>.<callable>`, such as `unittest.mock.patch.object` or
+  `pytest_mock.mocker.patch`), `target`
   (`{kind, specifier?, export?, member?}`, `kind` one of `module`, `class`,
   `instance-member`, `global`, `unknown`; a virtual module mock, made with
   `{ virtual: true }`, names no file and carries no `specifier`), `automock`,
@@ -259,13 +307,19 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   member (`spyOn`, `mockFactoryKey`, `objectLiteralKey`, `instance-member`,
   PHPUnit's `method`, `configured`, `partial` and `addMethods` (a name the
   double adds to its class, which is never a ghost), Mockery's `shouldReceive`
-  and, for a member a spy assertion names, `shouldHaveReceived`, `prophecy`, or
-  `unknown`), `params` is the signature shape
+  and, for a member a spy assertion names, `shouldHaveReceived`, `prophecy`, Python's `patch`, `patch.object`,
+  `patch.multiple`, `patch.dict`, `spy` and `setattr` (the name the patch form
+  or `monkeypatch.setattr` replaces), `attribute` (a name read through a
+  spec'd handle) and `assigned` (`m.x = v`, `configure_mock` or a constructor
+  keyword, recorded only under `spec_set`), or `unknown`), `params` is the signature shape
   above and each `returns` entry is `{api, line, once, assignable, typed}`
   (`assignable` is `true`, `false` or `"unknown"`). A member may also carry
   `called_with`, the argument-list assertions on it, each
-  `{api, line, count, spread}` (`count` arguments listed, `spread` when one is a
-  spread so the real count is open), and a `returns` entry may carry `type`, the
+  `{api, line, count, spread, keywords?}` (`count` arguments listed, `spread` when one is a
+  spread so the real count is open; `keywords`, the keyword names among them in
+  source order, which Python sends. A reader that finds a malformed `keywords`
+  keeps the matcher and takes it as `spread`, since a count holding unnamed
+  keywords cannot be bound), and a `returns` entry may carry `type`, the
   pinned value's own type as the worker names it. A `test_double` may carry
   `allows_protected` (`true` when the framework lets the double stub protected
   members, as Mockery's `shouldAllowMockingProtectedMethods()` does), and
@@ -285,7 +339,8 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `text` is the operand's own source text, left out when evaluating it again
   could give another value: when any part of it is a call, a `new` or a tagged
   template. `value` is, for a stubbed operand, the source text of the value the
-  stub was configured to return.
+  stub was configured to return, and for a `literal` local the worker follows to
+  the one literal it holds, that literal's source text.
 - `doubles` edge: from a `test_double` to the production class, interface,
   function, method or module it replaces, with the confidence the worker has in
   that link. A `contains` edge ties a module to its doubles and test cases.

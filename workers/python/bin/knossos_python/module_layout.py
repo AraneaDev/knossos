@@ -66,6 +66,8 @@ class ModuleLayout:
         self._prefixes: list[tuple[str, ...]] | None = None
         # The import that found each path-qualified module, which is how its declarations are read.
         self._spellings: dict[str, str] = {}
+        # What each module_file probe found, with the keys its probes read (see module_file).
+        self._found: dict[tuple[str, bool], tuple[Path | None, frozenset[str]]] = {}
 
     @property
     def prefixes(self) -> list[tuple[str, ...]]:
@@ -174,7 +176,29 @@ class ModuleLayout:
         A path-qualified id (:meth:`file_identity`) names a file no import
         spells, so nothing is probed for it. ``hash_found`` is whether a
         probe that finds a candidate hashes it (:meth:`is_project_file`).
+
+        A request probes one module once: a repeat gives the first answer and
+        names the keys those probes read as read again by whatever asks now,
+        so every importer still records what decided its facts. One test file
+        asks for the same module many times over, and each ask would stat
+        every candidate under every source root again.
         """
+        key = (module, hash_found)
+        found = self._found.get(key)
+        if found is not None:
+            self._recorder._note(set(found[1]))
+            return found[0]
+        self._recorder.open_scope()
+        try:
+            path = self._probe_module_file(module, hash_found)
+        finally:
+            read = frozenset(self._recorder.close_scope())
+            self._recorder._note(set(read))
+        self._found[key] = (path, read)
+        return path
+
+    def _probe_module_file(self, module: str, hash_found: bool) -> Path | None:
+        """Probe for the file ``module`` resolves to, as :meth:`module_file` describes."""
         parts = module.split(".")
         if not parts or "" in parts or QUALIFIED in module:
             return None

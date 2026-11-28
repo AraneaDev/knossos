@@ -22,7 +22,7 @@ const BENCHMARK_METRICS = ['cold_scan_seconds', 'incremental_scan_seconds', 'que
  * limit it declares: the median incremental scan after an edit. Each maps to
  * the language of its corpus, as `generate-test-fidelity-corpus.php` takes it.
  */
-const BENCHMARK_SCENARIOS = ['test_fidelity_rescan_one_file' => 'typescript', 'test_fidelity_rescan_one_file_php' => 'php'];
+const BENCHMARK_SCENARIOS = ['test_fidelity_rescan_one_file' => 'typescript', 'test_fidelity_rescan_one_file_php' => 'php', 'test_fidelity_rescan_one_file_python' => 'python'];
 
 /**
  * Why the benchmark budgets cannot be enforced as they stand; empty when they can.
@@ -117,8 +117,9 @@ function benchmarkScenarioViolations(string $scenario, float $limit, float $seco
 /**
  * Why a scenario's rescan does not measure what it is for, or null when it
  * does: the edit has to make the scan parse the files its corpus says it
- * reaches (the production file, and for TypeScript every test file again), or
- * the median would time a rescan of fewer files and pass for the wrong reason.
+ * reaches (the production file, and for TypeScript and Python every test file
+ * again), or the median would time a rescan of fewer files and pass for the
+ * wrong reason.
  */
 function benchmarkScenarioParseError(string $scenario, int $round, int $expected, mixed $parsed): ?string
 {

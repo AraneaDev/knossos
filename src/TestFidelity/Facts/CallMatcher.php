@@ -11,13 +11,15 @@ final readonly class CallMatcher
 {
     /**
      * @param int $count how many arguments the matcher lists
-     * @param bool $spread whether one of them is a spread, so the real count is open
+     * @param bool $spread whether one of them is a spread, so the real count is open; also set when the keyword list is malformed, because a count holding unnamed keywords cannot be bound
+     * @param list<string> $keywords the keyword names among the arguments (Python), empty when the wire states none
      */
     public function __construct(
         public string $api,
         public int $line,
         public int $count,
         public bool $spread,
+        public array $keywords = [],
     ) {}
 
     /**
@@ -36,6 +38,11 @@ final readonly class CallMatcher
             return null;
         }
 
-        return new self($api, $line, $count, $spread);
+        $keywords = $raw['keywords'] ?? [];
+        if (!is_array($keywords) || !array_is_list($keywords) || array_filter($keywords, static fn(mixed $name): bool => !is_string($name) || $name === '') !== []) {
+            return new self($api, $line, $count, true);
+        }
+
+        return new self($api, $line, $count, $spread, $keywords);
     }
 }

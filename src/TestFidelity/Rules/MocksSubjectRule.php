@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\TestFidelity\Rules;
 
+use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\Facts\{TestCaseFact, TestDouble};
 use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph, TestFidelityRule, TestFinding};
 
@@ -25,7 +26,13 @@ use Knossos\TestFidelity\{FindingCategory, FindingConfidence, TestFidelityGraph,
  *
  * In PHP the unit is the class: a double of a whole class (`createMock`,
  * `Mockery::mock`) replaces the subject when the file that declares the class
- * is among the subjects of a test the double answers to.
+ * is among the subjects of a test the double answers to. Python is judged the
+ * same way (the R8 analog): a double of a whole class (`Mock(spec=Repo)`,
+ * `create_autospec(Repo)`) or of a whole module, by the file that declares it.
+ * Only a Python double that names its test (`test_case`) is judged: one that
+ * names none would answer to every test of its file, and a file that tests
+ * `Repo` in one test and doubles it to test `Service` in the next is the
+ * ordinary case, not a mock of the subject.
  */
 final readonly class MocksSubjectRule implements TestFidelityRule
 {
@@ -40,15 +47,17 @@ final readonly class MocksSubjectRule implements TestFidelityRule
     {
         foreach ($graph->doubles() as $double) {
             $target = $graph->target($double);
-            $php = $target !== null && TestFidelityGraph::isPhp($target);
-            if ($target === null || $double->target['kind'] !== ($php ? 'class' : 'module') || isset($double->target['member']) || $graph->isExternal($double)) {
+            // A PHP or Python double names its unit by the file that declares it.
+            $byFile = $target !== null && (TestFidelityGraph::isPhp($target) || TestFidelityGraph::isPython($target));
+            if ($target === null || !in_array($double->target['kind'], self::kinds($target), true) || isset($double->target['member']) || $graph->isExternal($double)
+                || (TestFidelityGraph::isPython($target) && $double->testCase === null)) {
                 continue;
             }
-            $module = $php ? $target->evidence->relativePath : DoubleTests::file($target->canonicalName);
+            $module = $byFile ? $target->evidence->relativePath : DoubleTests::file($target->canonicalName);
             if (self::isManualMock($module) || self::isManualMock(DoubleTests::file($double->canonicalName))) {
                 continue;
             }
-            $case = $php ? self::exercising($double, $module, $graph) : self::caught($double, $module, $graph);
+            $case = $byFile ? self::exercising($double, $module, $graph) : self::caught($double, $module, $graph);
             if ($case === null) {
                 continue;
             }
@@ -59,6 +68,20 @@ final readonly class MocksSubjectRule implements TestFidelityRule
                 'test_case' => DriftText::clean($case->canonicalName),
             ]);
         }
+    }
+
+    /**
+     * The target kinds a whole-unit double of this worker's names: a PHP class, a Python class or module, a TypeScript module.
+     *
+     * @return list<string>
+     */
+    private static function kinds(NodeFact $target): array
+    {
+        return match (true) {
+            TestFidelityGraph::isPhp($target) => ['class'],
+            TestFidelityGraph::isPython($target) => ['class', 'module'],
+            default => ['module'],
+        };
     }
 
     /**

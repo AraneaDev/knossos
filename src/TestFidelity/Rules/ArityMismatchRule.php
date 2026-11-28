@@ -21,7 +21,25 @@ use Knossos\TestFidelity\TestFinding;
  *
  * A call matcher that lists more arguments than the member takes, or, where the
  * matcher is exact, fewer than it requires, is a `call_arity` finding. The count
- * is syntax on both sides, so it is definite; a spread matcher is silent.
+ * is syntax on both sides, so it is definite; a spread matcher is silent. A
+ * Python matcher is bound by keyword name and parameter kind as well
+ * (`PythonCallBinding`), definite with or without `autospec` (the user's
+ * decision), and silent for a decorated member, whose signature a decorator
+ * may have replaced. Accepted residual: a Python call made unbound,
+ * `Repo.save(repo, x)`, records the receiver, so a matcher written for it
+ * reads as one argument too many. So is a rebind from another file
+ * (`Repo.save = wrap(Repo.save)` in another module), which no worker sees: the
+ * def's signature is then judged for a name that holds another (the residual
+ * GHOST_MEMBER records for cross-file writes), and so is a package rebinding a
+ * submodule's function (`m.f = partial(m.f, 1)` in `pkg/__init__.py`). Silent
+ * for a Python class whose lineage carries `methods_rewritable` (a project
+ * metaclass, an `__init_subclass__`, a class decorator or call that may
+ * replace its methods; Ruling P21). Residual (G4-12): a base outside the
+ * project is never taken to rewrite, though its metaclass may. Silent, too,
+ * where Python's lookup may answer the name with another binding than the
+ * def found (Ruling P24, `TestFidelityGraph::answersCertainly()`): another
+ * class of the lineage lists the name, or the def is inherited past a base
+ * outside the project.
  */
 final readonly class ArityMismatchRule extends DriftRule
 {
@@ -31,6 +49,14 @@ final readonly class ArityMismatchRule extends DriftRule
     protected function judge(DriftPair $pair, TestFidelityGraph $graph): ?TestFinding
     {
         $declared = $pair->member === null ? null : SignatureShape::ofMember($pair->member->attributes);
+        // Ruling P21: a Python class whose lineage may rewrite its methods states no signature a call must meet;
+        // Ruling P24: nor does a def another binding of the lineage, or a base outside the project, may come before.
+        if (TestFidelityGraph::isPython($pair->target) && $graph->hasRewritableLineage($pair->target)) {
+            return null;
+        }
+        if ($pair->member !== null && !$graph->answersCertainly($pair->target, $pair->member)) {
+            return null;
+        }
 
         return $declared === null ? null : $this->signature($pair, $declared) ?? $this->calls($pair, $declared);
     }
@@ -38,7 +64,7 @@ final readonly class ArityMismatchRule extends DriftRule
     /** A call matcher on the member lists a count the member cannot meet. */
     private function calls(DriftPair $pair, SignatureShape $declared): ?TestFinding
     {
-        $violation = CallArity::violation($pair->stub->calledWith, $declared, DriftText::clean($pair->stub->name), $pair->double->framework);
+        $violation = CallArity::violation($pair->stub->calledWith, $declared, DriftText::clean($pair->stub->name), $pair->double->framework, TestFidelityGraph::isPython($pair->target));
 
         return $violation === null ? null : $pair->finding(
             FindingCategory::ArityMismatch,

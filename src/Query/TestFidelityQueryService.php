@@ -22,10 +22,10 @@ final readonly class TestFidelityQueryService extends AbstractArchitectureQueryS
     private const NO_TEST_FACTS = 'no test facts';
 
     /** Every language with a packaged worker, and whether that worker emits test facts yet. */
-    private const PACKAGED_LANGUAGES = ['php' => true, 'python' => false, 'rust' => false, 'typescript' => true];
+    private const PACKAGED_LANGUAGES = ['php' => true, 'python' => true, 'rust' => false, 'typescript' => true];
 
     /** The language a node's local-id prefix names, where it differs from the language's name here. */
-    private const LANGUAGE_OF_PREFIX = ['ts' => 'typescript'];
+    private const LANGUAGE_OF_PREFIX = ['py' => 'python', 'ts' => 'typescript'];
 
     /** A page of the project's test-fidelity findings, ordered by file, line, category, rule and id. */
     public function auditTests(

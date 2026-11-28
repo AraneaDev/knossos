@@ -121,6 +121,14 @@ knossos: this turn introduced 1 test finding. Fix it before finishing:
 knossos: this turn introduced 1 stale mock and 2 other test findings. Fix them before finishing:
 ```
 
+The findings come from TypeScript, PHP and Python tests alike. A Python one
+names the double the way the test made it:
+
+```text
+knossos: this turn introduced 1 stale mock. Fix it before finishing:
+- tests/test_ledger.py:8 unittest.mock.Mock ledger.Ledger stubs total, which Ledger no longer has; did you mean totals?
+```
+
 The message lists at most ten, then `- …and 2 more (run audit_tests)`.
 When the live watcher scanned the edit before the turn ended, the brief compares
 with the findings the edited file touched before the watcher's scan, which the

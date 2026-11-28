@@ -160,6 +160,243 @@ routes are not read. A Django route has a known prefix when its chain of
 includes reaches the module `ROOT_URLCONF` names. [From request to handler](../concepts/request-to-handler.md)
 describes the join.
 
+## Test doubles
+
+In a test file, the worker reports each mock, patch and spy as a `test_double`
+fact. A test file is one the core's test-module rule takes for test code by its
+path:
+
+- one under `tests/`, `test/`, `spec/`, `e2e/` or `fixtures/` outside a source
+  root (`src/`, `lib/`, `app/` or `source/`);
+- one under `__tests__/`, `__test__/`, `__fixtures__/` or `__mocks__/` at any
+  depth, or under `src/test/` or `database/factories/`;
+- one named `test_*.py`, `*_test.py`, `*.test.py`, `*.spec.py` or, in
+  PascalCase, `*Test.py`.
+
+The test-fidelity rules hold each double against the class, function or module
+it stands in for. The worker reads these, without importing any of them:
+
+- `unittest.mock`, or its `mock` backport, under any alias: the `Mock` family
+  (`Mock`, `MagicMock`, `AsyncMock`, `NonCallableMock`,
+  `NonCallableMagicMock`, `PropertyMock`, `ThreadingMock`), `mock_open`,
+  `create_autospec`, `patch`, `patch.object`, `patch.multiple` and
+  `patch.dict`;
+- pytest-mock's `mocker` fixture at any scope (`class_mocker`,
+  `module_mocker`, …): the same calls, plus `mocker.spy`, `mocker.stub` and
+  `mocker.async_stub`;
+- pytest's `monkeypatch.setattr`.
+
+A fixture counts only as a parameter of the function the call sits in, and a
+call counts only when its name resolves to one of these, so a project function
+that happens to be called `patch` makes no double.
+
+What a double stands for comes from its arguments. A dotted string such as
+`patch("shop.cart.Cart.total")` is read through its longest prefix that is a
+project module. A name the module only imports is judged in the module that
+declares it, when the name it is imported under is the declared one. An object
+(`patch.object(Cart, "total")`) is the class or module the expression names.
+A `spec=`, `spec_set=`, `autospec=True` or `create_autospec()` names the class
+the double is shaped like. `create=True` and `raising=False` say the name may
+not exist, and a builtin patched on a module (`patch("m.open")`) is one the
+patch creates, so none of these is judged as a ghost.
+
+A double is bound to a name in the test when that is certain: a local assigned
+once, a `with … as`, a patcher's `start()`, or the argument a `@patch`
+decorator injects (bottom-up, and through a class decorator into each `test*`
+method). A `self.` or `cls.` attribute written once in `setUp`, `setUpClass`,
+`asyncSetUp` or `setup_method` serves every test of the class, and a fixture
+in the same file that returns or yields one double serves each test that asks
+for it. A double from the nearest `conftest.py` gives its identity only:
+configuration a test applies to it is not read. A name bound in both branches
+of an `if`, or again in another block, holds no double for certain, so what is
+done through it is not read.
+
+A double's members are the names its patch form replaces, the names read
+through a spec'd handle, and, under `spec_set`, the names written on it. The
+`Mock` API (`return_value`, `assert_called_with`, …), the prefixes a mock
+reserves (`assert`, `_mock_`, …) and dunders are never members. A double with
+no spec records no members, since it answers every name. Its pins are
+`return_value`, `side_effect` (one pin per literal item of a list; none for an
+exception; the literal a lambda or local function returns), a
+`**{"m.return_value": v}` keyword dict, `configure_mock`, a `new=` value and
+the value `monkeypatch.setattr` sets. A pin's type is read from the value only:
+a literal, a builtin constructor, a project class's constructor
+(`class:<name>`), or a `lambda` (`callable`); any other value is `unknown`.
+Its call matchers are `assert_called_with`, `assert_called_once_with`,
+`assert_any_call`, their
+`await` forms, and each `call(...)` that `assert_has_calls` or
+`assert_has_awaits` lists, with the keyword names they pass. A `*` or `**`
+argument leaves the count open. A `side_effect` callable, when the double is
+not autospec'd, gives the member its parameters, and so does a function that
+replaces a module's function.
+
+## Test cases
+
+The same test files report each test as a `test_case` fact: a module-level
+`test*` function that is not a fixture, a `test*` method of a `Test*` class
+without `__init__` (nested ones too), and a `test*` method of a
+`unittest.TestCase` subclass. Async tests count. Each lists:
+
+- its assertions: a bare `assert` on one comparison (`==`, `!=`, `<`, `<=`,
+  `>`, `>=`, `is`, `is not`, `in`, `not in`), any other bare `assert` with one
+  operand, `unittest`'s value assertions (`assertEqual`, `assertIs`,
+  `assertTrue`, `assertIn`, … by position or keyword, never `msg`), and the
+  mock assertions (`assert_called*`, `assert_any_call`, `assert_has_calls`,
+  `assert_not_called` and their `await` forms). A chained comparison gives
+  none. `assertRaises`, `assertWarns`, `pytest.raises`, `pytest.warns` and
+  `pytest.deprecated_call` mark the test as expecting a failure.
+- where each operand's value comes from: a literal, a double (`mock-call`), the
+  value a stub was pinned to (`mock-config`), the code under test
+  (`production`), a `parametrize` argument (`parameter`), or unknown.
+- its production calls and the project files they land in.
+
+A local name is followed to a literal only when the test function binds it
+exactly once, to a constant or a tuple of constants, before it is read, and
+nothing can write it unseen: no `global` or `nonlocal` of it at any depth, no
+`locals()`, `vars()`, `globals()`, `exec` or `eval` in the function, and no
+frame access (`sys._getframe`, `inspect.currentframe`, `f_locals`, …) anywhere
+in the file. Every other form of binding counts as one: a `for` or `with`
+target, `except … as`, a `match` capture, unpacking, a walrus, `del`, an
+import. A list, dict or set is never followed, so no call can change a value
+the worker took as fixed. A `self.` attribute is never a literal.
+
+A call of a stub gives its pinned value only for a `Mock`-family double made
+in the same test without a spec, a target or a positional argument, pinned
+once before the call, and used in no way that could change what it answers:
+no `side_effect`, `reset_mock` or `configure_mock`, never handed to a call
+that is not an assertion, put in a container, returned or written through. A
+double held on `self.` or by a fixture is a double for its identity, but a
+call of it never gives its pin.
+
+A call counts as production when what it calls is imported from anything
+other than `unittest`, `mock`, `pytest`, `pytest_*`, `django.test` or a test
+module; a standard-library or third-party call counts, with no project file. A
+method called on the value such a call made counts, as does a `self.` method
+the class inherits from a base the file does not show, and the calls inside a
+helper of the file the test calls. A test also counts what its class's
+`setUp` methods and the fixtures it asks for run. A fixture the worker cannot
+find counts as one production call.
+
+A test file whose doubles or tests cannot be read reports the warning
+`PY_TEST_FACTS_FAILED` and keeps every other fact.
+
+## How the rules judge Python tests
+
+The test-fidelity rules read these facts as they read TypeScript's and PHP's,
+with Python's own semantics. Python enforces no annotation at run time, so a
+type a double breaks is never more than a warning, while a name or a call the
+runtime would refuse is definite.
+
+| Category                                                | Python construct                                                                                                           | Confidence                                                                  |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `GHOST_MEMBER`                                          | a stubbed or patched name the class or module no longer has                                                                | definite, against a complete list; silent where the list is open            |
+| `ARITY_MISMATCH/call_arity`                             | a call matcher the signature cannot bind: too many positional arguments, an unknown keyword, a required parameter left out | definite, with or without `autospec`                                        |
+| `ARITY_MISMATCH/signature`                              | a `side_effect` lambda or function whose parameters do not fit the member's                                                | warning                                                                     |
+| `RETURN_DRIFT`                                          | a pin whose type the declared return annotation refuses                                                                    | warning                                                                     |
+| `VISIBILITY_BREACH`                                     | a double of `_x`; of `__x` (not a dunder), which a double cannot replace under that name                                   | `_x` a warning; `__x` definite where every ancestor is seen, else a warning |
+| `TAUTOLOGY/self_comparison`                             | `x is x`; `x == x` where both sides trace to a literal                                                                     | definite                                                                    |
+| `TAUTOLOGY/constant`                                    | an assertion on constants only, a local bound once to a constant comparing as that constant                                | definite                                                                    |
+| `TAUTOLOGY/mock_echo`                                   | a stub's pinned value compared with itself                                                                                 | definite                                                                    |
+| `TAUTOLOGY/mock_only`, `unconfigured_spy`, `zero_reach` | a test that checks only doubles, a spy (`Mock(wraps=…)`, `mocker.spy`) nothing stubs or calls, a double nothing reaches    | warning                                                                     |
+
+Three of these follow decisions taken for Python:
+
+- `RETURN_DRIFT` is a warning only. No runtime check refuses a `return_value`
+  of the wrong type, so the test still runs; the finding says the double no
+  longer tells the truth about the code.
+- A call matcher's arity is definite with or without `autospec`. Without
+  `autospec` the matcher passes, but it asserts a call the real signature
+  cannot accept, so it can never match the code it stands for.
+- A `side_effect` lambda or function of the wrong arity is a warning: it
+  raises only when something calls it. Nemesis reports it as definite.
+
+A self-comparison is definite under `is` (`assert x is x`, `assertIs(x, x)`),
+or under `==` and the other comparisons only when both operands trace to a
+literal constant. Any other `x == x` is never definite: a float NaN, or an
+`__eq__` under test, can make it fail.
+
+The lists a ghost is judged against come from the worker's `member_names` and
+`exports` (see [complete name lists](../reference/scanner-protocol-v1.md#complete-name-lists)).
+A dunder is never judged. A base outside the project leaves the list open,
+except `abc.ABC`, `typing.Protocol` and `typing.Generic`, which add only their
+metaclass's names, and an open ancestor leaves every subclass open. A package's
+exports are always open. A class whose name its own file stores in another
+binding, a list, tuple, set or dict, a `for` loop or a comprehension, or
+returns (`Alias = C`, `REGISTRY = {"c": C}`, `for k in (C, D): k.x = 1`) may
+be written through that holder, so its list is open too (Ruling P23). A call
+matcher and a `side_effect` are not judged against a def that is decorated or
+rebound in its own module or class body, `self.m = …`, `self.m, self.n = …`
+and `setattr(self, "m", …)` among them. Neither they nor a pin are judged on a
+class whose lineage carries `methods_rewritable` (a metaclass, an
+`__init_subclass__`, a class decorator or call that may rewrite its methods),
+nor against a def Python's lookup may not reach first (Ruling P24): one whose
+name another class of the lineage also lists (a subclass's `save = impl`, a
+second base's def an MRO may put first), or one inherited by a class with a
+base outside the project, which may come first in the MRO. A pin is judged
+against a declared return annotation only, built-in types, `typing`'s aliases,
+`Optional`, `Union`, `|` and `Annotated`; a project class,
+a `Protocol`, a `TypeVar`, `Literal`, `Callable` or any other annotation is
+not judged, and a `new=` value replaces the member rather than pinning what it
+returns. A double answers to every test of its file, since a Python double
+names no test case yet, so `zero_reach` speaks only in a file whose tests run
+no production code.
+
+### What the Python rules do not see
+
+These are accepted, and each costs a missed finding or a false one, as stated:
+
+- **Writes from another file** (G4-03). The worker reads one file at a time,
+  so `C.x = 1` in another module, or `m.FLAG = 1` from outside `m`, adds a
+  name it never sees: a double of that name reads as a definite ghost. A
+  rebind from another file (`Repo.save = wrap(Repo.save)`, or a package's
+  `m.f = partial(m.f, 1)`) leaves the def's signature standing for a name that
+  holds another, so its arity is judged against the wrong signature.
+- **A frame write from another module** (G4-08). Production code that writes a
+  caller's locals (`sys._getframe(1).f_locals["x"] = v`, which writes through
+  on Python 3.13 and later) can change a test's local the worker took as a
+  constant, and give a false `constant` definite. Frame access in the test
+  file itself is seen.
+- **A metaclass outside the project that rewrites methods** (G4-12). A base
+  the scan does not hold is never taken to rewrite its subclasses' methods, so
+  a framework metaclass or base `__init_subclass__` that does can give a false
+  definite arity. The common ones (`ABCMeta`, `EnumMeta`, Django's model
+  metaclass) keep the signatures their defs write.
+- **A call made unbound** (G4-10). Production that calls `Repo.save(repo, x)`
+  records the receiver as an argument, so a matcher written for that call
+  reads as one argument too many: a false definite arity.
+- **A spec'd double's pin read back** (G4-14). `m = Mock(spec=C)`,
+  `m.f.return_value = 7`, then `assert m.f() == 7` is an echo, but a spec'd
+  double gives no pinned value, so it is silent.
+- **`MOCKS_SUBJECT`** (G4-11). A Python double names no test case yet, so the
+  rule that a test replaces its own subject never speaks for Python.
+- **A member list opened for nothing** (G4-04). A class handed to a call the
+  worker does not know to be read-only (a registry, `codecs.CodecInfo`, a
+  helper) opens its list, so ghosts on it are missed. Measured before Ruling
+  P23, this opened 892 of the standard library's 2,644 classes (484 of them
+  handed to `codecs.CodecInfo`) and 1 of Knossos's own 30. A class a same-file
+  alias holds (Ruling P23) adds up to 179 more in the standard library, and
+  none in Knossos.
+- **Instance writes outside the class** (G4-02). A name written on an instance
+  through an alias of `self` (`me = self; me.save = …`), on an instance from
+  outside (`C().extra = 1`), or by a module through an import of itself
+  (`import m; m.x = 1` inside `m`) is not listed. A double of that name reads
+  as a definite ghost, and a def it rebinds keeps its arity judged.
+- **Class writes the worker does not follow** (G4-05). A write to a nested
+  class (`O.I.x = 1`), a class held as a parameter default
+  (`def f(k=C): k.x = 1`), a call named like a read-only builtin but bound to
+  something else, `builtins.exec`, and a frame hack whose result is assigned
+  leave the list closed: a double of the name written reads as a definite
+  ghost.
+
+Not read at all: a `@property` patched without `PropertyMock`; a
+constructor's arguments asserted through the class double
+(`MockCls.assert_called_with(...)`); a dotted target whose module does not
+exist; an `assert` on a tuple (`assert (x, "msg")`, which always passes);
+pytest's collection settings (`python_files`, `python_classes`); the test
+cases and doubles of a `conftest.py` at the project root, which is no test
+module (its fixtures are read); and frameworks other than these, such as
+`responses` or `freezegun`.
+
 ## Limits
 
 - Dynamic imports, monkey-patching, runtime decorator effects, metaclass

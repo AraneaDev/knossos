@@ -23,6 +23,7 @@ from knossos_python import (
     PythonAstFactCollector,
     RefusedAfterRead,
     UnreadableInput,
+    add_test_facts,
     assert_scannable_path,
     module_name as module_name,
     names_main_guard as names_main_guard,
@@ -206,6 +207,8 @@ def _scan_one(absolute: Path, relative: str, index: ProjectModuleIndex) -> tuple
         name, owner = index.adopt_parsed(absolute, relative, tree)
         collision = index.collides(absolute, PurePosixPath(relative).stem == "__init__")
         contribution = PythonAstFactCollector(relative, tree, index, collision, shebang, name, owner).collect()
+        # A test file's doubles, read in the same scope so the modules their targets resolve through are its reads.
+        add_test_facts(contribution, relative, tree, index, name)
     except Exception as error:
         contribution = _diagnostic_contribution(relative, "PY_INTERNAL_ERROR", "error", error, 1, content_hash)
         # Only what was read before the failure is named: what the file

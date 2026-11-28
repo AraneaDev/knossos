@@ -24,6 +24,7 @@ from .safe_io import (
     walk_key,
     walk_path,
 )
+from .test_facts import add_test_facts
 
 __all__ = [
     "Exclusions",
@@ -31,6 +32,7 @@ __all__ = [
     "PythonAstFactCollector",
     "RefusedAfterRead",
     "UnreadableInput",
+    "add_test_facts",
     "assert_scannable_path",
     "module_name",
     "names_main_guard",

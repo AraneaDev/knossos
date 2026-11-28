@@ -1,0 +1,3 @@
+class Base:
+    def save(self, name):
+        ...

@@ -165,7 +165,17 @@
       ],
       "properties": {
         "framework": {
-          "enum": ["vitest", "jest", "phpunit", "mockery", "pest", "prophecy"]
+          "enum": [
+            "vitest",
+            "jest",
+            "phpunit",
+            "mockery",
+            "pest",
+            "prophecy",
+            "unittest",
+            "pytest-mock",
+            "pytest"
+          ]
         },
         "pattern": { "type": "string", "minLength": 1 },
         "target": {
@@ -220,6 +230,14 @@
             "addMethods",
             "prophecy",
             "shouldHaveReceived",
+            "patch",
+            "patch.object",
+            "patch.multiple",
+            "patch.dict",
+            "spy",
+            "setattr",
+            "attribute",
+            "assigned",
             "unknown"
           ]
         },
@@ -253,7 +271,12 @@
         "api": { "type": "string", "minLength": 1 },
         "line": { "type": "integer", "minimum": 1 },
         "count": { "type": "integer", "minimum": 0 },
-        "spread": { "type": "boolean" }
+        "spread": { "type": "boolean" },
+        "keywords": {
+          "description": "The keyword names the matcher lists, in source order (Python); `count` holds the positional arguments and the keywords together.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
       }
     },
     "testCaseAttributes": {

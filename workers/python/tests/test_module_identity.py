@@ -233,3 +233,26 @@ def test_a_router_built_inside_a_function_is_no_module_level_node(worker: Module
 
     assert not any(node["kind"] == "router" for node in facts["nodes"])
     assert "py:route:GET /a/x => fac.make_a.<locals>.x" in _ids(facts)
+
+
+def test_a_module_is_probed_once_and_each_asker_records_the_probes(worker: ModuleType, project: Any) -> None:
+    """A repeat ``module_file`` gives the first answer without probing again, and names the same reads."""
+    root = project({"pkg/__init__.py": "", "pkg/b.py": "x = 1\n"})
+    index = worker.ProjectModuleIndex(root, 2_000_000)
+    layout = index.layout
+    probes: list[Path] = []
+    probe = layout.is_project_file
+    layout.is_project_file = lambda path, hash_found=True: probes.append(path) or probe(path, hash_found)
+
+    read = []
+    for module in ("pkg.b", "pkg.b", "pkg.missing", "pkg.missing"):
+        index.open_scope()
+        found = layout.module_file(module)
+        read.append((found, index.close_scope()))
+    once = len(probes)
+    layout.module_file("pkg.b")
+
+    assert read[0] == read[1] == (root / "pkg" / "b.py", {"pkg/b/__init__.py", "pkg/b.py"})
+    assert read[2][0] is None and read[2] == read[3]
+    assert {"pkg/missing/__init__.py", "pkg/missing.py"} <= read[2][1]
+    assert len(probes) == once

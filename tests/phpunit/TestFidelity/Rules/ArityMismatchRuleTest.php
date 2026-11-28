@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\TestFidelity\Rules;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\Rules\ArityMismatchRule;
 use Knossos\TestFidelity\TestFidelityGraph;
+use Knossos\TestFidelity\TestFinding;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertCount;
@@ -175,6 +176,191 @@ final class ArityMismatchRuleTest extends KnossosTestCase
 
         assertSame([], [...(new ArityMismatchRule())->findings($graph)]);
         assertSame([], self::findings(DriftFixtures::graph([DriftFixtures::method('find', ['signature' => ['params' => []]])], [DriftFixtures::stub('find')])));
+    }
+
+    /**
+     * Python matchers on `Session.open(username, token)` unless `$params` says otherwise.
+     *
+     * @param list<array<string, mixed>> $matchers
+     * @param list<array<string, mixed>>|null $params
+     * @param array<string, mixed> $attributes further attributes of the member node
+     * @return list<TestFinding>
+     */
+    private static function python(array $matchers, ?array $params = null, array $attributes = []): array
+    {
+        $params ??= [['name' => 'username', 'type' => 'str'], ['name' => 'token', 'type' => 'str']];
+
+        return self::findings(PythonFixtures::graph([['open', PythonFixtures::signature($params, 'str') + $attributes]], [PythonFixtures::stub('open', calledWith: $matchers)]));
+    }
+
+    /**
+     * Each finding's confidence and message.
+     *
+     * @param list<TestFinding> $findings
+     * @return list<string>
+     */
+    private static function messages(array $findings): array
+    {
+        return array_map(static fn(TestFinding $finding): string => $finding->confidence->value . ' ' . $finding->message, $findings);
+    }
+
+    public function testPythonUnknownKeywordIsDefinite(): void
+    {
+        // Nemesis `kwargs`: `user` was renamed to `username`; the test's keyword was not.
+        $findings = self::python([PythonFixtures::matcher(2, ['user', 'token'])]);
+
+        assertSame(['definite open has no parameter user; the matcher passes it by name'], self::messages($findings));
+        assertSame('call_arity', $findings[0]->subRule);
+        assertSame([], self::python([PythonFixtures::matcher(2, ['username', 'token'])]));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['token'])]));
+    }
+
+    public function testPythonKeywordOnlyByPositionIsTooMany(): void
+    {
+        $params = [['name' => 'a'], ['name' => 'b', 'kind' => 'keyword_only']];
+
+        assertSame(['definite open takes 1 argument(s); the matcher expects 2'], self::messages(self::python([PythonFixtures::matcher(2)], $params)));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['b'])], $params));
+        assertSame(['definite open takes 2 argument(s); the matcher expects 3'], self::messages(self::python([PythonFixtures::matcher(3)])));
+    }
+
+    public function testPythonPositionalOnlyByNameIsDefinite(): void
+    {
+        $params = [['name' => 'x', 'kind' => 'positional_only'], ['name' => 'y']];
+
+        assertSame(['definite open has no parameter x; the matcher passes it by name'], self::messages(self::python([PythonFixtures::matcher(2, ['x', 'y'])], $params)));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['y'])], $params));
+        // Under `**kwargs` the keyword lands there, and the positional-only parameter is left unbound.
+        $open = [...$params, ['name' => '**kwargs', 'variadic' => true]];
+        assertSame(['definite open needs 2 argument(s); the matcher expects 2'], self::messages(self::python([PythonFixtures::matcher(2, ['x', 'y'])], $open)));
+    }
+
+    public function testPythonRequiredParameterLeftUnboundIsDefinite(): void
+    {
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], self::messages(self::python([PythonFixtures::matcher(1)])));
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], self::messages(self::python([PythonFixtures::matcher(1, ['token'])])));
+        $keywordOnly = [['name' => 'a'], ['name' => 'b', 'kind' => 'keyword_only'], ['name' => 'c', 'optional' => true, 'kind' => 'keyword_only']];
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], self::messages(self::python([PythonFixtures::matcher(1)], $keywordOnly)));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['b'])], $keywordOnly));
+    }
+
+    public function testPythonKwargsAndArgsOpenTheirHalf(): void
+    {
+        $args = [['name' => 'a'], ['name' => '*args', 'variadic' => true], ['name' => 'c', 'kind' => 'keyword_only']];
+        assertSame([], self::python([PythonFixtures::matcher(5, ['c'])], $args));
+        assertSame(['definite open has no parameter z; the matcher passes it by name'], self::messages(self::python([PythonFixtures::matcher(3, ['c', 'z'])], $args)));
+        assertSame(['definite open needs 2 argument(s); the matcher expects 3'], self::messages(self::python([PythonFixtures::matcher(3)], $args)));
+
+        $kwargs = [['name' => 'a'], ['name' => '**kwargs', 'variadic' => true]];
+        assertSame([], self::python([PythonFixtures::matcher(3, ['z', 'w'])], $kwargs));
+        assertSame(['definite open takes 1 argument(s); the matcher expects 2'], self::messages(self::python([PythonFixtures::matcher(2)], $kwargs)));
+    }
+
+    public function testPythonSpreadMalformedAndDecoratedAreSilent(): void
+    {
+        // A spread, or a form that records the receiver (a class-level autospec, `mocker.spy` on a class), comes spread.
+        assertSame([], self::python([PythonFixtures::matcher(5, [], true)]));
+        // More keywords than arguments, or one named twice, is no call Python could make.
+        assertSame([], self::python([PythonFixtures::matcher(1, ['user', 'token'])]));
+        assertSame([], self::python([PythonFixtures::matcher(2, ['user', 'user'])]));
+        assertSame([], self::python([PythonFixtures::matcher(3)], attributes: ['decorated' => true]));
+        // The first matcher that cannot bind is the one reported.
+        assertSame(['definite open has no parameter user; the matcher passes it by name'], self::messages(self::python([PythonFixtures::matcher(2), PythonFixtures::matcher(2, ['user', 'token'])])));
+    }
+
+    public function testPythonMethodsARewritableLineageMayReplaceAreSilent(): void
+    {
+        // Ruling P21: a project metaclass or `__init_subclass__` on the class or an ancestor may rewrite its methods.
+        $judge = static function (array $baseAttributes, string $base = 'py:class:app.repo.Base', array $own = []): array {
+            $owner = PythonFixtures::node('class', 'app.repo.Repo');
+            $parent = PythonFixtures::node('class', 'app.repo.Base', ['member_names' => [], ...$baseAttributes]);
+            $graph = PythonFixtures::graph(
+                [['open', PythonFixtures::signature([['name' => 'username'], ['name' => 'token']])]],
+                [PythonFixtures::stub('open', [PythonFixtures::pin('int')], [PythonFixtures::matcher(1)])],
+                ownerAttributes: ['member_names' => ['open'], ...$own],
+                extra: [$parent],
+                extraEdges: [PythonFixtures::edge('extends', $owner, $base)],
+            );
+
+            return self::messages(self::findings($graph));
+        };
+
+        assertSame([], $judge(['methods_rewritable' => true]));
+        assertSame([], $judge([], own: ['methods_rewritable' => true]));
+        // A plain base, or one outside the project (G4-12), leaves the binding judged.
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], $judge([]));
+        assertSame(['definite open needs 2 argument(s); the matcher expects 1'], $judge([], 'py:external_symbol:enum.Enum'));
+        // The flag is Python's alone: another worker's class keeps its matchers judged.
+        $typescript = DriftFixtures::graph(
+            [DriftFixtures::method('find', ['signature' => ['params' => [['name' => 'id']]]])],
+            [DriftFixtures::stub('find', null, [], [self::matcher(2)])],
+            targetAttributes: ['member_names' => ['find'], 'methods_rewritable' => true],
+        );
+        assertCount(1, self::findings($typescript));
+    }
+
+    public function testPythonArityIsJudgedOnlyAgainstTheDefThatCertainlyAnswers(): void
+    {
+        // Ruling P24 (final review I1): Python's lookup, not a breadth-first walk, decides which def answers the name.
+        $judge = static function (array $ownNames, array $parents, array $bases, array $own = []): array {
+            $owner = PythonFixtures::node('class', 'app.repo.Repo');
+            $edges = array_map(static fn(string $base): \Knossos\Scanner\Protocol\EdgeFact => PythonFixtures::edge('extends', $owner, $base), $parents);
+            $extra = [];
+            foreach ($bases as [$base, $names, $params, $baseParents]) {
+                $node = PythonFixtures::node('class', 'app.repo.' . $base, ['member_names' => $names]);
+                $extra[] = $node;
+                if ($params !== null) {
+                    $method = PythonFixtures::method($node, 'run', PythonFixtures::signature($params));
+                    $extra[] = $method;
+                    $edges[] = PythonFixtures::edge('contains', $node, $method->localId);
+                }
+                foreach ($baseParents as $parent) {
+                    $edges[] = PythonFixtures::edge('extends', $node, $parent);
+                }
+            }
+            $graph = PythonFixtures::graph($own, [PythonFixtures::stub('run', [], [PythonFixtures::matcher(1)])], ownerAttributes: ['member_names' => $ownNames], extra: $extra, extraEdges: $edges);
+
+            return self::messages(self::findings($graph));
+        };
+        $one = [['name' => 'x']];
+        $two = [['name' => 'x'], ['name' => 'y']];
+
+        // `class Repo(B, C)`, `B(A)`: Python's MRO takes A's `run(x)`; breadth first takes C's `run(x, y)`.
+        assertSame([], $judge(['run'], ['py:class:app.repo.B', 'py:class:app.repo.C'], [['B', ['run'], null, ['py:class:app.repo.A']], ['C', ['run'], $two, []], ['A', ['run'], $one, []]]));
+        // `class Repo(logging.Handler, Base)`: the base outside the project comes first in the MRO.
+        assertSame([], $judge([], ['py:external_symbol:logging.Handler', 'py:class:app.repo.Base'], [['Base', ['run'], $two, []]]));        // `class Repo(Base): run = _impl`, or `self.run = …`: the class's own binding shadows the inherited def.
+        assertSame([], $judge(['run'], ['py:class:app.repo.Base'], [['Base', ['run'], $two, []]]));
+        // A subclass that leaves the name to its one base is judged against that def.
+        assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge([], ['py:class:app.repo.Base'], [['Base', ['run'], $two, []]]));
+        assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge([], ['py:class:app.repo.B'], [['B', [], null, ['py:class:app.repo.Base']], ['Base', ['run'], $two, []]]));
+        // A def on the class itself answers first, whatever its bases.
+        assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge(['run'], ['py:external_symbol:logging.Handler', 'py:class:app.repo.Base'], [['Base', ['other'], null, []]], [['run', PythonFixtures::signature($two)]]));
+    }
+
+    public function testTypeScriptArityIgnoresWhoElseListsTheName(): void
+    {
+        // P24 is Python's: a TypeScript subclass that lists the name, under an unseen base, keeps the inherited signature judged.
+        $base = DriftFixtures::node('class', 'src/UserService.ts#Base', 'Base', ['member_names' => ['find']]);
+        $find = DriftFixtures::node('method', 'src/UserService.ts#Base::find', 'find', ['signature' => ['params' => [['name' => 'id']]]]);
+        $class = DriftFixtures::node('class', 'src/UserService.ts#UserService', 'UserService');
+        $graph = DriftFixtures::graph(
+            [],
+            [DriftFixtures::stub('find', null, [], [self::matcher(2)])],
+            extra: [$base, $find],
+            extraEdges: [DriftFixtures::edge('contains', $base, $find->localId), DriftFixtures::edge('extends', $class, 'ts:external_symbol:lib.Thing'), DriftFixtures::edge('extends', $class, $base->localId)],
+            targetAttributes: ['member_names' => ['find']],
+        );
+
+        assertCount(1, self::findings($graph));
+    }
+
+    public function testPythonUntypedSideEffectLambdaIsAWarning(): void
+    {
+        $member = PythonFixtures::stub('open', params: [['name' => 'a'], ['name' => 'b'], ['name' => 'c']]);
+        $untyped = self::findings(PythonFixtures::graph([['open', PythonFixtures::signature([['name' => 'username'], ['name' => 'token']])]], [$member]));
+
+        assertSame(['warning open takes 2 argument(s); the double passes 3'], self::messages($untyped));
+        assertSame('signature', $untyped[0]->subRule);
     }
 
     /** @return list<\Knossos\TestFidelity\TestFinding> */

@@ -12,6 +12,7 @@ use Knossos\Scanner\Protocol\Origin;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\TestFidelity\Rules\PythonFixtures;
 
 use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertNotNull;
@@ -280,5 +281,95 @@ final class TestFidelityGraphTest extends KnossosTestCase
         assertNull($graph->phpIsA('App\\FileLog', 'App\\Payable'), 'A parent only vendor/ holds may implement anything.');
         assertNull($graph->phpIsA('App\\Card', 'Psr\\Log\\LoggerInterface'), 'A type only vendor/ holds.');
         assertNull($graph->phpIsA('Monolog\\Logger', 'App\\Payable'));
+    }
+
+    /**
+     * Python doubles from `tests/test_repo.py`, one per target reference given (`null`: no edge), each of kind `$kind`.
+     *
+     * @param list<string|null> $references
+     * @param list<NodeFact> $production
+     */
+    private static function pythonGraph(array $references, array $production = [], string $kind = 'class'): TestFidelityGraph
+    {
+        $doubles = $edges = [];
+        foreach ($references as $index => $reference) {
+            $double = PythonFixtures::node('test_double', 'tests/test_repo.py#double:' . ($index + 1) . ':5', [
+                'framework' => 'unittest', 'pattern' => 'unittest.mock.patch.object', 'target' => ['kind' => $kind, 'export' => 'app.repo.Repo'], 'automock' => false, 'invocations' => 0, 'members' => [],
+            ], 'tests/test_repo.py');
+            $doubles[] = $double;
+            if ($reference !== null) {
+                $edges[] = PythonFixtures::edge('doubles', $double, $reference);
+            }
+        }
+
+        return TestFidelityGraph::fromContributions([
+            new ScanContribution('knossos.python:file:src', $production, []),
+            new ScanContribution('knossos.python:file:tests/test_repo.py', $doubles, $edges),
+        ]);
+    }
+
+    public function testAnUnemittedPythonTargetIsExternal(): void
+    {
+        $repo = PythonFixtures::node('class', 'app.repo.Repo', ['member_names' => []]);
+        $installed = PythonFixtures::node('class', 'requests.Session', ['member_names' => []], '.venv/lib/python3.12/site-packages/requests/sessions.py');
+        $graph = self::pythonGraph(['py:class:app.repo.Repo', 'py:class:app.repo.Gone', 'py:module:app.gone', 'py:external_symbol:os.path', 'py:class:requests.Session', null], [$repo, $installed]);
+        [$held, $gone, $module, $symbol, $venv, $unbound] = $graph->doubles();
+
+        assertFalse($graph->isExternal($held), 'a class the scan holds');
+        assertTrue($graph->isExternal($gone), 'a Python class no contribution emits');
+        assertTrue($graph->isExternal($module), 'a Python module no contribution emits');
+        assertTrue($graph->isExternal($symbol), 'an external symbol');
+        assertTrue($graph->isExternal($venv), 'a class under site-packages/');
+        assertFalse($graph->isExternal($unbound), 'no edge and no specifier');
+    }
+
+    public function testSitePackagesIsOutsideOnlyForPython(): void
+    {
+        $node = new NodeFact('ts:class:x', 'class', 'x', 'x', Origin::Ast, Confidence::Certain, new Evidence('lib/site-packages/x.ts', 1, 1), []);
+        $double = self::double('tests/a.test.ts#double:1:1', ['kind' => 'class', 'export' => 'x']);
+        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.typescript:file:x', [$node, $double], [self::edge('doubles', $double, 'ts:class:x')])]);
+
+        assertFalse($graph->isExternal($graph->doubles()[0]));
+    }
+
+    public function testKnownPythonBasesAreSeenAndAddTheirMetaclassNames(): void
+    {
+        $abstract = PythonFixtures::node('class', 'app.shapes.Shape', ['member_names' => ['area']]);
+        $square = PythonFixtures::node('class', 'app.shapes.Square', ['member_names' => ['side']]);
+        $colour = PythonFixtures::node('class', 'app.shapes.Colour', ['member_names' => ['RED']]);
+        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.python:file:src/app/shapes.py', [$abstract, $square, $colour], [
+            PythonFixtures::edge('extends', $abstract, 'py:external_symbol:abc.ABC'),
+            PythonFixtures::edge('extends', $square, 'py:class:app.shapes.Shape'),
+            PythonFixtures::edge('extends', $colour, 'py:class:enum.Enum'),
+        ])]);
+
+        assertTrue(TestFidelityGraph::isPython($square));
+        assertFalse(TestFidelityGraph::isPhp($square));
+        assertSame($square, $graph->pythonClass('app.shapes.Square'));
+        assertNull($graph->pythonClass('app.shapes.Circle'));
+        assertFalse($graph->hasUnseenAncestor($square));
+        assertTrue($graph->hasClosedLineage($square));
+        assertSame(['app.shapes.Square', 'app.shapes.Shape'], array_map(static fn(NodeFact $type): string => $type->canonicalName, $graph->lineage($square)));
+        assertSame(['_abc_cache', '_abc_caches_clear', '_abc_impl', '_abc_negative_cache', '_abc_negative_cache_version', '_abc_registry', '_abc_registry_clear', '_dump_registry', 'register'], $graph->knownBaseNames($square));
+        // Two known bases, one a Protocol: each name once, sorted.
+        $both = TestFidelityGraph::fromContributions([new ScanContribution('knossos.python:file:src', [$square], [
+            PythonFixtures::edge('extends', $square, 'py:external_symbol:typing.Protocol'),
+            PythonFixtures::edge('extends', $square, 'py:class:abc.ABC'),
+        ])]);
+        assertSame(['_abc_cache', '_abc_caches_clear', '_abc_impl', '_abc_negative_cache', '_abc_negative_cache_version', '_abc_registry', '_abc_registry_clear', '_dump_registry', '_is_protocol', '_is_runtime_protocol', 'register'], $both->knownBaseNames($square));
+        assertTrue($graph->hasUnseenAncestor($colour));
+        assertFalse($graph->hasClosedLineage($colour));
+        assertSame([], $graph->knownBaseNames($colour));
+    }
+
+    public function testAProjectNodeUnderAKnownBaseNameIsTheNodeItself(): void
+    {
+        // A project's own `abc.ABC` (a module that shadows the stdlib) is walked like any class.
+        $own = PythonFixtures::node('class', 'abc.ABC', ['member_names' => ['extra'], 'member_names_open' => true]);
+        $child = PythonFixtures::node('class', 'app.Child', ['member_names' => []]);
+        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.python:file:src', [$own, $child], [PythonFixtures::edge('extends', $child, 'py:class:abc.ABC')])]);
+
+        assertFalse($graph->hasClosedLineage($child));
+        assertSame([], $graph->knownBaseNames($child));
     }
 }
