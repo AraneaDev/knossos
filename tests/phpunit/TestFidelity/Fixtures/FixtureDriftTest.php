@@ -14,6 +14,7 @@ use Knossos\TestFidelity\Fixtures\YamlDocument;
 use Knossos\TestFidelity\OnRequest\OnRequestFinding;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * One fixture's records against the type they hold: the port of Nemesis's
@@ -21,6 +22,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
  * sub-rule and per silence. Ports `nestedFixtures.test.ts` and the
  * named-type and Python cases of `fixtureRecords.test.ts`.
  */
+#[Group('test-fidelity')]
 final class FixtureDriftTest extends KnossosTestCase
 {
     private const FILE = 'fixtures/consignments.fixture.json';

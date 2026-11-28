@@ -11,12 +11,15 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertSame;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * The framework a template is written for (Decision 5): asked for, else
  * what the project's doubles use most, else a manifest's dev dependency,
  * else the language's default, through the frozen map from a double's
  * framework to a template's (preflight F12).
  */
+#[Group('test-fidelity')]
 final class FrameworkChoiceTest extends KnossosTestCase
 {
     public function testAnExplicitFrameworkWins(): void

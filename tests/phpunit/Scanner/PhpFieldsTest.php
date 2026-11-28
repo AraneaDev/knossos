@@ -23,6 +23,7 @@ use PHPUnit\Framework\Attributes\Group;
  * edges, so a parent outside the scan leaves the whole list unknown.
  */
 #[Group('php-scanner')]
+#[Group('test-fidelity')]
 final class PhpFieldsTest extends KnossosTestCase
 {
     public function testFieldsOfAClassWithNullableAndDefaultedMembers(): void

@@ -11,6 +11,7 @@ use Knossos\TestFidelity\Fixtures\JsonDocument;
 use Knossos\TestFidelity\Fixtures\Value;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Which type a fixture holds records of, and where in the file they are: the
@@ -18,6 +19,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
  * (`staleFixtures.ts:230-282`, `610-666`), its signals and thresholds exact,
  * and its `fixtureRecords.test.ts` and `fixtureDiagnostics.test.ts:39-62`.
  */
+#[Group('test-fidelity')]
 final class DtoMatchTest extends KnossosTestCase
 {
     /** A TypeScript type whose fields are all required strings. */

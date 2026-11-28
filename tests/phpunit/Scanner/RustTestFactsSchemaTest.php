@@ -14,11 +14,14 @@ use Knossos\Tests\Phpunit\Support\WorkerClients;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertSame;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * The Rust worker's `test_case` nodes and their `contains` edges fit the
  * wire schema, over every Rust test-fidelity fixture, and the core's reader
  * keeps each case and every assertion and operand it carries.
  */
+#[Group('test-fidelity')]
 final class RustTestFactsSchemaTest extends KnossosTestCase
 {
     use WorkerClients;

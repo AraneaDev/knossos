@@ -21,6 +21,7 @@ use PHPUnit\Framework\Attributes\Group;
  * readers without loss.
  */
 #[Group('php-scanner')]
+#[Group('test-fidelity')]
 final class PhpTestDoublesTest extends KnossosTestCase
 {
     public function testRecordsAPhpunitDoubleWithMemberPinAndEdge(): void

@@ -7,12 +7,14 @@ namespace Knossos\Tests\Phpunit\TestFidelity\Fixtures;
 use Knossos\TestFidelity\Fixtures\JsonDocument;
 use Knossos\TestFidelity\Fixtures\Value;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Core's own JSON reader for fixture files: every key's line, so a finding
  * points at the key rather than at line 1 as Nemesis does, and nothing a
  * fixture's author may not have meant (a duplicate key) read as data.
  */
+#[Group('test-fidelity')]
 final class JsonDocumentTest extends KnossosTestCase
 {
     public function testEachKeyCarriesItsLine(): void

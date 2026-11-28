@@ -6,8 +6,10 @@ namespace Knossos\Tests\Phpunit\TestFidelity\Fixtures;
 
 use Knossos\TestFidelity\Fixtures\FixtureFiles;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /** The fixture walk's edges that the tool tests do not reach. */
+#[Group('test-fidelity')]
 final class FixtureFilesTest extends KnossosTestCase
 {
     public function testARootThatIsGoneHoldsNoFixture(): void

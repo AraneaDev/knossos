@@ -429,6 +429,47 @@ the shipped runtime image. The image also builds `pcov` from a checksum-pinned
 tarball and enables `pcntl`, which the signal and watcher tests need in order to
 run instead of skipping.
 
+### The per-task loop
+
+The whole suite is over 7,000 tests and takes most of an hour on one core, so
+a change is checked against a slice of it while it is being made, and against
+all of it once, before it is merged. Install the workers first (build the Rust
+worker and copy it to `workers/rust/bin/`, and install the TypeScript worker's
+`node_modules`): a worker that is missing skips its tests, and a run that
+skipped them proves nothing about them.
+
+```sh
+vendor/bin/paratest --exclude-group slow   # every test but the slow ones, one process per core
+vendor/bin/paratest --group test-fidelity  # the test-fidelity rules, facts, acceptance and self-scans
+vendor/bin/phpunit --filter SomeTest       # the tests of the files the change touched
+```
+
+[ParaTest](https://github.com/paratestphp/paratest) is a development
+dependency for this loop only; `composer test`, CI and Infection run PHPUnit.
+Leave TMPDIR at its default, and do not point it under your home directory:
+the suite makes its own temp root inside it. Under ParaTest the run's
+leftover-file check (`Support\TempRootGuard`) does not run, because no single
+process sees the whole run, so a plain PHPUnit run is still the one that
+proves a test cleans up after itself.
+
+A few slow tests compare timings and can fail under the load of a parallel
+run, though they pass on their own:
+`YamlDocumentTest::testALongFlowCollectionIsReadInLinearTime` measured a ratio
+of 60.3 against its 55 under `vendor/bin/paratest --group test-fidelity` on
+2026-11-28. Add `--exclude-group slow` to a ParaTest run, and run the slow
+tests with `vendor/bin/phpunit --group slow`, which runs them one at a time.
+
+A test that takes more than five seconds carries `#[Group('slow')]`, on its
+method. `php tools/tag-slow-tests.php` lists the slow tests from the times
+PHPUnit keeps in `.phpunit.cache/test-results`; `--check` fails when one is
+untagged and `--write` tags it. The times are your machine's, from your last
+run without `--do-not-cache-result`, so run it after a full run and review
+what it changes. A tag that would push a file past its
+`file-length-baseline.json` entry goes into the method's existing attribute
+line instead, as in `#[Group('query'), Group('slow')]`. Nothing excludes the
+group by default: `--exclude-group slow` and `--group slow` together list the
+whole suite.
+
 ## Hooks
 
 Install pinned pre-commit 4.6.0, then run:

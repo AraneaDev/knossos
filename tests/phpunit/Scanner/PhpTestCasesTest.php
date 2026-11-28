@@ -27,6 +27,7 @@ use PHPUnit\Framework\Attributes\Group;
  * judged by the core's tautology rule.
  */
 #[Group('php-scanner')]
+#[Group('test-fidelity')]
 final class PhpTestCasesTest extends KnossosTestCase
 {
     public function testTracesAStubEchoToItsMockConfig(): void

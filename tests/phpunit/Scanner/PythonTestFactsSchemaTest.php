@@ -22,6 +22,7 @@ use PHPUnit\Framework\Attributes\Group;
  * core's reader keeps each double and every member and matcher it carries.
  */
 #[Group('python-scanner')]
+#[Group('test-fidelity')]
 final class PythonTestFactsSchemaTest extends KnossosTestCase
 {
     #[Group('slow')]

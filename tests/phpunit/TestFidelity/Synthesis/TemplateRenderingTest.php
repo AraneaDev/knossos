@@ -19,6 +19,8 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertStringContainsString;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Two template details of G6-08g: the Rust template renders each member
  * once (a member's example value asks the graph for the types it names, and
@@ -26,6 +28,7 @@ use function PHPUnit\Framework\assertStringContainsString;
  * rendering), and a PHP parameter taken by reference keeps its `&` in the
  * member's comment line.
  */
+#[Group('test-fidelity')]
 final class TemplateRenderingTest extends KnossosTestCase
 {
     public function testEachRustMemberIsRenderedOnce(): void

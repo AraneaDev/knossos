@@ -19,12 +19,15 @@ use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertTrue;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * The members a mock renders (Decision 5): public instance methods, declared
  * and inherited nearest first; what cannot be rendered faithfully under
  * `omitted`; and `complete` only when nothing was left out and nothing may
  * come from elsewhere.
  */
+#[Group('test-fidelity')]
 final class MockMembersTest extends KnossosTestCase
 {
     /** @var list<NodeFact> */

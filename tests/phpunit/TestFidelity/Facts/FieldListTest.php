@@ -15,10 +15,13 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertSame;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * The core's reading of a node's `fields` and `cases`: a list that is
  * present, well formed, whole and closed, or nothing at all.
  */
+#[Group('test-fidelity')]
 final class FieldListTest extends KnossosTestCase
 {
     private const FIELDS = [

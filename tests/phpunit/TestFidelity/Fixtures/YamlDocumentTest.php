@@ -15,6 +15,7 @@ use PHPUnit\Framework\Attributes\Group;
  * What it does not read (an anchor, an alias, a tag, a merge key, a second
  * document) makes the file unparsable, never a guess.
  */
+#[Group('test-fidelity')]
 final class YamlDocumentTest extends KnossosTestCase
 {
     /** A value as plain PHP data, for comparing whole trees. */

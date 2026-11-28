@@ -17,11 +17,14 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertSame;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * A type's whole field list over the graph: composed along the scan's own
  * inheritance edges for a worker that sends own fields only, and taken as sent
  * from the TypeScript worker, whose checker merged it already.
  */
+#[Group('test-fidelity')]
 final class FieldListsTest extends KnossosTestCase
 {
     /** @param array<string, mixed> $attributes */

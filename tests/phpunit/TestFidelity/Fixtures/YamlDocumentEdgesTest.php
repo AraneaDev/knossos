@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\TestFidelity\Fixtures;
 use Knossos\TestFidelity\Fixtures\Value;
 use Knossos\TestFidelity\Fixtures\YamlDocument;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The YAML subset reader's edges, each pinned to its exact result: why a
@@ -14,6 +15,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
  * headers, chomping and folding, quoted keys, comments beside quotes, and
  * quotes and nesting inside flow collections.
  */
+#[Group('test-fidelity')]
 final class YamlDocumentEdgesTest extends KnossosTestCase
 {
     /** A value as plain PHP data. */

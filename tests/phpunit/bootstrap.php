@@ -39,7 +39,12 @@ if (!is_string($root) || $root === '' || !is_dir($root)) {
 }
 putenv('TMPDIR=' . $root);
 $_ENV['TMPDIR'] = $_SERVER['TMPDIR'] = $root;
-if (sys_get_temp_dir() !== $root) {
+// ParaTest's runner settles a temp directory of its own, for its workers'
+// files, before it loads this bootstrap to list the tests. It runs no test,
+// and each worker it starts inherits TMPDIR from here, so only a process that
+// runs tests is held to the root.
+$paratestRunner = class_exists(ParaTest\WrapperRunner\SuiteLoader::class, false);
+if (sys_get_temp_dir() !== $root && !$paratestRunner) {
     fwrite(STDERR, 'PHP had settled on ' . sys_get_temp_dir() . " as its temp directory before the bootstrap ran, so the tests would write there instead of {$root}.\n");
     exit(1);
 }

@@ -22,6 +22,7 @@ use PHPUnit\Framework\Attributes\Group;
  * fixture-drift tree, and the core reads each list it sends; an open list
  * reads as none.
  */
+#[Group('test-fidelity')]
 final class FieldFactsSchemaTest extends KnossosTestCase
 {
     #[Group('slow')]
