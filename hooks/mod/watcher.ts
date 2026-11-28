@@ -189,7 +189,7 @@ async function scan(io: Port): Promise<void> {
   // A brief that scanned took in the turn's own edits: its scan is the session's.
   if (parsed?.status === 'ok' && parsed.scanned === true && parsed.snapshot_id !== null) await keepScan(io, parsed.snapshot_id)
   if (!(await settleBrief(io, parsed, await io.clock.now())) || parsed === null) return
-  const note = turnEndNote(parsed, cdFor(parsed.project_root, await io.state.sessionRoot.read()))
+  const note = turnEndNote(parsed, cdFor(parsed.project_root, await io.state.sessionRoot.read()), line => void io.ui.log(line, { to: 'debug' }))
   if (note !== null) await deliverNote(io, note)
   // The brief's own scan is in the ledger too.
   requestLedger(io)

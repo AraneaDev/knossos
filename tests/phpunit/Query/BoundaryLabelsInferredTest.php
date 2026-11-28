@@ -27,6 +27,8 @@ final class BoundaryLabelsInferredTest extends KnossosTestCase
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $pdo->exec('CREATE TABLE boundaries (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, matcher_json TEXT NOT NULL, source TEXT NOT NULL)');
         $pdo->exec('CREATE TABLE boundary_memberships (boundary_id TEXT NOT NULL, project_id TEXT NOT NULL, node_id TEXT NOT NULL, PRIMARY KEY (boundary_id, node_id))');
+        // The member count leaves out derived test facts, so it looks each member's kind up; none here is one.
+        $pdo->exec('CREATE TABLE nodes (id TEXT PRIMARY KEY, kind TEXT NOT NULL)');
 
         return $pdo;
     }

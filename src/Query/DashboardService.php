@@ -6,8 +6,9 @@ namespace Knossos\Query;
 
 use Closure;
 use Knossos\Query\Drift\DriftCounts;
-use Knossos\Store\EnrichedFacts;
 use Knossos\Store\SharedNodeKinds;
+use Knossos\Store\SnapshotFacts;
+use Knossos\TestFidelity\DashboardTestFindings;
 use PDO;
 
 /**
@@ -203,6 +204,7 @@ final readonly class DashboardService
             'complexity_hotspots' => $findings->complexityHotspots($id),
             'over_budget' => $findings->overBudget($id, $root),
             'policy' => $findings->policy($id, $root, $labels),
+            'test_findings' => DashboardTestFindings::of($this->pdo, $id, $root),
         ];
     }
 
@@ -393,7 +395,7 @@ final readonly class DashboardService
     {
         return 'SELECT e.target_id, ' . EdgeEvidencePath::sql() . ' AS relative_path ' .
             'FROM edges e JOIN nodes n ON n.id = e.target_id LEFT JOIN files f ON f.id = e.file_id ' .
-            'WHERE (e.file_id IS NULL OR e.file_id IS NOT n.file_id) AND ' . EnrichedFacts::excludeSql('e') . ' ' .
+            'WHERE (e.file_id IS NULL OR e.file_id IS NOT n.file_id) AND ' . SnapshotFacts::nativeSql('edges', 'e') . ' ' .
             'AND e.target_id IN (' . implode(',', array_fill(0, $count, '?')) . ') AND ' . EdgeEvidencePath::sql() . ' IS NOT NULL';
     }
 
@@ -506,6 +508,7 @@ final readonly class DashboardService
             'notes' => ['total' => 0, 'missing' => 0, 'stale' => 0, 'flagged' => 0],
             'trend' => [], 'deltas' => null, 'in_degree' => ['buckets' => [], 'truncated' => false], 'fan_in' => [], 'fan_in_truncated' => false, 'dead_code' => [],
             'boundary_matrix' => ['boundaries' => [], 'members' => [], 'labelled' => 0, 'boundaries_truncated' => false, 'cells' => [], 'forbidden' => [], 'flows' => [], 'edges' => 0, 'truncated' => false, 'truncation_reasons' => []],
+            'test_findings' => DashboardTestFindings::none(),
         ] + ProjectFindings::none();
     }
 }

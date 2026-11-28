@@ -7,7 +7,7 @@ namespace Knossos\Mcp;
 use Knossos\TestFidelity\{FindingCategory, FindingConfidence};
 
 /**
- * The `audit_tests` tool's definition, kept out of {@see ToolCatalog}, which is over its length cap and may not grow.
+ * The `audit_tests` tool's definition, kept out of {@see ToolCatalog}, which is at its length cap.
  */
 final readonly class AuditTestsToolDefinition
 {

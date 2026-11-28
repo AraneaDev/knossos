@@ -14,7 +14,8 @@ calls the MCP server's [`file_context`](#one-files-context) tool.
 
 No message costs a process of its own: the figures come from the last dashboard
 load and the turn's brief. `agentNotes` turns every message off, and
-`enforcePolicies` turns off the policy part of the turn-end message and the one after a commit
+`enforcePolicies` turns off the policy part of the turn-end message and the one after a commit,
+and `testChecks` turns off the stale-mock lines of the Read and turn-end messages
 (see [settings](pane/index.md#settings)).
 
 ## The Read message
@@ -33,6 +34,13 @@ in `core` gets its count alone:
 
 ```text
 knossos: src/Store/StableId.php (core) has 59 dependent files.
+```
+
+A file whose test doubles no longer match the code they replace gets one more
+sentence, once per loop, when `testChecks` is on:
+
+```text
+knossos: 2 test doubles of PaymentGateway no longer match it (charge(): arity).
 ```
 
 A quiet file in a policed boundary the model has not read from yet gets the
@@ -81,7 +89,7 @@ The person sees the same turn as the band above the prompt.
 
 After a turn that edited files, the mod scans the project (see
 [what it writes](pane/index.md#what-it-writes)) and the turn's brief says what the
-turn did. The model then reads one message before its next step, with up to two
+turn did. The model then reads one message before its next step, with up to three
 parts.
 
 **Policy violations the turn introduced**, when the project declares boundary
@@ -92,13 +100,39 @@ knossos: this turn introduced 1 boundary-policy violation. Fix it before finishi
 - domain-isolation: App\Domain\Order → App\Infra\Db
 ```
 
+**Test findings the turn introduced**, when `testChecks` is on: the brief's definite
+findings. A stale mock is a test double that no longer matches the code it
+replaces; any other definite finding (an assertion that cannot fail, a double
+that is not visible to its test, a test that replaces its own subject) is a test
+finding. Each is said once a session, even when a later edit moves it to another
+line. The head counts what is said this turn:
+
+```text
+knossos: this turn introduced 1 stale mock. Fix it before finishing:
+- tests/PaymentTest.php:42 charge takes 2 argument(s); the double passes 1
+```
+
+```text
+knossos: this turn introduced 1 test finding. Fix it before finishing:
+- tests/PaymentTest.php:57 true is compared with true, both constants; the assertion cannot fail
+```
+
+```text
+knossos: this turn introduced 1 stale mock and 2 other test findings. Fix them before finishing:
+```
+
+The message lists at most ten, then `- …and 2 more (run audit_tests)`.
+When the live watcher scanned the edit before the turn ended, the brief compares
+with the findings the edited file touched before the watcher's scan, which the
+scan ledger keeps. When the ledger has no such record, the part is left out.
+
 **Tests that reach the turn's changes**, and the command that runs them:
 
 ```text
 knossos: 2 tests reach this turn's changes. Run: vendor/bin/phpunit --filter '(DashboardServiceTest|TurnBriefServiceTest)'
 ```
 
-When both have something to say they arrive as one message, the violations first.
+When more than one has something to say they arrive as one message, in that order.
 
 ### How the policy part is worked out
 

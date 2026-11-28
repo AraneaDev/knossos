@@ -175,7 +175,7 @@ describe('the wrappers and the engine test agree on what runs', () => {
   }
 
   it('each wrapper accepts every subcommand the engine test answers', () => {
-    const test = readFileSync(join(REPO, 'hooks/register.test.ts'), 'utf8')
+    const test = readFileSync(join(REPO, 'hooks/__tests__/world.ts'), 'utf8')
     const answered = [...test.matchAll(/^\s+\['([a-z-]+)', queues\.[a-z]+\],?$/gm)].map(m => m[1]!)
     expect(answered.length).toBeGreaterThan(15)
     const accepted = limitsOf()

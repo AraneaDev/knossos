@@ -86,7 +86,9 @@ instead of failing the whole call:
   When `base_ref` is given and the gate used the previous scan, a warning says
   so; pass `baseline_snapshot` with a scan of that ref to gate against it.
   `not_evaluated` when no budgets are declared or supplied, or when no retained
-  baseline snapshot exists yet.
+  baseline snapshot exists yet. The `new_definite_test_findings` budget counts
+  stale-double findings the baseline did not have, and is `indeterminate` when
+  the baseline predates stored test findings.
 - `cycles_touching_change`: the subset of `dependency_cycles`'s cycles with
   at least one member among the change's direct or impacted components or its
   changed `file` components, matched on every member (`member_ids`), not only

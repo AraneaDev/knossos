@@ -7,7 +7,7 @@ namespace Knossos\Query;
 use Knossos\Scanner\Protocol\ConfidenceRank;
 use Knossos\Store\ChunkedInQuery;
 use Knossos\Store\EdgeQueries;
-use Knossos\Store\EnrichedFacts;
+use Knossos\Store\SnapshotFacts;
 
 /**
  * Decides which components with no inbound reference are worth reporting.
@@ -574,7 +574,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         $kindOfClass = [];
         foreach (ChunkedInQuery::rows(
             $this->pdo,
-            "SELECT e.source_id, e.target_id, n.kind FROM edges e JOIN nodes n ON n.id = e.source_id WHERE e.project_id = ? AND e.kind = 'contains' AND " . EnrichedFacts::excludeSql('e') . ' AND e.target_id IN (%s)',
+            "SELECT e.source_id, e.target_id, n.kind FROM edges e JOIN nodes n ON n.id = e.source_id WHERE e.project_id = ? AND e.kind = 'contains' AND " . SnapshotFacts::nativeSql('edges', 'e') . ' AND e.target_id IN (%s)',
             $methodIds,
             [$projectId],
         ) as $row) {
@@ -710,7 +710,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
         $reads = [];
         foreach (ChunkedInQuery::rows(
             $this->pdo,
-            "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind = 'references' AND " . EnrichedFacts::excludeSql('edges') . ' AND target_id IN (%s)',
+            "SELECT source_id, target_id FROM edges WHERE project_id = ? AND kind = 'references' AND " . SnapshotFacts::nativeSql('edges', 'edges') . ' AND target_id IN (%s)',
             $bindingIds,
             [$projectId],
         ) as $row) {
@@ -795,7 +795,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
             'SELECT members.container_id, COUNT(*) AS any_reference, ' .
             'MAX(CASE WHEN NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = usage.source_id AND c.role = ' . $testRole . ') THEN 1 ELSE 0 END) AS production_reference ' .
             'FROM members CROSS JOIN edges usage INDEXED BY edges_project_target_idx ON usage.project_id = ? AND usage.target_id = members.member_id ' .
-            'AND ' . EdgeQueries::kindFilteredIn('usage.kind', $edgeKinds) . ' AND ' . EnrichedFacts::excludeSql('usage') . ' ' .
+            'AND ' . EdgeQueries::kindFilteredIn('usage.kind', $edgeKinds) . ' AND ' . SnapshotFacts::nativeSql('edges', 'usage') . ' ' .
             'AND ' . ConfidenceRank::atLeast('usage.confidence') . ' ' .
             'WHERE usage.source_id <> members.container_id ' .
             'AND NOT EXISTS (SELECT 1 FROM members internal WHERE internal.container_id = members.container_id AND internal.member_id = usage.source_id) ' .
@@ -836,7 +836,7 @@ final readonly class DeadCodeAnalysis extends AbstractArchitectureQueryService
                 . 'MAX(CASE WHEN NOT EXISTS (SELECT 1 FROM classifications c WHERE c.node_id = usage.source_id AND c.role = ?) THEN 1 ELSE 0 END) AS production_reference '
                 . 'FROM files f JOIN nodes n ON n.project_id = f.project_id AND n.file_id = f.id '
                 . 'JOIN edges usage ON usage.project_id = n.project_id AND usage.target_id = n.id '
-                . 'AND ' . EdgeQueries::kindFilteredIn('usage.kind', $edgeKinds) . ' AND ' . EnrichedFacts::excludeSql('usage') . ' '
+                . 'AND ' . EdgeQueries::kindFilteredIn('usage.kind', $edgeKinds) . ' AND ' . SnapshotFacts::nativeSql('edges', 'usage') . ' '
                 . 'AND ' . ConfidenceRank::atLeast('usage.confidence') . ' '
                 . 'LEFT JOIN nodes source ON source.id = usage.source_id '
                 . 'WHERE f.project_id = ? AND f.relative_path = ? AND n.id <> ? '

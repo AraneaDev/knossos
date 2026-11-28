@@ -254,6 +254,28 @@ final class TautologyRuleTest extends KnossosTestCase
         assertSame(['zero_reach'], self::subRules(self::judge($quiet, $local)));
     }
 
+    public function testASpyOnALibGlobalIsNotZeroReach(): void
+    {
+        // `vi.spyOn(console, 'log')` and `vi.spyOn(Date, 'now')`: the owner is declared in a lib file, which no
+        // contribution emits, or in a project `.d.ts`; code outside the project may call either.
+        $quiet = CaseFixtures::testCase([]);
+        $spy = static fn(int $line, string $export, string $member): NodeFact => CaseFixtures::double($line, target: ['kind' => 'instance-member', 'export' => $export, 'member' => $member], members: [CaseFixtures::member($member)], testCase: $quiet->canonicalName);
+        $console = $spy(6, 'Console', 'log');
+        $date = $spy(7, 'DateConstructor', 'now');
+        $local = $spy(8, 'Clock', 'now');
+        $declared = DriftFixtures::node('interface', 'types/globals.d.ts#Clock', 'Clock', [], 1);
+        $project = DriftFixtures::node('class', 'src/clock.ts#Clock', 'Clock', [], 1);
+        $edges = [
+            DriftFixtures::edge('doubles', $console, 'ts:external_class:Console'),
+            DriftFixtures::edge('doubles', $date, 'ts:external_class:DateConstructor'),
+        ];
+
+        assertSame([], self::subRules([...(new TautologyRule())->findings(CaseFixtures::graph([$quiet, $console, $date], [], $edges))]));
+        assertSame([], self::subRules([...(new TautologyRule())->findings(CaseFixtures::graph([$quiet, $local], [$declared], [DriftFixtures::edge('doubles', $local, $declared->localId)]))]));
+        // A twin owned by project code is still judged.
+        assertSame(['zero_reach'], self::subRules([...(new TautologyRule())->findings(CaseFixtures::graph([$quiet, $local], [$project], [DriftFixtures::edge('doubles', $local, $project->localId)]))]));
+    }
+
     public function testZeroReachOfAFileLevelDoubleNeedsEveryTestOfItsFileQuiet(): void
     {
         $quiet = CaseFixtures::testCase([]);

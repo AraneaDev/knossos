@@ -27,6 +27,7 @@ import {
     isRequireContext,
     regularExpressionOf,
     relativeGlob,
+    TYPESCRIPT_SOURCES,
 } from "./syntax-predicates.js";
 import { reference } from "./typescript-fact-utils.js";
 
@@ -58,14 +59,6 @@ export function templateImportHead(argument) {
         ? head
         : null;
 }
-
-/** A JavaScript extension => the TypeScript sources a specifier naming it resolves to first. */
-const TYPESCRIPT_SOURCES = {
-    ".js": [".ts", ".tsx"],
-    ".jsx": [".tsx"],
-    ".mjs": [".mts"],
-    ".cjs": [".cts"],
-};
 
 /**
  * The files a template head names, in the order the compiler resolves a

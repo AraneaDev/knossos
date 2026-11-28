@@ -6,7 +6,7 @@
  */
 import type { Elements, RenderElement, RenderNode, RenderSurface, UiPressArgument } from 'claude-code'
 
-import { bandModel } from '../lib/band'
+import { bandModel, testFindingsOf } from '../lib/band'
 import { dimRow, pressLabel, rowsHeight, rowWidth, textStyle } from '../lib/rows'
 import { cells, fit } from '../lib/text'
 import { paneHeight } from '../lib/cards'
@@ -311,7 +311,7 @@ export async function drawBand(io: Port, resolve: () => Elements[RenderSurface],
     return null
   }
   const d = await io.state.dashboard.read()
-  const model = bandModel(await io.state.brief.read(), await io.state.job.read(), await io.clock.now(), d?.status === 'ok' ? declaredOf(d) : undefined, d?.status === 'ok' ? huesOf(d) : undefined, await failedWhy(io))
+  const model = bandModel(await io.state.brief.read(), await io.state.job.read(), await io.clock.now(), d?.status === 'ok' ? declaredOf(d) : undefined, d?.status === 'ok' ? huesOf(d) : undefined, await failedWhy(io), testFindingsOf(d))
   mod.pane.bandText = model?.text ?? null
   if (model === null) return null
   const { Box, Button, Text } = resolve()

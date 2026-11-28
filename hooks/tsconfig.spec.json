@@ -10,6 +10,8 @@
     "engine.d.ts",
     "register.tsx",
     "register.test.ts",
+    "register.test-findings.test.ts",
+    "__tests__/world.ts",
     "lib/**/*.ts",
     "mod/**/*.ts",
     "mod/**/*.tsx"
