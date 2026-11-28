@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Knossos\Tests\Phpunit\TestFidelity;
 
 use Knossos\Scan\ProjectScanService;
-use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\TestFidelity\TestRuleCatalog;
+use Knossos\Tests\Phpunit\KnossosTestCase;
 use PDO;
 
 use function PHPUnit\Framework\assertContains;
