@@ -129,10 +129,10 @@ reuses the dependency builds:
 
 ```sh
 cd workers/rust
-git diff --relative origin/main > /home/tim/.cache/knossos-rust.diff
-TMPDIR=/home/tim/.cache/knossos-tmp \
-CARGO_TARGET_DIR=/home/tim/.cache/knossos-cargo-target \
-  cargo mutants --in-diff /home/tim/.cache/knossos-rust.diff
+git diff --relative origin/main > $HOME/.cache/knossos-rust.diff
+TMPDIR=$HOME/.cache/knossos-tmp \
+CARGO_TARGET_DIR=$HOME/.cache/knossos-cargo-target \
+  cargo mutants --in-diff $HOME/.cache/knossos-rust.diff
 ```
 
 Run it while no PHPUnit run is going: both lean on every core, and a mutant
