@@ -581,6 +581,11 @@ the deferred-gaps tracker's:
 
 - **Drift the compiler rejects** (Decision 1, user decision Q1). The cases in
   the table above report nothing.
+- **A matcher's literal against an enum's variants** (G3-19). The
+  `ARITY_MISMATCH/enum_case` check judges PHP only: the Rust worker sends no
+  matcher literals. `.with(eq(Leg::Sea))` names a variant the compiler
+  checks, but a pin that builds the value from a literal at run time
+  (`eq(Leg::from("rail"))`) reports nothing, so silence is not a pass.
 - **A package inside another's module tree** (G5-04). A file of a package
   whose `Cargo.toml` sits below another package's `src/` may be compiled by
   either crate, so it gives no test facts, and the macros it defines shadow

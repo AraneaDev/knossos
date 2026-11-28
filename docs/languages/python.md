@@ -411,6 +411,10 @@ These are accepted, and each costs a missed finding, as stated:
 - **A spec'd double's pin read back** (G4-14). `m = Mock(spec=C)`,
   `m.f.return_value = 7`, then `assert m.f() == 7` is an echo, but a spec'd
   double gives no pinned value, so it is silent.
+- **A matcher's literal against an enum's cases** (G3-19). The
+  `ARITY_MISMATCH/enum_case` check judges PHP only. `assert_called_with("rail")`
+  for a parameter annotated with an `Enum` that has no such value reports
+  nothing, so silence is not a pass.
 - **`MOCKS_SUBJECT`** (G4-11). A Python double names no test case yet, so the
   rule that a test replaces its own subject never speaks for Python.
 - **A member list opened for nothing** (G4-04). A class handed to a call the
