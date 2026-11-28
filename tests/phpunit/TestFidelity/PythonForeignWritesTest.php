@@ -30,6 +30,8 @@ final class PythonForeignWritesTest extends KnossosTestCase
         // A write to another target, or one in no module node, opens nothing.
         assertSame(['missing_member'], self::ghosts([['target' => 'py:class:app.repo.Other', 'name' => 'debug']]));
         assertSame(['missing_member'], self::ghosts([['target' => 'py:class:app.repo.Repo', 'name' => 'debug']], 'class'));
+        // A target the scan does not hold, written first, leaves the next target opened.
+        assertSame([], self::ghosts([['target' => 'py:class:app.repo.Gone', 'name' => 'debug'], ['target' => 'py:class:app.repo.Repo', 'name' => 'debug']]));
     }
 
     public function testAWrittenModuleHasNoGhost(): void
