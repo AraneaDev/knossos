@@ -443,7 +443,8 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
     }
 
     /**
-     * No golden holds a path of the machine it was run on.
+     * No golden holds a path of the machine it was run on, nor Momus's
+     * `durationMs`, which differs from run to run (FrozenGoldens strips both).
      *
      * @param array<string, mixed> $run
      */
@@ -452,6 +453,7 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
         $text = (string) json_encode($run, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         self::assertStringNotContainsString('/tmp/', $text, $message);
         self::assertStringNotContainsString('/home/', $text, $message);
+        self::assertStringNotContainsString('"durationMs"', $text, $message);
     }
 
     /** Every on-request tool answers twice alike over a non-empty answer. */
