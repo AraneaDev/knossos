@@ -247,13 +247,17 @@ final class MockMembersTest extends KnossosTestCase
         $engine = $this->members($struct, 'rust');
         assertSame(['start', 'tune'], self::names($engine->members));
         assertSame(["tune is pub(crate): it is kept, as the crate's own tests call it; a mock outside the crate cannot."], $engine->notes);
-        // An auto supertrait needs no impl; another one outside the scan does.
+        // An auto supertrait needs no impl; Display's the template spells (G6-03); another one outside the scan does.
         $sendable = $this->type('rust:interface:crate::Sendable', 'interface');
         $this->method($sendable, 'go', ['signature' => ['params' => [], 'receiver' => '&self']]);
         $this->edge('extends', $sendable, 'rust:interface:crate::Send');
         $this->edge('extends', $sendable, 'rust:interface:std::marker::Sync');
         assertTrue($this->members($sendable, 'rust')->complete);
+        assertSame([], $this->members($sendable, 'rust')->spelledSupertraits());
         $this->edge('extends', $sendable, 'rust:interface:std::fmt::Display');
+        assertTrue($this->members($sendable, 'rust')->complete);
+        assertSame(['Display'], $this->members($sendable, 'rust')->spelledSupertraits());
+        $this->edge('extends', $sendable, 'rust:interface:std::fmt::Debug');
         assertSame(['Sendable has a supertrait outside the scan: mock! needs its impl too, and its methods are not listed.'], $this->members($sendable, 'rust')->notes);
         $empty = $this->type('rust:class:crate::Empty', 'class');
         assertSame(['Empty has no member a mock can stand in for.'], $this->members($empty, 'rust')->notes);

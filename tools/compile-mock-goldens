@@ -47,7 +47,6 @@ const SERDE = '1.0.219';
  * that starts to build must leave the list.
  */
 const RUST_INCOMPLETE = [
-    'rs-named' => 'a supertrait outside the scan (std::fmt::Display): mock! needs its impl too, which the template leaves to its author',
     'rs-store' => "Store::convert<T> has a type parameter that is not 'static, which mockall cannot mock in a trait impl (E0310; E0276 if the bound is added)",
     'rs-store-no-values' => 'the same Store::convert<T> as rs-store',
 ];

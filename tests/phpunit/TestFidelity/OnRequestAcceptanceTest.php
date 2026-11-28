@@ -167,10 +167,10 @@ use PHPUnit\Framework\Attributes\Group;
  *    struct or generic trait is an error.
  * 35. Deliberate (G6-03): the default suite compares jest and mockall templates with goldens only, as it
  *    runs offline; `tools/compile-mock-goldens`, in CI's tests and rust lanes, compiles them against
- *    `@jest/globals` and mockall 0.13.1. Every Rust golden builds but three that say they are incomplete: a
- *    supertrait outside the scan (`rs-named`), and a generic method whose type parameter is not `'static`,
- *    which mockall cannot mock in a trait impl (`rs-store`, `rs-store-no-values`). A return borrowing a
- *    method's lifetime parameter has no golden, so it stays unverified.
+ *    `@jest/globals` and mockall 0.13.1. Every Rust golden builds but two that say they are incomplete: a
+ *    generic method whose type parameter is not `'static`, which mockall cannot mock in a trait impl
+ *    (`rs-store`, `rs-store-no-values`). A `std::fmt::Display` supertrait gets its impl (`rs-named`); a
+ *    return borrowing a method's lifetime parameter has no golden, so it stays unverified.
  * 36. A gap from Decision 5's wording: `complete` says the member list is closed and nothing was omitted; an
  *    untyped parameter or return does not clear it, and is listed in its member's `unknown` instead.
  *

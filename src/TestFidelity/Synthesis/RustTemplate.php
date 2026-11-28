@@ -18,8 +18,9 @@ use Knossos\Scanner\Protocol\NodeFact;
  * where clause as written; a trait's associated function is declared and
  * set through its context, a borrowed return through `return_const`, and an
  * associated type or const gets a placeholder (`type Output = ();`), listed
- * in `unknown`. A supertrait in the project gets an `impl` of its own; one
- * outside the scan leaves the template incomplete. A struct's inherent
+ * in `unknown`. A supertrait in the project gets an `impl` of its own, and
+ * so does `std::fmt::Display`, whose one method is known; any other outside
+ * the scan leaves the template incomplete. A struct's inherent
  * methods go in its own block, and each trait it implements gets the `impl`
  * the source writes (`impl Repo<String> for Store`). A generic trait keeps
  * its parameters on the mock, its bounds as written, and each method naming
@@ -79,6 +80,9 @@ final readonly class RustTemplate implements MockTemplate
         ];
         if ($framework === 'hand-written') {
             $lines[] = sprintf('pub struct Fake%s;', $name);
+            foreach ($members->spelledSupertraits() as $_) {
+                $lines = [...$lines, '', sprintf('impl std::fmt::Display for Fake%s {', $name), "    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {", '        Ok(())', '    }', '}'];
+            }
             foreach ($declarers as $id => $declarer) {
                 $lines[] = '';
                 $lines[] = sprintf('impl %s for Fake%s {', $declarer->displayName, $name);
@@ -102,6 +106,10 @@ final readonly class RustTemplate implements MockTemplate
                 $lines = [...$lines, ...self::declarations($groups[$id] ?? [])];
                 $lines[] = '    }';
             }
+            // A std supertrait outside the scan whose method is known: mock! needs its impl too.
+            foreach ($members->spelledSupertraits() as $_) {
+                $lines = [...$lines, sprintf('    impl%s std::fmt::Display for %s%s {', $generics, $name, $arguments), "        fn fmt<'a>(&self, f: &mut std::fmt::Formatter<'a>) -> std::fmt::Result;", '    }'];
+            }
         } else {
             // A struct's inherent methods go in its own block; each trait it implements gets the impl it writes.
             $inherent = self::declarations($groups[''] ?? []);
@@ -124,6 +132,9 @@ final readonly class RustTemplate implements MockTemplate
             if ($member->kind === 'method') {
                 $lines[] = $parts[spl_object_id($member)]['rendered'];
             }
+        }
+        if ($trait && $members->spelledSupertraits() !== []) {
+            $lines[] = '    mock.expect_fmt().returning(|_f| Ok(()));';
         }
         $lines[] = '}';
 

@@ -1,0 +1,18 @@
+// knossos synthesize_mock: synth::focus::Named (hand-written), from rust/src/focus.rs:22
+// 1 member; complete
+use synth::focus::Named;
+use synth::focus::*;
+
+pub struct FakeNamed;
+
+impl std::fmt::Display for FakeNamed {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Ok(())
+    }
+}
+
+impl Named for FakeNamed {
+    fn name(&self) -> String {
+        String::from("")
+    }
+}
