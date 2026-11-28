@@ -1,7 +1,8 @@
 // knossos synthesize_mock: synth::focus::Store (mockall), from rust/src/focus.rs:10
-// 9 members; complete
+// 9 members; incomplete: see omitted and notes
 use mockall::mock;
 use synth::focus::Store;
+use synth::focus::*;
 
 mock! {
     pub Store {}

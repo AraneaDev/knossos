@@ -2,6 +2,7 @@
 // 7 members; complete
 use mockall::mock;
 use synth::types::Widget;
+use synth::types::*;
 
 mock! {
     pub Widget {}

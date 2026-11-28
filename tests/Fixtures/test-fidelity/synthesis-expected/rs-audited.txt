@@ -3,6 +3,8 @@
 use mockall::mock;
 use synth::focus::Audited;
 use synth::repo::Repo;
+use synth::focus::*;
+use synth::repo::*;
 
 mock! {
     pub Audited {}

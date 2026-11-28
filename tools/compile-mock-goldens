@@ -1,0 +1,243 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+ * Compiles the synthesize_mock goldens that the default suite can only
+ * compare as text (G6-03): every jest template against jest's own types, and
+ * every Rust template (mockall and hand-written) in a scratch crate with
+ * mockall.
+ *
+ *   tools/compile-mock-goldens [--only=typescript|rust] [--dir=PATH]
+ *
+ * It fetches from the network, so it is a tool and not a PHPUnit test: the
+ * default suite stays offline. Everything it fetches or writes goes under
+ * one scratch directory, `--dir`, or `$KNOSSOS_COMPILE_CACHE`, or
+ * `~/.cache/knossos-compile-mock-goldens`; no file of the repository, and no
+ * lockfile in it, changes. The versions are pinned below.
+ *
+ * - TypeScript: each template whose header says `(jest)`, with every name its
+ *   target file exports or imports brought in by `import type` (as
+ *   TemplatesLintTest does for the vitest ones), type-checks with the TS
+ *   worker's own `tsc --noEmit` under `strict`. The template imports `jest`
+ *   from `@jest/globals`, so it is checked against that package's types,
+ *   `@types/jest` beside it for the globals.
+ * - Rust: the synthesis fixture crate is copied with `serde` (which
+ *   `focus.rs` derives with) and mockall added, each golden becomes one of its
+ *   integration tests as written, and `cargo build --tests --keep-going`
+ *   builds them all, reporting every one that fails.
+ *
+ * A Rust golden whose template says it is incomplete for a reason no
+ * template can mend is listed in RUST_INCOMPLETE: it must fail, and say
+ * `incomplete` in its header, and every other golden must build.
+ *
+ * Exits 0 when every golden compiles but those, 1 with the compiler's output
+ * when that does not hold, 2 on a usage or setup error.
+ */
+
+const JEST_GLOBALS = '29.7.0';
+const TYPES_JEST = '29.5.14';
+const MOCKALL = '0.13.1';
+const SERDE = '1.0.219';
+
+/**
+ * The Rust goldens that cannot compile, each because its template says it is
+ * incomplete for that reason; every other golden must build, and one of these
+ * that starts to build must leave the list.
+ */
+const RUST_INCOMPLETE = [
+    'rs-named' => 'a supertrait outside the scan (std::fmt::Display): mock! needs its impl too, which the template leaves to its author',
+    'rs-store' => "Store::convert<T> has a type parameter that is not 'static, which mockall cannot mock in a trait impl (E0310; E0276 if the bound is added)",
+    'rs-store-no-values' => 'the same Store::convert<T> as rs-store',
+];
+
+$root = dirname(__DIR__);
+$options = getopt('', ['only:', 'dir:', 'help']);
+if (isset($options['help'])) {
+    fwrite(STDOUT, "usage: tools/compile-mock-goldens [--only=typescript|rust] [--dir=PATH]\n");
+    exit(0);
+}
+$only = is_string($options['only'] ?? null) ? $options['only'] : null;
+if ($only !== null && !in_array($only, ['typescript', 'rust'], true)) {
+    fwrite(STDERR, "compile-mock-goldens: --only takes typescript or rust\n");
+    exit(2);
+}
+$home = getenv('HOME') ?: sys_get_temp_dir();
+$dir = is_string($options['dir'] ?? null) ? $options['dir'] : (getenv('KNOSSOS_COMPILE_CACHE') ?: $home . '/.cache/knossos-compile-mock-goldens');
+if (str_starts_with(realpath(dirname($dir)) ?: $dir, $root . '/') || $dir === $root) {
+    fwrite(STDERR, "compile-mock-goldens: the scratch directory must lie outside the repository\n");
+    exit(2);
+}
+
+$expected = $root . '/tests/Fixtures/test-fidelity/synthesis-expected';
+$fixtures = $root . '/tests/Fixtures/test-fidelity/synthesis';
+$goldens = [];
+foreach (array_keys(json_decode((string) file_get_contents($expected . '/cases.json'), true, 512, JSON_THROW_ON_ERROR)) as $case) {
+    $goldens[(string) $case] = (string) file_get_contents($expected . '/' . $case . '.txt');
+}
+
+$verdicts = [];
+if ($only === null || $only === 'typescript') {
+    $verdicts[] = typescript($root, $dir . '/typescript', $fixtures . '/typescript', $goldens);
+}
+if ($only === null || $only === 'rust') {
+    $verdicts[] = rust($dir . '/rust', $fixtures . '/rust', $goldens);
+}
+exit(in_array(false, $verdicts, true) ? 1 : 0);
+
+/**
+ * Type-check every jest template; true when all of them do.
+ *
+ * @param array<string, string> $goldens
+ */
+function typescript(string $root, string $dir, string $fixture, array $goldens): bool
+{
+    $templates = array_filter($goldens, static fn(string $template, string $case): bool => str_starts_with($case, 'ts-') && str_contains(strtok($template, "\n") ?: '', '(jest)'), ARRAY_FILTER_USE_BOTH);
+    if ($templates === []) {
+        return report('typescript', false, 'no jest golden found');
+    }
+    $project = $dir . '/project';
+    removeTree($project . '/src');
+    removeTree($project . '/lint');
+    copyTree($fixture . '/src', $project . '/src');
+    mkdir($project . '/lint', 0o777, true);
+    $package = ['private' => true, 'devDependencies' => ['@jest/globals' => JEST_GLOBALS, '@types/jest' => TYPES_JEST]];
+    $manifest = $project . '/package.json';
+    if (!is_file($manifest) || (string) file_get_contents($manifest) !== json_encode($package, JSON_PRETTY_PRINT) . "\n" || !is_dir($project . '/node_modules/@jest/globals')) {
+        file_put_contents($manifest, json_encode($package, JSON_PRETTY_PRINT) . "\n");
+        if (!run(sprintf('cd %s && npm install --no-audit --no-fund --ignore-scripts --loglevel=error', escapeshellarg($project)), $output)) {
+            return report('typescript', false, "npm install failed:\n" . $output);
+        }
+    }
+    file_put_contents($project . '/lint/shims.d.ts', "declare module 'remote-lib' { export class Remote {} }\n");
+    foreach ($templates as $case => $template) {
+        file_put_contents($project . '/lint/' . $case . '.ts', typeImports($project, $template) . $template);
+    }
+    file_put_contents($project . '/tsconfig.json', json_encode(['compilerOptions' => [
+        'target' => 'ES2022', 'module' => 'ESNext', 'moduleResolution' => 'Bundler', 'strict' => true, 'noEmit' => true, 'skipLibCheck' => true, 'types' => ['jest'],
+    ], 'include' => ['src', 'lint']], JSON_PRETTY_PRINT) . "\n");
+    $tsc = $root . '/workers/typescript/node_modules/typescript/bin/tsc';
+    if (!is_file($tsc)) {
+        return report('typescript', false, 'the TypeScript worker is not installed (no ' . $tsc . ')');
+    }
+    $ok = run(sprintf('NODE_DISABLE_COMPILE_CACHE=1 node %s -p %s', escapeshellarg($tsc), escapeshellarg($project . '/tsconfig.json')), $output);
+
+    return report('typescript', $ok, $ok ? count($templates) . ' jest golden(s) type-check: ' . implode(', ', array_keys($templates)) : $output);
+}
+
+/**
+ * Build every Rust template as an integration test of a copy of the fixture crate; true when all of them build.
+ *
+ * @param array<string, string> $goldens
+ */
+function rust(string $dir, string $fixture, array $goldens): bool
+{
+    $templates = array_filter($goldens, static fn(string $case): bool => str_starts_with($case, 'rs-'), ARRAY_FILTER_USE_KEY);
+    if ($templates === []) {
+        return report('rust', false, 'no Rust golden found');
+    }
+    $crate = $dir . '/synth';
+    removeTree($crate . '/src');
+    removeTree($crate . '/tests');
+    copyTree($fixture . '/src', $crate . '/src');
+    mkdir($crate . '/tests', 0o777, true);
+    $manifest = (string) file_get_contents($fixture . '/Cargo.toml');
+    file_put_contents($crate . '/Cargo.toml', rtrim($manifest) . "\n\n[dependencies]\nserde = { version = \"=" . SERDE . "\", features = [\"derive\"] }\n\n[dev-dependencies]\nmockall = \"=" . MOCKALL . "\"\n\n[workspace]\n");
+    foreach ($templates as $case => $template) {
+        file_put_contents($crate . '/tests/' . str_replace('-', '_', $case) . '.rs', "#![allow(dead_code, unused_imports, unused_variables, unreachable_code)]\n" . $template);
+    }
+    $env = sprintf('CARGO_HOME=%s CARGO_TARGET_DIR=%s', escapeshellarg($dir . '/cargo-home'), escapeshellarg($dir . '/target'));
+    if (run(sprintf('cd %s && %s cargo build --lib --quiet', escapeshellarg($crate), $env), $output) === false) {
+        return report('rust', false, "the fixture crate itself does not build:\n" . $output);
+    }
+    run(sprintf('cd %s && %s cargo build --tests --quiet --keep-going 2>&1', escapeshellarg($crate), $env), $output);
+    preg_match_all('/could not compile `synth` \(test "(rs_[a-z0-9_]+)"\)/', (string) $output, $matches);
+    $failed = array_map(static fn(string $test): string => str_replace('_', '-', $test), $matches[1]);
+    sort($failed);
+    $expected = array_keys(RUST_INCOMPLETE);
+    sort($expected);
+    $unmarked = array_filter($expected, static fn(string $case): bool => !str_contains(explode("\n", $templates[$case] ?? '')[1] ?? '', 'incomplete'));
+    $built = array_diff(array_keys($templates), $failed);
+    if ($failed !== $expected || $unmarked !== [] || str_contains((string) $output, 'error: could not compile `synth` (lib')) {
+        return report('rust', false, sprintf("failing: %s; expected to fail: %s; listed but not marked incomplete: %s\n%s", implode(', ', $failed) ?: 'none', implode(', ', $expected), implode(', ', $unmarked) ?: 'none', $output));
+    }
+
+    return report('rust', true, count($built) . ' Rust golden(s) build: ' . implode(', ', $built) . '; incomplete as their templates say: ' . implode(', ', $expected));
+}
+
+/**
+ * An `import type` of every name the template's target file exports or imports.
+ */
+function typeImports(string $project, string $template): string
+{
+    if (preg_match('/^\/\/ knossos synthesize_mock: typescript\/(\S+?)\.ts#/', $template, $match) !== 1) {
+        return '';
+    }
+    $module = $match[1];
+    $source = (string) file_get_contents($project . '/' . $module . '.ts');
+    $imports = [];
+    preg_match_all('/^export (?:abstract )?(?:class|interface|type) (\w+)/m', $source, $exported);
+    $imports['../' . $module] = $exported[1];
+    preg_match_all('/^import \{([^}]+)\} from \'(\.[^\']+)\';/m', $source, $imported, PREG_SET_ORDER);
+    foreach ($imported as [, $names, $from]) {
+        $imports['../' . dirname($module) . '/' . substr($from, 2)] = array_map('trim', explode(',', $names));
+    }
+    $lines = '';
+    foreach ($imports as $from => $names) {
+        $lines .= sprintf("import type { %s } from '%s';\n", implode(', ', $names), $from);
+    }
+
+    return $lines;
+}
+
+/**
+ * Run a shell command, its output (stdout and stderr) in `$output`; true on exit 0.
+ *
+ * @param-out string $output
+ */
+function run(string $command, ?string &$output): bool
+{
+    exec($command . ' 2>&1', $lines, $status);
+    $output = implode("\n", $lines);
+
+    return $status === 0;
+}
+
+/** Print one language's verdict; returns it. */
+function report(string $language, bool $ok, string $detail): bool
+{
+    fwrite($ok ? STDOUT : STDERR, sprintf("%s %s: %s\n", $ok ? 'ok' : 'FAIL', $language, $detail));
+
+    return $ok;
+}
+
+function copyTree(string $from, string $to): void
+{
+    if (!is_dir($to)) {
+        mkdir($to, 0o777, true);
+    }
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($from, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST) as $file) {
+        assert($file instanceof SplFileInfo);
+        $target = $to . '/' . substr($file->getPathname(), strlen($from) + 1);
+        if ($file->isDir()) {
+            if (!is_dir($target)) {
+                mkdir($target, 0o777, true);
+            }
+        } else {
+            copy($file->getPathname(), $target);
+        }
+    }
+}
+
+function removeTree(string $path): void
+{
+    if (!is_dir($path)) {
+        return;
+    }
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $file) {
+        assert($file instanceof SplFileInfo);
+        $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+    }
+    rmdir($path);
+}

@@ -1,6 +1,7 @@
 // knossos synthesize_mock: synth::focus::WithAssoc (hand-written), from rust/src/focus.rs:78
 // 4 members; complete
 use synth::focus::WithAssoc;
+use synth::focus::*;
 
 pub struct FakeWithAssoc;
 

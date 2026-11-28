@@ -1450,6 +1450,7 @@ php	tools/api-documentation-check.php
 php	tools/benchmark.php
 php	tools/check-coverage-budgets.php
 php	tools/claude-code-types-check.php
+php	tools/compile-mock-goldens
 php	tools/coverage-merge.php
 php	tools/docstring-report.php
 php	tools/documentation-check.php

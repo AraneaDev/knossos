@@ -60,6 +60,8 @@ final readonly class MockSynthesisService extends AbstractArchitectureQueryServi
         $types = new MockValueTypes($this->pdo, $loader, $projectId, $language);
         $template = $this->template($language, $types, $resolved['id'], $target);
         $text = $template->render($members, $choice['framework'], $includeValues);
+        // A template may find its framework cannot give a member (mockall and a non-'static generic method, G6-03): its header then says incomplete, and so does the answer.
+        $complete = $members->complete && !str_contains(explode("\n", $text)[1] ?? '', 'incomplete');
         $rendered = array_map(static function (MockMember $member) use ($template, $members, $choice, $includeValues): array {
             $part = $template->member($members, $member, $choice['framework'], $includeValues);
 
@@ -80,14 +82,14 @@ final readonly class MockSynthesisService extends AbstractArchitectureQueryServi
         return new ResultEnvelope(
             $projectId,
             $project['active_scan_id'],
-            sprintf('%s mock of %s (%s): %d member%s%s, %s.', $choice['framework'], $target->canonicalName, $choice['source'], count($rendered), count($rendered) === 1 ? '' : 's', $omitted === 0 ? '' : sprintf(', %d omitted', $omitted), $members->complete ? 'complete' : 'incomplete'),
+            sprintf('%s mock of %s (%s): %d member%s%s, %s.', $choice['framework'], $target->canonicalName, $choice['source'], count($rendered), count($rendered) === 1 ? '' : 's', $omitted === 0 ? '' : sprintf(', %d omitted', $omitted), $complete ? 'complete' : 'incomplete'),
             [
                 'symbol' => $target->canonicalName,
                 'file' => $target->evidence->relativePath,
                 'language' => $language,
                 'framework' => $choice['framework'],
                 'framework_source' => $choice['source'],
-                'complete' => $members->complete,
+                'complete' => $complete,
                 'template' => $text,
                 'members' => $rendered,
                 'omitted' => $members->omitted,

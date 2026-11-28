@@ -165,9 +165,12 @@ use PHPUnit\Framework\Attributes\Group;
  *    function through `_context`; supertraits and a struct's trait impls get their own `impl`; generic impls
  *    are omitted (incomplete), marker traits ignored, `Copy` left out with a note; a hand-written fake of a
  *    struct or generic trait is an error.
- * 35. A gap (G6-03): jest and mockall templates are compared with goldens only, never compiled; mockall's
- *    handling of associated items, `return_const`, `&[T]` as `Vec::new()` and a return borrowing a method's
- *    lifetime parameter is unverified offline.
+ * 35. Deliberate (G6-03): the default suite compares jest and mockall templates with goldens only, as it
+ *    runs offline; `tools/compile-mock-goldens`, in CI's tests and rust lanes, compiles them against
+ *    `@jest/globals` and mockall 0.13.1. Every Rust golden builds but three that say they are incomplete: a
+ *    supertrait outside the scan (`rs-named`), and a generic method whose type parameter is not `'static`,
+ *    which mockall cannot mock in a trait impl (`rs-store`, `rs-store-no-values`). A return borrowing a
+ *    method's lifetime parameter has no golden, so it stays unverified.
  * 36. A gap from Decision 5's wording: `complete` says the member list is closed and nothing was omitted; an
  *    untyped parameter or return does not clear it, and is listed in its member's `unknown` instead.
  *

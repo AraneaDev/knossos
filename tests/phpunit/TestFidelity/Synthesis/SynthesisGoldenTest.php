@@ -76,7 +76,9 @@ final class SynthesisGoldenTest extends KnossosTestCase
         assertSame([['type parameter T'], ['type parameter T']], array_column($box['members'], 'unknown'));
         assertSame('identity', $box['omitted'][0]['name']);
         $store = $tools->call('synthesize_mock', ['project_id' => $projectId, 'symbol' => 'synth::focus::Store'])->data;
-        assertSame(['type parameter T: name it with expect_convert::<…>()', 'value of T'], $store['members'][7]['unknown']);
+        // mockall needs a generic method's type parameter 'static, which an impl of Store cannot add (G6-03).
+        assertSame(["convert: mockall cannot mock a generic method whose type parameter is not 'static in an impl of Store; this mock does not compile until it is removed, so fake the trait by hand (framework hand-written)", 'value of T'], $store['members'][7]['unknown']);
+        assertSame(false, $store['complete']);
         // A generic trait's parameters, an associated item's placeholder, a borrowed return: each said.
         $keyed = $tools->call('synthesize_mock', ['project_id' => $projectId, 'symbol' => 'Keyed'])->data;
         assertSame([['type parameter T of Keyed: bind it, MockKeyed::<…>::new()'], ['type parameter T of Keyed: bind it, MockKeyed::<…>::new()']], array_column($keyed['members'], 'unknown'));

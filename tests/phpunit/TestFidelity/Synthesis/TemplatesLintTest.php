@@ -19,11 +19,13 @@ use PHPUnit\Framework\Attributes\Group;
  * - TypeScript: each vitest template, with its target's types imported,
  *   type-checks with the worker's own `tsc --noEmit` against a copy of its
  *   fixture project under `strict`, vitest's types from the worker's
- *   `node_modules`. The jest templates are golden-compared only: jest's
+ *   `node_modules`. The jest templates are golden-compared here (`tools/compile-mock-goldens`
+ *   type-checks them against jest's own types, in CI): jest's
  *   types would be a new dependency (preflight F17, G6-06).
  * - PHP: each template, as the body of a test method, passes `php -l`.
  * - Python: each passes `python3 -I -m py_compile`.
- * - Rust: golden-compared only, since mockall is not available offline.
+ * - Rust: golden-compared here, since mockall is not available offline;
+ *   `tools/compile-mock-goldens` builds them against mockall, in CI (G6-03).
  */
 #[Group('test-fidelity')]
 #[Group('typescript-scanner')]

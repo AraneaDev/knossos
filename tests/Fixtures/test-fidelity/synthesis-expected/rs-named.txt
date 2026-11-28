@@ -2,6 +2,7 @@
 // 1 member; incomplete: see omitted and notes
 use mockall::mock;
 use synth::focus::Named;
+use synth::focus::*;
 
 mock! {
     pub Named {}
