@@ -263,7 +263,10 @@ function suitesAround(node) {
         current !== undefined;
         current = current.parent
     )
-        if (ts.isCallExpression(current) && defines(calledName(current), SUITES))
+        if (
+            ts.isCallExpression(current) &&
+            defines(calledName(current), SUITES)
+        )
             suites.push(current);
     return suites;
 }

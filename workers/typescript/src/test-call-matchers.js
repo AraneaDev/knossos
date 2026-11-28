@@ -102,8 +102,7 @@ function modifiersOf(base) {
     const links = [];
     for (
         let value = stripCast(base);
-        ts.isPropertyAccessExpression(value) &&
-        MODIFIERS.has(value.name.text);
+        ts.isPropertyAccessExpression(value) && MODIFIERS.has(value.name.text);
         value = stripCast(value.expression)
     )
         links.push(value.name.text);

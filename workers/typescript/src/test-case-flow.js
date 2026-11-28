@@ -391,8 +391,7 @@ function configuredValueText(value, sourceFile, api) {
                     : null,
             ),
         );
-        if (returned.size === 1 && !returned.has(null))
-            return [...returned][0];
+        if (returned.size === 1 && !returned.has(null)) return [...returned][0];
     }
     return value.getText(sourceFile);
 }

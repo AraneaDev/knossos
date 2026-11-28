@@ -19,8 +19,8 @@ describe("which paths are test code", () => {
 
     it("answers every path of the shared table as the core does", () => {
         expect(paths.length).toBeGreaterThan(30);
-        expect(
-            paths.map(([path]) => [path, isTestModule(path)]),
-        ).toEqual(paths);
+        expect(paths.map(([path]) => [path, isTestModule(path)])).toEqual(
+            paths,
+        );
     });
 });

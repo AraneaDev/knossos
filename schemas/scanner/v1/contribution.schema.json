@@ -487,8 +487,15 @@
           }
         },
         {
-          "if": { "required": ["kind"], "properties": { "kind": { "const": "calls" } } },
-          "then": { "properties": { "attributes": { "$ref": "#/$defs/callsAttributes" } } }
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "calls" } }
+          },
+          "then": {
+            "properties": {
+              "attributes": { "$ref": "#/$defs/callsAttributes" }
+            }
+          }
         }
       ]
     },
