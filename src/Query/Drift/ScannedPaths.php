@@ -106,6 +106,17 @@ final readonly class ScannedPaths implements TrackedPathPredicate
     }
 
     /**
+     * Whether the walk leaves a project-relative path out whatever it holds:
+     * the built-in and configured ignores, or a `.gitignore` file. The
+     * fixture walk reads the scan's own exclusions through this, not a list
+     * of its own.
+     */
+    public function excludes(string $relativePath, bool $directory): bool
+    {
+        return $this->ignores->matchesWithAncestors($relativePath) || $this->gitIgnore?->ignoresWithAncestors($relativePath, $directory) === true;
+    }
+
+    /**
      * Whether discovery would have tracked this path.
      *
      * A directory answers by what it holds: yes when anything below it would

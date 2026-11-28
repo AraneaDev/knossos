@@ -1,0 +1,17 @@
+# knossos synthesize_mock: python.app.repo.Repo (pytest-mock), from python/app/repo.py:2
+# 3 members; complete
+import pytest
+
+from python.app.repo import Repo
+
+
+@pytest.fixture
+def repo_mock(mocker):
+    mock = mocker.create_autospec(Repo, spec_set=True, instance=True)
+    # save(item: 'Item') -> int
+    mock.save.return_value = 0
+    # price() -> int
+    mock.price.return_value = 0
+    # count() -> Any
+    mock.count.return_value = None
+    return mock

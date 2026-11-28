@@ -58,6 +58,24 @@ final readonly class StubbedMember
     }
 
     /**
+     * The names of the members a double's decoded attribute block says it
+     * stubs, each once, in the order written; a malformed entry is skipped.
+     *
+     * @return list<string>
+     */
+    public static function namesIn(mixed $attributes): array
+    {
+        $names = [];
+        foreach (is_array($attributes) && is_array($attributes['members'] ?? null) ? $attributes['members'] : [] as $member) {
+            if (is_array($member) && is_string($member['name'] ?? null) && $member['name'] !== '') {
+                $names[$member['name']] = true;
+            }
+        }
+
+        return array_map('strval', array_keys($names));
+    }
+
+    /**
      * Read the matchers, dropping any that is malformed so one bad entry never costs the double.
      *
      * @return list<CallMatcher>

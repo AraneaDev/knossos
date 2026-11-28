@@ -101,7 +101,7 @@
     //
     // SQL placeholder lists are built as `implode(',', array_fill(0, count($x),
     // '?'))`. implode() reads values, never keys, so the start index of the
-    // fill (-1 or 1 for 0) produces the identical string. Forty-three sites, all of
+    // fill (-1 or 1 for 0) produces the identical string. Forty-two sites, all of
     // that exact shape and with no other integer literal on the line; the count
     // argument is not an integer literal and keeps its mutants. Confirmed on
     // ChangeImpactQueryService.php:180 in the 2026-09-11 run, the changeSet()

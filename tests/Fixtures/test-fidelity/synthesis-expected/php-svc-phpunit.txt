@@ -1,0 +1,7 @@
+// knossos synthesize_mock: App\Svc (phpunit), from php/src/Svc.php:6
+// 2 members; complete
+$mock = $this->createMock(\App\Svc::class);
+// totalFor(string $id): int
+$mock->method('totalFor')->willReturn(0);
+// ping(): void
+$mock->method('ping');

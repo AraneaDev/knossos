@@ -1,0 +1,6 @@
+{
+  "lanes": [
+    { "id": "L-1", "lane": "fast" },
+    { "id": "L-2", "lane": "express" }
+  ]
+}

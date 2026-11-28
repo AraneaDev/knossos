@@ -40,7 +40,7 @@ from knossos_python import (
     walk_path as walk_path,
 )
 
-VERSION = "0.5.1"
+VERSION = "0.7.0"
 
 
 # Every frame is ASCII (``\\u`` escapes decode to the same JSON), so a name that

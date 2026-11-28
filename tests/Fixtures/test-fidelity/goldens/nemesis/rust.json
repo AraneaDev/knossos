@@ -1,0 +1,240 @@
+{
+  "tool": "nemesis",
+  "commit": "bf9be2704abf37502f07f12a9e629cc1ea55c3fe",
+  "version": "0.4.1",
+  "suite": "RustAcceptanceTest",
+  "runs": [
+    {
+      "fixture": "momus-drift",
+      "trees": {
+        "rust/momus-drift": ""
+      },
+      "fixture_sha256": "367f7af285a7c6c36797d8a509f5736ae7bfc8c2d4b702312692749bc36de93a",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 5,
+          "doubles_inspected": 8,
+          "violations_count": 3,
+          "doubles_checked": 7,
+          "doubles_unresolved": 1,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "drift_test.rs",
+            "line": 10,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "mockall",
+            "target": "Repo::save2",
+            "message": "Method 'save2' does not exist on 'Repo'. Did you mean 'save'?",
+            "suggestion": "save"
+          },
+          {
+            "file": "drift_test.rs",
+            "line": 11,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "mockall",
+            "target": "Repo::find",
+            "message": "Stub returns 'string' but Repo::find returns 'u32'."
+          },
+          {
+            "file": "drift_test.rs",
+            "line": 12,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "mockall",
+            "target": "Repo::record",
+            "message": "Stub returns 'number' but Repo::record returns 'Record'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis",
+      "trees": {
+        "rust/nemesis": ""
+      },
+      "fixture_sha256": "37b29ecdf1be4d127deca3c4f3670c550e241197e70eca895105f9d23b0f1b40",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 0,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "tautology",
+      "trees": {
+        "rust/tautology": ""
+      },
+      "fixture_sha256": "42b999ced56abcbde9d49af79d417594a54a3a4d6d75c9ec5889704c148473c5",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 5,
+          "doubles_inspected": 6,
+          "violations_count": 0,
+          "doubles_checked": 6,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/automock",
+      "trees": {
+        "rust/nemesis-experiments/automock": ""
+      },
+      "fixture_sha256": "2c90a64960ffac0040edf17333ae2b736025babd66f92f8f8dea9ef7706bc8d7",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 0,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/automock-drift",
+      "trees": {
+        "rust/nemesis-experiments/automock-drift": ""
+      },
+      "fixture_sha256": "e64eea674bbe5051bee504cd25f8890d14888e438cbf9c872340c7cb9fac3737",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 2,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/gateway_mock.rs",
+            "line": 7,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "mockall",
+            "target": "Gateway::dispatch",
+            "message": "Method 'dispatch' does not exist on 'Gateway'."
+          },
+          {
+            "file": "tests/gateway_mock.rs",
+            "line": 13,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "mockall",
+            "target": "Gateway::send",
+            "message": "Stub passes 2 argument(s) but 'Gateway::send' accepts at most 1."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/mock-block",
+      "trees": {
+        "rust/nemesis-experiments/mock-block": ""
+      },
+      "fixture_sha256": "16830f88eae21b4805e1959dc92de0baa5edd753a1bdde529126b9f0ece45b74",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 1,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/store_mock.rs",
+            "line": 4,
+            "type": "GHOST_METHOD",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "mockall mock!",
+            "target": "Store::purge",
+            "message": "Method 'purge' does not exist on 'Store'."
+          }
+        ]
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/mock-macro",
+      "trees": {
+        "rust/nemesis-experiments/mock-macro": ""
+      },
+      "fixture_sha256": "dc34300e8963cfc1a73766845d9dda9ff442819767a89834804f5b078ceb1999",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 1,
+          "violations_count": 0,
+          "doubles_checked": 1,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/trait-shapes",
+      "trees": {
+        "rust/nemesis-experiments/trait-shapes": ""
+      },
+      "fixture_sha256": "73e932e5a9b147dccc58cccac673855576b4749eb954d12e2aafaa09e72d1c53",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 0,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 0,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": []
+      }
+    }
+  ]
+}

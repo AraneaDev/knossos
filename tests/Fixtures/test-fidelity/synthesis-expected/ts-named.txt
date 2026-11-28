@@ -1,0 +1,14 @@
+// knossos synthesize_mock: typescript/src/named.ts#Named (vitest), from typescript/src/named.ts:5
+// 4 members; complete
+import { vi } from 'vitest';
+
+const namedMock = {
+  // find(): Promise<User>
+  find: vi.fn<() => Promise<User>>().mockResolvedValue({ active: false, address: { city: '', zip: 0 }, id: 0, name: '' }),
+  // home(): Address
+  home: vi.fn<() => Address>().mockReturnValue({ city: '', zip: 0 }),
+  // onlyMethods(): { run(): void }
+  onlyMethods: vi.fn<() => { run(): void }>().mockReturnValue({ run: vi.fn() }),
+  // session(): Session
+  session: vi.fn<() => Session>().mockReturnValue({ token: '', close: vi.fn(), refresh: vi.fn() }),
+} satisfies Partial<Named>;

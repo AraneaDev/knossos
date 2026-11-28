@@ -345,3 +345,12 @@ or a full rule id (`test.fidelity.ghost_member.v1`), matched case-sensitively. A
 `audit_tests` leaves the matching findings out of its items, its `total` and its
 `by_language` counts. The file is read on every call, so an edit applies without
 a scan.
+
+The same entries put aside on-request findings, which `audit_tests` computes
+only when asked (`tier: "on_request"` or `"all"`) and `check_fixtures` lists.
+For `OVER_MOCKING`, a finding about a whole test file, and `STALE_SINCE`, `path`
+is a prefix of the test file; for `FIXTURE_DRIFT` it is a prefix of the fixture
+file. An entry is the only way to silence an on-request finding: each one is
+computed live from the current graph and files on every call, so there is no
+stored finding to acknowledge or mark as reviewed. `list_test_rules` lists every rule id, category and sub-rule an
+entry can name.

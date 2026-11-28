@@ -1,0 +1,21 @@
+// knossos synthesize_mock: synth::repo::Repo (mockall), from rust/src/repo.rs:4
+// 3 members; complete
+use mockall::mock;
+use synth::repo::Repo;
+
+mock! {
+    pub Repo {}
+    impl Repo for Repo {
+        fn find(&self, id: u32) -> u32;
+        fn save(&self, value: u32) -> bool;
+        fn record(&self) -> Record;
+    }
+}
+
+#[test]
+fn repo_mock() {
+    let mut mock = MockRepo::new();
+    mock.expect_find().returning(|_id| 0);
+    mock.expect_save().returning(|_value| false);
+    mock.expect_record().returning(|| todo!() /* knossos: fill in Record */);
+}

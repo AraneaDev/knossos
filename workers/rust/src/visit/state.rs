@@ -120,6 +120,9 @@ pub(super) struct Walk<'a> {
     /// type a macro declares (`named_enum!(ErrorCode { .. })` beside `impl
     /// ErrorCode { .. }`) where the declarations do not.
     pub(super) implemented_types: BTreeSet<String>,
+    /// The trait impls of the file, in source order, each
+    /// `{type, trait, …}` as [`Walk::note_trait_impl`] records it.
+    pub(super) trait_impls: Vec<serde_json::Value>,
     /// The type each alias this file declares names, resolved as the file's
     /// imports place it, by the alias's canonical path: `type Alias = Policy;`
     /// in a module, and an impl's associated type, `type Out = Engine;`,

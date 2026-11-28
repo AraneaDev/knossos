@@ -1,0 +1,42 @@
+// knossos synthesize_mock: synth::focus::Store (hand-written), from rust/src/focus.rs:10
+// 9 members; complete
+use synth::focus::Store;
+use synth::focus::Payload;
+
+pub struct FakeStore;
+
+impl Store for FakeStore {
+    fn get(&self, _key: &str) -> Option<Payload> {
+        None
+    }
+
+    fn put(&mut self, _key: String, _value: Payload) {}
+
+    fn into_keys(self) -> Vec<String> {
+        vec![]
+    }
+
+    fn boxed(self: Box<Self>) -> usize {
+        0
+    }
+
+    fn open(_path: &str) -> Self {
+        todo!() /* knossos: fill in Self */
+    }
+
+    async fn sync(&self) -> Result<(), String> {
+        Ok(())
+    }
+
+    unsafe fn raw(&self) -> *const u8 {
+        todo!() /* knossos: fill in *const u8 */
+    }
+
+    fn convert<T: From<u32>>(&self, _value: u32) -> T {
+        todo!() /* knossos: fill in T */
+    }
+
+    fn payload(&self) -> Payload {
+        Payload { id: 0, label: String::from("") }
+    }
+}

@@ -397,6 +397,33 @@ cases and doubles of a `conftest.py` at the project root, which is no test
 module (its fixtures are read); and frameworks other than these, such as
 `responses` or `freezegun`.
 
+## Field facts
+
+A class sends its fields only when its file shows what makes its annotations
+fields: `@dataclass`, or a base that is pydantic's `BaseModel`, a `TypedDict`
+or a class of the same file that is one. A plain class, a `NamedTuple`, an
+attrs class, a pydantic dataclass and a subclass of a class in another file
+send none, which leaves most real pydantic hierarchies unjudged. A field with
+a default is optional; `Field(...)` and `= ...` stay required. `Optional[X]`
+without a default stays required, as pydantic v2 reads it, only in a file that
+imports a name pydantic v1 lacks (`ConfigDict`, `field_validator` and the
+like); elsewhere v1 may fill it with `None`, so it is not required. A field a
+validator may reach before the type check (`field_validator` in mode
+`before`, `wrap` or `plain`, v1 `validator(pre=True)`, or a `BeforeValidator`,
+`PlainValidator` or `WrapValidator` in its `Annotated` metadata) keeps its
+name but sends no type, so a fixture's kind for it is never judged. An `Enum`
+sends its cases and is never a fixture's type.
+
+The list is open for an alias (`alias`, `validation_alias`,
+`serialization_alias`), a `model_config` or `class Config`, a field call with
+`init`, `metadata` or `**`, an `InitVar`, a constructor or a pydantic hook
+that may reread the input, a decorator other than `dataclass`, a class
+keyword, a base the scan cannot read, a name that may hold an alias, and the
+causes that open a class's member list. A pydantic model passed to any call,
+and a default naming a module constant, open it too. An Enum whose `_missing_`,
+`__new__`, `__init__` or `_generate_next_value_` may give other values sends
+no values. The full rules are in the [scanner protocol](../reference/scanner-protocol-v1.md#field-lists).
+
 ## Limits
 
 - Dynamic imports, monkey-patching, runtime decorator effects, metaclass

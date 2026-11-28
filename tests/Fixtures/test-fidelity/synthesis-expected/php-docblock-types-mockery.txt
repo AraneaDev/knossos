@@ -1,0 +1,7 @@
+// knossos synthesize_mock: App\DocblockTypes (mockery), from php/src/DocblockTypes.php:6
+// 2 members; complete
+$mock = \Mockery::mock(\App\DocblockTypes::class);
+// nested(mixed $maybe): mixed
+$mock->shouldReceive('nested')->andReturn(null);
+// either(): mixed
+$mock->shouldReceive('either')->andReturn(null);

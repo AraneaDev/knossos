@@ -1,0 +1,11 @@
+// Momus test/integration/mcp.test.ts:403: one public member.
+import { Db, InvoiceRow } from './db';
+
+export class LedgerService {
+  constructor(private readonly db: Db) {}
+
+  async totalFor(id: string): Promise<InvoiceRow> {
+    const rows = await this.db.query<InvoiceRow>('select * from invoices where id = ?', id);
+    return rows[0]!;
+  }
+}

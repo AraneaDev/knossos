@@ -1,0 +1,21 @@
+// knossos synthesize_mock: synth::focus::Producer (mockall), from rust/src/focus.rs:100
+// 4 members; complete
+use mockall::mock;
+use synth::focus::Producer;
+
+mock! {
+    pub Producer {}
+    impl WithAssoc for Producer {
+        type Output = u8;
+        const LIMIT: usize = 3;
+        fn produce(&self) -> u8;
+        fn limit(&self) -> usize;
+    }
+}
+
+#[test]
+fn producer_mock() {
+    let mut mock = MockProducer::new();
+    mock.expect_produce().returning(|| 0);
+    mock.expect_limit().returning(|| 0);
+}

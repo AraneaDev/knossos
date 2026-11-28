@@ -7,6 +7,7 @@ namespace Knossos\Bundle;
 use InvalidArgumentException;
 use JsonException;
 use Knossos\Filesystem\RelativePathRule;
+use Knossos\Scanner\PackagedLanguages;
 use PDO;
 use stdClass;
 
@@ -251,13 +252,7 @@ final readonly class PortableGraphImporter
             return explode(':', $reference)[0];
         }
         $scanner = explode(':', (string) ($item['owner_key'] ?? ''))[0];
-        return match ($scanner) {
-            'knossos.php' => 'php',
-            'knossos.typescript' => 'ts',
-            'knossos.python' => 'py',
-            'knossos.rust' => 'rs',
-            default => $scanner !== '' ? $scanner : 'unknown',
-        };
+        return PackagedLanguages::prefixOf($scanner) ?? ($scanner !== '' ? $scanner : 'unknown');
     }
 
     /** A path field, validated as project-relative so a bundle cannot carry an absolute path in. */

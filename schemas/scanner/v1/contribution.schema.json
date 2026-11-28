@@ -67,6 +67,20 @@
               "description": "True when members cannot be complete (a base type that does not resolve, an index signature).",
               "type": "boolean"
             },
+            "fields": { "$ref": "#/$defs/fieldList" },
+            "fields_open": {
+              "description": "True when a wire name may differ from a field's name or a field may come from elsewhere (a base outside the scan, an intersection or spread that does not resolve, a decorator or attribute that renames, flatten, an alias generator).",
+              "type": "boolean"
+            },
+            "fields_truncated": {
+              "description": "True when fields was cut at 64 entries. A truncated list is never judged.",
+              "type": "boolean"
+            },
+            "cases": { "$ref": "#/$defs/caseList" },
+            "cases_truncated": {
+              "description": "True when cases was cut at 64 entries. A truncated list is never judged.",
+              "type": "boolean"
+            },
             "overloaded": {
               "description": "A function or method node declared with overload signatures: its signature attribute is the first one only.",
               "type": "boolean"
@@ -136,6 +150,47 @@
           }
         }
       ]
+    },
+    "fieldList": {
+      "description": "A class, interface, trait, type_alias or Rust struct node: the fields a deserialiser fills, sorted by name, at most 64 (see fields_truncated). Sent only when the worker could read them; see fields_open.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "required", "line"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "type": {
+            "description": "The field's type as the source writes it, but a PHP class name fully qualified; absent when it writes none.",
+            "type": "string"
+          },
+          "required": {
+            "description": "Whether a deserialiser needs the key.",
+            "type": "boolean"
+          },
+          "line": { "type": "integer", "minimum": 1 },
+          "visibility": {
+            "description": "The field's declared visibility; absent means public. A non-public field is a known key but never required of a fixture.",
+            "enum": ["public", "protected", "private"]
+          }
+        }
+      }
+    },
+    "caseList": {
+      "description": "The node that declares an enum (enum for TypeScript and PHP, class for Rust and Python): its cases, sorted by name, at most 64 (see cases_truncated).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "value": {
+            "description": "The backing literal as text. Sent for every case or for none.",
+            "type": "string"
+          }
+        }
+      }
     },
     "routeAttributes": {
       "description": "What every route node carries, whichever worker emits it: its framework, the upper-case methods it answers (ANY for every method) and its path as declared.",

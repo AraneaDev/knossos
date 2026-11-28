@@ -1,0 +1,5 @@
+// knossos synthesize_mock: App\Extended (phpunit), from php/src/Extended.php:5
+// 1 member; incomplete: see omitted and notes
+$mock = $this->createMock(\App\Extended::class);
+// own(): string
+$mock->method('own')->willReturn('');

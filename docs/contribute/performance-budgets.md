@@ -66,11 +66,13 @@ regressions. They are regression limits, not expected performance.
 ## Scenarios
 
 A scenario is a fixed corpus of its own with one limit, under `scenarios` in
-the same file. After a cold scan the runner edits the corpus's one production
-file and scans again, five times, and holds the median incremental scan to
+the same file. A rescan scenario edits the corpus's one production file after a
+cold scan and scans again, five times, and holds the median incremental scan to
 `incremental_scan_seconds`. A round that did not parse the files the edit
-reaches fails the run, so a scenario cannot pass by timing a smaller rescan.
-The report lists each round under `scenarios`.
+reaches fails the run, so a scenario cannot pass by timing a smaller rescan. An
+on-request scenario times one on-request query five times after a cold scan
+and holds the median to `query_seconds`; a round that answered less than its
+corpus gives fails the run. The report lists each round under `scenarios`.
 
 | scenario                               | corpus                                                      | incremental scan |
 | -------------------------------------- | ----------------------------------------------------------- | ---------------: |
@@ -78,6 +80,11 @@ The report lists each round under `scenarios`.
 | `test_fidelity_rescan_one_file_php`    | one PHP class, five test files with 20 doubles of it        |               2s |
 | `test_fidelity_rescan_one_file_python` | one Python class, five test files with 20 doubles of it     |               4s |
 | `test_fidelity_rescan_one_file_rust`   | one Rust trait, five test files with 20 mocks of it         |               3s |
+
+| scenario                        | corpus                                                     | query |
+| ------------------------------- | ---------------------------------------------------------- | ----: |
+| `audit_tests_on_request_medium` | the `medium` profile with a test file per service, in git  |    3s |
+| `check_fixtures_medium`         | the `medium` profile with three DTOs and 500 fixture files |    6s |
 
 `test_fidelity_rescan_one_file` measures what test fidelity adds to a rescan:
 the edit makes the production file and all five test files parse again
@@ -150,6 +157,48 @@ and 33 files, took 1.42s at that base and 1.70s with test facts (120%; the
 were memoised it took 2.16s: each standard assertion macro a test called
 recorded every module and file of its package as a read again, so the cost
 grew with calls times package files.
+
+The on-request scenarios time what the on-request tools add to a project of
+the `medium` profile's size. `tools/generate-on-request-corpus.php` writes that
+profile byte for byte, then what each tool reads.
+
+`audit_tests_on_request_medium` adds one test file per service and language,
+each doubling the service's dependency with `vi.spyOn`, PHPUnit's `createMock`
+or `patch.object`, and commits the corpus to git. It then edits the first two
+services in every language, so `audit-tests --tier=all --scope=git-diff
+--base-ref=HEAD` computes every on-request rule. Every round must list at least
+the 24 items the corpus gives: 14 `OVER_MOCKING`, 9 `STALE_SINCE` and one
+scan-tier `MOCKS_SUBJECT`. `check_fixtures_medium` adds a PHP class, a
+TypeScript interface and a Python dataclass, and 500 JSON and YAML fixtures of
+them, every tenth missing a field. Each round must check all 500 and report the
+50 drifts.
+
+Their limits follow the `small` profile's query headroom, since each times one
+query: `small` measured 0.092s against its 1s (10.87 times). On one
+development machine with ext-ffi loaded, as the quality image loads it, the
+two scenarios measured 0.226s and 0.478s in the same run, so their limits are
+0.226s × 10.87 = 2.46s and 0.478s × 10.87 = 5.20s, rounded up: 3s and 6s.
+Without ext-ffi, on the same machine, `audit_tests_on_request_medium` measured 0.122s, within
+its limit. `check_fixtures_medium` measured 11.96s, over it. Without FFI, the
+file opener starts a helper process for each file it reads, so as not to block
+on a FIFO, and 500 fixture files then cost 500 processes. `knossos doctor`
+reports the missing extension as `filesystem.opener`. Run the benchmark in the
+quality image, as above, or with ext-ffi loaded and `ffi.enable=true`.
+
+When on-request tools were added, the size profiles and the rescan scenarios
+were measured on commit `6d4233c3`, the commit before them, and with them, on
+one machine without ext-ffi. Each figure is the median of three benchmark runs,
+and the two commits' runs alternated. No figure moved past noise: `small`,
+`medium` and `large` cold scans took 102%, 98.5% and 99.5% of base, their
+incremental scans 101%, 99.7% and 99.6%, and the four rescan scenarios 96.6%
+(TypeScript), 102% (PHP), 101% (Python) and 103% (Rust). The workers also send
+new optional attributes: field facts, enum cases, visibility and `async`, and
+in TypeScript more `reads` entries. A cold scan of the Knossos tree (2056
+files) cost each worker 100.7% (PHP), 100.5% (TypeScript), 103.5% (Python) and
+102.4% (Rust) of base. Two more Cargo projects of 27 and 33 files cost the Rust
+worker 96.4% and 96.2% (medians of 15 alternating scans). Each worker figure
+is a median of alternating scans, three per commit unless said, with ext-ffi
+loaded on both sides.
 
 Timing and RSS values vary with hardware, load, filesystem, and cold runtime
 caches. Compare trends from equivalent pinned runners. Tightening a budget

@@ -1,0 +1,6 @@
+{
+  "trips": [
+    { "id": "L-1", "speed": "fast", "priority": 1 },
+    { "id": "L-2", "speed": "slow", "priority": 0, "note": "kept" }
+  ]
+}

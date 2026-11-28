@@ -1,0 +1,6 @@
+members:
+  - id: m-1
+    tier: gold
+  - id: m-2
+    tier: free
+    nickname: ~

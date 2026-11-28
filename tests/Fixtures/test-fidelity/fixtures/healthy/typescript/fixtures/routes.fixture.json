@@ -1,0 +1,8 @@
+[
+  {
+    "reference": "CN-1",
+    "destination": { "street": "Kanaalweg", "city": "Utrecht" },
+    "stops": [{ "street": "Havenkade", "city": "Rotterdam" }],
+    "lookup": { "any key at all": { "street": "x", "city": "y" } }
+  }
+]

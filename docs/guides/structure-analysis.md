@@ -3,19 +3,25 @@
 Seven tools walk the graph instead of listing it: what depends on a symbol, how
 one component reaches another, which modules are tangled, where the structural
 hotspots are, which code no test reaches, which tests no longer match the code,
-and where new code belongs. What the graph holds, and how far to trust each
+and where new code belongs. Four more work on tests alone: which doubles stand
+in for a symbol, which fixtures no longer fit their type, a mock template for a
+symbol, and the catalog of test rules. What the graph holds, and how far to trust each
 fact, is on [the graph and its evidence](../concepts/graph-and-evidence.md).
 Full input schemas are in the [MCP tool reference](../reference/mcp-tools.md).
 
-| Tool                  | CLI                   | Answers                                                                      |
-| --------------------- | --------------------- | ---------------------------------------------------------------------------- |
-| `impact_analysis`     | `impact-analysis`     | What depends on a symbol, with the edge that proves it.                      |
-| `explain_flow`        | `explain-flow`        | How A reaches B, as ranked evidence-backed paths.                            |
-| `dependency_cycles`   | `dependency-cycles`   | Circular dependencies as bounded strongly connected groups.                  |
-| `architecture_health` | `architecture-health` | Hubs, hotspots, and dead-code candidates.                                    |
-| `untested_code`       | `untested-code`       | Files, or classes and functions, no test reaches.                            |
-| `audit_tests`         | `audit-tests`         | Test doubles that no longer match the code, and assertions that cannot fail. |
-| `suggest_location`    | `suggest-location`    | Where new code for a feature belongs.                                        |
+| Tool                  | CLI                   | Answers                                                                                                                |
+| --------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `impact_analysis`     | `impact-analysis`     | What depends on a symbol, with the edge that proves it.                                                                |
+| `explain_flow`        | `explain-flow`        | How A reaches B, as ranked evidence-backed paths.                                                                      |
+| `dependency_cycles`   | `dependency-cycles`   | Circular dependencies as bounded strongly connected groups.                                                            |
+| `architecture_health` | `architecture-health` | Hubs, hotspots, and dead-code candidates.                                                                              |
+| `untested_code`       | `untested-code`       | Files, or classes and functions, no test reaches.                                                                      |
+| `audit_tests`         | `audit-tests`         | Test doubles that no longer match the code, and assertions that cannot fail; on request, over-mocking and stale mocks. |
+| `verify_test_doubles` | `verify-test-doubles` | Every double of one symbol, each with its stored findings.                                                             |
+| `check_fixtures`      | `check-fixtures`      | JSON and YAML fixtures that no longer fit the type they hold.                                                          |
+| `synthesize_mock`     | `synthesize-mock`     | A mock template for a class, interface or trait, in the project's framework.                                           |
+| `list_test_rules`     | `list-test-rules`     | Every test-fidelity rule, its tier, confidences and sub-rules.                                                         |
+| `suggest_location`    | `suggest-location`    | Where new code for a feature belongs.                                                                                  |
 
 Each tool takes the bounds that make sense for it: `max_depth` or
 `max_nodes`/`max_edges` cap the walk, `timeout_ms` caps the time,

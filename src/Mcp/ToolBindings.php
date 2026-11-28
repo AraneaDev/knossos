@@ -313,6 +313,33 @@ final class ToolBindings
                 'arguments' => [
                     'project_id' => self::at('Usage: knossos audit-tests <path|project-id> [options]'),
                     'path_prefix' => self::as('path'), 'confidence' => [], 'category' => [], 'limit' => [], 'offset' => [],
+                    'tier' => [], 'scope' => [], 'base_ref' => [], 'timeout_ms' => [],
+                ],
+            ],
+            'list_test_rules' => [
+                'call' => static fn(ArchitectureQueryService $q): ResultEnvelope => $q->services()->testFidelityQueries->listTestRules(),
+                'arguments' => [],
+            ],
+            'verify_test_doubles' => [
+                'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->services()->doublesOfSymbol->verify(...$v),
+                'arguments' => [
+                    'project_id' => self::at('Usage: knossos verify-test-doubles <path|project-id> <symbol> [--json]'),
+                    'symbol' => self::at('A symbol is required.'),
+                ],
+            ],
+            'check_fixtures' => [
+                'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->services()->fixtureChecks->check(...$v),
+                'arguments' => [
+                    'project_id' => self::at('Usage: knossos check-fixtures <path|project-id> [PATH...] [--limit=N] [--offset=N] [--json]'),
+                    'paths' => self::rest(), 'limit' => [], 'offset' => [],
+                ],
+            ],
+            'synthesize_mock' => [
+                'call' => static fn(ArchitectureQueryService $q, array $v): ResultEnvelope => $q->services()->mockSynthesis->synthesize(...$v),
+                'arguments' => [
+                    'project_id' => self::at('Usage: knossos synthesize-mock <path|project-id> <symbol> [--framework=F] [--language=L] [--no-values] [--json]'),
+                    'symbol' => self::at('A symbol is required.'),
+                    'framework' => [], 'language' => [], 'include_values' => self::as('no-values'),
                 ],
             ],
             // MCP only: the CLI's file-context is the pane's, a different answer.

@@ -97,6 +97,51 @@ export function signatureOf(node, sourceFile) {
         signature.returns = text;
         truncated ||= cut;
     }
+    const typeParams = typeParamsOf(declared, sourceFile);
+    if (typeParams !== undefined) {
+        signature.type_params = typeParams.texts;
+        truncated ||= typeParams.cut;
+    }
     if (truncated) signature.truncated = true;
     return signature;
+}
+
+/**
+ * The type parameters a function or type declares, each as written
+ * (`T extends string = "id"`), or undefined when it declares none. `cut`
+ * says one was cut to the length kept.
+ *
+ * @returns {{texts: string[], cut: boolean} | undefined}
+ */
+function typeParamsOf(declaration, sourceFile) {
+    const declared = declaration.typeParameters ?? [];
+    if (declared.length === 0) return undefined;
+    const written = declared.map((parameter) =>
+        typeText(parameter, sourceFile),
+    );
+    return {
+        texts: written.map(({ text }) => text),
+        cut: written.some(({ cut }) => cut),
+    };
+}
+
+/**
+ * The facts of a declaration a mock template reads besides its signature:
+ * `async: true` for an async function or method (an unannotated one still
+ * returns a Promise), and a class's or interface's `type_params`, each as
+ * written; nothing for anything else. A cut text ends in `…`.
+ */
+export function mockFactsOf(kind, node, sourceFile) {
+    if (kind === "class" || kind === "interface") {
+        const typeParams = typeParamsOf(node, sourceFile);
+        return typeParams === undefined
+            ? {}
+            : { type_params: typeParams.texts };
+    }
+    if (kind !== "function" && kind !== "method") return {};
+    const declared = functionOf(node);
+    return declared !== undefined &&
+        (ts.getCombinedModifierFlags(declared) & ts.ModifierFlags.Async) !== 0
+        ? { async: true }
+        : {};
 }

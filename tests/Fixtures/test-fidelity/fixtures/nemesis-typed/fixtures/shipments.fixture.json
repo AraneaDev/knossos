@@ -1,0 +1,6 @@
+{
+  "shipments": [
+    { "id": "A-1", "weight": 12.5, "express": true },
+    { "id": 2, "weight": "12.50", "express": "yes" }
+  ]
+}

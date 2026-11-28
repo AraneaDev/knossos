@@ -1,0 +1,8 @@
+// knossos synthesize_mock: typescript/src/focus.ts#Wide (vitest), from typescript/src/focus.ts:18
+// 1 member, 1 omitted; incomplete: see omitted and notes
+import { vi } from 'vitest';
+
+const wideMock = {
+  // fine(): number
+  fine: vi.fn<() => number>().mockReturnValue(0),
+} satisfies Partial<Wide>;

@@ -150,7 +150,7 @@ knossos changed-files-impact project_... --working-tree --base-ref=main --json
 ```
 
 The Git adapter resolves a supplied base ref to a commit, detects renames, and
-includes untracked files for the default working-tree comparison. Deleted and
+includes untracked files, with or without a base ref. Deleted and
 old rename paths can still resolve when they exist in the active indexed
 snapshot.
 

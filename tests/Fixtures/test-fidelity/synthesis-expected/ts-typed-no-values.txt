@@ -1,0 +1,22 @@
+// knossos synthesize_mock: typescript/src/typed.ts#Typed (vitest), from typescript/src/typed.ts:2
+// 8 members; complete
+import { vi } from 'vitest';
+
+const typedMock = {
+  // num(): number
+  num: vi.fn<() => number>(),
+  // str(): string
+  str: vi.fn<() => string>(),
+  // flag(): boolean
+  flag: vi.fn<() => boolean>(),
+  // list(): string[]
+  list: vi.fn<() => string[]>(),
+  // maybe(): number | undefined
+  maybe: vi.fn<() => number | undefined>(),
+  // late(): Promise<number>
+  late: vi.fn<() => Promise<number>>(),
+  // custom(): Widget
+  custom: vi.fn<() => Widget>(),
+  // voidy(): void
+  voidy: vi.fn<() => void>(),
+} satisfies Partial<Typed>;

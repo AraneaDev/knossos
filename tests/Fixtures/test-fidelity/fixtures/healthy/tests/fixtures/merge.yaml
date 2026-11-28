@@ -1,0 +1,4 @@
+defaults: {id: 1}
+parcel:
+  <<: {id: 2}
+  weight_kg: 1

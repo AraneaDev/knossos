@@ -122,11 +122,11 @@ final class ProcessGitProviderTest extends KnossosTestCase
             }
         };
 
-        // baseRef !== null → rev-parse + diff
+        // baseRef !== null → rev-parse + diff + ls-files: untracked files count against any ref (preflight F5)
         $provider = new ProcessGitWorkingTreeProvider(runner: $mock);
         $result = $provider->changes($this->existingDir, 'HEAD', 10, 100);
 
-        assertSame(['src/Checkout.php', 'src/InvoiceService.php', 'src/OldCheckout.php'], $result['paths']);
+        assertSame(['src/Checkout.php', 'src/InvoiceService.php', 'src/NEW_FILE.php', 'src/OldCheckout.php', 'src/another.php'], $result['paths']);
         assertSame([['from' => 'src/OldCheckout.php', 'to' => 'src/Checkout.php']], $result['renames']);
         assertSame(false, $result['truncated']);
 
@@ -440,7 +440,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
         $runner = new RecordingGitRunner(static fn(array $command): string => in_array('rev-parse', $command, true) ? str_repeat('b', 40) : '');
         (new ProcessGitWorkingTreeProvider(runner: $runner))->changes($this->existingDir, 'v1.0', 10, 100);
 
-        assertSame(['rev-parse', '--verify', 'v1.0^{commit}'], array_slice($runner->commandsWith('rev-parse')[0], -3));
+        assertSame([['rev-parse', '--is-inside-work-tree'], ['rev-parse', '--verify', 'v1.0^{commit}']], [array_slice($runner->commandsWith('rev-parse')[0], -2), array_slice($runner->commandsWith('rev-parse')[1], -3)]);
         assertSame([str_repeat('b', 40), '--', '.'], array_slice($runner->commandsWith('diff')[0], -3));
     }
 
@@ -455,7 +455,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
     public function testAnUnbornBranchIsDiffedThroughTheIndexInsteadOfHead(): void
     {
         $runner = new RecordingGitRunner(static function (array $command): string {
-            if (in_array('rev-parse', $command, true)) {
+            if (in_array('--verify', $command, true)) {
                 throw new RuntimeException('fatal: Needed a single revision');
             }
             if (in_array('--cached', $command, true)) {
@@ -496,7 +496,7 @@ final class ProcessGitProviderTest extends KnossosTestCase
         (new ProcessGitWorkingTreeProvider(runner: $runner))->changes($this->existingDir, null, 10, 100);
 
         $revParse = $runner->commandsWith('rev-parse');
-        assertSame(['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '--literal-pathspecs', '-C', (string) realpath($this->existingDir), 'rev-parse', '--verify', '-q', 'HEAD'], $revParse[0]);
+        assertSame(['git', '-c', 'core.quotePath=false', '--no-optional-locks', '--no-pager', '--literal-pathspecs', '-C', (string) realpath($this->existingDir), 'rev-parse', '--verify', '-q', 'HEAD'], $revParse[1]);
         $diffs = $runner->commandsWith('diff');
         assertSame(1, count($diffs));
         assertSame(false, in_array('--cached', $diffs[0], true));

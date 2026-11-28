@@ -1,0 +1,8 @@
+// knossos synthesize_mock: typescript/src/services/ledger.ts#LedgerService (vitest), from typescript/src/services/ledger.ts:4
+// 1 member; complete
+import { vi } from 'vitest';
+
+const ledgerServiceMock = {
+  // async totalFor(id: string): Promise<InvoiceRow>
+  totalFor: vi.fn<(id: string) => Promise<InvoiceRow>>().mockResolvedValue({ id: '', total: 0 }),
+} satisfies Partial<LedgerService>;

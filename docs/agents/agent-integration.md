@@ -11,13 +11,17 @@ Claude Code session ([session brief](../claude-code/session-brief.md)), and the
 skill that decides which questions reach these tools at all
 ([the routing skill](../claude-code/skill.md)).
 
-| Tool                   | CLI                    | Answers                                           |
-| ---------------------- | ---------------------- | ------------------------------------------------- |
-| `export_agent_brief`   | `export-agent-brief`   | Markdown orientation to paste into a memory file. |
-| `architecture_context` | `architecture-context` | A bounded evidence bundle for one coding task.    |
-| `annotate_component`   | `annotate-component`   | Record a durable judgment on a component.         |
-| `list_annotations`     | `list-annotations`     | Read those judgments back.                        |
-| `audit_tests`          | `audit-tests`          | Stale mocks and assertions that cannot fail.      |
+| Tool                   | CLI                    | Answers                                                   |
+| ---------------------- | ---------------------- | --------------------------------------------------------- |
+| `export_agent_brief`   | `export-agent-brief`   | Markdown orientation to paste into a memory file.         |
+| `architecture_context` | `architecture-context` | A bounded evidence bundle for one coding task.            |
+| `annotate_component`   | `annotate-component`   | Record a durable judgment on a component.                 |
+| `list_annotations`     | `list-annotations`     | Read those judgments back.                                |
+| `audit_tests`          | `audit-tests`          | Stale mocks and assertions that cannot fail.              |
+| `verify_test_doubles`  | `verify-test-doubles`  | The doubles of one symbol, and whether each still fits.   |
+| `synthesize_mock`      | `synthesize-mock`      | A mock template for a symbol, in the project's framework. |
+| `check_fixtures`       | `check-fixtures`       | Fixtures that no longer fit the type they hold.           |
+| `list_test_rules`      | `list-test-rules`      | The test rules a finding or a suppression can name.       |
 
 `audit_tests` is the one tool of the table that checks the agent's own work
 rather than orienting it: it lists test doubles that no longer match the code
@@ -25,6 +29,37 @@ they replace and assertions that cannot fail, each with a stable `key`. An agent
 that has renamed a member calls it before trusting a green suite. A finding that
 is intended can be silenced with `test_finding_suppressions` in `knossos.json`
 ([project configuration](../get-started/project-configuration.md)), with no rescan.
+
+The other four test tools belong at fixed points of a change:
+
+- **Before editing a doubled symbol**, call `verify_test_doubles` with its name.
+  It lists every double that stands in for it, with file, line and framework,
+  so the agent knows which tests to update with the change, and which doubles
+  already no longer fit.
+- **When writing a new double**, call `synthesize_mock` instead of writing one
+  from memory. The template is built from the symbol's real signatures, in the
+  framework the project's own doubles use. Members it could not render from a
+  full signature are listed under `omitted`, and `complete: false` says the
+  template needs a look before it is trusted. `complete: true` says only that no
+  member was left out: a parameter or return the source gives no type is still
+  rendered with a placeholder value, and each member lists those parts under its
+  `unknown`, so check them before relying on the values.
+- **After changing a type that fixtures hold**, such as a DTO renamed or given a
+  field, call `check_fixtures`. It reads the JSON and YAML fixtures that match
+  the type and lists each missing, unknown or mistyped key, and each value that
+  is no case of its enum, at its own line.
+- **Before a review**, `audit_tests` with `tier: "all"` adds what the scan does
+  not store: over-mocked test files and, with `scope: "git-diff"`, doubles whose
+  target changed while their test did not. That scope narrows the stored
+  findings to the diff, but `OVER_MOCKING` and `FIXTURE_DRIFT` still cover the
+  whole project.
+
+Each on-request finding (`OVER_MOCKING`, `STALE_SINCE`, `FIXTURE_DRIFT`) is a
+`warning`, never `definite`: it rests on a ratio, a changed file or a match by
+name and shape, not on a contract the code breaks. `verify_test_doubles` lists
+the stored findings of each double as `audit_tests` does, definite ones
+included. `list_test_rules` names every rule, so an agent can write a
+suppression for one it has judged intended.
 
 The server also exposes two MCP surfaces with no CLI equivalent: per-project
 resources at `knossos://<project_id>/summary`, `/boundaries` and `/brief` (the

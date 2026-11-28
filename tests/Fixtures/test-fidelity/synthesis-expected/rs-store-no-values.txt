@@ -1,0 +1,34 @@
+// knossos synthesize_mock: synth::focus::Store (mockall), from rust/src/focus.rs:10
+// 9 members; complete
+use mockall::mock;
+use synth::focus::Store;
+
+mock! {
+    pub Store {}
+    impl Store for Store {
+        fn get(&self, key: &str) -> Option<Payload>;
+        fn put(&mut self, key: String, value: Payload);
+        fn into_keys(self) -> Vec<String>;
+        fn boxed(self: Box<Self>) -> usize;
+        fn open(path: &str) -> Self;
+        async fn sync(&self) -> Result<(), String>;
+        unsafe fn raw(&self) -> *const u8;
+        fn convert<T: From<u32>>(&self, value: u32) -> T;
+        fn payload(&self) -> Payload;
+    }
+}
+
+#[test]
+fn store_mock() {
+    let mut mock = MockStore::new();
+    mock.expect_get().returning(|_key| todo!());
+    mock.expect_put().returning(|_key, _value| todo!());
+    mock.expect_into_keys().returning(|| todo!());
+    mock.expect_boxed().returning(|| todo!());
+    let open_context = MockStore::open_context();
+    open_context.expect().returning(|_path| todo!());
+    mock.expect_sync().returning(|| todo!());
+    mock.expect_raw().returning(|| todo!());
+    mock.expect_convert().returning(|_value| todo!());
+    mock.expect_payload().returning(|| todo!());
+}

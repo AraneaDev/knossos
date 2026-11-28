@@ -135,7 +135,8 @@ final class GitTest extends KnossosTestCase
             file_put_contents($root . '/src/untracked.php', "<?php\n");
             $changes = (new ProcessGitWorkingTreeProvider())->changes($root, null, 10, 2000);
             assertSame(['src/example.php', 'src/untracked.php'], $changes['paths']);
-            assertSame(['src/example.php'], (new ProcessGitWorkingTreeProvider())->changes($root, 'HEAD~1', 10, 2000)['paths']);
+            // Untracked files count against an explicit ref too (preflight F5).
+            assertSame(['src/example.php', 'src/untracked.php'], (new ProcessGitWorkingTreeProvider())->changes($root, 'HEAD~1', 10, 2000)['paths']);
             assertThrows(fn() => (new ProcessGitHistoryProvider())->history($plain, 30, 10, 2000), RuntimeException::class);
             assertThrows(fn() => (new ProcessGitHistoryProvider(maxOutputBytes: 10))->history($root, 30, 10, 2000), RuntimeException::class);
             assertThrows(fn() => (new ProcessGitWorkingTreeProvider())->changes($root, '--bad', 10, 2000), RuntimeException::class);

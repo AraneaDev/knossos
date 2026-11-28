@@ -43,6 +43,14 @@ with that name, and only to a Symfony route. A name built at run time gives
 nothing, and Twig templates are not read. See
 [from request to handler](../concepts/request-to-handler.md).
 
+## Field facts
+
+Symfony classes send the same field facts as any PHP class, and `check_fixtures`
+reads them the same way. A Symfony Serializer or JMS Serializer attribute or
+docblock tag that may rename a field opens the class's field list, so fixtures
+are not judged against it. See [field facts](php.md#field-facts) for the full
+rules.
+
 ## Limits
 
 - YAML and XML service and route imports are not interpreted. The one exception

@@ -20,6 +20,7 @@ mod calls;
 mod cfg;
 mod declaration_paths;
 mod declarations;
+mod field_facts;
 mod fields;
 mod generated;
 mod generated_mock;
@@ -89,7 +90,9 @@ pub fn walk(
     walker.collect_struct_fields(module, &file.items);
     walker.collect_function_returns(module, &file.items);
     walker.walk_items(module, "module", &file.items);
+    field_facts::attach(walker.facts, module, &file.items);
     walker.flush_routes();
+    walker.flush_trait_impls();
     let placed = std::mem::take(&mut walker.placed);
     let scope = walker.take_scope();
     facts.exit_support_scope(file_support);
@@ -258,6 +261,7 @@ impl<'a> Walk<'a> {
             public_exports: BTreeSet::new(),
             own_declarations: BTreeSet::new(),
             implemented_types: BTreeSet::new(),
+            trait_impls: Vec::new(),
             type_aliases: BTreeMap::new(),
         }
     }
@@ -303,6 +307,7 @@ impl Walk<'_> {
                     "class",
                     item.span(),
                 );
+                self.record_generics(&canonical, &node.generics);
                 self.walk_type_declaration(
                     &reference("class", &canonical),
                     container,
@@ -319,6 +324,10 @@ impl Walk<'_> {
                     "class",
                     item.span(),
                 );
+                self.record_generics(&canonical, &node.generics);
+                // An enum carries `cases` only when it derives Deserialize: mark it either way.
+                self.facts
+                    .node_attribute(&canonical, "rust_item", "enum".into());
                 let fields: Vec<&syn::Fields> = node.variants.iter().map(|v| &v.fields).collect();
                 let variant_attrs: Vec<&[syn::Attribute]> =
                     node.variants.iter().map(|v| v.attrs.as_slice()).collect();
@@ -337,13 +346,15 @@ impl Walk<'_> {
                 self.walk_module_value(container, &node.ty, &node.expr);
             }
             Item::Union(node) => {
-                self.declare(
+                let canonical = self.declare(
                     container,
                     container_kind,
                     &ident_name(&node.ident),
                     "class",
                     item.span(),
                 );
+                self.facts
+                    .node_attribute(&canonical, "rust_item", "union".into());
             }
             Item::Fn(node) => self.walk_fn(container, container_kind, node, item.span()),
             Item::Trait(node) => self.walk_trait(container, container_kind, node, item.span()),
@@ -373,8 +384,7 @@ impl Walk<'_> {
             self.facts.enter_test_scope();
         }
         let canonical = self.declare(container, container_kind, &name, "function", span);
-        self.facts
-            .node_attribute(&canonical, "signature", signatures::signature_of(&node.sig));
+        self.record_signature(&canonical, &node.sig, Some(&node.vis));
         // A crate-root `fn main` is what the runtime invokes — nothing
         // calls or imports it, so without the executable mark the
         // whole entry point reads as dead code.
@@ -432,6 +442,8 @@ impl Walk<'_> {
             "interface",
             span,
         );
+        self.record_generics(&canonical, &node.generics);
+        self.record_associated(&canonical, &node.items);
         // A supertrait bound (`trait Named: Display`) names a trait the
         // declared trait extends. Only a plain trait bound is handled;
         // a lifetime bound (`trait Named: 'static`) names no node.
@@ -459,6 +471,7 @@ impl Walk<'_> {
                     "interface",
                     &method.attrs,
                     &method.sig,
+                    None,
                     method.default.as_ref(),
                     member.span(),
                     |_, _| {},

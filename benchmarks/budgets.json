@@ -38,6 +38,12 @@
     },
     "test_fidelity_rescan_one_file_rust": {
       "incremental_scan_seconds": 3
+    },
+    "audit_tests_on_request_medium": {
+      "query_seconds": 3
+    },
+    "check_fixtures_medium": {
+      "query_seconds": 6
     }
   }
 }

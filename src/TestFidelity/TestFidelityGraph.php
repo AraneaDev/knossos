@@ -397,6 +397,17 @@ final readonly class TestFidelityGraph
     }
 
     /**
+     * The nodes `$type` itself declares (its `contains` children the scan
+     * holds), in edge order.
+     *
+     * @return list<NodeFact>
+     */
+    public function children(NodeFact $type): array
+    {
+        return array_values(array_filter(array_map(fn(string $reference): ?NodeFact => $this->nodes[$reference] ?? null, $this->children[$type->localId] ?? [])));
+    }
+
+    /**
      * Every name `$owner` declares or inherits, sorted, for a suggestion.
      *
      * @return list<string>
@@ -428,6 +439,20 @@ final readonly class TestFidelityGraph
     public function lineage(NodeFact $owner): array
     {
         return array_values(array_filter(array_map(fn(string $reference): ?NodeFact => $this->nodes[$reference] ?? null, $this->reachable($owner)[0])));
+    }
+
+    /**
+     * `lineage()` through only the parent references `$follows` accepts, and
+     * whether one of those it reaches is unseen or outside the project.
+     *
+     * @param \Closure(string): bool $follows
+     * @return array{list<NodeFact>, bool}
+     */
+    public function lineageThrough(NodeFact $owner, \Closure $follows): array
+    {
+        [$references, $unseen] = $this->reachable($owner, $follows);
+
+        return [array_values(array_filter(array_map(fn(string $reference): ?NodeFact => $this->nodes[$reference] ?? null, $references))), $unseen];
     }
 
     /**

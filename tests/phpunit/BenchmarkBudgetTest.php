@@ -127,7 +127,10 @@ final class BenchmarkBudgetTest extends KnossosTestCase
     /** @return iterable<string, array{mixed, string}> */
     public static function invalidScenarios(): iterable
     {
-        yield 'an unknown scenario' => [['rescan_everything' => ['incremental_scan_seconds' => 1]], 'scenarios.rescan_everything is not a scenario the benchmark runs (test_fidelity_rescan_one_file, test_fidelity_rescan_one_file_php, test_fidelity_rescan_one_file_python, test_fidelity_rescan_one_file_rust).'];
+        yield 'an unknown scenario' => [['rescan_everything' => ['incremental_scan_seconds' => 1]], 'scenarios.rescan_everything is not a scenario the benchmark runs (test_fidelity_rescan_one_file, test_fidelity_rescan_one_file_php, test_fidelity_rescan_one_file_python, test_fidelity_rescan_one_file_rust, audit_tests_on_request_medium, check_fixtures_medium).'];
+        yield 'a query scenario with a rescan limit' => [['check_fixtures_medium' => ['incremental_scan_seconds' => 1]], 'scenarios.check_fixtures_medium.query_seconds is missing.'];
+        yield 'a quoted query limit' => [['audit_tests_on_request_medium' => ['query_seconds' => '2']], 'scenarios.audit_tests_on_request_medium.query_seconds is "2"; it must be a number.'];
+        yield 'a rescan scenario with a query limit' => [['test_fidelity_rescan_one_file_php' => ['query_seconds' => 1]], 'scenarios.test_fidelity_rescan_one_file_php.incremental_scan_seconds is missing.'];
         yield 'a missing limit' => [['test_fidelity_rescan_one_file' => []], 'scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds is missing.'];
         yield 'a quoted limit' => [['test_fidelity_rescan_one_file' => ['incremental_scan_seconds' => '2']], 'scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds is "2"; it must be a number.'];
         yield 'a list' => [[['incremental_scan_seconds' => 1]], 'scenarios must be an object of scenarios.'];
@@ -146,6 +149,76 @@ final class BenchmarkBudgetTest extends KnossosTestCase
             ['scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds 2.08 exceeds 2.07'],
             \benchmarkScenarioViolations('test_fidelity_rescan_one_file', 2.07, 2.08),
         );
+    }
+
+    public function testAQueryScenarioIsHeldToItsQueryLimit(): void
+    {
+        assertSame([], \benchmarkScenarioViolations('check_fixtures_medium', 3.0, 3.0, 'query_seconds'));
+        assertSame(
+            ['scenarios.check_fixtures_medium.query_seconds 3.01 exceeds 3.00'],
+            \benchmarkScenarioViolations('check_fixtures_medium', 3.0, 3.01, 'query_seconds'),
+        );
+    }
+
+    /** A query that answered less than its corpus gives would time a cheaper answer, and pass for it. */
+    public function testAQueryScenarioRoundAnsweringLessIsRefused(): void
+    {
+        assertSame(null, \benchmarkQueryScenarioError('audit_tests_on_request_medium', 0, 24, null));
+        assertSame(null, \benchmarkQueryScenarioError('check_fixtures_medium', 4, 50, 500));
+        assertSame(
+            'scenarios.audit_tests_on_request_medium round 3 reported 23 items, fewer than the 24 its corpus gives; it would not measure the query it is for.',
+            \benchmarkQueryScenarioError('audit_tests_on_request_medium', 2, 23, null),
+        );
+        assertSame(
+            'scenarios.check_fixtures_medium round 1 reported an unknown number of items, fewer than the 50 its corpus gives; it would not measure the query it is for.',
+            \benchmarkQueryScenarioError('check_fixtures_medium', 0, null, 500),
+        );
+        assertSame(
+            'scenarios.check_fixtures_medium round 2 checked 499 fixture files, not the 500 its corpus holds; it would not measure the query it is for.',
+            \benchmarkQueryScenarioError('check_fixtures_medium', 1, 50, 499),
+        );
+        assertSame(
+            'scenarios.check_fixtures_medium round 1 checked an unknown number of fixture files, not the 500 its corpus holds; it would not measure the query it is for.',
+            \benchmarkQueryScenarioError('check_fixtures_medium', 0, 50, null),
+        );
+    }
+
+    /**
+     * The on-request corpus is the size profile byte for byte, with the tests
+     * and fixtures it adds on top: each of those, and nothing else, differs.
+     */
+    public function testTheOnRequestCorpusIsTheSizeProfileWithTestsAndFixturesAdded(): void
+    {
+        $profile = $this->directory . '/profile';
+        $onRequest = $this->directory . '/on-request';
+        [$exit, $profileOut] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('generate-benchmark-corpus.php'), $profile, '6']);
+        assertSame(0, $exit, $profileOut);
+        [$exit, $output, $errors] = $this->runFixtureCommandOutput([PHP_BINARY, self::guardTool('generate-on-request-corpus.php'), $onRequest, '6', '--tests', '--fixtures=12']);
+        assertSame(0, $exit, $output . $errors);
+        $generated = json_decode($output, true, 512, JSON_THROW_ON_ERROR);
+        assertSame([6, 18, 12], [$generated['files_per_language'], $generated['generated_source_files'], $generated['fixture_files']]);
+        assertSame(18, count($generated['test_files']));
+
+        $before = self::tree($profile);
+        $after = self::tree($onRequest);
+        // The size profile's files are untouched, but the tsconfig, which now includes the tests.
+        assertSame(['typescript/tsconfig.json'], array_keys(array_diff_assoc(array_intersect_key($after, $before), $before)));
+        $added = array_keys(array_diff_key($after, $before));
+        $fixtures = array_values(array_filter($added, static fn(string $path): bool => str_starts_with($path, 'fixtures/')));
+        assertSame(12, count($fixtures));
+        assertSame(3, count(array_filter($fixtures, static fn(string $path): bool => str_ends_with($path, '.yaml'))));
+        $expected = [...$generated['test_files'], ...$fixtures, 'php/src/Invoice.php', 'pyproject.toml', 'python/app/parcel.py', 'typescript/src/shipment.ts'];
+        sort($expected);
+        assertSame($expected, $added);
+        // The first and every fifth TypeScript and Python test doubles its own service; the others its dependency.
+        assertContains("vi.spyOn(service, 'dependency')", (string) file_get_contents($onRequest . '/typescript/tests/service-0004.test.ts'));
+        assertContains("vi.spyOn(dependency, 'dependency')", (string) file_get_contents($onRequest . '/typescript/tests/service-0003.test.ts'));
+        assertContains('patch.object(Service0000, "dependency"', (string) file_get_contents($onRequest . '/python/tests/test_service_0000.py'));
+        assertContains('patch.object(Service0000, "dependency"', (string) file_get_contents($onRequest . '/python/tests/test_service_0001.py'));
+        // Every tenth fixture misses a required field of its first record.
+        $drifted = json_decode((string) file_get_contents($onRequest . '/fixtures/invoices/invoices-0009.json'), true, 512, JSON_THROW_ON_ERROR);
+        assertSame([['id', 'number'], ['id', 'number', 'paid']], [array_keys($drifted['invoices'][0]), array_keys($drifted['invoices'][1])]);
+        assertSame(64, strlen((string) $generated['corpus_sha256']));
     }
 
     /** A rescan that parsed fewer files than its edit reaches would time something else, and pass for it. */
@@ -208,6 +281,23 @@ final class BenchmarkBudgetTest extends KnossosTestCase
             'env', 'KNOSSOS_DATA_DIR=' . $this->directory . '/data', 'TMPDIR=' . $this->directory . '/tmp',
             PHP_BINARY, self::guardTool('benchmark.php'), '--budgets=' . $file, '--report=' . $this->directory . '/report.json',
         ]);
+    }
+
+    /**
+     * Each file's sha256 under `$root`, by relative path.
+     *
+     * @return array<string, string>
+     */
+    private static function tree(string $root): array
+    {
+        $files = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $entry) {
+            \assert($entry instanceof \SplFileInfo);
+            $files[substr($entry->getPathname(), strlen($root) + 1)] = (string) hash_file('sha256', $entry->getPathname());
+        }
+        ksort($files);
+
+        return $files;
     }
 
     /** @return array<string, mixed> */

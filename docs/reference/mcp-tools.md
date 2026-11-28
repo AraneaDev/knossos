@@ -256,9 +256,71 @@ List test doubles that no longer match the code they replace and assertions that
 | `project_id` | string | yes | minLength=1 | none |
 | `path_prefix` | string | no | minLength=1 | none |
 | `confidence` | string | no | enum=definite, warning | none |
-| `category` | string | no | enum=GHOST_MEMBER, ARITY_MISMATCH, RETURN_DRIFT, VISIBILITY_BREACH, TAUTOLOGY, MOCKS_SUBJECT | none |
+| `category` | string | no | enum=GHOST_MEMBER, ARITY_MISMATCH, RETURN_DRIFT, VISIBILITY_BREACH, TAUTOLOGY, MOCKS_SUBJECT, OVER_MOCKING, STALE_SINCE, FIXTURE_DRIFT | An on-request category implies its tier. |
 | `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
 | `limit` | integer | no | minimum=1; maximum=200; default=50 | none |
+| `tier` | string | no | enum=scan, on_request, all | scan (the default; all in scope git-diff): stored findings; on_request: computed now (OVER_MOCKING, STALE_SINCE, FIXTURE_DRIFT), never stored; all: both. |
+| `scope` | string | no | default="all"; enum=all, git-diff | git-diff: STALE_SINCE, and stored findings narrowed to those whose file or target file changed since base_ref (staged, unstaged and untracked). OVER_MOCKING and FIXTURE_DRIFT are not narrowed: they cover the whole project. |
+| `base_ref` | string | no | minLength=1; maxLength=200 | The ref scope git-diff compares the working tree with; HEAD when omitted. |
+| `timeout_ms` | integer | no | minimum=1; maximum=10000; default=2000 | Bound on the on-request tier, checked between its phases (the git call, each graph read), not within one; past it the result is partial. The git call of scope git-diff is capped at 5000, and its timeout is an error. |
+
+Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
+
+## `list_test_rules`
+
+List the rules audit_tests reports, with each one's category, tier (scan or on_request), confidences and sub-rules. Use to read a finding's rule or to write a test_finding_suppressions entry.
+
+| Input | Type | Required | Constraints/default | Description |
+| --- | --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
+
+Annotations: read-only `yes`; destructive `no`; idempotent `yes`; open-world `no`.
+
+## `verify_test_doubles`
+
+List every test double of one class, interface or trait, each with its stored findings and whether it is still valid (no definite finding). Use before changing a type that tests double.
+
+| Input | Type | Required | Constraints/default | Description |
+| --- | --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
+| `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
+| `project_id` | string | yes | minLength=1 | none |
+| `symbol` | string | yes | minLength=1; maxLength=500 | The canonical or display name, matched exactly; a name several types share is an error listing their canonical names. |
+
+Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
+
+## `check_fixtures`
+
+Check the JSON and YAML fixture files under test and fixture directories against the project type each holds records of, and list FIXTURE_DRIFT warnings: a field missing or no longer declared, a value of the wrong kind, an enum value that is no case. Use after changing a DTO, an entity or an enum.
+
+| Input | Type | Required | Constraints/default | Description |
+| --- | --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
+| `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
+| `project_id` | string | yes | minLength=1 | none |
+| `paths` | array | no | maxItems=50 | Project-relative fixture files or directories to check instead of every fixture; each JSON or YAML file under one is checked. |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
+| `limit` | integer | no | minimum=1; maximum=200; default=50 | none |
+
+Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
+
+## `synthesize_mock`
+
+Write a mock template of one class, interface or trait from its stored signatures, for vitest, jest, phpunit, mockery, prophecy, unittest.mock, pytest-mock, mockall or a hand-written Rust fake. Members it cannot render faithfully are listed under omitted, complete says whether the member list is whole, and each member lists its untyped parts and placeholders under unknown. Use before writing a test double.
+
+| Input | Type | Required | Constraints/default | Description |
+| --- | --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
+| `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
+| `project_id` | string | yes | minLength=1 | none |
+| `symbol` | string | yes | minLength=1; maxLength=500 | The canonical or display name, matched exactly; a name several types share is an error listing their canonical names. |
+| `framework` | string | no | enum=vitest, jest, phpunit, mockery, prophecy, unittest.mock, pytest-mock, mockall, hand-written | The framework to write for, of the symbol's language. Omitted: the one the project's own doubles use most, else a dev dependency of the nearest manifest, else the language's default (vitest, phpunit, unittest.mock, mockall). |
+| `language` | string | no | enum=php, python, rust, typescript | Settles a name several languages declare. |
+| `include_values` | boolean | no | default=true | Stub each return with an example value: a zero value, a literal of a project record whose fields are known, else a marked placeholder. |
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 

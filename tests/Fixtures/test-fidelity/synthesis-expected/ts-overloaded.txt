@@ -1,0 +1,8 @@
+// knossos synthesize_mock: typescript/src/focus.ts#Overloaded (vitest), from typescript/src/focus.ts:11
+// 1 member, 1 omitted; incomplete: see omitted and notes
+import { vi } from 'vitest';
+
+const overloadedMock = {
+  // plain(): void
+  plain: vi.fn<() => void>().mockReturnValue(undefined),
+} satisfies Partial<Overloaded>;

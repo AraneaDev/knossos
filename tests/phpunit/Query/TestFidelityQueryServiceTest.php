@@ -6,6 +6,7 @@ namespace Knossos\Tests\Phpunit\Query;
 
 use InvalidArgumentException;
 use Knossos\Query\ArchitectureQueryService;
+use Knossos\Query\TestFidelityQueryService;
 use Knossos\TestFidelity\TestFindingKey;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
@@ -199,9 +200,17 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
             $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
             foreach ([
                 ['confidence', 'maybe', 'confidence must be one of: definite, warning.'],
-                ['category', 'NOPE', 'category must be one of: GHOST_MEMBER, ARITY_MISMATCH, RETURN_DRIFT, VISIBILITY_BREACH, TAUTOLOGY, MOCKS_SUBJECT.'],
+                ['category', 'NOPE', 'category must be one of: GHOST_MEMBER, ARITY_MISMATCH, RETURN_DRIFT, VISIBILITY_BREACH, TAUTOLOGY, MOCKS_SUBJECT, OVER_MOCKING, STALE_SINCE, FIXTURE_DRIFT.'],
                 ['limit', 201, 'limit must be between 1 and 200.'],
+                ['limit', 0, 'limit must be between 1 and 200.'],
                 ['offset', -1, 'offset must be between 0 and 100000.'],
+                ['tier', 'both', 'tier must be one of: scan, on_request, all.'],
+                ['scope', 'staged', 'scope must be one of: all, git-diff.'],
+                // Without a git reader, git-diff is an error, never an empty answer.
+                ['scope', 'git-diff', 'scope git-diff is unavailable: this server reads no git working tree.'],
+                ['baseRef', 'HEAD', 'base_ref requires scope git-diff.'],
+                ['timeoutMs', 0, 'timeout_ms must be between 1 and 10000.'],
+                ['timeoutMs', 10_001, 'timeout_ms must be between 1 and 10000.'],
             ] as [$name, $value, $message]) {
                 try {
                     $service->auditTests($projectId, ...[$name => $value]);
@@ -210,6 +219,67 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
                     assertSame($message, $e->getMessage());
                 }
             }
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A load that overruns `timeout_ms` gives the stored findings and says the
+     * on-request part is partial, never an error and never a guess; within the
+     * bound, both edges of it are whole.
+     */
+    public function testATimeoutIsPartialNotAnError(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
+        try {
+            $now = 0;
+            // Each reading of the clock is a second later than the last.
+            $slow = new TestFidelityQueryService($pdo, static function () use (&$now): int {
+                return $now += 1_000_000_000;
+            });
+            $partial = $slow->auditTests($projectId, tier: 'all', timeoutMs: 999);
+            assertSame(true, $partial->data['partial']);
+            assertSame(['scan', 'scan', 'scan'], array_column($partial->data['items'], 'tier'));
+            assertSame(3, $partial->data['total']);
+            assertSame(['On-request findings were cut short by timeout_ms 999; the list holds no OVER_MOCKING or STALE_SINCE finding.', 'STALE_SINCE is computed only in scope git-diff.'], $partial->warnings);
+            // Under tier on_request no stored finding is listed; the warning names what the cut dropped.
+            $none = $slow->auditTests($projectId, tier: 'on_request', timeoutMs: 999);
+            assertSame([[], 0, true], [$none->data['items'], $none->data['total'], $none->data['partial']]);
+            assertSame(['On-request findings were cut short by timeout_ms 999; the list holds no OVER_MOCKING or STALE_SINCE finding.', 'STALE_SINCE is computed only in scope git-diff.'], $none->warnings);
+
+            $within = $slow->auditTests($projectId, tier: 'all', timeoutMs: 10_000);
+            assertSame(false, $within->data['partial']);
+            assertSame(['STALE_SINCE is computed only in scope git-diff.'], $within->warnings);
+            assertSame(4, $within->data['total']);
+            // The stored tier reads no clock: it is never partial.
+            assertSame(false, $slow->auditTests($projectId, timeoutMs: 1)->data['partial']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    /**
+     * A graph read past its row cap cuts the load as the deadline does, and
+     * the warning names the cap, not a timeout that did not happen.
+     */
+    public function testARowCapIsPartialAndSaysSo(): void
+    {
+        [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
+        try {
+            // One test case more than QueryBounds::MAX_NODES lets the assertion read hold.
+            $pdo->exec(
+                'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i <= 200000) '
+                . 'INSERT INTO nodes (id, project_id, language, kind, canonical_name, display_name, file_id, start_line, end_line, origin, confidence, attributes_json, owner_key, last_scan_id) '
+                . "SELECT 'cap-' || i, c.project_id, c.language, c.kind, c.canonical_name || '#cap' || i, c.display_name, c.file_id, c.start_line, c.end_line, c.origin, c.confidence, '{}', c.owner_key, c.last_scan_id "
+                . "FROM n, (SELECT * FROM nodes WHERE kind = 'test_case' LIMIT 1) c",
+            );
+            $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
+
+            $all = $service->auditTests($projectId, tier: 'all');
+            assertSame([true, 3], [$all->data['partial'], $all->data['total']]);
+            assertSame(['On-request findings were cut short by the row cap on a graph read; the list holds no OVER_MOCKING or STALE_SINCE finding.', 'STALE_SINCE is computed only in scope git-diff.'], $all->warnings);
+            assertSame(['On-request findings were cut short by the row cap on a graph read; the list holds no OVER_MOCKING or STALE_SINCE finding.', 'STALE_SINCE is computed only in scope git-diff.'], $service->auditTests($projectId, tier: 'on_request')->warnings);
         } finally {
             $this->removeTempTree($root);
         }

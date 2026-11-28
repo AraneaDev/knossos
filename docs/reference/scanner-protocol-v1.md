@@ -36,7 +36,7 @@ working under a host that sends no list. The one name so far is `read_table`
 ```json
 {
     "id": "knossos.typescript",
-    "version": "0.6.0",
+    "version": "0.8.0",
     "protocol_version": "1.0",
     "output_schema_version": "1.0",
     "languages": ["typescript", "javascript"],
@@ -201,6 +201,43 @@ A Rust parameter bound by a pattern rather than a name is listed as `_`. A node
 whose function cannot be read, such as a property assigned the result of a
 call, has no `signature`.
 
+A TypeScript or Rust signature also carries `type_params`, the function's own
+type parameters each as written (`U extends string`, `T: Clone`, `'a`), and a
+Rust one `where`, its where clause as written, each only when there is one. A
+Rust signature carries `receiver`, the receiver as written (`&self`, `&mut
+self`, `self`, `mut self`, `self: Box<Self>`), absent for an associated
+function; the receiver is still not listed in `params`. A cut text sets
+`truncated` as a cut type does.
+
+Beside the signature, on the node: a TypeScript or Rust function or method
+declared `async` carries `"async": true`, and a Rust one declared `unsafe`
+carries `"unsafe": true`, each only when true (a Python method sends `async`
+always). A Rust free function or inherent method carries `visibility`:
+`private` when it has no `pub`, and the restriction as written (`pub(crate)`,
+`pub(super)`, `pub(in …)`) for a restricted one. Plain `pub`, a trait's
+items and a trait impl's methods send none, so an absent `visibility` means
+public from every worker. A TypeScript class or interface, and a Rust
+struct, enum or trait, with type parameters carries `type_params`, and
+a Rust one with a where clause `where`; a text cut to 80 characters ends in
+`…`. A Rust enum or union node carries `rust_item: "enum"` or `"union"`,
+whether or not it sends `cases`. A Rust trait node carries `associated_types`,
+each name with its bounds as written (`Item: Clone`), and `associated_consts`,
+each `{name, type}`, each only when there is one. A Rust trait impl's method
+carries `impl_trait`, the trait path as the `impl` writes it (`Repo<String>`),
+and the impl's own associated items: `impl_types`, each `{name, type}` as
+written, and `impl_consts`, each `{name, type, value?}`, `value` sent only for
+a literal; each list only when there is one, on every method of the impl.
+A Rust module node carries `trait_impls`, every trait impl its file writes for
+a project type, method-less ones and those of traits outside the project
+included: each `{type, trait, types?, consts?, methods?, unsafe?, generics?}`,
+`type` the canonical name of the type implemented for, `trait` as written,
+`types` and `consts` as above, `methods` the names its functions declare,
+`unsafe` and `generics` (an `impl<T>`) only when true. The worker reads one
+file at a time, so an impl of a type another file declares is listed on its
+own file's module, and a reader gathers them by `type`.
+A mock template reads them all; the drift rules read none of them, and a
+Rust double stays compile-checked, so `VISIBILITY_BREACH` stays silent for it.
+
 #### Complete name lists
 
 All of it optional. A TypeScript module node may carry `exports` and a class
@@ -256,6 +293,105 @@ and `uses_trait` edges. A `uses_trait` edge may carry `visibility_changed`, the
 method names whose visibility the trait use changes in place
 (`use T { load as public; }`), omitted when there are none; a reader takes
 those members' visibility as unknown.
+
+#### Field lists
+
+All of it optional. A class, interface, trait, type alias or Rust struct node
+may carry `fields`: the fields a deserialiser fills, sorted by name, each
+`{name, type?, required, line, visibility?}`. `type` is the type as the source
+writes it, but with a PHP class name fully qualified, and is absent when it
+writes none; `required` says whether a
+deserialiser needs the key; `visibility` is `protected` or `private` for a
+field so declared, and absent (public) otherwise. A reader takes a non-public
+field as a known key, never as one a fixture must hold. A node that declares an enum (`enum` for TypeScript and PHP,
+`class` for Rust and Python) may carry `cases` instead, each `{name, value?}`
+sorted by name, where `value` is the backing literal as text, sent for every
+case or for none. A node carrying `cases` is an enum, whatever its kind.
+
+A list holds at most 64 entries. Past that it is cut and carries
+`fields_truncated: true` or `cases_truncated: true`, and a reader never judges
+it. `fields_open: true` says a wire name may differ from a field's name or a
+field may come from elsewhere, and a reader then says nothing about the list.
+A reader judges against a list only when it is present, well formed, whole and
+not open; a node without one says nothing, and a worker that sends none stays
+valid.
+
+A TypeScript class, interface or object-literal type alias lists what its type
+checker reads, inherited fields and those of a resolved intersection included;
+methods, accessors, static members and `#private` fields are left out. A field
+is not required when it is written `?`, its type is a union with `undefined`,
+or a class field or constructor parameter property has an initializer.
+`fields_open` is set for a base, heritage clause or intersection part the
+checker cannot read or that is a type parameter, an index signature, or a
+decorator on the class, any of its members or a class it extends. A
+TypeScript enum sends a case's `value` when every member has a string or
+number literal initializer (`-1` included), and no values otherwise. An
+inherited field's `line` is the line of the declaration that inherits it.
+
+A PHP class, interface or trait lists the fields it declares itself: its
+instance properties and its promoted constructor properties, with class names
+in `type` fully qualified. A field is not required when it has a default; an
+untyped property defaults to null, and a nullable type alone does not make the
+key optional. Inherited fields come from its `extends` and `uses_trait` edges,
+as `member_names` do: a reader takes a list as whole only when every such
+ancestor is in the scan, inside the project, with a list that is whole and not
+open. An `implements` edge adds no field. `fields_open` is set for an
+attribute or docblock tag from Symfony Serializer, JMS Serializer or Spatie
+Data on the class or a field (`SerializedName`, `SerializedPath`, `Groups`,
+`MapInputName`, `MapName` under any namespace). `__get` and `__set` leave the
+list closed: a reader finds them as the type's own methods. A backed enum's
+cases carry `value` when every case is a string or integer literal; a pure
+enum's carry none.
+
+A Python class sends a list only when its file shows what makes its
+annotations fields: the `dataclasses.dataclass` decorator, or a base that is
+pydantic's `BaseModel`, a `TypedDict`, or a class of the same file that is one.
+A plain class, and a subclass of a class in another file, sends none. The list
+holds the class's own annotated fields, `ClassVar`, `KW_ONLY` and a pydantic
+`_private` name left out; inherited fields come from its `extends` edges as
+for PHP, a `BaseModel` or `TypedDict` outside the project ending the walk. A
+field is not required when it has a default; a pydantic `Field(...)` or
+`Field()` with no `default` or `default_factory`, and `= ...`, stay required,
+as does `Optional[X]` without a default in a file that imports a name only
+pydantic v2 has (`ConfigDict`, `field_validator`, `TypeAdapter` and the like);
+in any other file pydantic v1 may fill it with `None`, so an `Optional`, `X |
+None` or `Any` field is required there only when written `...`. A field a
+validator may reach before the type check covers (`field_validator` with mode
+`before`, `wrap` or `plain`, v1 `validator(pre=True)`, `"*"` naming every
+field, or a `BeforeValidator`, `PlainValidator` or `WrapValidator` anywhere in
+its annotation) sends no `type`, since it may accept another kind; a field
+validator whose field names cannot be read, or that names a field the class
+does not declare, sets `fields_open`. A TypedDict key follows `total`,
+`Required` and `NotRequired`. `fields_open` is set for an `alias`,
+`validation_alias` or `serialization_alias`, a `model_config` or `class
+Config`, a field call with `init`, `metadata` or `**`, an `InitVar`, a
+constructor or a pydantic hook that may reread the input
+(`model_validator`, `computed_field`), a decorator other than `dataclass`, a
+class keyword (but a TypedDict's `total`), a base outside the project or that
+the file cannot read, a name in an annotation or a bare-name value that may
+hold an alias (a module binding that is no class, `TypeVar` or `NewType`, a
+non-class symbol of another project module, or an unresolved name that is no
+builtin), and the causes that open `member_names`, but for `__getattr__` and
+`__getattribute__`. An `Enum` sends `cases`, with `value`
+when every case is a string or integer literal and no `_missing_`, `__new__`,
+`__init__` or `_generate_next_value_` in its same-file lineage may give another; an Enum whose members its body may not show sends none.
+
+A Rust named-field struct that derives `Deserialize` (directly or through
+`cfg_attr`) sends its fields, `type` as written; one without the derive sends
+none, and a reader gives no list for a type with an `implements` edge to
+`Deserialize`, whose hand-written impl may read another shape. A field is not
+required when it is an `Option`, a bare type parameter, or `#[serde(default)]`,
+`skip` or `skip_deserializing` on the field (`default` also on the struct). A
+field read `with` or `deserialize_with` sends no `type`. `fields_open` is set
+for any `serde` key not known to keep the field names (`rename`, `rename_all`,
+`alias`, `flatten`, `tag`, `untagged`, `transparent`, `from` and the rest), a
+derive other than `Clone`, `Copy`, `Debug`, `Default`, `Eq`, `Hash`, `Ord`,
+`PartialEq`, `PartialOrd`, `Serialize` and `Deserialize`, any other attribute
+that may be a macro, a `cfg` on a field, a `cfg_attr` applying any of these,
+and a second declaration of the same path. A Rust struct inherits no field, so
+its list is taken as sent. A unit-only enum deriving `Deserialize`, with no serde attribute on it or a
+variant, sends `cases`, each `value` the variant's name; any other enum, a
+tuple or unit struct and a union send none.
 
 #### Repeated edges
 

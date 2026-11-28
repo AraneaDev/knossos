@@ -1,0 +1,12 @@
+// knossos synthesize_mock: typescript/src/iface.ts#Widget (vitest), from typescript/src/iface.ts:2
+// 3 members; complete
+import { vi } from 'vitest';
+
+const widgetMock = {
+  // id: number
+  id: 0,
+  // label?: string
+  label: '',
+  // render(opts: string): void
+  render: vi.fn<(opts: string) => void>().mockReturnValue(undefined),
+} satisfies Widget;

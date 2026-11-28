@@ -48,7 +48,7 @@ use PHPUnit\Framework\Attributes\Group;
  * `signature` for a callable.
  *
  * Disagreements, where Knossos deliberately differs, and the gaps (cases a
- * tool reports that Knossos has no rule for yet: items 9 to 13):
+ * tool reports that Knossos has no rule for yet: items 9 to 12):
  *
  * 1. `momus-drift` `drift_test.py:12` and `nemesis-experiments/module-drift`
  *    `test_mailer.py:10`: Nemesis reports definite drift, Momus warns (or,
@@ -103,15 +103,19 @@ use PHPUnit\Framework\Attributes\Group;
  * 12. A gap (Ruling P10): an unspec'd `Mock()` pinned and never reached:
  *    Momus reports TAUT-005; an unspec'd double records no members
  *    (Decision 2), so Knossos is silent. The golden's stub is spec'd.
- * 13. A gap: Momus's MOCK-001 (over-mocking, at line 1 of
+ * 13. Momus's MOCK-001 (over-mocking, at line 1 of
  *    `test_patch_imports.py`, `test_patch_missing.py`, both
  *    `momus-src-layout` tests, and the `module-drift`, `patch-multiple` and
- *    `side-effect` tests) is an on-request check in Knossos, not a scan one.
+ *    `side-effect` tests) is the on-request OVER_MOCKING, which fires on each;
+ *    `OnRequestAcceptanceTest` compares it and numbers its departures.
  *
  * Every definite in these lists is one a tool gives too: the tautology
  * golden's three agree with Momus's errors there (TAUT-001 to TAUT-003),
  * and each of them passes when run (pytest 9.1, Python 3.14), as only an
  * assertion that cannot fail does; the planted `unconfigured_spy` fails.
+ *
+ * The frozen output of every run above is in
+ * `tests/Fixtures/test-fidelity/goldens/{momus,nemesis}/python.json`.
  *
  * Rulings these fixtures hold no case of, pinned by their own tests
  * (`PythonHealthyIdiomsTest`, the worker's pytest suite):
@@ -128,7 +132,112 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('python-scanner')]
 final class PythonAcceptanceTest extends KnossosTestCase
 {
+    use FrozenGoldens;
     private const FIXTURES = '/tests/Fixtures/test-fidelity/python';
+
+    /**
+     * What the frozen Momus run over each fixture reports (`goldens/momus/python.json`),
+     * as `RULE/severity@file:line`: the runs this docblock describes.
+     */
+    private const MOMUS_GOLDEN = [
+        'momus-drift' => [
+            'DRIFT-001/error@drift_test.py:6',
+            'DRIFT-003/warning@drift_test.py:12',
+            'DRIFT-003/warning@drift_test.py:17',
+            'DRIFT-005/error@test_patch_imports.py:29',
+            'DRIFT-005/error@test_patch_missing.py:5',
+            'MOCK-001/warning@test_patch_imports.py:1',
+            'MOCK-001/warning@test_patch_missing.py:1',
+            'TAUT-005/warning@drift_test.py:11',
+            'TAUT-005/warning@drift_test.py:16',
+            'TAUT-005/warning@healthy_test.py:11',
+        ],
+        'momus-src-layout' => [
+            'DRIFT-005/error@tests/test_patch_missing.py:5',
+            'MOCK-001/warning@tests/test_patch_existing.py:1',
+            'MOCK-001/warning@tests/test_patch_missing.py:1',
+        ],
+        'nemesis' => [
+            'DRIFT-001/error@tests/test_auth.py:9',
+        ],
+        'tautology' => [
+            'TAUT-001/error@tests/test_self_comparison.py:6',
+            'TAUT-002/error@tests/test_mock_echo.py:9',
+            'TAUT-003/error@tests/test_constant.py:5',
+            'TAUT-004/warning@tests/test_mock_only.py:9',
+            'TAUT-004/warning@tests/test_unconfigured_spy.py:10',
+            'TAUT-005/warning@tests/test_zero_reach.py:9',
+            'TAUT-006/warning@tests/test_mock_only.py:9',
+            'TAUT-006/warning@tests/test_unconfigured_spy.py:10',
+        ],
+        'nemesis-experiments/autospec' => [
+            'TAUT-005/warning@tests/test_search.py:7',
+        ],
+        'nemesis-experiments/inherited-collision' => [],
+        'nemesis-experiments/kwargs' => [
+            'MOCK-002/info@tests/test_session.py:7',
+            'TAUT-004/warning@tests/test_session.py:8',
+            'TAUT-006/warning@tests/test_session.py:8',
+        ],
+        'nemesis-experiments/module-drift' => [
+            'DRIFT-005/error@tests/test_mailer.py:6',
+            'MOCK-001/warning@tests/test_mailer.py:1',
+        ],
+        'nemesis-experiments/patch' => [],
+        'nemesis-experiments/patch-multiple' => [
+            'DRIFT-001/error@tests/test_vault.py:6',
+            'MOCK-001/warning@tests/test_vault.py:1',
+            'MOCK-002/info@tests/test_vault.py:6',
+        ],
+        'nemesis-experiments/property' => [],
+        'nemesis-experiments/side-effect' => [
+            'MOCK-001/warning@tests/test_mailer.py:1',
+        ],
+        'nemesis-experiments/spec' => [
+            'DRIFT-001/error@tests/test_session.py:13',
+            'TAUT-005/warning@tests/test_session.py:7',
+        ],
+    ];
+
+    /** The same for the frozen Nemesis run (`goldens/nemesis/python.json`), as `TYPE/confidence@file:line`. */
+    private const NEMESIS_GOLDEN = [
+        'momus-drift' => [
+            'GHOST_METHOD/definite@drift_test.py:6',
+            'RETURN_DRIFT/definite@drift_test.py:12',
+            'RETURN_DRIFT/warning@drift_test.py:17',
+        ],
+        'momus-src-layout' => [],
+        'nemesis' => [
+            'GHOST_METHOD/definite@tests/test_auth.py:9',
+        ],
+        'tautology' => [],
+        'nemesis-experiments/autospec' => [],
+        'nemesis-experiments/inherited-collision' => [
+            'ARITY_MISMATCH/definite@tests/test_x.py:8',
+        ],
+        'nemesis-experiments/kwargs' => [
+            'ARITY_MISMATCH/definite@tests/test_session.py:8',
+        ],
+        'nemesis-experiments/module-drift' => [
+            'GHOST_METHOD/definite@tests/test_mailer.py:6',
+            'RETURN_DRIFT/definite@tests/test_mailer.py:10',
+        ],
+        'nemesis-experiments/patch' => [
+            'GHOST_METHOD/definite@tests/test_payment.py:12',
+        ],
+        'nemesis-experiments/patch-multiple' => [
+            'GHOST_METHOD/definite@tests/test_vault.py:6',
+        ],
+        'nemesis-experiments/property' => [
+            'VISIBILITY_BREACH/definite@tests/test_account.py:7',
+        ],
+        'nemesis-experiments/side-effect' => [
+            'ARITY_MISMATCH/definite@tests/test_mailer.py:7',
+        ],
+        'nemesis-experiments/spec' => [
+            'GHOST_METHOD/definite@tests/test_session.py:13',
+        ],
+    ];
 
     /**
      * A project made of a copy of one fixture directory, scanned once.
@@ -319,5 +428,16 @@ final class PythonAcceptanceTest extends KnossosTestCase
         assertSame(3, $audit->data['total']);
         assertSame(['tests/test_mailer.py'], array_values(array_unique(array_column($audit->data['items'], 'file'))));
         assertSame(['definite' => 1, 'warning' => 2], $audit->data['summary']['by_language']['python']);
+    }
+
+    /**
+     * The frozen goldens still hold the tool runs this docblock describes;
+     * `OnRequestAcceptanceTest` checks each against its fixture and commit.
+     */
+    public function testTheFrozenGoldensHoldWhatThisDocblockDescribes(): void
+    {
+        assertSame(self::MOMUS_GOLDEN, self::goldenFindings('momus', 'python'));
+        assertSame(self::NEMESIS_GOLDEN, self::goldenFindings('nemesis', 'python'));
+        assertSame([self::MOMUS_COMMIT, self::NEMESIS_COMMIT], [self::golden('momus', 'python')['commit'], self::golden('nemesis', 'python')['commit']]);
     }
 }

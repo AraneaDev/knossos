@@ -1,0 +1,8 @@
+// knossos synthesize_mock: typescript/src/focus.ts#FromElsewhere (vitest), from typescript/src/focus.ts:23
+// 1 member; incomplete: see omitted and notes
+import { vi } from 'vitest';
+
+const fromElsewhereMock = {
+  // own(): string
+  own: vi.fn<() => string>().mockReturnValue(''),
+} satisfies Partial<FromElsewhere>;

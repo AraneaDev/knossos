@@ -25,6 +25,8 @@ final class ScanFailureLogTest extends KnossosTestCase
             is_dir($file) ? @rmdir($file) : @unlink($file);
         }
         @rmdir($this->directory);
+        // The lock of a log placed on the directory itself sits beside it.
+        @unlink($this->directory . '.lock');
         parent::tearDown();
     }
 
@@ -182,8 +184,13 @@ final class ScanFailureLogTest extends KnossosTestCase
         $log = new ScanFailureLog($this->directory . '/missing/deeper/scan-failures.jsonl');
         $log->record(self::entry());
         assertSame([], $log->recent(5));
-        (new ScanFailureLog($this->directory))->record(self::entry());
-        assertSame(true, true);
+        // A log path that is a directory: the line is lost, the directory is left as it was, and nothing throws.
+        $before = scandir($this->directory);
+        $onDirectory = new ScanFailureLog($this->directory);
+        $onDirectory->record(self::entry());
+        self::assertDirectoryExists($this->directory);
+        assertSame($before, scandir($this->directory));
+        assertSame([], $onDirectory->recent(5));
     }
 
     #[Group('scan')]

@@ -40,7 +40,8 @@ final class QueryCommand implements CliCommand
         'find-component', 'inspect-component', 'list-usages', 'architecture-summary', 'file-metrics', 'untested-code', 'explain-flow', 'impact-analysis',
         'dependency-cycles', 'architecture-health', 'check-architecture', 'suggest-location', 'change-impact',
         'changed-files-impact', 'test-impact', 'review-diff', 'architecture-context', 'export-diagram', 'export-agent-brief', 'list-boundaries',
-        'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief', 'audit-tests',
+        'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief', 'audit-tests', 'list-test-rules',
+        'verify-test-doubles', 'check-fixtures', 'synthesize-mock',
     ];
 
     /**
@@ -162,7 +163,8 @@ final class QueryCommand implements CliCommand
 
         return match ($type) {
             'integer' => $context->options->integer($options, $option, ...array_values($spec->bounds($argument))),
-            'boolean' => $context->options->flag($options, $option, $spec->booleanDefault($argument)),
+            // `--no-values` sets `include_values` false: a `no-` option says the opposite of its argument.
+            'boolean' => str_starts_with($option, 'no-') ? !$context->options->flag($options, $option) : $context->options->flag($options, $option, $spec->booleanDefault($argument)),
             'array' => $context->options->values($options, $option),
             default => $context->options->single($options, $option),
         };
@@ -182,6 +184,10 @@ final class QueryCommand implements CliCommand
             'list-projects' => self::projectLines($result),
             'untested-code' => self::untestedLines($result),
             'audit-tests' => self::auditLines($result),
+            'list-test-rules' => self::ruleLines($result),
+            'verify-test-doubles' => self::doubleLines($result),
+            'check-fixtures' => self::fixtureLines($result),
+            'synthesize-mock' => rtrim($result->data['template'], "\n"),
             'creation-brief' => $json ? '' : CreationBriefRenderer::lines($result->data, (new StalenessProbe($context->database()))->probe($result->projectId)),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],
@@ -221,13 +227,69 @@ final class QueryCommand implements CliCommand
         return implode("\n", $lines);
     }
 
-    /** audit-tests' text: one line per finding, then the summary. */
+    /**
+     * audit-tests' text: one line per finding, then what could not be judged
+     * (a language's note, a timeout's warning), then the summary.
+     */
     private static function auditLines(ResultEnvelope $result): string
     {
         $lines = [];
         foreach ($result->data['items'] as $item) {
             $lines[] = sprintf('%s:%s  %s %s  %s', $item['file'] ?? '?', $item['line'] ?? '?', $item['category'], $item['confidence'], $item['message']);
         }
+        foreach ($result->data['summary']['by_language'] as $language => $counts) {
+            foreach ($counts['notes'] ?? [] as $note) {
+                $lines[] = $language . ': ' . $note;
+            }
+        }
+        array_push($lines, ...$result->warnings);
+        $lines[] = $result->summary;
+
+        return implode("\n", $lines);
+    }
+
+    /** check-fixtures' text: audit-tests' lines, with each fixture file not checked and why before the summary. */
+    private static function fixtureLines(ResultEnvelope $result): string
+    {
+        $lines = explode("\n", self::auditLines($result));
+        $summary = array_pop($lines);
+        foreach ($result->data['unmatched'] as $unmatched) {
+            $best = $unmatched['best'];
+            $lines[] = sprintf('unmatched: %s%s', $unmatched['file'], $best === null ? '' : sprintf(' (nearest %s, score %d)', $best['type'], $best['score']));
+        }
+        foreach ($result->data['unparsable'] as $unparsable) {
+            $lines[] = sprintf('unparsable: %s (%s)', $unparsable['file'], $unparsable['reason']);
+        }
+        if ($result->data['skipped'] > 0) {
+            $lines[] = sprintf('skipped: %d', $result->data['skipped']);
+        }
+        $lines[] = $summary;
+
+        return implode("\n", $lines);
+    }
+
+    /** verify-test-doubles' text: one line per double, naming its findings, then the summary. */
+    private static function doubleLines(ResultEnvelope $result): string
+    {
+        $lines = [];
+        foreach ($result->data['doubles'] as $double) {
+            $findings = array_map(static fn(array $item): string => $item['category'] . ' ' . $item['confidence'], $double['findings']);
+            $lines[] = sprintf('%s:%s  %s  %s%s', $double['file'] ?? '?', $double['line'] ?? '?', $double['double'], $double['valid'] ? 'valid' : 'invalid', $findings === [] ? '' : '  ' . implode(', ', $findings));
+        }
+        array_push($lines, ...$result->warnings);
+        $lines[] = $result->summary;
+
+        return implode("\n", $lines);
+    }
+
+    /** list-test-rules' text: one line per rule, then where to suppress a finding, then the summary. */
+    private static function ruleLines(ResultEnvelope $result): string
+    {
+        $lines = [];
+        foreach ($result->data['rules'] as $rule) {
+            $lines[] = implode('  ', [$rule['id'], $rule['category'], $rule['tier'], implode(',', $rule['confidences']), implode(',', $rule['sub_rules']), $rule['description']]);
+        }
+        $lines[] = 'Suppress a finding with ' . $result->data['suppression'] . '.';
         $lines[] = $result->summary;
 
         return implode("\n", $lines);
@@ -273,7 +335,7 @@ final class QueryCommand implements CliCommand
         return ArchitectureQueryService::forDatabase(
             $context->database(),
             gitHistory: $command === 'change-impact' ? new ProcessGitHistoryProvider() : null,
-            gitWorkingTree: in_array($command, ['changed-files-impact', 'test-impact', 'review-diff'], true) ? new ProcessGitWorkingTreeProvider() : null,
+            gitWorkingTree: in_array($command, ['changed-files-impact', 'test-impact', 'review-diff', 'audit-tests'], true) ? new ProcessGitWorkingTreeProvider() : null,
         );
     }
 

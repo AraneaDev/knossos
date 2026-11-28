@@ -1,0 +1,35 @@
+// knossos synthesize_mock: synth::focus::Store (mockall), from rust/src/focus.rs:10
+// 9 members; complete
+use mockall::mock;
+use synth::focus::Store;
+use synth::focus::Payload;
+
+mock! {
+    pub Store {}
+    impl Store for Store {
+        fn get(&self, key: &str) -> Option<Payload>;
+        fn put(&mut self, key: String, value: Payload);
+        fn into_keys(self) -> Vec<String>;
+        fn boxed(self: Box<Self>) -> usize;
+        fn open(path: &str) -> Self;
+        async fn sync(&self) -> Result<(), String>;
+        unsafe fn raw(&self) -> *const u8;
+        fn convert<T: From<u32>>(&self, value: u32) -> T;
+        fn payload(&self) -> Payload;
+    }
+}
+
+#[test]
+fn store_mock() {
+    let mut mock = MockStore::new();
+    mock.expect_get().returning(|_key| None);
+    mock.expect_put().returning(|_key, _value| ());
+    mock.expect_into_keys().returning(|| vec![]);
+    mock.expect_boxed().returning(|| 0);
+    let open_context = MockStore::open_context();
+    open_context.expect().returning(|_path| todo!() /* knossos: fill in Self */);
+    mock.expect_sync().returning(|| Ok(()));
+    mock.expect_raw().returning(|| todo!() /* knossos: fill in *const u8 */);
+    mock.expect_convert().returning(|_value| todo!() /* knossos: fill in T */);
+    mock.expect_payload().returning(|| Payload { id: 0, label: String::from("") });
+}

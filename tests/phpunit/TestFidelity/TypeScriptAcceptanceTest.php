@@ -44,9 +44,11 @@ use PHPUnit\Framework\Attributes\Group;
  *    pinned value.
  * 6. `packageMock.spec.ts:11`: both tools are silent on a spy of `node:fs`;
  *    Knossos is too, as code outside the project may reach a package's double.
- * 7. `dogfood-clean/tests/catalog.test.ts:1`: Momus reports MOCK-001
- *    (over-mocked), Nemesis nothing; Nemesis's silence is expected, and
- *    Knossos's MOCKS_SUBJECT fires only on a mocked sole or named-for subject.
+ * 7. `dogfood-clean/tests/catalog.test.ts:1`: Momus's MOCK-001 (over-mocked)
+ *    is no scan finding, and MOCKS_SUBJECT fires only on a mocked sole or
+ *    named-for subject. MOCK-001 is the on-request OVER_MOCKING, which fires
+ *    there too; `OnRequestAcceptanceTest` compares it and numbers its
+ *    departures.
  * 8. `UserService.spec.ts:23`: Nemesis reports the spy on a `private` method
  *    as a definite visibility breach, and the spec maps VISIBILITY_BREACH to
  *    definite. TypeScript's `private` and `protected` hold at compile time
@@ -54,14 +56,71 @@ use PHPUnit\Framework\Attributes\Group;
  *    reports a `warning` that the double bypasses the public interface. An
  *    ECMAScript `#name` member, which no double can reach, stays `definite`.
  *    A deviation from the spec's confidence mapping, decided in review.
+ * 9. Nemesis over `momus/` (frozen in phase 6, not part of either golden
+ *    above): it agrees on the ghost at `ledger.test.ts:16`; it gives two
+ *    definite return drifts at `assignability.test.ts:36`, the spy of the
+ *    `mockReturnValueOnce('nope')` that Knossos holds at `:37`, and resolves
+ *    neither stub at `:9` nor `:30`, where Momus's outcome stands; its arity
+ *    findings in `signature.fixture.ts` fall outside the golden (item 3).
+ *
+ * The frozen Momus and Nemesis output these lists come from is in
+ * `tests/Fixtures/test-fidelity/goldens/{momus,nemesis}/typescript.json`.
  */
 #[Group('test-fidelity')]
 #[Group('typescript-scanner')]
 final class TypeScriptAcceptanceTest extends KnossosTestCase
 {
+    use FrozenGoldens;
     private const FIXTURES = '/tests/Fixtures/test-fidelity/typescript';
 
     private const NEMESIS = ['nemesis/src' => 'src', 'nemesis/tests' => 'tests'];
+
+    /**
+     * What the frozen Momus run over each fixture reports (`goldens/momus/typescript.json`),
+     * as `RULE/severity@file:line`: the runs this docblock describes.
+     */
+    private const MOMUS_GOLDEN = [
+        'momus' => [
+            'DRIFT-001/error@tests/ledger.test.ts:16',
+            'DRIFT-003/warning@tests/assignability.test.ts:30',
+            'DRIFT-003/warning@tests/assignability.test.ts:37',
+            'DRIFT-003/warning@tests/assignability.test.ts:9',
+            'TAUT-002/error@tests/before-each.test.ts:18',
+            'TAUT-002/error@tests/before-each.test.ts:22',
+            'TAUT-002/error@tests/before-each.test.ts:39',
+            'TAUT-002/error@tests/before-each.test.ts:49',
+            'TAUT-002/error@tests/ledger.test.ts:11',
+            'TAUT-004/warning@tests/ledger.test.ts:39',
+            'TAUT-006/warning@tests/ledger.test.ts:39',
+        ],
+        'nemesis' => [
+            'DRIFT-001/error@tests/UserService.spec.ts:7',
+            'TAUT-001/error@tests/UserService.spec.ts:32',
+            'TAUT-003/error@tests/UserService.spec.ts:32',
+        ],
+        'nemesis/dogfood-clean' => [
+            'MOCK-001/warning@tests/catalog.test.ts:1',
+        ],
+    ];
+
+    /** The same for the frozen Nemesis run (`goldens/nemesis/typescript.json`), as `TYPE/confidence@file:line`. */
+    private const NEMESIS_GOLDEN = [
+        'momus' => [
+            'ARITY_MISMATCH/definite@tests/signature.fixture.ts:6',
+            'ARITY_MISMATCH/definite@tests/signature.fixture.ts:9',
+            'GHOST_METHOD/definite@tests/ledger.test.ts:16',
+            'RETURN_DRIFT/definite@tests/assignability.test.ts:36',
+            'RETURN_DRIFT/definite@tests/assignability.test.ts:36',
+        ],
+        'nemesis' => [
+            'ARITY_MISMATCH/definite@tests/UserService.spec.ts:29',
+            'GHOST_METHOD/definite@tests/UserService.spec.ts:7',
+            'RETURN_DRIFT/warning@tests/UserService.spec.ts:17',
+            'RETURN_DRIFT/warning@tests/UserService.spec.ts:17',
+            'VISIBILITY_BREACH/definite@tests/UserService.spec.ts:23',
+        ],
+        'nemesis/dogfood-clean' => [],
+    ];
 
     /**
      * A project made of copies of fixture directories (fixture path => path in
@@ -232,5 +291,16 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
         file_put_contents($production, $original);
         $service->scan($root);
         assertSame(['ARITY_MISMATCH/call_arity/definite@tests/UserService.spec.ts:29'], $at29());
+    }
+
+    /**
+     * The frozen goldens still hold the tool runs this docblock describes;
+     * `OnRequestAcceptanceTest` checks each against its fixture and commit.
+     */
+    public function testTheFrozenGoldensHoldWhatThisDocblockDescribes(): void
+    {
+        assertSame(self::MOMUS_GOLDEN, self::goldenFindings('momus', 'typescript'));
+        assertSame(self::NEMESIS_GOLDEN, self::goldenFindings('nemesis', 'typescript'));
+        assertSame([self::MOMUS_COMMIT, self::NEMESIS_COMMIT], [self::golden('momus', 'typescript')['commit'], self::golden('nemesis', 'typescript')['commit']]);
     }
 }

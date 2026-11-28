@@ -1,0 +1,8 @@
+[
+  {
+    "reference": "CN-1",
+    "weightKg": 12.5,
+    "destination": { "street": "Kanaalweg", "town": "Utrecht" },
+    "stops": [{ "street": "Havenkade", "city": "Rotterdam" }]
+  }
+]

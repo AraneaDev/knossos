@@ -1,0 +1,22 @@
+// knossos synthesize_mock: synth::focus::Engine (mockall), from rust/src/focus.rs:30
+// 3 members; complete
+use mockall::mock;
+use synth::focus::Engine;
+
+mock! {
+    pub Engine {
+        fn start(&mut self) -> bool;
+        fn tune(&self);
+    }
+    impl Base for Engine {
+        fn base(&self) -> u8;
+    }
+}
+
+#[test]
+fn engine_mock() {
+    let mut mock = MockEngine::new();
+    mock.expect_start().returning(|| false);
+    mock.expect_tune().returning(|| ());
+    mock.expect_base().returning(|| 0);
+}

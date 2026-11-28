@@ -1,0 +1,29 @@
+// knossos synthesize_mock: synth::types::Widget (mockall), from rust/src/types.rs:2
+// 7 members; complete
+use mockall::mock;
+use synth::types::Widget;
+
+mock! {
+    pub Widget {}
+    impl Widget for Widget {
+        fn label(&self) -> String;
+        fn count(&self) -> Option<u32>;
+        fn items(&self) -> Result<Vec<String>, String>;
+        fn active(&self) -> bool;
+        fn initial(&self) -> char;
+        fn pair(&self) -> (u32, bool);
+        fn never(&self) -> !;
+    }
+}
+
+#[test]
+fn widget_mock() {
+    let mut mock = MockWidget::new();
+    mock.expect_label().returning(|| String::from(""));
+    mock.expect_count().returning(|| None);
+    mock.expect_items().returning(|| Ok(vec![]));
+    mock.expect_active().returning(|| false);
+    mock.expect_initial().returning(|| 'a');
+    mock.expect_pair().returning(|| (0, false));
+    mock.expect_never().returning(|| panic!());
+}

@@ -1,0 +1,9 @@
+# knossos synthesize_mock: python.app.focus.Dynamic (unittest.mock), from python/app/focus.py:55
+# 1 member; incomplete: see omitted and notes
+from unittest.mock import create_autospec
+
+from python.app.focus import Dynamic
+
+dynamic_mock = create_autospec(Dynamic, spec_set=True, instance=True)
+# known() -> str
+dynamic_mock.known.return_value = ''

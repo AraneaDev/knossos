@@ -43,13 +43,16 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
             throw new RuntimeException('max_files must be between 1 and 1000.');
         }
         $git = GitCommand::checked($projectRoot, $timeoutMs);
+        if ($baseRef !== null && preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/@{}~^:+-]{0,199}$/D', $baseRef) !== 1) {
+            throw new RuntimeException('base_ref contains unsupported characters.');
+        }
+        // Outside a work tree `git diff` turns into `diff --no-index` and fails with its usage text;
+        // this fails first, with git's own "not a git repository".
+        $this->runner->run([...$git, 'rev-parse', '--is-inside-work-tree'], $timeoutMs, 'working-tree query');
         $diff = [...$git, 'diff', '--name-status', '-z', '--no-ext-diff', '--find-renames', '--relative'];
         $paths = [];
         $renames = [];
         if ($baseRef !== null) {
-            if (preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/@{}~^:+-]{0,199}$/D', $baseRef) !== 1) {
-                throw new RuntimeException('base_ref contains unsupported characters.');
-            }
             $revision = trim($this->runner->run([...$git, 'rev-parse', '--verify', $baseRef . '^{commit}'], $timeoutMs, 'working-tree query'));
             if (preg_match('/^[a-f0-9]{40,64}$/D', $revision) !== 1) {
                 throw new RuntimeException('base_ref did not resolve to a commit.');
@@ -61,20 +64,19 @@ final readonly class ProcessGitWorkingTreeProvider implements GitWorkingTreeProv
             $this->collect($this->runner->run([...$diff, '--cached', '--', '.'], $timeoutMs, 'working-tree query'), $paths, $renames);
             $this->collect($this->runner->run([...$diff, '--', '.'], $timeoutMs, 'working-tree query'), $paths, $renames);
         }
-        if ($baseRef === null) {
-            foreach (explode("\0", $this->runner->run([
-                // The tree's own .gitignore files only, as discovery reads them; not
-                // .git/info/exclude, which belongs to one machine's checkout.
-                ...$git, 'ls-files', '--others', '--exclude-per-directory=.gitignore', '-z', '--', '.',
-            ], $timeoutMs, 'working-tree query')) as $path) {
-                if ($path === '') {
-                    continue;
-                }
-                try {
-                    RelativePath::assertValid($path, 'Git untracked path');
-                    $paths[$path] = true;
-                } catch (Throwable) {
-                }
+        // Untracked files changed against any ref, as Momus's `gitChangedPaths` lists them.
+        foreach (explode("\0", $this->runner->run([
+            // The tree's own .gitignore files only, as discovery reads them; not
+            // .git/info/exclude, which belongs to one machine's checkout.
+            ...$git, 'ls-files', '--others', '--exclude-per-directory=.gitignore', '-z', '--', '.',
+        ], $timeoutMs, 'working-tree query')) as $path) {
+            if ($path === '') {
+                continue;
+            }
+            try {
+                RelativePath::assertValid($path, 'Git untracked path');
+                $paths[$path] = true;
+            } catch (Throwable) {
             }
         }
         // Keyed by path, so a path of digits alone ("123") came back an int:

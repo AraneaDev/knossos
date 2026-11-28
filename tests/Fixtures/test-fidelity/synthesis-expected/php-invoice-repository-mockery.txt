@@ -1,0 +1,7 @@
+// knossos synthesize_mock: App\InvoiceRepository (mockery), from php/src/InvoiceRepository.php:6
+// 2 members; complete
+$mock = \Mockery::mock(\App\InvoiceRepository::class);
+// findById(int $id): \App\Invoice
+$mock->shouldReceive('findById')->andReturn(new \App\Invoice(id: 0, lane: \App\FixturesEnum\Lane::Road, label: ''));
+// save(\App\Invoice $invoice): void
+$mock->shouldReceive('save');

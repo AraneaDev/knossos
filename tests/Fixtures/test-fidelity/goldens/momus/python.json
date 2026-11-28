@@ -1,0 +1,1001 @@
+{
+  "tool": "momus",
+  "commit": "9fe7283ae4f0258ea1ba56fbed3a1c40a87e850a",
+  "suite": "PythonAcceptanceTest",
+  "runs": [
+    {
+      "fixture": "momus-drift",
+      "trees": {
+        "python/momus-drift": ""
+      },
+      "fixture_sha256": "dce26b845bf29c914f4f3c5ea8f29f3ee58bc5d9f85d845452a1a9aa42d7001d",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 7,
+            "issues": 10,
+            "errors": 3,
+            "warnings": 7,
+            "infos": 0,
+            "totalIssues": 10,
+            "totalErrors": 3,
+            "totalWarnings": 7,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 3,
+            "symbols": 14,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "drift_test.py",
+              "line": 6,
+              "column": 29,
+              "endLine": 6,
+              "endColumn": 36,
+              "message": "missing-member: 'save2' does not exist on Repo",
+              "tokens": 26
+            },
+            {
+              "rule": "DRIFT-005",
+              "severity": "error",
+              "file": "test_patch_imports.py",
+              "line": 29,
+              "column": 10,
+              "endLine": 29,
+              "endColumn": 41,
+              "message": "missing-export: 'prod_imports.timedelta' does not resolve to a real attribute",
+              "tokens": 36
+            },
+            {
+              "rule": "DRIFT-005",
+              "severity": "error",
+              "file": "test_patch_missing.py",
+              "line": 5,
+              "column": 10,
+              "endLine": 5,
+              "endColumn": 39,
+              "message": "missing-export: 'prod_missing.missing' does not resolve to a real attribute",
+              "tokens": 35
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "drift_test.py",
+              "line": 11,
+              "column": 9,
+              "endLine": 11,
+              "endColumn": 24,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 30
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "drift_test.py",
+              "line": 12,
+              "column": 5,
+              "endLine": 12,
+              "endColumn": 34,
+              "message": "return-type-mismatch: configured value does not match 'price's production return",
+              "tokens": 35
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "drift_test.py",
+              "line": 16,
+              "column": 9,
+              "endLine": 16,
+              "endColumn": 24,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 30
+            },
+            {
+              "rule": "DRIFT-003",
+              "severity": "warning",
+              "file": "drift_test.py",
+              "line": 17,
+              "column": 5,
+              "endLine": 17,
+              "endColumn": 34,
+              "message": "return-type-mismatch: configured value does not match 'count's production return",
+              "tokens": 35
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "healthy_test.py",
+              "line": 11,
+              "column": 9,
+              "endLine": 11,
+              "endColumn": 24,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 30
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "test_patch_imports.py",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 46
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "test_patch_missing.py",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 46
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "momus-src-layout",
+      "trees": {
+        "python/momus-src-layout": ""
+      },
+      "fixture_sha256": "4fdcef0006b0f31965e5a843e2de00dfa99416631fcfad703cac9c347ef68a77",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 3,
+            "issues": 3,
+            "errors": 1,
+            "warnings": 2,
+            "infos": 0,
+            "totalIssues": 3,
+            "totalErrors": 1,
+            "totalWarnings": 2,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 3,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-005",
+              "severity": "error",
+              "file": "tests/test_patch_missing.py",
+              "line": 5,
+              "column": 10,
+              "endLine": 5,
+              "endColumn": 36,
+              "message": "missing-export: 'prod_missing.nope' does not resolve to a real attribute",
+              "tokens": 36
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/test_patch_existing.py",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 48
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/test_patch_missing.py",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 47
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis",
+      "trees": {
+        "python/nemesis": ""
+      },
+      "fixture_sha256": "2e1056fe81aca8bfc2240724ed545acfe7d2b5c8ec5c03369906ad2a285ba9cd",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 1,
+            "errors": 1,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 1,
+            "totalErrors": 1,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 4,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/test_auth.py",
+              "line": 9,
+              "column": 35,
+              "endLine": 9,
+              "endColumn": 41,
+              "message": "missing-member: 'logn' does not exist on AuthClient",
+              "tokens": 28
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "tautology",
+      "trees": {
+        "python/tautology": ""
+      },
+      "fixture_sha256": "94309c59e2fa2f1474e2bd30c272da55bc7bdc48ab47e00c2a7ec2566b8e4fe0",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 8,
+            "issues": 8,
+            "errors": 3,
+            "warnings": 5,
+            "infos": 0,
+            "totalIssues": 8,
+            "totalErrors": 3,
+            "totalWarnings": 5,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 15,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "TAUT-003",
+              "severity": "error",
+              "file": "tests/test_constant.py",
+              "line": 5,
+              "column": 5,
+              "endLine": 5,
+              "endColumn": 18,
+              "message": "constant-tautology: 3 compared with 10; cannot fail",
+              "fix": {
+                "kind": "replace",
+                "description": "assert a value that flows from the code under test"
+              },
+              "tokens": 43
+            },
+            {
+              "rule": "TAUT-002",
+              "severity": "error",
+              "file": "tests/test_mock_echo.py",
+              "line": 9,
+              "column": 5,
+              "endLine": 9,
+              "endColumn": 31,
+              "message": "mock-echo: asserts stubbed value (7) against itself",
+              "fix": {
+                "kind": "replace",
+                "description": "assert against a production-derived value"
+              },
+              "tokens": 41
+            },
+            {
+              "rule": "TAUT-001",
+              "severity": "error",
+              "file": "tests/test_self_comparison.py",
+              "line": 6,
+              "column": 5,
+              "endLine": 6,
+              "endColumn": 28,
+              "message": "self-comparison: ledger compared with itself",
+              "fix": {
+                "kind": "replace",
+                "description": "assert against a real business outcome"
+              },
+              "tokens": 40
+            },
+            {
+              "rule": "TAUT-004",
+              "severity": "warning",
+              "file": "tests/test_mock_only.py",
+              "line": 9,
+              "column": 5,
+              "endLine": 9,
+              "endColumn": 42,
+              "message": "mock-only-assertion: test exercises no production code",
+              "fix": {
+                "kind": "replace",
+                "description": "exercise the real SUT with a stubbed dependency"
+              },
+              "tokens": 44
+            },
+            {
+              "rule": "TAUT-006",
+              "severity": "warning",
+              "file": "tests/test_mock_only.py",
+              "line": 9,
+              "column": 5,
+              "endLine": 9,
+              "endColumn": 42,
+              "message": "unconfigured-spy-assert: spy has no stub and no production call path",
+              "fix": {
+                "kind": "replace",
+                "description": "stub the spy or assert a production-derived value"
+              },
+              "tokens": 48
+            },
+            {
+              "rule": "TAUT-004",
+              "severity": "warning",
+              "file": "tests/test_unconfigured_spy.py",
+              "line": 10,
+              "column": 5,
+              "endLine": 10,
+              "endColumn": 39,
+              "message": "mock-only-assertion: test exercises no production code",
+              "fix": {
+                "kind": "replace",
+                "description": "exercise the real SUT with a stubbed dependency"
+              },
+              "tokens": 46
+            },
+            {
+              "rule": "TAUT-006",
+              "severity": "warning",
+              "file": "tests/test_unconfigured_spy.py",
+              "line": 10,
+              "column": 5,
+              "endLine": 10,
+              "endColumn": 39,
+              "message": "unconfigured-spy-assert: spy has no stub and no production call path",
+              "fix": {
+                "kind": "replace",
+                "description": "stub the spy or assert a production-derived value"
+              },
+              "tokens": 50
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/test_zero_reach.py",
+              "line": 9,
+              "column": 14,
+              "endLine": 9,
+              "endColumn": 36,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 33
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/autospec",
+      "trees": {
+        "python/nemesis-experiments/autospec": ""
+      },
+      "fixture_sha256": "d2021fdab794216079fb7debd217b8ca198c6fc1c24691d7f0816b37cafba7df",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 1,
+            "errors": 0,
+            "warnings": 1,
+            "infos": 0,
+            "totalIssues": 1,
+            "totalErrors": 0,
+            "totalWarnings": 1,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/test_search.py",
+              "line": 7,
+              "column": 14,
+              "endLine": 7,
+              "endColumn": 43,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 32
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/inherited-collision",
+      "trees": {
+        "python/nemesis-experiments/inherited-collision": ""
+      },
+      "fixture_sha256": "46a49020719baf8a5fd3c8dbfd3c8dcd82bbfa8376f7a8dad6fe9aa9c670f218",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 4,
+            "issues": 0,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 0,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 3,
+            "symbols": 4,
+            "mocks": 0
+          },
+          "issues": []
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/kwargs",
+      "trees": {
+        "python/nemesis-experiments/kwargs": ""
+      },
+      "fixture_sha256": "19d7fc27d8259237cdeda27d4017c996a8a3d359105ca65d25803506bb6ac6f1",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 3,
+            "errors": 0,
+            "warnings": 2,
+            "infos": 1,
+            "totalIssues": 3,
+            "totalErrors": 0,
+            "totalWarnings": 2,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "TAUT-004",
+              "severity": "warning",
+              "file": "tests/test_session.py",
+              "line": 8,
+              "column": 5,
+              "endLine": 8,
+              "endColumn": 59,
+              "message": "mock-only-assertion: test exercises no production code",
+              "fix": {
+                "kind": "replace",
+                "description": "exercise the real SUT with a stubbed dependency"
+              },
+              "tokens": 43
+            },
+            {
+              "rule": "TAUT-006",
+              "severity": "warning",
+              "file": "tests/test_session.py",
+              "line": 8,
+              "column": 5,
+              "endLine": 8,
+              "endColumn": 59,
+              "message": "unconfigured-spy-assert: spy has no stub and no production call path",
+              "fix": {
+                "kind": "replace",
+                "description": "stub the spy or assert a production-derived value"
+              },
+              "tokens": 47
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/test_session.py",
+              "line": 7,
+              "column": 15,
+              "endLine": 7,
+              "endColumn": 33,
+              "message": "mock-of-self: 'Session' is mocked but also the subject under test",
+              "tokens": 32
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/module-drift",
+      "trees": {
+        "python/nemesis-experiments/module-drift": ""
+      },
+      "fixture_sha256": "e792f97c141618e918c71e32a8397dbb8bee70268df3cb10a553576e45fedd19",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 3,
+            "issues": 2,
+            "errors": 1,
+            "warnings": 1,
+            "infos": 0,
+            "totalIssues": 2,
+            "totalErrors": 1,
+            "totalWarnings": 1,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 2,
+            "symbols": 3,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-005",
+              "severity": "error",
+              "file": "tests/test_mailer.py",
+              "line": 6,
+              "column": 5,
+              "endLine": 6,
+              "endColumn": 43,
+              "message": "missing-export: 'postal.mailer.dispatch' does not resolve to a real attribute",
+              "tokens": 35
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/test_mailer.py",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 46
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/patch",
+      "trees": {
+        "python/nemesis-experiments/patch": ""
+      },
+      "fixture_sha256": "275da4657675ac3d61e34194d6aa959d83ca5347f6795a00b15e53c3ce26b55f",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 0,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 0,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 3,
+            "mocks": 0
+          },
+          "issues": []
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/patch-multiple",
+      "trees": {
+        "python/nemesis-experiments/patch-multiple": ""
+      },
+      "fixture_sha256": "691a8a74f3edfe7f8e11ee7fbaf909a1322ef75e29a3885cd0de1265dc7f09fc",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 3,
+            "errors": 1,
+            "warnings": 1,
+            "infos": 1,
+            "totalIssues": 3,
+            "totalErrors": 1,
+            "totalWarnings": 1,
+            "totalInfos": 1,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/test_vault.py",
+              "line": 6,
+              "column": 55,
+              "endLine": 6,
+              "endColumn": 76,
+              "message": "missing-member: 'reseal' does not exist on Vault",
+              "tokens": 28
+            },
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/test_vault.py",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 45
+            },
+            {
+              "rule": "MOCK-002",
+              "severity": "info",
+              "file": "tests/test_vault.py",
+              "line": 6,
+              "column": 5,
+              "endLine": 6,
+              "endColumn": 77,
+              "message": "mock-of-self: 'Vault' is mocked but also the subject under test",
+              "tokens": 31
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/property",
+      "trees": {
+        "python/nemesis-experiments/property": ""
+      },
+      "fixture_sha256": "93bc55dadfbfb284011c4f6e7de7331dc0e2796deeff53661d60c920a080afad",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 0,
+            "errors": 0,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 0,
+            "totalErrors": 0,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": []
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/side-effect",
+      "trees": {
+        "python/nemesis-experiments/side-effect": ""
+      },
+      "fixture_sha256": "3d93cda37827575dbaa0fa12ebab77566540f1fc095cd2affc88d2f508122605",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 0,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 1,
+            "errors": 0,
+            "warnings": 1,
+            "infos": 0,
+            "totalIssues": 1,
+            "totalErrors": 0,
+            "totalWarnings": 1,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 2,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "MOCK-001",
+              "severity": "warning",
+              "file": "tests/test_mailer.py",
+              "line": 1,
+              "column": 1,
+              "endLine": 1,
+              "endColumn": 1,
+              "message": "1/1 dependencies mocked, 0 production-provenance assertions; over-mocked",
+              "fix": {
+                "kind": "replace",
+                "description": "replace a mock with the real dependency"
+              },
+              "tokens": 46
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "nemesis-experiments/spec",
+      "trees": {
+        "python/nemesis-experiments/spec": ""
+      },
+      "fixture_sha256": "af03cf2f4506b17ddd213df78dac501f70e70b8c4bd6342dba55c9a518c8dffa",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 2,
+            "errors": 1,
+            "warnings": 1,
+            "infos": 0,
+            "totalIssues": 2,
+            "totalErrors": 1,
+            "totalWarnings": 1,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 3,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "DRIFT-001",
+              "severity": "error",
+              "file": "tests/test_session.py",
+              "line": 13,
+              "column": 38,
+              "endLine": 13,
+              "endColumn": 45,
+              "message": "missing-member: 'close' does not exist on SessionClient",
+              "tokens": 30
+            },
+            {
+              "rule": "TAUT-005",
+              "severity": "warning",
+              "file": "tests/test_session.py",
+              "line": 7,
+              "column": 14,
+              "endLine": 7,
+              "endColumn": 38,
+              "message": "zero-reach-stub: mock configured but never invoked or asserted",
+              "tokens": 32
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

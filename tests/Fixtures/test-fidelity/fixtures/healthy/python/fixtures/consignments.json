@@ -1,0 +1,4 @@
+{
+  "billingAddress": { "streetName": "Kanaalweg", "cityName": "Utrecht" },
+  "shippingAddress": { "streetName": "Havenkade", "cityName": "Rotterdam" }
+}
