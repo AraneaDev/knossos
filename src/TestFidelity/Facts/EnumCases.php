@@ -15,13 +15,22 @@ use Knossos\Scanner\Protocol\NodeFact;
  * A case's `value` is its backing literal as text. A worker sends values for
  * every case or for none, so a list that gives some cases a value and not
  * others is malformed. Absent, malformed and truncated lists read as null.
+ *
+ * A PHP enum also says its `backing`: `string`, `int`, or `none` for a pure
+ * enum. A backed enum with a computed case sends no values, so only
+ * `backing` tells it from a pure one; any other spelling, or none, leaves the
+ * backing unknown.
  */
 final readonly class EnumCases
 {
+    /** The backings a worker may state. */
+    private const BACKINGS = ['string', 'int', 'none'];
+
     /**
      * @param array<string, ?string> $cases name => backing value, null when the enum has none
+     * @param ?string $backing `string`, `int` or `none`; null when the worker does not say
      */
-    public function __construct(private array $cases) {}
+    public function __construct(private array $cases, private ?string $backing = null) {}
 
     /**
      * Read one node's list; null when it is absent, malformed or truncated.
@@ -48,7 +57,15 @@ final readonly class EnumCases
         }
         $valued = count(array_filter($cases, is_string(...)));
 
-        return $valued === 0 || $valued === count($cases) ? new self($cases) : null;
+        $backing = $attributes['backing'] ?? null;
+
+        return $valued === 0 || $valued === count($cases) ? new self($cases, in_array($backing, self::BACKINGS, true) ? $backing : null) : null;
+    }
+
+    /** The enum's backing type, `string`, `int` or `none` (a pure enum); null when the worker does not say. */
+    public function backing(): ?string
+    {
+        return $this->backing;
     }
 
     /**

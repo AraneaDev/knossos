@@ -78,6 +78,10 @@ use PHPUnit\Framework\Attributes\Group;
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and
  * `assert_eq!(1, 1)` (`self_comparison`).
+ *
+ * `src/route.rs` matches an enum parameter by its case,
+ * `.with(eq(Leg::Sea))`: silent, as the Rust worker sends no matcher
+ * literals and a mockall double is compile-checked (G3-19).
  */
 #[Group('test-fidelity')]
 final class RustHealthyIdiomsTest extends KnossosTestCase

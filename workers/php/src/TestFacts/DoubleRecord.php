@@ -15,7 +15,7 @@ use PhpParser\Node\Expr;
  */
 final class DoubleRecord
 {
-    /** @var array<string, array{name: string, line: int, api: string, params?: list<array<string, mixed>>, called_with: list<array{api: string, line: int, count: int, spread: bool}>, returns: list<array<string, mixed>>}> by lower-case name */
+    /** @var array<string, array{name: string, line: int, api: string, params?: list<array<string, mixed>>, called_with: list<array{api: string, line: int, count: int, spread: bool, literals?: list<?array{type: string, value: string}>}>, returns: list<array<string, mixed>>}> by lower-case name */
     private array $members = [];
 
     /** @var array<int, true> the lines that call the double or hand it on */
@@ -152,11 +152,17 @@ final class DoubleRecord
         return in_array($this->pattern, ['Mockery::spy', 'laravel.spy'], true) && !$this->stubbed;
     }
 
-    /** Record an assertion on the arguments a member is called with. */
-    public function matcher(string $name, string $api, int $line, int $count, bool $spread): void
+    /**
+     * Record an assertion on the arguments a member is called with, and the
+     * literal each argument is, when any is one.
+     *
+     * @param list<?array{type: string, value: string}> $literals
+     */
+    public function matcher(string $name, string $api, int $line, int $count, bool $spread, array $literals = []): void
     {
         if (isset($this->members[strtolower($name)])) {
-            $this->members[strtolower($name)]['called_with'][] = ['api' => $api, 'line' => $line, 'count' => $count, 'spread' => $spread];
+            $listed = array_filter($literals, static fn(?array $literal): bool => $literal !== null) === [] ? [] : ['literals' => $literals];
+            $this->members[strtolower($name)]['called_with'][] = ['api' => $api, 'line' => $line, 'count' => $count, 'spread' => $spread, ...$listed];
         }
     }
 

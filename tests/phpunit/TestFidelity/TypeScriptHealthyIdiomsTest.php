@@ -32,7 +32,10 @@ use PHPUnit\Framework\Attributes\Group;
  *   is no property a double can replace (G1-27);
  * - `tests/db.test.ts` is named for `src/db.ts` as much as for
  *   `src/legacy/db.ts`, so mocking the legacy one is mocking a dependency,
- *   though `tests/legacy/db.test.ts` is named for it (G1-19).
+ *   though `tests/legacy/db.test.ts` is named for it (G1-19);
+ * - a string enum's case and a string-literal union's member listed in a
+ *   matcher are silent: the TypeScript worker sends no matcher literals,
+ *   and its checker judges a pin's type (G3-19).
  */
 #[Group('test-fidelity')]
 #[Group('typescript-scanner')]

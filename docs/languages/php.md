@@ -230,12 +230,25 @@ own semantics:
   `vendor/` copy; two project declarations that differ leave it unknown, so
   nothing is held against it. A facade double names no class,
   so nothing it stubs is held against one.
+- A matcher's literal is held against an enum parameter's cases
+  (`ARITY_MISMATCH/enum_case`). `with('rail')` for `reroute(Leg $to)`, when
+  `Leg`'s cases are `air` and `sea`, is definite: the string is the enum's
+  backing type and the list is closed, so the case is surely gone. A string
+  naming no case of a pure enum is definite too. A literal of another type
+  than the backing (an integer for a string-backed enum) is only a warning.
+  Nothing is judged where the evidence runs out: an argument that is no
+  string or integer literal (`Leg::Air`, `Leg::from('air')`, `$leg`), a
+  parameter typed by anything but the enum alone (`?Leg`, `Leg|string`), a
+  spread or negated matcher, or an enum whose case list is cut short or holds
+  a computed case. A pin on the return side stays `RETURN_DRIFT`, since no
+  literal is an enum instance.
 
 ## Field facts
 
 A class, interface or trait sends the fields it declares, instance properties
 and promoted constructor properties alike, and a backed enum sends its cases
-with their values. `type` holds the class name fully qualified, as the scanner
+with their values. Every enum also sends its `backing`: `string`, `int`, or
+`none` for a pure enum. `type` holds the class name fully qualified, as the scanner
 resolves it. A field with a default is optional, and so is an untyped one,
 which defaults to null; a nullable type alone keeps the key required.
 Inherited fields come from `extends` and `uses_trait`, so a list is whole only

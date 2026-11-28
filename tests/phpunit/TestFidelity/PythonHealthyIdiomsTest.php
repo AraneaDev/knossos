@@ -87,6 +87,10 @@ use PHPUnit\Framework\Attributes\Group;
  * `tests/test_probe_planted.py` holds their twins: an arity mismatch under one
  * base, one beside other `self` writes, and a ghost on a class only annotations
  * and an instance name.
+ *
+ * `tests/test_route.py` matches an `Enum` parameter by its case and by
+ * `Leg("air")`: silent, as the Python worker sends no matcher literals
+ * (G3-19).
  */
 #[Group('test-fidelity')]
 #[Group('python-scanner')]

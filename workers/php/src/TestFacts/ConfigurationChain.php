@@ -204,8 +204,8 @@ final class ConfigurationChain
             }
             $member = $call->name->toString();
             $double->member($member, $call->name->getStartLine(), 'prophecy');
-            [$count, $spread] = self::argumentCount($call, true);
-            $double->matcher($member, 'prophecy', $call->getStartLine(), $count, $spread);
+            [$count, $spread, $literals] = self::argumentCount($call, true);
+            $double->matcher($member, 'prophecy', $call->getStartLine(), $count, $spread, $literals);
 
             return [$member];
         }
@@ -251,8 +251,8 @@ final class ConfigurationChain
             } elseif (in_array($name, self::OTHER_ANSWERS, true)) {
                 $double->answer($member, $call->getStartFilePos());
             } elseif ($framework !== 'prophecy' && isset(self::MATCHERS[$name ?? '']) && ($framework === 'mockery' || $name === 'with')) {
-                [$count, $spread] = self::argumentCount($call, $name !== 'withargs');
-                $double->matcher($member, self::MATCHERS[$name], $line, $count, $spread);
+                [$count, $spread, $literals] = self::argumentCount($call, $name !== 'withargs');
+                $double->matcher($member, self::MATCHERS[$name], $line, $count, $spread, $literals);
             }
         }
 
@@ -305,8 +305,8 @@ final class ConfigurationChain
         }
         $listed = self::argument($call, 1);
         if ($listed !== null && !($listed instanceof Expr\ConstFetch && $listed->name->toLowerString() === 'null')) {
-            [$count, $spread] = $listed instanceof Expr\Array_ ? self::argumentCount($call, false, 1) : [0, true];
-            $double->matcher($name->value, 'with', $call->getStartLine(), $count, $spread);
+            [$count, $spread, $literals] = $listed instanceof Expr\Array_ ? self::argumentCount($call, false, 1) : [0, true, []];
+            $double->matcher($name->value, 'with', $call->getStartLine(), $count, $spread, $literals);
         }
 
         return [$name->value];
@@ -319,33 +319,50 @@ final class ConfigurationChain
     }
 
     /**
-     * How many arguments a matcher lists, and whether the real count is open:
-     * a spread argument, an argument-list matcher (`Argument::cetera()`,
-     * `Mockery::anyArgs()`), or a `withArgs()`
-     * given a closure or a variable rather than an array. With `$direct` the
-     * call's own arguments are the list; without, its array argument at
-     * `$position` is.
+     * How many arguments a matcher lists, whether the real count is open, and
+     * the literal each lists: the count is open for a spread argument, an
+     * argument-list matcher (`Argument::cetera()`, `Mockery::anyArgs()`), or
+     * a `withArgs()` given a closure or a variable rather than an array. With
+     * `$direct` the call's own arguments are the list; without, its array
+     * argument at `$position` is. An open list gives no literals.
      *
-     * @return array{int, bool}
+     * @return array{int, bool, list<?array{type: string, value: string}>}
      */
     private static function argumentCount(Expr\MethodCall|Expr\StaticCall $call, bool $direct, int $position = 0): array
     {
         if ($call->isFirstClassCallable()) {
-            return [0, true];
+            return [0, true, []];
         }
         $arguments = $call->getArgs();
         if (!$direct) {
             $list = $arguments[$position]->value ?? null;
             if (!$list instanceof Expr\Array_) {
-                return [0, true];
+                return [0, true, []];
             }
             $spread = array_filter($list->items, static fn(ArrayItem $item): bool => $item->unpack) !== [];
 
-            return [count($list->items), $spread];
+            return [count($list->items), $spread, $spread ? [] : array_map(static fn(ArrayItem $item): ?array => $item->key === null ? self::literal($item->value) : null, $list->items)];
         }
         $spread = array_filter($arguments, static fn(Arg $argument): bool => $argument->unpack || self::isOpenList($argument->value)) !== [];
 
-        return [count($arguments), $spread];
+        return [count($arguments), $spread, $spread ? [] : array_map(static fn(Arg $argument): ?array => $argument->name === null ? self::literal($argument->value) : null, $arguments)];
+    }
+
+    /**
+     * A matcher argument's literal (G3-19): a string, or an integer with its
+     * sign, its value as text; null for any other expression, so a reader
+     * holds only what the syntax states against an enum's cases.
+     *
+     * @return ?array{type: string, value: string}
+     */
+    private static function literal(Expr $value): ?array
+    {
+        return match (true) {
+            $value instanceof Scalar\String_ => ['type' => 'string', 'value' => $value->value],
+            $value instanceof Scalar\Int_ => ['type' => 'int', 'value' => (string) $value->value],
+            $value instanceof Expr\UnaryMinus && $value->expr instanceof Scalar\Int_ => ['type' => 'int', 'value' => '-' . $value->expr->value],
+            default => null,
+        };
     }
 
     /**

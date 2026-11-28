@@ -601,6 +601,7 @@ php	src/TestFidelity/Rules/DriftPair.php
 php	src/TestFidelity/Rules/DriftRule.php
 php	src/TestFidelity/Rules/DriftScope.php
 php	src/TestFidelity/Rules/DriftText.php
+php	src/TestFidelity/Rules/EnumCaseCheck.php
 php	src/TestFidelity/Rules/GhostMemberRule.php
 php	src/TestFidelity/Rules/MocksSubjectRule.php
 php	src/TestFidelity/Rules/PythonCallBinding.php
@@ -1399,6 +1400,7 @@ php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/CaseFixtures.php
 php	tests/phpunit/TestFidelity/Rules/DriftFixtures.php
+php	tests/phpunit/TestFidelity/Rules/EnumCaseCheckTest.php
 php	tests/phpunit/TestFidelity/Rules/GhostMemberRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/MocksSubjectRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/PythonFixtures.php

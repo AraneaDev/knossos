@@ -51,6 +51,12 @@ use Knossos\TestFidelity\TestFinding;
  * def found (Ruling P24, `TestFidelityGraph::answersCertainly()`): another
  * class of the lineage lists the name, or the def is inherited past a base
  * outside the project.
+ *
+ * A PHP matcher that lists a literal for a parameter typed by an enum with a
+ * closed case list, and the literal is none of its cases, is an `enum_case`
+ * finding (`EnumCaseCheck`, G3-19): definite when the literal's type is the
+ * enum's backing type (or a string naming no case of a pure enum), a warning
+ * when the types differ, silent wherever the list or the literal is unknown.
  */
 final readonly class ArityMismatchRule extends DriftRule
 {
@@ -75,7 +81,7 @@ final readonly class ArityMismatchRule extends DriftRule
         // G4-10: production calls the method through its class, which hands the receiver over as an argument.
         $unbound = ($pair->member?->attributes['called_unbound'] ?? false) === true;
 
-        $finding = $this->signature($pair, $declared, $takesMore, $unbound) ?? $this->calls($pair, $declared, $takesMore, $unbound);
+        $finding = $this->signature($pair, $declared, $takesMore, $unbound) ?? $this->calls($pair, $declared, $takesMore, $unbound) ?? EnumCaseCheck::finding($pair, $declared, $graph, self::ID);
 
         return TestFidelityGraph::isPython($pair->target) ? PythonResiduals::downgraded($finding, self::residual($pair, $graph)) : $finding;
     }

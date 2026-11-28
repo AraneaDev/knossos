@@ -104,6 +104,10 @@
               "description": "True when cases was cut at 64 entries. A truncated list is never judged.",
               "type": "boolean"
             },
+            "backing": {
+              "description": "A PHP enum node: its backing type, string or int, or none for a pure enum. A backed enum with a computed case sends no case values, so only this tells it from a pure one; a reader that finds none leaves the backing unknown.",
+              "enum": ["string", "int", "none"]
+            },
             "overloaded": {
               "description": "A function or method node declared with overload signatures: its signature attribute is the first one only.",
               "type": "boolean"
@@ -383,6 +387,22 @@
         "negated": {
           "description": "True when the matcher is called through `.not` (TypeScript): one that lists fewer arguments than the member requires cannot fail.",
           "type": "boolean"
+        },
+        "literals": {
+          "description": "One entry per listed argument, in order (PHP): the literal it is, a string or an integer with its value as text, or null for an argument that is none. Sent only when one is a literal, and never for a spread list; a reader drops a list of another length than count.",
+          "type": "array",
+          "items": {
+            "description": "null, or the literal.",
+            "if": { "type": "object" },
+            "then": {
+              "additionalProperties": false,
+              "required": ["type", "value"],
+              "properties": {
+                "type": { "enum": ["string", "int"] },
+                "value": { "type": "string" }
+              }
+            }
+          }
         }
       }
     },

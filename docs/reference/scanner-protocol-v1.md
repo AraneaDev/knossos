@@ -351,7 +351,10 @@ field so declared, and absent (public) otherwise. A reader takes a non-public
 field as a known key, never as one a fixture must hold. A node that declares an enum (`enum` for TypeScript and PHP,
 `class` for Rust and Python) may carry `cases` instead, each `{name, value?}`
 sorted by name, where `value` is the backing literal as text, sent for every
-case or for none. A node carrying `cases` is an enum, whatever its kind.
+case or for none. A node carrying `cases` is an enum, whatever its kind. A PHP
+enum also carries `backing`: `string` or `int`, or `none` for a pure enum, so
+a backed enum with a computed case, which sends no values, is never taken for
+a pure one; a reader that finds no `backing` leaves it unknown.
 
 A list holds at most 64 entries. Past that it is cut and carries
 `fields_truncated: true` or `cases_truncated: true`, and a reader never judges
@@ -508,14 +511,20 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   above and each `returns` entry is `{api, line, once, assignable, typed}`
   (`assignable` is `true`, `false` or `"unknown"`). A member may also carry
   `called_with`, the argument-list assertions on it, each
-  `{api, line, count, spread, keywords?, negated?}` (`count` arguments listed, `spread` when one is a
+  `{api, line, count, spread, keywords?, negated?, literals?}` (`count` arguments listed, `spread` when one is a
   spread so the real count is open; `keywords`, the keyword names among them in
   source order, which Python sends. A reader that finds a malformed `keywords`
   keeps the matcher and takes it as `spread`, since a count holding unnamed
   keywords cannot be bound; `negated`, `true` when the matcher is called
   through `.not`, which the TypeScript worker sends: a negated matcher that
   lists fewer arguments than the member requires cannot fail, so a reader
-  takes it as a vacuous assertion, not as drift of the signature), and a `returns` entry may carry `type`, the
+  takes it as a vacuous assertion, not as drift of the signature;
+  `literals`, which the PHP worker sends, one entry per listed argument in
+  order: `{type, value}` for a string or integer literal (`type` `string` or
+  `int`, `value` its text, a negative integer with its sign), null for any
+  other argument, sent only when one is a literal and never for a spread list;
+  a reader drops a `literals` of another length than `count` and keeps the
+  matcher), and a `returns` entry may carry `type`, the
   pinned value's own type as the worker names it: a non-empty string, which
   the PHP worker spells `int`, `float`, `string`, `bool`, `null`, `array`,
   `closure`, `class:<FQCN>` or `unknown`, and the Python worker `int`,

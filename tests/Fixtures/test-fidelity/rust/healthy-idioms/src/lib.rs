@@ -3,6 +3,7 @@
 pub mod clock;
 pub mod counter;
 pub mod limits;
+pub mod route;
 pub mod standins;
 pub mod store;
 pub mod thermometer;

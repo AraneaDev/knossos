@@ -40,7 +40,10 @@ use PHPUnit\Framework\Attributes\Group;
  *   `andAnyOthers()` leave the argument count open (Ruling R19);
  * - `willReturnSelf()`/`andReturnSelf()` on `void` is a warning (Ruling R18);
  * - a Stringable pin against `string` is unknown under Mockery (Ruling R20);
- * - `getMockForTrait()` makes a PHPUnit double (Ruling R16).
+ * - `getMockForTrait()` makes a PHPUnit double (Ruling R16);
+ * - an enum parameter matched by its case (`with(Leg::Sea)`), by every case
+ *   `cases()` lists, by `Leg::from('air')`, or a pure enum's `Suit::Hearts`,
+ *   is no missing case, though `with('rail')` is (G3-19).
  */
 #[Group('test-fidelity')]
 #[Group('php-scanner')]
@@ -82,6 +85,8 @@ final class PhpHealthyIdiomsTest extends KnossosTestCase
             'ARITY_MISMATCH/call_arity/definite@tests/WalkTest.php:22',
             // Genuine: self() takes no argument.
             'ARITY_MISMATCH/call_arity/definite@tests/MailerTest.php:26',
+            // Genuine (G3-19): 'rail' is no case of Leg, beside the cases matched by case, by cases() and by from().
+            'ARITY_MISMATCH/enum_case/definite@tests/RouteTest.php:45',
             // Genuine, though only a warning: stdClass is no DateTimeInterface, a relation outside the project (G3-10).
             'RETURN_DRIFT/return_type/warning@tests/ClockTest.php:21',
             // Ruling R18: a self pin on void breaks nothing at run time.

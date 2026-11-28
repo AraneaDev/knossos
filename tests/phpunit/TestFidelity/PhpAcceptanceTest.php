@@ -38,7 +38,8 @@ use PHPUnit\Framework\Attributes\Group;
  * `RETURN_DRIFT/return_type`, TAUT-001 and TAUT-003 `TAUTOLOGY/self_comparison`,
  * TAUT-002 `mock_echo`, TAUT-004 `mock_only` and TAUT-005 `zero_reach`;
  * Nemesis's GHOST_METHOD is `GHOST_MEMBER/missing_member`, and an
- * ARITY_MISMATCH is `call_arity` for a `with()` and `signature` for a callback.
+ * ARITY_MISMATCH is `call_arity` for a `with()`, `signature` for a callback and
+ * `enum_case` for a `with()` literal that is none of an enum's cases.
  *
  * Disagreements, where Knossos deliberately differs from both, and the gaps
  * (cases a tool reports that Knossos has no rule for yet: items 6, 7, 14 and 15):
@@ -113,12 +114,13 @@ use PHPUnit\Framework\Attributes\Group;
  *    `willReturnSelf()` on a `void` method as definite drift; Knossos
  *    deliberately gives a warning (Ruling R18): the void method's generated
  *    body returns nothing, so neither PHPUnit nor Mockery fails on it.
- * 18. A gap (G3-19): `nemesis-experiments/enum-value` `ShipmentTest.php:15`:
- *    Nemesis reports `with('rail')` for a `Leg` parameter, whose cases are
- *    `air` and `sea`, as definite arity drift. Knossos judges no matcher
- *    value against an enum's cases yet: silent. At `:14` both tools and
- *    Knossos report `willReturn('rail')` for `leg(): Leg`; Momus warns
- *    (item 1), Nemesis and Knossos give definite drift.
+ * 18. `nemesis-experiments/enum-value` `ShipmentTest.php:15`: Nemesis
+ *    reports `with('rail')` for a `Leg` parameter, whose cases are `air` and
+ *    `sea`, as definite arity drift, and so does Knossos, as
+ *    `ARITY_MISMATCH/enum_case` (G3-19): the string is `Leg`'s backing type
+ *    and its case list is closed. Momus is silent there. At `:14` all three
+ *    report `willReturn('rail')` for `leg(): Leg`; Momus warns (item 1),
+ *    Nemesis and Knossos give definite drift, Knossos as `return_type`.
  *
  * The frozen output of every run above is in
  * `tests/Fixtures/test-fidelity/goldens/{momus,nemesis}/php.json`.
@@ -382,6 +384,7 @@ final class PhpAcceptanceTest extends KnossosTestCase
             ]],
             'enum-value' => ['enum-value', [
                 'RETURN_DRIFT/return_type/definite@tests/ShipmentTest.php:14',
+                'ARITY_MISMATCH/enum_case/definite@tests/ShipmentTest.php:15',
                 'TAUTOLOGY/mock_only/warning@tests/ShipmentTest.php:17',
             ]],
             'final' => ['final', [

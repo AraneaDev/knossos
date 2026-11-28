@@ -6,6 +6,7 @@ namespace KnossosPhpScanner;
 
 use PhpParser\Node;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Scalar;
 use PhpParser\Node\Stmt;
 
@@ -139,7 +140,9 @@ final class Fields
     /**
      * An enum's cases, sorted by name. Each carries its backing literal as
      * `value` only when every case has a string or integer literal; a pure
-     * enum, or one with a computed case, gives none.
+     * enum, or one with a computed case, gives none. `backing` says the
+     * enum's scalar type, `string` or `int`, or `none` for a pure enum, so a
+     * backed enum with a computed case is never taken for a pure one (G3-19).
      *
      * @return array<string, mixed>
      */
@@ -158,7 +161,13 @@ final class Fields
             $listed[] = ['name' => (string) $name, ...($backed ? ['value' => $value] : [])];
         }
 
-        return self::listed('cases', $listed);
+        $backing = match (true) {
+            $node->scalarType === null => ['backing' => 'none'],
+            $node->scalarType instanceof Identifier => ['backing' => $node->scalarType->toLowerString()],
+            default => [],
+        };
+
+        return self::listed('cases', $listed) + $backing;
     }
 
     /** A case's backing literal as text: a string, or a signed integer; null for anything else. */

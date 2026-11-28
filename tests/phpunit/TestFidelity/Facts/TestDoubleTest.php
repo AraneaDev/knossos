@@ -8,6 +8,7 @@ use Knossos\Scanner\Protocol\Confidence;
 use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\Origin;
+use Knossos\TestFidelity\Facts\CallMatcher;
 use Knossos\TestFidelity\Facts\TestDouble;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 
@@ -114,6 +115,43 @@ final class TestDoubleTest extends KnossosTestCase
         assertSame('toHaveBeenCalledWith', $double->members[0]->calledWith[0]->api);
         assertSame(29, $double->members[0]->calledWith[0]->line);
         assertSame(false, $double->members[0]->calledWith[0]->spread);
+    }
+
+    /** A matcher's `literals` give each listed argument's literal, or null for one that is none. */
+    public function testReadsTheLiteralsAMatcherLists(): void
+    {
+        $attributes = self::attributes();
+        $attributes['members'][0]['called_with'] = [
+            ['api' => 'with', 'line' => 29, 'count' => 3, 'spread' => false, 'literals' => [['type' => 'string', 'value' => 'rail'], null, ['type' => 'int', 'value' => '-2']]],
+            ['api' => 'with', 'line' => 30, 'count' => 1, 'spread' => false],
+        ];
+
+        $double = TestDouble::fromNode(self::node('test_double', $attributes));
+
+        assertSame([['type' => 'string', 'value' => 'rail'], null, ['type' => 'int', 'value' => '-2']], $double?->members[0]->calledWith[0]->literals);
+        assertSame([], $double->members[0]->calledWith[1]->literals);
+    }
+
+    /** A malformed `literals` is dropped, and the matcher kept: its count still holds. */
+    public function testDropsMalformedLiteralsAndKeepsTheMatcher(): void
+    {
+        $malformed = [
+            'not a list' => ['a' => null],
+            'longer than the count' => [null, null],
+            'shorter than the count' => [],
+            'an unknown type' => [['type' => 'float', 'value' => '1.5']],
+            'a value not text' => [['type' => 'int', 'value' => 1]],
+            'an entry not an object' => ['rail'],
+            'not an array' => 'rail',
+        ];
+        foreach ($malformed as $label => $literals) {
+            $attributes = self::attributes();
+            $attributes['members'][0]['called_with'] = [['api' => 'with', 'line' => 29, 'count' => 1, 'spread' => false, 'literals' => $literals]];
+
+            $matchers = TestDouble::fromNode(self::node('test_double', $attributes))?->members[0]->calledWith ?? [];
+
+            assertSame([$label, [[]]], [$label, array_map(static fn(CallMatcher $matcher): array => $matcher->literals, $matchers)]);
+        }
     }
 
     public function testDropsAMalformedCallMatcherAndKeepsTheDouble(): void
