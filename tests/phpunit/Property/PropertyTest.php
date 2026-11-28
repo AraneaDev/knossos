@@ -97,6 +97,10 @@ final class PropertyTest extends KnossosTestCase
      * changed, a file deleted and re-created, a probed path added, and one of
      * two duplicate declarations edited. A language whose runtime or worker
      * is missing is left out of the project.
+     *
+     * One seed runs by default: 0xBADC0DE reaches every kind of edit above
+     * within its twelve steps. `KNOSSOS_PROPERTY_SEEDS_FULL=1` runs all three
+     * seeds, as the weekly Mutation workflow does.
      */
     #[Group('property')]
     public function testSeededEditSequencesKeepIncrementalAndFullGraphsEquivalent(): void
@@ -106,7 +110,8 @@ final class PropertyTest extends KnossosTestCase
             'python' => trim((string) @shell_exec('command -v python3 2>/dev/null')) !== '',
             'rust' => is_file(self::rustWorkerBinary()),
         ];
-        foreach ([0xC0FFEE, 0xBADC0DE, 0x5EED] as $seed) {
+        $seeds = getenv('KNOSSOS_PROPERTY_SEEDS_FULL') === '1' ? [0xC0FFEE, 0xBADC0DE, 0x5EED] : [0xBADC0DE];
+        foreach ($seeds as $seed) {
             $this->assertEditSequenceKeepsGraphsEquivalent($seed, 12, $languages);
         }
     }

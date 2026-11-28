@@ -30,6 +30,15 @@ Seeds and case counts are checked in. A failure can therefore be reproduced by
 running the same command, while additions to a discovered corpus become normal
 reviewable regression cases.
 
+The seeded edit sequences run one seed by default, the one whose twelve steps
+reach every kind of edit, because each step scans the project twice through
+every worker. `KNOSSOS_PROPERTY_SEEDS_FULL=1` runs all three seeds; the weekly
+`Mutation` workflow's `property-seeds` job sets it:
+
+```sh
+KNOSSOS_PROPERTY_SEEDS_FULL=1 vendor/bin/phpunit --group=property
+```
+
 ## Mutation score
 
 [Infection](https://infection.github.io/) mutates all of `src` and judges each
