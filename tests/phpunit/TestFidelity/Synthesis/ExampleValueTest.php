@@ -9,12 +9,15 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 
 use function PHPUnit\Framework\assertSame;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * A template's example values (Decision 5): Momus's zero values per
  * language, a record built from a complete field list two levels deep, an
  * enum's first case, and a marked placeholder, listed in `unknown`, for
  * anything else.
  */
+#[Group('test-fidelity')]
 final class ExampleValueTest extends KnossosTestCase
 {
     /** @return array{value: ?string, unknown: list<string>, imports: list<string>} */

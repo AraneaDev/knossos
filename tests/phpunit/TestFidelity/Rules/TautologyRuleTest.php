@@ -138,6 +138,69 @@ final class TautologyRuleTest extends KnossosTestCase
         assertSame(['constant'], self::subRules($findings));
     }
 
+    public function testANegatedConstantComparedWithItselfCannotPass(): void
+    {
+        // G1-17: `expect(true).not.toBe(true)` always fails; `expect(1).not.toBe(2)` always passes.
+        $true = CaseFixtures::operand('literal', ['text' => 'true']);
+        $messages = static fn(array $operands, bool $negated): array => array_map(
+            static fn(TestFinding $finding): string => $finding->subRule . ' ' . $finding->confidence->value . ' ' . $finding->message,
+            self::judge(CaseFixtures::testCase([CaseFixtures::assertion('toBe', $operands, $negated)], 1)),
+        );
+
+        assertSame(['constant definite true is compared with true, both constants; the assertion cannot pass'], $messages([$true, $true], true));
+        assertSame(['constant definite 1 is compared with 2, both constants; the assertion cannot fail'], $messages([CaseFixtures::operand('literal', ['text' => '1']), CaseFixtures::operand('literal', ['text' => '2'])], true));
+        assertSame(['self_comparison definite true is compared with itself; the assertion cannot fail'], $messages([$true, $true], false));
+        assertSame(['constant definite a literal is compared with a literal, both constants; the assertion cannot fail'], $messages([CaseFixtures::operand('literal'), CaseFixtures::operand('literal')], true), 'two literals without text are not shown the same');
+    }
+
+    public function testANegatedStrictOrderingOfAConstantWithItselfCannotFail(): void
+    {
+        // Fix round 1: `expect(1).not.toBeGreaterThan(1)` always passes; only a matcher that holds for equal values cannot pass.
+        $one = CaseFixtures::operand('literal', ['text' => '1']);
+        $verdict = static fn(string $api): array => array_map(
+            static fn(TestFinding $finding): string => $finding->message,
+            self::judge(CaseFixtures::testCase([CaseFixtures::assertion($api, [$one, $one], true)], 1)),
+        );
+
+        foreach (['toBeGreaterThan', 'toBeLessThan'] as $api) {
+            assertSame(['1 is compared with 1, both constants; the assertion cannot fail'], $verdict($api), $api);
+        }
+        foreach (['toBe', 'toEqual', 'toStrictEqual', 'toBeGreaterThanOrEqual', 'toBeLessThanOrEqual'] as $api) {
+            assertSame(['1 is compared with 1, both constants; the assertion cannot pass'], $verdict($api), $api);
+        }
+    }
+
+    public function testATestThatIsMeantToFailIsNeverATautology(): void
+    {
+        // G1-10: `it.fails` passes only when its body fails, so an assertion that always fails is its point.
+        $assertions = [CaseFixtures::assertion('toBe', [CaseFixtures::operand('literal', ['text' => '1']), CaseFixtures::operand('literal', ['text' => '2'])])];
+        $case = static fn(array $extra): NodeFact => DriftFixtures::node('test_case', CaseFixtures::FILE . '#test:10', 'fails', ['name' => 'fails', 'production_calls' => 0, 'subjects' => [], 'assertions' => $assertions, ...$extra], 10);
+
+        assertSame([], self::subRules(self::judge($case(['fails' => true]))));
+        assertSame(['constant'], self::subRules(self::judge($case(['fails' => false]))), 'the control');
+        assertSame(['constant'], self::subRules(self::judge($case([]))), 'the control');
+        assertSame([], self::subRules(self::judge($case(['fails' => 'yes']))), 'a malformed flag drops the case');
+    }
+
+    public function testADoubleOfATestThatIsMeantToFailIsNeverZeroReach(): void
+    {
+        $pinned = CaseFixtures::double(6, members: [CaseFixtures::member('total')], testCase: CaseFixtures::FILE . '#test:10');
+        $case = static fn(bool $fails): NodeFact => DriftFixtures::node('test_case', CaseFixtures::FILE . '#test:10', 'pins', ['name' => 'pins', 'production_calls' => 0, 'subjects' => [], 'fails' => $fails, 'assertions' => []], 10);
+
+        assertSame([], self::subRules(self::judge($case(true), $pinned)));
+        assertSame(['zero_reach'], self::subRules(self::judge($case(false), $pinned)), 'the control');
+    }
+
+    public function testTheDoubleAnUnconfiguredSpyNamesIsCleaned(): void
+    {
+        // G1-18: the attribute is worker text, as the message is.
+        $name = CaseFixtures::FILE . "#double:6:5\x1b[2J";
+        $spy = DriftFixtures::node('test_double', $name, 'vi.spyOn', ['framework' => 'vitest', 'pattern' => 'vi.spyOn', 'target' => ['kind' => 'instance-member', 'member' => 'total'], 'automock' => false, 'invocations' => 0, 'members' => [CaseFixtures::member('total', 0)]], 6);
+        $case = CaseFixtures::testCase([CaseFixtures::assertion('toHaveBeenCalled', [CaseFixtures::operand('mock-call', ['double' => $name, 'unconfigured_spy' => true])])]);
+
+        assertSame([['api' => 'toHaveBeenCalled', 'double' => CaseFixtures::FILE . '#double:6:5 [2J']], array_map(static fn(TestFinding $finding): array => $finding->attributes, self::judge($spy, $case)));
+    }
+
     public function testMockOnlyIsWarning(): void
     {
         $findings = self::judge(CaseFixtures::testCase([CaseFixtures::assertion('toEqual', [

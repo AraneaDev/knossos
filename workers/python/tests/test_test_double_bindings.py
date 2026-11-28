@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from test_test_doubles import FIXTURES, REPO, doubles, member, members, scan_fixture, scan_test
@@ -336,3 +337,23 @@ def test_a_pin_through_a_held_handle_is_marked_held(project) -> None:
     assert [(pin.member, pin.held) for pin in fixture[8].pins] == [("price", True)]
     # A local handle, and a constructor keyword, pin a value the test itself set.
     assert [(pin.member, pin.held) for pin in local[11].pins] == [("save", False), ("load", False), ("load", False)]
+
+
+def test_a_use_read_inside_another_restores_the_outer_handles_held_mark(worker) -> None:
+    configuration = sys.modules["knossos_python.test_facts.configuration"].Configuration
+    seen: list[bool] = []
+    reader = configuration.__new__(configuration)
+    reader._held = False
+    outer, inner = SimpleNamespace(held=True), SimpleNamespace(held=False)
+
+    def read(handle: Any, node: Any) -> None:
+        seen.append(reader._held)
+        if handle is outer:
+            reader._use(inner, node)
+            seen.append(reader._held)
+
+    reader._read_use = read
+    reader._use(outer, None)
+
+    # G4-07: the inner use reads its own mark, and the outer one reads its own again after it.
+    assert (seen, reader._held) == ([True, False, True], False)

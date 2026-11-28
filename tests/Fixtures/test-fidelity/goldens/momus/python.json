@@ -165,6 +165,79 @@
       }
     },
     {
+      "fixture": "momus-spec",
+      "trees": {
+        "python/momus-spec": ""
+      },
+      "fixture_sha256": "ea98a1f37a7a5fcbe105ad252e6ff3dbe45d22ad5db1275c68a2f8ebb9fc8313",
+      "command": "cd <copy> && npx --prefix <momus> tsx <momus>/packages/cli/src/index.ts audit . --root <copy> --json --max-issues 1000",
+      "momusrc": {
+        "languages": {
+          "python": true
+        },
+        "cache": {
+          "enabled": false
+        }
+      },
+      "exit": 1,
+      "output": {
+        "schemaVersion": 1,
+        "tool": "audit",
+        "result": {
+          "summary": {
+            "filesAudited": 2,
+            "issues": 2,
+            "errors": 2,
+            "warnings": 0,
+            "infos": 0,
+            "totalIssues": 2,
+            "totalErrors": 2,
+            "totalWarnings": 0,
+            "totalInfos": 0,
+            "suppressed": 0,
+            "truncated": false
+          },
+          "indexStats": {
+            "modules": 1,
+            "symbols": 5,
+            "mocks": 0
+          },
+          "issues": [
+            {
+              "rule": "TAUT-002",
+              "severity": "error",
+              "file": "tests/test_spec_echo.py",
+              "line": 9,
+              "column": 5,
+              "endLine": 9,
+              "endColumn": 31,
+              "message": "mock-echo: asserts stubbed value (7) against itself",
+              "fix": {
+                "kind": "replace",
+                "description": "assert against a production-derived value"
+              },
+              "tokens": 41
+            },
+            {
+              "rule": "TAUT-002",
+              "severity": "error",
+              "file": "tests/test_spec_echo.py",
+              "line": 15,
+              "column": 5,
+              "endLine": 15,
+              "endColumn": 31,
+              "message": "mock-echo: asserts stubbed value (7) against itself",
+              "fix": {
+                "kind": "replace",
+                "description": "assert against a production-derived value"
+              },
+              "tokens": 41
+            }
+          ]
+        }
+      }
+    },
+    {
       "fixture": "momus-src-layout",
       "trees": {
         "python/momus-src-layout": ""

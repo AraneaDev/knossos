@@ -24,8 +24,10 @@ use Knossos\TestFidelity\TestFinding;
  *
  * The PHP worker has no type checker: it leaves every pin `"unknown"` with
  * the pinned value's own `type`, and `PhpTypeFit` judges the fit here, for a
- * PHP target only. A refusal it can show on both sides is definite, one that
- * rests on a relation outside the project a warning; a PHP method with no
+ * PHP target only, a pinned class built into PHP being what the worker's
+ * Reflection says it extends and implements (G3-10). A refusal it can show
+ * on both sides is definite, one that rests on a relation outside the
+ * project a warning; a PHP method with no
  * declared return type is never judged. Only a PHPUnit double returns its
  * value under strict types; Mockery, Pest and Prophecy let PHP coerce it.
  * `self` and `static` name the declaring class, or the doubled class when a
@@ -100,7 +102,7 @@ final readonly class ReturnDriftRule extends DriftRule
             if ($value->assignable === false) {
                 $refused[] = [$value, $value->typed];
             } elseif ($php && $value->assignable === 'unknown' && $value->type !== null) {
-                $fit = PhpTypeFit::judge($value->type, $declared, $graph, self::selfClass($pair, $graph), $pair->double->framework === 'phpunit');
+                $fit = PhpTypeFit::judge($value->type, $declared, $graph, self::selfClass($pair, $graph), $pair->double->framework === 'phpunit', $value->typeAncestors);
                 if ($fit['fits'] === false) {
                     $refused[] = [$value, $fit['typed'] && !self::isSelfOnVoid($value, $declared)];
                 }

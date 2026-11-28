@@ -28,13 +28,13 @@ function fakePort(): Port {
 
 const finding = (key: string, line: number, stale = true) => ({ key, file: 'tests/pay.test.ts', line, message: `stale mock ${key}`, stale })
 
-function brief(over: { introduced?: ReturnType<typeof finding>[]; status?: string; total?: number; totalStale?: number; policy?: boolean; tests?: boolean } = {}): TurnBrief {
+function brief(over: { introduced?: ReturnType<typeof finding>[]; status?: string; total?: number; totalStale?: number | null; policy?: boolean; tests?: boolean } = {}): TurnBrief {
   const introduced = over.introduced ?? [finding('k1', 10)]
   return {
     status: 'ok',
     tests: over.tests === true ? [{ path: 'tests/a.test.ts', distance: 1 }] : [],
     policy: { status: 'evaluated', total: over.policy === true ? 1 : 0, violations: over.policy === true ? [{ policy_id: 'p', source: 'A', target: 'B' }] : [], truncated: false },
-    test_findings: { status: over.status ?? 'ok', introduced, total: over.total ?? introduced.length, total_stale: over.totalStale ?? introduced.filter(f => f.stale).length, truncated: false, suppressions_invalid: null },
+    test_findings: { status: over.status ?? 'ok', introduced, total: over.total ?? introduced.length, ...(over.totalStale === null ? {} : { total_stale: over.totalStale ?? introduced.filter(f => f.stale).length }), truncated: false, suppressions_invalid: null },
   } as unknown as TurnBrief
 }
 
@@ -108,6 +108,18 @@ describe('the turn-end note for stale mocks', () => {
     const listed = Array.from({ length: 10 }, (_, i) => finding(`k${i}`, i + 1))
     const note = turnEndNote(brief({ introduced: listed, total: 14, totalStale: 12 }), null)!
     expect(note.split('\n')[0]).toBe('knossos: this turn introduced 12 stale mocks and 2 other test findings. Fix them before finishing:')
+  })
+
+  it('counts the stale among the listed findings when an older server sends no total_stale', () => {
+    const listed = [finding('k1', 1), finding('k2', 2), finding('t1', 3, false)]
+    const note = turnEndNote(brief({ introduced: listed, total: 3, totalStale: null }), null)!
+    expect(note.split('\n')[0]).toBe('knossos: this turn introduced 2 stale mocks and 1 other test finding. Fix them before finishing:')
+  })
+
+  it('counts only the unsaid stale ones when total_stale is absent and some listed findings were said', () => {
+    turnEndNote(brief({ introduced: [finding('k1', 1)], totalStale: null }), null)
+    const note = turnEndNote(brief({ introduced: [finding('k1', 1), finding('k2', 2), finding('t1', 3, false)], total: 3, totalStale: null }), null)!
+    expect(note.split('\n')[0]).toBe('knossos: this turn introduced 1 stale mock and 1 other test finding. Fix them before finishing:')
   })
 
   it('keeps the policy and tests parts and drops this one with testChecks off', () => {

@@ -2,6 +2,7 @@
 // 1 member, 1 omitted; incomplete: see omitted and notes
 use mockall::mock;
 use synth::focus::Conv2;
+use synth::focus::*;
 
 mock! {
     pub Conv2 {}

@@ -9,6 +9,7 @@ use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\WorkerClients;
 use PDO;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The Rust worker builds its declaration index from every Rust file of the
@@ -330,6 +331,7 @@ final class RustReadAttributionTest extends KnossosTestCase
     }
 
     /** A module file no `mod` declares is still indexed, as a full scan indexes it. */
+    #[Group('slow')]
     public function testAModuleNoModDeclaresIsStillIndexed(): void
     {
         $this->writeCrate();

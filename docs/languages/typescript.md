@@ -333,6 +333,11 @@ against them, and `synthesize_mock` builds an example value from them. A field
 is optional when it is written `?`, its type admits `undefined`, or it has an
 initializer. Enum values are sent for every member or for none.
 
+The test-fidelity `ARITY_MISMATCH/enum_case` check, which holds a matcher's
+literal against an enum parameter's cases (G3-19), judges PHP only.
+`toHaveBeenCalledWith('rail')` for a parameter typed by an enum with no such
+member reports nothing in TypeScript, so silence is not a pass.
+
 The list is open, so neither tool judges it, when a wire name may differ or a
 field may come from elsewhere: a base, heritage clause or intersection part the
 checker cannot read or that is a type parameter, an index signature, or a

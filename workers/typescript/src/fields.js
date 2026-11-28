@@ -8,7 +8,9 @@
  * `fields_open`: a base or intersection part the checker cannot read, a type
  * parameter, an index signature, or a decorator anywhere on the class or a
  * class it extends (class-transformer's `@Expose`, TypeORM's columns), which
- * may rename or add a key. A list longer than `MAX_ENTRIES` is cut and
+ * may rename or add a key; a JS file's `this.x = …` expando, which any code
+ * path may or may not set; or a field inherited from a generic base and typed
+ * by its parameter (`extends Gen<number>`), whose argument is not substituted. A list longer than `MAX_ENTRIES` is cut and
  * marked, and the core never judges it.
  */
 
@@ -183,8 +185,53 @@ function isOpen(checker, node, type) {
         parts.some((part) => hasUnknownSource(part)) ||
         checker
             .getPropertiesOfType(type)
-            .some((property) => isRenamable(checker, property))
+            .some(
+                (property) =>
+                    isRenamable(checker, property) ||
+                    isExpando(property) ||
+                    inheritsParameter(property, node),
+            )
     );
+}
+
+/**
+ * Whether a JS file gives the property by assignment (`this.x = …`,
+ * `Object.defineProperty`) rather than a declaration: typed by nothing, set
+ * on any code path, so its key may or may not be filled.
+ */
+function isExpando(property) {
+    return (property.declarations ?? []).some(
+        (declaration) =>
+            ts.isInJSFile(declaration) &&
+            (ts.isBinaryExpression(declaration) ||
+                ts.isPropertyAccessExpression(declaration) ||
+                ts.isElementAccessExpression(declaration) ||
+                ts.isCallExpression(declaration)),
+    );
+}
+
+/**
+ * Whether a property is inherited from a generic type and typed by one of
+ * its parameters (`value: T` reached through `extends Gen<number>`): the
+ * written type is not what the subclass holds, and the argument is not
+ * substituted, so the list is not read as typed.
+ */
+function inheritsParameter(property, node) {
+    const declaration = property.valueDeclaration ?? property.declarations?.[0];
+    if (declaration?.type === undefined) return false;
+    const owner = ts.isParameter(declaration)
+        ? declaration.parent?.parent
+        : declaration.parent;
+    const names = new Set(
+        (owner?.typeParameters ?? []).map((parameter) => parameter.name.text),
+    );
+    if (owner === node || names.size === 0) return false;
+    const mentions = (written) =>
+        (ts.isTypeReferenceNode(written) &&
+            ts.isIdentifier(written.typeName) &&
+            names.has(written.typeName.text)) ||
+        ts.forEachChild(written, mentions) === true;
+    return mentions(declaration.type);
 }
 
 /** Whether a declaration is a class that is decorated or extends a decorated class. */

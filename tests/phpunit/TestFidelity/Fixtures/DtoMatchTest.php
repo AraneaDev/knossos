@@ -11,6 +11,7 @@ use Knossos\TestFidelity\Fixtures\JsonDocument;
 use Knossos\TestFidelity\Fixtures\Value;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Which type a fixture holds records of, and where in the file they are: the
@@ -18,6 +19,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
  * (`staleFixtures.ts:230-282`, `610-666`), its signals and thresholds exact,
  * and its `fixtureRecords.test.ts` and `fixtureDiagnostics.test.ts:39-62`.
  */
+#[Group('test-fidelity')]
 final class DtoMatchTest extends KnossosTestCase
 {
     /** A TypeScript type whose fields are all required strings. */
@@ -152,6 +154,12 @@ final class DtoMatchTest extends KnossosTestCase
         // A record whose fields are all objects, written in another case style, is the record, not a map.
         $consignment = self::type('Consignment', 'billing_address', 'shipping_address');
         self::assertSame([[1, ['billingAddress', 'shippingAddress']]], self::records('{"billingAddress": {"streetName": "a"}, "shippingAddress": {"streetName": "b"}}', $consignment));
+        // G6-08f: a key spelling two fields in another style spells neither, as the drift check's aliases take it.
+        $twice = self::type('Ledger', 'entry_id', 'entryId');
+        self::assertTrue($twice->hasFieldSpelled('entry_id'));
+        self::assertFalse($twice->hasFieldSpelled('EntryId'));
+        self::assertTrue($consignment->hasFieldSpelled('BillingAddress'));
+        self::assertSame([[1, ['n']], [2, ['n']]], self::records('{"EntryId": {"n": 1},' . "\n" . '"e2": {"n": 2}}', $twice));
         // A map with a scalar among its values, or one carrying a field, is still read as before.
         self::assertSame([[1, ['a1', 'n']]], self::records('{"a1": {"accountId": "a1"}, "n": 2}', $account));
         self::assertSame([[1, ['name', 'a1']]], self::records('{"name": "x", "a1": {"accountId": "a1"}}', $account));

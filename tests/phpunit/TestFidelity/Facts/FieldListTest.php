@@ -15,10 +15,13 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertSame;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * The core's reading of a node's `fields` and `cases`: a list that is
  * present, well formed, whole and closed, or nothing at all.
  */
+#[Group('test-fidelity')]
 final class FieldListTest extends KnossosTestCase
 {
     private const FIELDS = [
@@ -100,6 +103,19 @@ final class FieldListTest extends KnossosTestCase
         assertSame(['Hearts' => null, 'Spades' => null], $pure->cases());
         assertSame(false, $pure->backed());
         assertSame(false, EnumCases::ofNode(['cases' => []])?->backed());
+    }
+
+    /** A PHP enum's `backing` says its scalar type, `none` for a pure enum; anything else is unknown. */
+    public function testEnumCasesReadTheirBacking(): void
+    {
+        $cases = [['name' => 'Fast', 'value' => 'fast']];
+
+        assertSame('string', EnumCases::ofNode(['cases' => $cases, 'backing' => 'string'])?->backing());
+        assertSame('int', EnumCases::ofNode(['cases' => [['name' => 'Low', 'value' => '1']], 'backing' => 'int'])?->backing());
+        assertSame('none', EnumCases::ofNode(['cases' => [['name' => 'Hearts']], 'backing' => 'none'])?->backing());
+        foreach ([[], ['backing' => 'float'], ['backing' => 1], ['backing' => '']] as $attributes) {
+            assertSame(null, EnumCases::ofNode(['cases' => $cases, ...$attributes])?->backing());
+        }
     }
 
     public function testMalformedOrTruncatedCasesReadAsNull(): void

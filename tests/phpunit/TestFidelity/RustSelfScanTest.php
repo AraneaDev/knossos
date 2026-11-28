@@ -45,6 +45,7 @@ final class RustSelfScanTest extends KnossosTestCase
         }
     }
 
+    #[Group('slow')]
     public function testTheWorkersOwnSuiteGivesOnlyTrueDefinites(): void
     {
         $root = self::scratchPath('rust-self-scan');

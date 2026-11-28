@@ -23,4 +23,13 @@ final class MatchersTest extends TestCase
         $mock->shouldReceive('charge')->withArgs($matcher);
         $mock->shouldReceive('charge')->withNoArgs();
     }
+
+    public function testMatcherLiterals(): void
+    {
+        $gateway = $this->createMock(Foo::class);
+        $gateway->method('charge')->with(-5, $cents, Lane::Fast, 1.5, true, "a{$b}", 'EUR', currency: 'USD');
+        $gateway->method('charge')->with($this->equalTo('EUR'));
+        $prophecy = $this->prophesize(Foo::class);
+        $prophecy->charge('rail', 3);
+    }
 }

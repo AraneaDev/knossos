@@ -64,6 +64,10 @@ pub struct Layout {
     /// The files a `#[path]` declaration loads, which keep the files their
     /// own `mod` declarations load beside them, as a `mod.rs` does.
     pub path_loaded: BTreeSet<String>,
+    /// The directory of every package whose manifest depends on the real
+    /// `pretty_assertions` under that name: no `package =` rename, and a
+    /// workspace's dependency of it, when inherited, none either (G5-07).
+    pub pretty_assertions: BTreeSet<String>,
 }
 
 /// One bodiless `mod name;` a file declares: what [`place_path_modules`]
@@ -215,6 +219,33 @@ impl Layout {
             [target, _, "main.rs"] => TARGET_DIRECTORIES.contains(target),
             _ => false,
         }
+    }
+
+    /// Whether `relative` belongs to a package whose manifest sits where
+    /// another package's crates keep their modules: below its `src/`
+    /// (`src/fixtures/inner/Cargo.toml` in the package at the root). A plain
+    /// `mod` of the outer crate may compile the file too, so which package
+    /// it is of cannot be shown (G5-04). A workspace member beside its
+    /// root's `src/` is not, nor is one under its `examples/`, `benches/` or
+    /// `tests/` (the sqlx layout): Cargo compiles a single file or a
+    /// directory's `main.rs` there, never `examples/foo/src/*.rs`.
+    #[must_use]
+    pub fn in_nested_package(&self, relative: &str) -> bool {
+        let Some(own) = self
+            .packages
+            .iter()
+            .map(|(directory, _)| directory.as_str())
+            .filter(|directory| relative.starts_with(directory))
+            .max_by_key(|directory| directory.len())
+        else {
+            return false;
+        };
+        self.packages.iter().any(|(outer, _)| {
+            // The package itself leaves no `src/` to strip, so it is not
+            // its own outer package.
+            own.strip_prefix(outer.as_str())
+                .is_some_and(|inner| inner.starts_with("src/"))
+        })
     }
 
     /// The segments of `relative` below the deepest package directory that

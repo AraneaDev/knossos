@@ -269,6 +269,7 @@ final class WholeProjectCandidatesTest extends KnossosTestCase
      * limit either could not be set or left the query too little to run in.
      */
     #[RunInSeparateProcess]
+    #[Group('slow')]
     public function testTwentyFiveThousandContainersWithMembersFitTheDefaultBudget(): void
     {
         [$pdo, $repository, $ids] = $this->storeFixture();

@@ -11,11 +11,14 @@
 //! `untagged`, `transparent`, `from` and the rest), a derive outside the
 //! frozen standard and serde set (Ruling F28), any other attribute that may
 //! be a macro, a `cfg` on a field, and a `cfg_attr` that applies any of
-//! these. A field is not required when it is an `Option`, a bare type
-//! parameter (which may be one), or `#[serde(default)]`, `skip` or
+//! these. A field is not required when it is an `Option`, an alias the file
+//! declares of one (`type Maybe<T> = Option<T>;`), a bare type parameter
+//! (which may be one), or `#[serde(default)]`, `skip` or
 //! `skip_deserializing`, on itself or (`default`) on the struct. A field
 //! read through `with` or `deserialize_with` keeps its key but sends no
-//! `type`: the value on the wire is not the declared type's.
+//! `type`: the value on the wire is not the declared type's. Such an
+//! `Option` field still reads not required, though serde then requires the
+//! key: a missing one is left unreported, never reported wrongly.
 //!
 //! An enum sends `cases`, each `value` the variant's name as serde's
 //! externally tagged unit variants are written, only when every variant is a
@@ -106,7 +109,9 @@ struct Reading {
 /// inline modules included, on the class nodes the walk declared for them.
 pub(super) fn attach(facts: &mut Facts, module: &str, items: &[Item]) {
     let mut found = BTreeMap::new();
-    collect(module, items, &mut found);
+    let mut aliases = Vec::new();
+    type_aliases(items, &mut aliases);
+    collect(module, items, &optional_aliases(&aliases), &mut found);
     for (canonical, attributes) in found {
         // A function or module of the same path, declared first, would take the attributes.
         let first = facts
@@ -121,11 +126,67 @@ pub(super) fn attach(facts: &mut Facts, module: &str, items: &[Item]) {
     }
 }
 
-/// The attributes of every struct, enum and union in `items`, by path.
-fn collect(container: &str, items: &[Item], found: &mut BTreeMap<String, Map<String, Value>>) {
+/// Every `type` alias in `items`, inline modules included, by its name.
+fn type_aliases<'i>(items: &'i [Item], found: &mut Vec<(String, &'i syn::Type)>) {
+    for item in items {
+        match item {
+            Item::Type(alias) => found.push((ident_name(&alias.ident), &alias.ty)),
+            Item::Mod(node) => {
+                if let Some((_, inner)) = &node.content {
+                    type_aliases(inner, found);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The names of the `aliases` that name an `Option` (see [`is_option`]),
+/// directly or through another of them (`type Maybe<T> = Option<T>;`):
+/// serde reads a missing key of one as `None` (G6-08e). By name alone, so
+/// an alias in any of the file's modules counts, which only ever makes a
+/// field not required. An alias in another file is not seen.
+fn optional_aliases(aliases: &[(String, &syn::Type)]) -> BTreeSet<String> {
+    let mut optional = BTreeSet::new();
+    loop {
+        let more: Vec<&String> = aliases
+            .iter()
+            .filter(|(name, ty)| {
+                !optional.contains(name) && (is_option(ty) || names_alias(ty, &optional))
+            })
+            .map(|(name, _)| name)
+            .collect();
+        if more.is_empty() {
+            return optional;
+        }
+        optional.extend(more.into_iter().cloned());
+    }
+}
+
+/// Whether a type's path ends in one of `aliases`.
+fn names_alias(ty: &syn::Type, aliases: &BTreeSet<String>) -> bool {
+    let syn::Type::Path(path) = strip(ty) else {
+        return false;
+    };
+    path.qself.is_none()
+        && path
+            .path
+            .segments
+            .last()
+            .is_some_and(|last| aliases.contains(&ident_name(&last.ident)))
+}
+
+/// The attributes of every struct, enum and union in `items`, by path, a
+/// field of one of `aliases` not required.
+fn collect(
+    container: &str,
+    items: &[Item],
+    aliases: &BTreeSet<String>,
+    found: &mut BTreeMap<String, Map<String, Value>>,
+) {
     for item in items {
         let (name, attributes) = match item {
-            Item::Struct(node) => (&node.ident, struct_fields(node)),
+            Item::Struct(node) => (&node.ident, struct_fields(node, aliases)),
             Item::Enum(node) => (&node.ident, enum_cases(node)),
             Item::Union(node) => (&node.ident, Map::new()),
             Item::Mod(node) => {
@@ -133,6 +194,7 @@ fn collect(container: &str, items: &[Item], found: &mut BTreeMap<String, Map<Str
                     collect(
                         &format!("{container}::{}", ident_name(&node.ident)),
                         inner,
+                        aliases,
                         found,
                     );
                 }
@@ -172,8 +234,9 @@ fn record(
 /// A named-field struct's `fields`, sorted by name, with `fields_open` and
 /// `fields_truncated` when they apply; nothing for a tuple or unit struct,
 /// or one that does not derive `Deserialize`, whose hand-written impl (in
-/// any file, before or after it) may read another shape.
-fn struct_fields(node: &syn::ItemStruct) -> Map<String, Value> {
+/// any file, before or after it) may read another shape. A field of one of
+/// `aliases` is not required (see [`optional_aliases`]).
+fn struct_fields(node: &syn::ItemStruct, aliases: &BTreeSet<String>) -> Map<String, Value> {
     let syn::Fields::Named(named) = &node.fields else {
         return Map::new();
     };
@@ -202,6 +265,7 @@ fn struct_fields(node: &syn::ItemStruct) -> Map<String, Value> {
         let optional = container.default
             || reading.default
             || is_option(&field.ty)
+            || names_alias(&field.ty, aliases)
             || is_param(&field.ty, &params);
         let mut entry = Map::new();
         entry.insert("name".to_owned(), Value::String(name.clone()));

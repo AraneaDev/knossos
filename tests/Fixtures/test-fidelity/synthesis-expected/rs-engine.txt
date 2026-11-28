@@ -2,6 +2,7 @@
 // 3 members; complete
 use mockall::mock;
 use synth::focus::Engine;
+use synth::focus::*;
 
 mock! {
     pub Engine {

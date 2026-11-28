@@ -27,12 +27,23 @@ use PHPUnit\Framework\Attributes\Group;
  *   `func_get_arg()` in its own body takes any number of arguments;
  * - every type `Mockery::mock(A::class, B::class)` or `'A, B'` names is the
  *   double's, so a member of `B` is no ghost;
- * - a name PHPUnit's `addMethods()` adds is the double's own;
+ * - a method production hands on as a callable (`array_walk($xs, [$repo,
+ *   'save'], 7)`) may be called with more arguments than it takes, so a
+ *   matcher listing more is satisfiable, though one on a method only called
+ *   directly is not, whatever a test lists or a message spells (G3-31);
+ * - a built-in class pinned for a built-in type it implements
+ *   (`DateTimeImmutable` for `DateTimeInterface`) fits, as PHP's own
+ *   Reflection in the worker says, though `stdClass` still may not (G3-10);
+ * - a name PHPUnit 9's `setMethods()` lists adds a method the class lacks,
+ *   so it is no ghost, though one `onlyMethods()` lists is (G3-37);
  * - Mockery's `anyArgs()`, `noArgs()`, `andAnyOtherArgs()` and
  *   `andAnyOthers()` leave the argument count open (Ruling R19);
  * - `willReturnSelf()`/`andReturnSelf()` on `void` is a warning (Ruling R18);
  * - a Stringable pin against `string` is unknown under Mockery (Ruling R20);
- * - `getMockForTrait()` makes a PHPUnit double (Ruling R16).
+ * - `getMockForTrait()` makes a PHPUnit double (Ruling R16);
+ * - an enum parameter matched by its case (`with(Leg::Sea)`), by every case
+ *   `cases()` lists, by `Leg::from('air')`, or a pure enum's `Suit::Hearts`,
+ *   is no missing case, though `with('rail')` is (G3-19).
  */
 #[Group('test-fidelity')]
 #[Group('php-scanner')]
@@ -67,8 +78,17 @@ final class PhpHealthyIdiomsTest extends KnossosTestCase
             'RETURN_DRIFT/return_type/definite@tests/ExtraTest.php:21',
             // Genuine: the trait double's missing() is no member of Counts; its protected step() is reachable.
             'GHOST_MEMBER/missing_member/definite@tests/ExtraTest.php:30',
+            // Genuine: onlyMethods() names only methods the class has, and Repo has no legacy() (G3-37).
+            'GHOST_MEMBER/missing_member/definite@tests/OldTest.php:26',
+            // Genuine: Store::save() is only ever called directly, with two arguments; a test listing it as a
+            // callable and an exception message spelling it hand it to nothing (G3-31).
+            'ARITY_MISMATCH/call_arity/definite@tests/WalkTest.php:22',
             // Genuine: self() takes no argument.
             'ARITY_MISMATCH/call_arity/definite@tests/MailerTest.php:26',
+            // Genuine (G3-19): 'rail' is no case of Leg, beside the cases matched by case, by cases() and by from().
+            'ARITY_MISMATCH/enum_case/definite@tests/RouteTest.php:45',
+            // Genuine, though only a warning: stdClass is no DateTimeInterface, a relation outside the project (G3-10).
+            'RETURN_DRIFT/return_type/warning@tests/ClockTest.php:21',
             // Ruling R18: a self pin on void breaks nothing at run time.
             'RETURN_DRIFT/return_type/warning@tests/MailerTest.php:27',
             'RETURN_DRIFT/return_type/warning@tests/MailerTest.php:34',

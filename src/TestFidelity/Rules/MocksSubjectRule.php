@@ -68,7 +68,7 @@ final readonly class MocksSubjectRule implements TestFidelityRule
             }
             $node = $graph->nodeOf($double);
             $message = sprintf("%s replaces %s, which the test '%s' exercises", DriftText::clean($node->displayName), DriftText::clean($module), DriftText::clean($case->name));
-            yield new TestFinding($node->localId, $target->localId, FindingCategory::MocksSubject, FindingConfidence::Warning, self::ID, 'mock_of_self', DriftText::clean($message), $node->evidence, [
+            yield new TestFinding($node->localId, $target->localId, FindingCategory::MocksSubject, FindingConfidence::Warning, self::ID, 'mock_of_self', $message, $node->evidence, [
                 'module' => DriftText::clean($module),
                 'test_case' => DriftText::clean($case->canonicalName),
             ]);
@@ -105,7 +105,7 @@ final readonly class MocksSubjectRule implements TestFidelityRule
             if (!in_array($module, $subjects, true)) {
                 continue;
             }
-            if ($subjects === [$module] || self::namedFor(DoubleTests::file($case->canonicalName)) === self::baseName($module)) {
+            if ($subjects === [$module] || self::isNamedFor(DoubleTests::file($case->canonicalName), $module, $subjects)) {
                 return $case;
             }
         }
@@ -125,6 +125,50 @@ final readonly class MocksSubjectRule implements TestFidelityRule
         return null;
     }
 
+    /**
+     * Whether the test file is named for the module among the test's subjects.
+     *
+     * The name must be the module's (`db.test.ts` for `db.ts`). When another
+     * subject has that name too (`src/db.ts` and `src/legacy/db.ts`), the name
+     * alone says neither, so the module must share more trailing path with
+     * the test than every other one does (`tests/legacy/db.test.ts` for
+     * `src/legacy/db.ts`); a tie names none (G1-19).
+     *
+     * @param list<string> $subjects
+     */
+    private static function isNamedFor(string $testFile, string $module, array $subjects): bool
+    {
+        $named = self::namedFor($testFile);
+        if ($named === null || $named !== self::baseName($module)) {
+            return false;
+        }
+        $test = explode('/', dirname($testFile) . '/' . $named);
+        $shared = static fn(string $subject): int => self::sharedTail($test, explode('/', self::stem($subject)));
+        foreach ($subjects as $subject) {
+            if ($subject !== $module && self::baseName($subject) === $named && $shared($subject) >= $shared($module)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * How many trailing segments two paths share: 2 for `tests/legacy/db` and `src/legacy/db`.
+     *
+     * @param list<string> $a
+     * @param list<string> $b
+     */
+    private static function sharedTail(array $a, array $b): int
+    {
+        $shared = 0;
+        while ($a !== [] && $b !== [] && array_pop($a) === array_pop($b)) {
+            ++$shared;
+        }
+
+        return $shared;
+    }
+
     /** The name a test file is named for: `db` for `tests/db.test.ts`, null for a file not named `<name>.test.*` or `<name>.spec.*`. */
     private static function namedFor(string $testFile): ?string
     {
@@ -134,7 +178,13 @@ final readonly class MocksSubjectRule implements TestFidelityRule
     /** A module's file name without its extension: `db` for `src/db.ts`. */
     private static function baseName(string $module): string
     {
-        return (string) preg_replace('/\.(?:[cm]?[jt]sx?)$/D', '', basename($module));
+        return basename(self::stem($module));
+    }
+
+    /** A module's path without its extension: `src/db` for `src/db.ts`. */
+    private static function stem(string $module): string
+    {
+        return (string) preg_replace('/\.(?:[cm]?[jt]sx?)$/D', '', $module);
     }
 
     /** Whether a project path lies under a `__mocks__` directory. */

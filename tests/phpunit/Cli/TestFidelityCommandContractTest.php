@@ -111,6 +111,8 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
             // The text is the template alone, as the golden holds it.
             self::assertSame($golden, $run('synthesize-mock', [$projectId, 'Typed'], []));
             self::assertSame((string) file_get_contents(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/synthesis-expected/ts-typed-no-values.txt'), $run('synthesize-mock', [$projectId, 'Typed'], ['no-values' => ['true']]));
+            // G6-08g: a bare --no-values means no values, and --no-values=false means values.
+            self::assertSame([(string) file_get_contents(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/synthesis-expected/ts-typed-no-values.txt'), $golden], [$run('synthesize-mock', [$projectId, 'Typed'], ['no-values' => ['']]), $run('synthesize-mock', [$projectId, 'Typed'], ['no-values' => ['false']])]);
             self::assertSame((string) file_get_contents(self::repositoryRoot() . '/tests/Fixtures/test-fidelity/synthesis-expected/rs-store-hand-written.txt'), $run('synthesize-mock', [$projectId, 'Store'], ['language' => ['rust'], 'framework' => ['hand-written']]));
             $json = json_decode($run('synthesize-mock', [$projectId, 'Typed'], ['json' => ['true']]), true, 512, JSON_THROW_ON_ERROR);
             self::assertSame([$golden, 'vitest', 'default', true], [$json['data']['template'], $json['data']['framework'], $json['data']['framework_source'], $json['data']['complete']]);
@@ -134,8 +136,9 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
     {
         $this->withScannedAudit(function (\Closure $run, string $projectId): void {
             self::assertSame(implode("\n", [
-                "fixtures/users.fixture.json:4  FIXTURE_DRIFT warning  Fixture 'users.fixture.json' is missing required field 'email' of UserRecord.",
+                // Two findings on one line are in key order, the sort's last tie-break.
                 "fixtures/users.fixture.json:4  FIXTURE_DRIFT warning  Fixture 'users.fixture.json' is missing required field 'name' of UserRecord.",
+                "fixtures/users.fixture.json:4  FIXTURE_DRIFT warning  Fixture 'users.fixture.json' is missing required field 'email' of UserRecord.",
                 '4 fixture drift findings in 1 fixture file.',
             ]) . "\n", $run('check-fixtures', [$projectId], ['limit' => ['2'], 'offset' => ['1']]));
             $json = json_decode($run('check-fixtures', [$projectId], ['json' => ['true']]), true, 512, JSON_THROW_ON_ERROR);
@@ -160,7 +163,7 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
 
             $rules = TestRuleCatalog::all();
             self::assertCount(count($rules) + 2, $lines);
-            self::assertSame('test.fidelity.ghost_member.v1  GHOST_MEMBER  scan  definite  missing_member,missing_export,missing_module  A double stubs a member, export or module its target does not have.', $lines[0]);
+            self::assertSame('test.fidelity.ghost_member.v1  GHOST_MEMBER  scan  definite,warning  missing_member,missing_export,missing_module  A double stubs a member, export or module its target does not have.', $lines[0]);
             self::assertSame('test.fidelity.over_mocking.v1  OVER_MOCKING  on_request  warning  saturation  ' . $rules[6]['description'], $lines[6]);
             foreach ($rules as $at => $rule) {
                 self::assertStringStartsWith($rule['id'] . '  ' . $rule['category'] . '  ' . $rule['tier'] . '  ' . implode(',', $rule['confidences']) . '  ', $lines[$at]);

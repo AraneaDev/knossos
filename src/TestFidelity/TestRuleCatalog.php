@@ -6,7 +6,7 @@ namespace Knossos\TestFidelity;
 
 use Knossos\TestFidelity\Fixtures\FixtureDrift;
 use Knossos\TestFidelity\OnRequest\OverMocking;
-use Knossos\TestFidelity\Rules\{ArityMismatchRule, GhostMemberRule, MocksSubjectRule, ReturnDriftRule, TautologyRule, VisibilityBreachRule};
+use Knossos\TestFidelity\Rules\{ArityMismatchRule, EnumCaseCheck, GhostMemberRule, MocksSubjectRule, ReturnDriftRule, TautologyRule, VisibilityBreachRule};
 
 /**
  * Every test-fidelity rule, scan tier and on-request tier: its id, category,
@@ -37,16 +37,15 @@ final class TestRuleCatalog
      */
     public static function all(): array
     {
-        $definite = [FindingConfidence::Definite];
         $either = [FindingConfidence::Definite, FindingConfidence::Warning];
         $warning = [FindingConfidence::Warning];
 
         return [
-            self::rule(GhostMemberRule::ID, FindingCategory::GhostMember, $definite, ['missing_member', 'missing_export', 'missing_module'], 'A double stubs a member, export or module its target does not have.'),
-            self::rule(ArityMismatchRule::ID, FindingCategory::ArityMismatch, $either, ['call_arity', 'signature'], 'A double\'s member takes a different number of arguments than the member it replaces.'),
+            self::rule(GhostMemberRule::ID, FindingCategory::GhostMember, $either, ['missing_member', 'missing_export', 'missing_module'], 'A double stubs a member, export or module its target does not have.'),
+            self::rule(ArityMismatchRule::ID, FindingCategory::ArityMismatch, $either, ['call_arity', 'signature', EnumCaseCheck::SUB_RULE], 'A double\'s member takes a different number of arguments than the member it replaces, or a matcher lists a literal that is none of an enum parameter\'s cases.'),
             self::rule(ReturnDriftRule::ID, FindingCategory::ReturnDrift, $either, ['return_type'], 'A double pins a value the replaced member\'s declared return type does not admit.'),
             self::rule(VisibilityBreachRule::ID, FindingCategory::VisibilityBreach, $either, ['visibility'], 'A double replaces a member that is not visible to it.'),
-            self::rule(TautologyRule::ID, FindingCategory::Tautology, $either, ['self_comparison', 'mock_echo', 'constant', 'zero_reach', 'unconfigured_spy', 'mock_only'], 'An assertion that cannot fail.'),
+            self::rule(TautologyRule::ID, FindingCategory::Tautology, $either, ['self_comparison', 'mock_echo', 'constant', 'zero_reach', 'unconfigured_spy', 'mock_only', 'vacuous_negation'], 'An assertion that cannot fail.'),
             self::rule(MocksSubjectRule::ID, FindingCategory::MocksSubject, $warning, ['mock_of_self'], 'A test replaces the module it is testing.'),
             self::rule(OverMocking::ID, OnRequestCategory::OverMocking, $warning, [OverMocking::SUB_RULE], 'At least 7 in 10 of a test file\'s dependencies are doubles, and fewer than 2 of its assertions read production code (Momus MOCK-001).'),
             self::rule('test.fidelity.stale_since.v1', OnRequestCategory::StaleSince, $warning, ['stale_mock'], 'A double\'s target changed since a git ref while the double\'s own file did not (scope git-diff; Momus DRIFT-006).'),

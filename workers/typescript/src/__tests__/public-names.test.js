@@ -106,6 +106,46 @@ describe("a class's or interface's member list", () => {
         expect(nodes.Cart.member_names_open).toBeUndefined();
     });
 
+    // G1-27: a member named by the string '#x' is spelled as a #private one
+    // is, so the class says which of its names are ECMAScript private.
+    it("names its ECMAScript private members apart from members named by a '#' string", () => {
+        const nodes = scan({
+            "src/vault.ts":
+                "export class Vault {\n" +
+                "    #hidden(): number { return 2; }\n" +
+                "    '#quoted'(): number { return 1; }\n" +
+                "    ['#computed'](): number { return 3; }\n" +
+                "    #field = 1;\n" +
+                "    static #shared = 1;\n" +
+                "    open(): number { return this.#hidden() + Vault.#shared; }\n" +
+                "}\n" +
+                "export class Inner extends Vault { #own = 3; }\n" +
+                "export class Plain { '#x'(): void {} }\n" +
+                "export interface Port { '#p'(): void }\n",
+        });
+
+        expect(nodes.Vault.member_names).toEqual([
+            "#computed",
+            "#field",
+            "#hidden",
+            "#quoted",
+            "#shared",
+            "open",
+        ]);
+        expect(nodes.Vault.private_names).toEqual([
+            "#field",
+            "#hidden",
+            "#shared",
+        ]);
+        expect(nodes.Inner.private_names).toEqual([
+            "#field",
+            "#hidden",
+            "#own",
+        ]);
+        expect(nodes.Plain).not.toHaveProperty("private_names");
+        expect(nodes.Port).not.toHaveProperty("private_names");
+    });
+
     it("says it is open when a base type cannot be read or any name is a member", () => {
         const nodes = scan({
             "src/bad.ts":

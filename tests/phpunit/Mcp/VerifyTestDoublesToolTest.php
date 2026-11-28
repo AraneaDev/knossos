@@ -110,8 +110,12 @@ final class VerifyTestDoublesToolTest extends KnossosTestCase
                 'tests/fakes.spec.ts#FakeLedger' => 'No class, interface or trait is named "tests/fakes.spec.ts#FakeLedger".',
                 // A prefix: find_component's candidates of a doubled kind, a substring match of its canonical name included.
                 'UserServ' => 'No class, interface or trait is named "UserServ"; did you mean: src/UserService.ts#UserService, src/UserService.ts#UserProfile?',
-                // A method is not a type to double.
-                'getProfile' => 'No class, interface or trait is named "getProfile".',
+                // A method is not a type to double, and the answer says what it is (G6-08g).
+                'getProfile' => '"getProfile" names a method, which is no class, interface or trait.',
+                // A typo find_component does not match is offered its near name.
+                'UserServce' => 'No class, interface or trait is named "UserServce"; did you mean: src/UserService.ts#UserService?',
+                // Under four characters no near name is offered, though "us" begins UserService.
+                'Usr' => 'No class, interface or trait is named "Usr".',
                 'Nowhere' => 'No class, interface or trait is named "Nowhere".',
             ] as $symbol => $message) {
                 try {

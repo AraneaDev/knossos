@@ -232,6 +232,45 @@ final class GhostMemberRuleTest extends KnossosTestCase
         assertSame('vi.spyOn stubs bad name, which UserService no longer has', self::judge($graph)[0]->message);
     }
 
+    public function testTheLengthCapCutsTheHeadAndKeepsTheSuggestion(): void
+    {
+        // G1-14: a 63-character name and its 64-character neighbour run the message past 120 characters.
+        $missing = str_repeat('a', 59) . 'Cent';
+        $present = str_repeat('a', 59) . 'Cents';
+        $graph = DriftFixtures::graph([DriftFixtures::method($present)], [DriftFixtures::stub($missing)]);
+
+        $message = self::judge($graph)[0]->message;
+
+        assertSame('vi.spyOn stubs ' . str_repeat('a', 24) . '…; did you mean ' . $present . '?', $message);
+        assertSame(120, mb_strlen($message));
+        assertSame('vi.spyOn stubs refund, which UserService no longer has', self::judge(DriftFixtures::graph([DriftFixtures::method('totalCents')], [DriftFixtures::stub('refund')]))[0]->message, 'a short message is not cut');
+        // The room the suggestion takes is counted in characters: 33 two-byte-and-ASCII ones are 49 of the 120.
+        $wide = str_repeat('é', 31) . 'xy';
+        $head = 'vi.spyOn stubs ' . str_repeat('é', 31) . 'x, which UserService no longer has';
+        $message = self::judge(DriftFixtures::graph([DriftFixtures::method($wide)], [DriftFixtures::stub(str_repeat('é', 31) . 'x')]))[0]->message;
+        assertSame(mb_substr($head, 0, 70) . '…; did you mean ' . $wide . '?', $message);
+        assertSame(120, mb_strlen($message));
+    }
+
+    public function testOfTwoNamesAsNearTheAlphabeticallyFirstIsSuggested(): void
+    {
+        // G1-15: a lineage's names reach the rule unsorted (a class's, then its parent's).
+        $graph = static fn(array $names): \Knossos\TestFidelity\TestFidelityGraph => DriftFixtures::graph([], [DriftFixtures::stub('lod')], targetAttributes: ['member_names' => $names]);
+
+        assertSame('loa', self::judge($graph(['lop', 'loa']))[0]->attributes['suggestion'] ?? null);
+        assertSame('loa', self::judge($graph(['loa', 'lop']))[0]->attributes['suggestion'] ?? null);
+        assertSame('lop', self::judge($graph(['kzd', 'lop']))[0]->attributes['suggestion'] ?? null, 'a nearer name wins over the alphabet');
+    }
+
+    public function testADoubleOfAFunctionIsNeverJudgedForMembers(): void
+    {
+        // G1-15: a function holds no members, whatever names its node lists.
+        $graph = DriftFixtures::graph([], [DriftFixtures::stub('gone')], ['kind' => 'function', 'export' => 'run'], targetKind: 'function', targetAttributes: ['member_names' => []]);
+
+        assertSame([], self::judge($graph));
+        assertCount(1, self::judge(DriftFixtures::graph([], [DriftFixtures::stub('gone')], targetAttributes: ['member_names' => []])), 'the control');
+    }
+
     public function testVendorTargetIsNotAGhost(): void
     {
         // `createMock(LoggerInterface::class)`, `Psr\Log` only in vendor/: the scan holds no node to judge against.

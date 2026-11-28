@@ -16,6 +16,7 @@ import {
     dottedName,
     objectKey,
     rootIdentifier,
+    SPIES,
     stripCast,
 } from "./test-double-syntax.js";
 
@@ -29,7 +30,6 @@ const WHOLE = new Set([
     "lastCalledWith",
 ]);
 const AFTER_CALL_NUMBER = new Set(["toHaveBeenNthCalledWith", "nthCalledWith"]);
-const SPIES = new Set(["vi.spyOn", "jest.spyOn"]);
 const MODIFIERS = new Set(["not", "resolves", "rejects"]);
 
 /**
@@ -58,17 +58,32 @@ export function recordCallMatchers(file) {
         ts.forEachChild(node, visit);
     };
     visit(file.sourceFile);
-    const facts = file.context.accumulator.nodesById;
+    const accumulator = file.context.accumulator;
     for (const double of file.doubles) {
-        const attributes = facts.get(double.id)?.attributes;
-        double.members.forEach((member, index) => {
-            if (found.has(member))
-                attributes.members[index].called_with = found.get(member);
-        });
+        // A double whose node was not kept (one past a component's own text) has no member facts to add to.
+        const members = accumulator.attribute(double.id, "members");
+        if (
+            members === undefined ||
+            !double.members.some((member) => found.has(member))
+        )
+            continue;
+        accumulator.setAttribute(
+            double.id,
+            "members",
+            members.map((fact, index) =>
+                found.has(double.members[index])
+                    ? { ...fact, called_with: found.get(double.members[index]) }
+                    : fact,
+            ),
+        );
     }
 }
 
-/** One matcher call: its api, line, and the arguments it lists. */
+/**
+ * One matcher call: its api, line, the arguments it lists, and `negated`
+ * when it is read through `.not`, where a count no call can meet makes the
+ * assertion pass whatever the member is called with.
+ */
 function matcher(file, call, api) {
     const listed = call.arguments.length;
     return {
@@ -76,7 +91,22 @@ function matcher(file, call, api) {
         line: file.line(call),
         count: AFTER_CALL_NUMBER.has(api) ? Math.max(listed - 1, 0) : listed,
         spread: call.arguments.some(ts.isSpreadElement),
+        ...(modifiersOf(call.expression.expression).includes("not")
+            ? { negated: true }
+            : {}),
     };
+}
+
+/** The `.not`, `.resolves` and `.rejects` links a matcher is called through, nearest first. */
+function modifiersOf(base) {
+    const links = [];
+    for (
+        let value = stripCast(base);
+        ts.isPropertyAccessExpression(value) && MODIFIERS.has(value.name.text);
+        value = stripCast(value.expression)
+    )
+        links.push(value.name.text);
+    return links;
 }
 
 /** What a matcher is called on: the operand of the `expect(...)` it follows, else the operand itself. */

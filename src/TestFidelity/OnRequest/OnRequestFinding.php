@@ -13,7 +13,9 @@ use Knossos\TestFidelity\TestFindingKey;
  *
  * Keyed by {@see TestFindingKey} as a stored finding is, so it has the same
  * identity across calls; its item id is `on_request:` and that key, which
- * keeps the sort's last tie-break stable (preflight F20).
+ * keeps the sort's last tie-break stable (preflight F20). The key reads the
+ * finding's identity, never its message: a message carries counts and the
+ * base ref, which move between runs of one finding (G6-12).
  */
 final readonly class OnRequestFinding
 {
@@ -22,6 +24,7 @@ final readonly class OnRequestFinding
      * @param ?string $double the double's display name; null for a finding about a whole file
      * @param ?string $target the target's display name; null when the finding has none
      * @param ?string $targetCanonical the target's canonical name, which the key reads
+     * @param string $identity what tells two findings of one rule, file and target apart, which the key reads; empty when nothing does
      */
     public function __construct(
         public OnRequestCategory $category,
@@ -34,12 +37,13 @@ final readonly class OnRequestFinding
         public ?string $double = null,
         public ?string $target = null,
         public ?string $targetCanonical = null,
+        public string $identity = '',
     ) {}
 
     /** The identity that survives a rescan and a line move. */
     public function key(): string
     {
-        return TestFindingKey::of($this->ruleId, $this->subRule, $this->file, $this->targetCanonical, $this->message);
+        return TestFindingKey::of($this->ruleId, $this->subRule, $this->file, $this->targetCanonical, $this->identity);
     }
 
     /**

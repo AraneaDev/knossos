@@ -2,6 +2,7 @@
 // 2 members; complete
 use mockall::mock;
 use synth::focus::Keyed;
+use synth::focus::*;
 
 mock! {
     pub Keyed<T> {}
@@ -13,7 +14,7 @@ mock! {
 
 #[test]
 fn keyed_mock() {
-    let mut mock = MockKeyed::new();
+    let mut mock = MockKeyed::<() /* knossos: bind T */>::new();
     mock.expect_get().returning(|_id| None);
     mock.expect_put().returning(|_value| ());
 }

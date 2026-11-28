@@ -445,16 +445,16 @@ final class PythonReadAttributionTest extends KnossosTestCase
     }
 
     /**
-     * `m.py` re-exports `Thing` from `n.py` and declares so much that its own
-     * answer outgrows a frame, so it is left out and its row names nothing it
-     * read. `app.py` names only `m.py`, relying on that row: a change to `n.py`
-     * must still reach it.
+     * `m.py` re-exports `Thing` from `n.py` and declares names so long that its
+     * answer outgrows a frame (about twice over), so it is left out and its row
+     * names nothing it read. `app.py` names only `m.py`, relying on that row: a
+     * change to `n.py` must still reach it.
      */
     public function testALeftOutModuleIsRebuiltWithItsReadersOnAnyPythonChange(): void
     {
         $functions = '';
-        for ($index = 0; $index < 12_000; ++$index) {
-            $functions .= sprintf("\n\ndef f%05d():\n    pass\n", $index);
+        for ($index = 0; $index < 300; ++$index) {
+            $functions .= sprintf("\n\ndef f%05d_%s():\n    pass\n", $index, str_repeat('x', 3_000));
         }
         $this->write('n.py', "class Thing:\n    pass\n");
         $this->write('m.py', "from n import Thing\n" . $functions);
@@ -462,7 +462,7 @@ final class PythonReadAttributionTest extends KnossosTestCase
         $this->write('other.py', "def unrelated():\n    return 2\n");
         $pdo = $this->freshTestDatabase();
         $this->scan($pdo);
-        assertSame('1', (string) $pdo->query("SELECT COUNT(*) FROM diagnostics WHERE message LIKE 'Left out of the graph%m.py%'")->fetchColumn());
+        assertSame('1', (string) $pdo->query("SELECT COUNT(*) FROM diagnostics WHERE code = 'WORKER_FRAME_TOO_LARGE' AND message LIKE 'Left out of the graph%m.py%'")->fetchColumn());
         $this->stampCacheRows($pdo);
 
         $this->write('n.py', "def Thing():\n    return 1\n");

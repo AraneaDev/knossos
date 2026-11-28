@@ -61,8 +61,9 @@ use PHPUnit\Framework\Attributes\Group;
  * 2. Deliberate: each language's test frameworks are no dependency, Python's `unittest`, `unittest.mock`,
  *    `mock`, `pytest` and `pytest_mock` included; Momus excludes only vitest and jest. Where Momus counts
  *    `unittest` or `unittest.mock` and stays silent at 1/2, Knossos fires at 1/1: `momus-drift`
- *    `drift_test.py` and `healthy_test.py`, the tautology golden's `test_mock_only.py`, `test_zero_reach.py`
- *    and `test_zero_reach_reached.py`, and the `autospec`, `kwargs`, `patch`, `property` and `spec` experiments.
+ *    `drift_test.py` and `healthy_test.py`, `momus-spec` `tests/test_spec_echo.py`, the tautology golden's
+ *    `test_mock_only.py`, `test_zero_reach.py` and `test_zero_reach_reached.py`, and the `autospec`,
+ *    `kwargs`, `patch`, `property` and `spec` experiments.
  * 3. Deliberate: a Python import inside a function, method or class is no dependency, as Momus reads only
  *    module-level imports; this keeps `test_patch_imports.py` at 1/1.
  * 4. A gap (G6-02): silent for PHP, whose worker sends no `imports` edge; `by_language` says so. Momus fires
@@ -164,9 +165,12 @@ use PHPUnit\Framework\Attributes\Group;
  *    function through `_context`; supertraits and a struct's trait impls get their own `impl`; generic impls
  *    are omitted (incomplete), marker traits ignored, `Copy` left out with a note; a hand-written fake of a
  *    struct or generic trait is an error.
- * 35. A gap (G6-03): jest and mockall templates are compared with goldens only, never compiled; mockall's
- *    handling of associated items, `return_const`, `&[T]` as `Vec::new()` and a return borrowing a method's
- *    lifetime parameter is unverified offline.
+ * 35. Deliberate (G6-03): the default suite compares jest and mockall templates with goldens only, as it
+ *    runs offline; `tools/compile-mock-goldens`, in CI's tests and rust lanes, compiles them against
+ *    `@jest/globals` and mockall 0.13.1. Every Rust golden builds but two that say they are incomplete: a
+ *    generic method whose type parameter is not `'static`, which mockall cannot mock in a trait impl
+ *    (`rs-store`, `rs-store-no-values`). A `std::fmt::Display` supertrait gets its impl (`rs-named`); a
+ *    return borrowing a method's lifetime parameter has no golden, so it stays unverified.
  * 36. A gap from Decision 5's wording: `complete` says the member list is closed and nothing was omitted; an
  *    untyped parameter or return does not clear it, and is listed in its member's `unknown` instead.
  *
@@ -211,6 +215,7 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
     private const KNOSSOS_ONLY = [
         'python:momus-drift:drift_test.py' => 2,
         'python:momus-drift:healthy_test.py' => 2,
+        'python:momus-spec:tests/test_spec_echo.py' => 2,
         'python:nemesis-experiments/autospec:tests/test_search.py' => 2,
         'python:nemesis-experiments/inherited-collision:tests/test_x.py' => 7,
         'python:nemesis-experiments/kwargs:tests/test_session.py' => 2,
@@ -253,6 +258,7 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
      * are Momus's MOCK-001 files, less and plus the numbered departures.
      */
     #[DataProvider('languageSuites')]
+    #[Group('slow')]
     public function testOverMockingAgainstMomus(string $suite): void
     {
         $momus = [];
@@ -438,7 +444,8 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
     }
 
     /**
-     * No golden holds a path of the machine it was run on.
+     * No golden holds a path of the machine it was run on, nor Momus's
+     * `durationMs`, which differs from run to run (FrozenGoldens strips both).
      *
      * @param array<string, mixed> $run
      */
@@ -447,6 +454,7 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
         $text = (string) json_encode($run, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         self::assertStringNotContainsString('/tmp/', $text, $message);
         self::assertStringNotContainsString('/home/', $text, $message);
+        self::assertStringNotContainsString('"durationMs"', $text, $message);
     }
 
     /** Every on-request tool answers twice alike over a non-empty answer. */
@@ -557,7 +565,7 @@ final class OnRequestAcceptanceTest extends KnossosTestCase
         $base = self::repositoryRoot() . '/tests/Fixtures/test-fidelity/' . $language;
         $dirs = array_filter(
             array_map('basename', glob($base . '/*', GLOB_ONLYDIR) ?: []),
-            static fn(string $dir): bool => (bool) preg_match('/^(momus|nemesis)(-drift|-src-layout|-magic)?$|^tautology$/', $dir),
+            static fn(string $dir): bool => (bool) preg_match('/^(momus|nemesis)(-drift|-src-layout|-magic|-spec)?$|^tautology$/', $dir),
         );
         $fixtures = [...$dirs, ...array_map(static fn(string $dir): string => 'nemesis-experiments/' . basename($dir), glob($base . '/nemesis-experiments/*', GLOB_ONLYDIR) ?: [])];
         sort($fixtures);

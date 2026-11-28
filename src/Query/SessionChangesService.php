@@ -8,6 +8,7 @@ use Knossos\Git\GitCommand;
 use Knossos\Git\GitProcessRunner;
 use Knossos\Git\GitProcessRunnerInterface;
 use Knossos\Git\GitWorkingTreeProvider;
+use Knossos\Git\NotAWorkTree;
 use Knossos\Git\ProcessGitWorkingTreeProvider;
 use Knossos\Scan\ScanLedger;
 use Knossos\Scan\ScanLedgerSpan;
@@ -141,12 +142,12 @@ final readonly class SessionChangesService
     private function workingChangesIn(string $projectId, string $root, array $envelope): array
     {
         $base = ['project_root' => $root, 'project_id' => $projectId, 'snapshot_id' => (new ScanLedger($this->pdo))->activeSnapshot($projectId)] + $envelope;
-        if (!$this->succeeds($root, ['rev-parse', '--is-inside-work-tree'])) {
-            return ['status' => 'no-git'] + $base;
-        }
         try {
             // No base ref: the provider compares with HEAD, or with the index on a branch that has none.
+            // Its own work-tree check answers no-git, so git is not asked that twice (G6-08a).
             $listing = $this->git->changes($root, null, self::MAX_FILES, self::GIT_TIMEOUT_MS);
+        } catch (NotAWorkTree) {
+            return ['status' => 'no-git'] + $base;
         } catch (Throwable $error) {
             return ['status' => 'error', 'reason' => $error->getMessage()] + $base;
         }

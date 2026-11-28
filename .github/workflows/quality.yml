@@ -334,6 +334,19 @@ jobs:
             -v "$RUNNER_TEMP/trivy-cache:/tmp/trivy-cache" \
             -v "$PWD:/workspace:ro" \
             knossos:quality full "$LANE"
+      # The synthesize_mock goldens compiled for real (G6-03): the jest
+      # templates against jest's types in the tests lane, beside the
+      # TypeScript worker's checks, and the Rust templates against mockall in
+      # the rust lane. It fetches those packages, so it runs as a step of its
+      # own rather than in the offline lane script, with everything it fetches
+      # in a scratch directory inside the throwaway container.
+      - name: Compile the synthesize_mock goldens
+        if: matrix.lane == 'tests' || matrix.lane == 'rust'
+        env:
+          ONLY: ${{ matrix.lane == 'rust' && 'rust' || 'typescript' }}
+        run: |
+          docker run --rm --entrypoint php -e HOME=/tmp/compile-home \
+            knossos:quality tools/compile-mock-goldens --only="$ONLY" --dir=/tmp/compile-mock-goldens
       # The gate lane runs on its own because it is the one lane that needs the
       # repository's history: the image bakes this source without .git, so the
       # checkout is mounted and the baseline commit named explicitly.

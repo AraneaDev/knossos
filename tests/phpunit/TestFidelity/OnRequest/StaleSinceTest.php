@@ -134,6 +134,20 @@ final class StaleSinceTest extends TestCase
         self::assertStringNotContainsString('review', $long[0]->message);
     }
 
+    public function testTwoRunsThatDifferOnlyInBaseRefOrMembersGiveOneKey(): void
+    {
+        // G6-12: the key is the rule, the test file and the target, never the ref or the review list.
+        $main = StaleSince::findings(self::input([self::PROD]), 'main')[0];
+        $other = StaleSince::findings(self::input([self::PROD], ['totalFor', 'post']), 'origin/release')[0];
+
+        self::assertNotSame($main->message, $other->message);
+        self::assertSame($main->key(), $other->key());
+        // Another target in the same file is another finding.
+        $double = ['double' => 'vi.spyOn Audit.log', 'line' => 5, 'target' => 'Audit', 'canonical' => 'src/ledger.ts#Audit', 'files' => [self::PROD], 'inherited' => [], 'members' => ['log']];
+        $audit = StaleSince::findings(new OnRequestInput([self::TEST => 'typescript'], [], [], [], targets: [self::TEST => [$double]], changed: [self::PROD]), 'main')[0];
+        self::assertNotSame($main->key(), $audit->key());
+    }
+
     public function testAlwaysWarning(): void
     {
         $findings = StaleSince::findings(self::input([self::PROD], ['totalFor', 'post']), 'main');

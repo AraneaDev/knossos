@@ -62,6 +62,13 @@ use PHPUnit\Framework\Attributes\Group;
  * mock, and a mocked `new` whose context builds the mock. The member
  * `pretty` compares through `pretty_assertions`, still read as assertions
  * (re-review 1 ruling), with a planted `constant` beside its healthy twin.
+ * The members `pretty-renamed` (a Cargo `package =` rename) and
+ * `pretty-extern` (`extern crate … as pretty_assertions`) put another crate
+ * under that name, whose comparisons are not read (G5-07). The member
+ * `nested-manifest` holds another package's manifest in its module tree,
+ * reached by plain `mod`, whose macro declares the name (G5-04).
+ * `type-fakes` names a hand-written fake only as a type argument, no
+ * `zero_reach`, beside a planted pinned fake nothing names (G5-10 M4).
  *
  * `src/thermometer.rs` fakes a trait by hand (Task 4): a fake handed to
  * production and a stateful fake, beside a planted `mock_echo` (definite) of
@@ -71,6 +78,10 @@ use PHPUnit\Framework\Attributes\Group;
  * `tests/planted.rs` sets each planted finding beside its healthy twin,
  * which compares with production: `assert_ne!(1, 2)` (`constant`) and
  * `assert_eq!(1, 1)` (`self_comparison`).
+ *
+ * `src/route.rs` matches an enum parameter by its case,
+ * `.with(eq(Leg::Sea))`: silent, as the Rust worker sends no matcher
+ * literals and a mockall double is compile-checked (G3-19).
  */
 #[Group('test-fidelity')]
 final class RustHealthyIdiomsTest extends KnossosTestCase
@@ -112,6 +123,8 @@ final class RustHealthyIdiomsTest extends KnossosTestCase
             'TAUTOLOGY/mock_only/warning@src/clock.rs:244',
             'TAUTOLOGY/self_comparison/definite@tests/planted.rs:18',
             'TAUTOLOGY/zero_reach/warning@src/clock.rs:186',
+            // A pinned fake nothing names, beside one named only as a type argument.
+            'TAUTOLOGY/zero_reach/warning@type-fakes/src/lib.rs:28',
         ], $findings);
     }
 

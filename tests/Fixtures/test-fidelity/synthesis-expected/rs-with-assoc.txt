@@ -2,13 +2,14 @@
 // 4 members; complete
 use mockall::mock;
 use synth::focus::WithAssoc;
+use synth::focus::*;
 
 mock! {
     pub WithAssoc {}
     impl WithAssoc for WithAssoc {
         type Output = ();
         const LIMIT: usize = 0;
-        fn produce(&self) -> Self::Output;
+        fn produce(&self) -> <Self as WithAssoc>::Output;
         fn limit(&self) -> usize;
     }
 }

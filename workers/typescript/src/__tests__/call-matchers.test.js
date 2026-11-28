@@ -94,6 +94,65 @@ describe("the arguments a call matcher expects", () => {
     });
 });
 
+describe("the links a call matcher is read through", () => {
+    // G3-02: a matcher under `.not` says so, as a count no call can meet
+    // makes it pass whatever the member is called with; `.resolves` and
+    // `.rejects` are read past alike.
+    it("marks a matcher read through .not, and reads one through .resolves or .rejects", () => {
+        const { nodes } = scan(
+            inTest(
+                "  const spy = vi.spyOn(new Svc(), 'run');",
+                "  expect(spy).not.toHaveBeenCalledWith();",
+                "  expect(spy).toHaveBeenCalledWith('a', 1);",
+                "  expect(spy).resolves.not.toHaveBeenCalledWith('a');",
+                "  expect(spy).rejects.toHaveBeenCalledWith('a', 1, 2);",
+                "  expect(spy).not.toHaveBeenNthCalledWith(1);",
+            ),
+        );
+
+        expect(
+            doubleAt(nodes, PATH, 4).attributes.members[0].called_with,
+        ).toEqual([
+            {
+                api: "toHaveBeenCalledWith",
+                line: 5,
+                count: 0,
+                spread: false,
+                negated: true,
+            },
+            { api: "toHaveBeenCalledWith", line: 6, count: 2, spread: false },
+            {
+                api: "toHaveBeenCalledWith",
+                line: 7,
+                count: 1,
+                spread: false,
+                negated: true,
+            },
+            { api: "toHaveBeenCalledWith", line: 8, count: 3, spread: false },
+            {
+                api: "toHaveBeenNthCalledWith",
+                line: 9,
+                count: 0,
+                spread: false,
+                negated: true,
+            },
+        ]);
+    });
+
+    it("leaves a matcher on a spy that replaces no one named member", () => {
+        const { nodes } = scan(
+            inTest(
+                "  const name = 'run' as const;",
+                "  const spy = vi.spyOn(new Svc(), name);",
+                "  expect(spy).toHaveBeenCalledWith('a', 1);",
+            ),
+        );
+        const spy = doubleAt(nodes, PATH, 5);
+
+        expect(spy.attributes.members).toEqual([]);
+    });
+});
+
 describe("the member a call matcher is about", () => {
     it("finds the member a matcher is about through the object that holds it", () => {
         const { nodes } = scan(

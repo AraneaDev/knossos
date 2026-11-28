@@ -9,16 +9,17 @@ namespace Knossos\TestFidelity\Rules;
  */
 final class DriftText
 {
-    private const MAX_LENGTH = 120;
+    /** The longest a cleaned text is, in characters. */
+    public const MAX_LENGTH = 120;
 
     private function __construct() {}
 
-    /** One line of printable text, cut at {@see self::MAX_LENGTH} characters. */
-    public static function clean(string $text): string
+    /** One line of printable text, cut at `$max` characters ({@see self::MAX_LENGTH} unless a caller keeps room for more). */
+    public static function clean(string $text, int $max = self::MAX_LENGTH): string
     {
         $text = trim((string) preg_replace('/[\p{C}\p{Zl}\p{Zp}\s]+/u', ' ', $text));
-        if (mb_strlen($text) > self::MAX_LENGTH) {
-            return mb_substr($text, 0, self::MAX_LENGTH - 1) . '…';
+        if (mb_strlen($text) > $max) {
+            return mb_substr($text, 0, $max - 1) . '…';
         }
 
         return $text;

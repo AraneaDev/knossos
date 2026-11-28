@@ -80,6 +80,7 @@ final class BoundaryCouplingsServiceTest extends KnossosTestCase
      */
     #[Group('query')]
     #[RunInSeparateProcess]
+    #[Group('slow')]
     public function testACellOfMoreComponentsThanOneStatementBindsIsListed(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture(self::FIXTURE);
@@ -157,6 +158,7 @@ final class BoundaryCouplingsServiceTest extends KnossosTestCase
      */
     #[Group('query')]
     #[RunInSeparateProcess]
+    #[Group('slow')]
     public function testADenseCellIsListedWithinTheMemoryOfItsResult(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture(self::FIXTURE);

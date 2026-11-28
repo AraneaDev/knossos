@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Knossos\TestFidelity\Rules;
 
+use Knossos\TestFidelity\Facts\CallMatcher;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
+use Knossos\TestFidelity\PythonResiduals;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\TestFidelity\TestFinding;
 
@@ -22,24 +24,39 @@ use Knossos\TestFidelity\TestFinding;
  * A call matcher that lists more arguments than the member takes, or, where the
  * matcher is exact, fewer than it requires, is a `call_arity` finding. The count
  * is syntax on both sides, so it is definite; a spread matcher is silent. A
+ * PHP method production hands to a call as a callable argument
+ * (`array_walk($xs, [$repo, 'save'])`, a `calls` edge marked `callable`
+ * whose source is no test code, `PhpCallableReach`) through the target or a type it inherits
+ * from may be called with more arguments than it takes, so neither more
+ * matcher arguments nor more replacement parameters are reported for it,
+ * though too few still are (G3-31). A
  * Python matcher is bound by keyword name and parameter kind as well
  * (`PythonCallBinding`), definite with or without `autospec` (the user's
  * decision), and silent for a decorated member, whose signature a decorator
- * may have replaced. Accepted residual: a Python call made unbound,
- * `Repo.save(repo, x)`, records the receiver, so a matcher written for it
- * reads as one argument too many. So is a rebind from another file
- * (`Repo.save = wrap(Repo.save)` in another module), which no worker sees: the
- * def's signature is then judged for a name that holds another (the residual
- * GHOST_MEMBER records for cross-file writes), and so is a package rebinding a
- * submodule's function (`m.f = partial(m.f, 1)` in `pkg/__init__.py`). Silent
+ * may have replaced. A Python method production calls through its class,
+ * `Repo.save(repo, x)` (`called_unbound`, `PythonUnboundCalls`, G4-10), takes
+ * its receiver as an argument there, so a matcher or a replacement that lists
+ * it fits, and one argument more still does not. A rebind from another file
+ * (`Repo.save = wrap(Repo.save)` in another module, or a package's
+ * `m.f = partial(m.f, 1)`) marks the def decorated in the graph's view
+ * (`PythonForeignWrites`, G4-03), so it is not judged. Silent
  * for a Python class whose lineage carries `methods_rewritable` (a project
  * metaclass, an `__init_subclass__`, a class decorator or call that may
- * replace its methods; Ruling P21). Residual (G4-12): a base outside the
- * project is never taken to rewrite, though its metaclass may. Silent, too,
+ * replace its methods; Ruling P21). A base outside the project is never
+ * taken to rewrite, though its metaclass may (G4-12), so a mismatch under one
+ * that may (`PythonResiduals::rewritingBase()`), or on a target whose lineage
+ * names a write the worker does not follow (`unfollowed_writes`), is a
+ * warning with that `residual` (U1). Silent, too,
  * where Python's lookup may answer the name with another binding than the
  * def found (Ruling P24, `TestFidelityGraph::answersCertainly()`): another
  * class of the lineage lists the name, or the def is inherited past a base
  * outside the project.
+ *
+ * A PHP matcher that lists a literal for a parameter typed by an enum with a
+ * closed case list, and the literal is none of its cases, is an `enum_case`
+ * finding (`EnumCaseCheck`, G3-19): definite when the literal's type is the
+ * enum's backing type (or a string naming no case of a pure enum), a warning
+ * when the types differ, silent wherever the list or the literal is unknown.
  */
 final readonly class ArityMismatchRule extends DriftRule
 {
@@ -57,14 +74,51 @@ final readonly class ArityMismatchRule extends DriftRule
         if ($pair->member !== null && !$graph->answersCertainly($pair->target, $pair->member)) {
             return null;
         }
+        if ($declared === null) {
+            return null;
+        }
+        $takesMore = self::reachedAsCallable($pair, $graph);
+        // G4-10: production calls the method through its class, which hands the receiver over as an argument.
+        $unbound = ($pair->member?->attributes['called_unbound'] ?? false) === true;
 
-        return $declared === null ? null : $this->signature($pair, $declared) ?? $this->calls($pair, $declared);
+        $finding = $this->signature($pair, $declared, $takesMore, $unbound) ?? $this->calls($pair, $declared, $takesMore, $unbound) ?? EnumCaseCheck::finding($pair, $declared, $graph, self::ID);
+
+        return TestFidelityGraph::isPython($pair->target) ? PythonResiduals::downgraded($finding, self::residual($pair, $graph)) : $finding;
+    }
+
+    /** U1: the write the worker does not follow, or the base it cannot read, that may have changed a Python signature. */
+    private static function residual(DriftPair $pair, TestFidelityGraph $graph): ?string
+    {
+        return PythonResiduals::unfollowed($pair->target, $graph) ?? (PythonResiduals::rewritingBase($pair->target, $graph) ? PythonResiduals::EXTERNAL_BASE : null);
+    }
+
+    /** Whether production hands the stubbed PHP method on as a callable value through the target or a type it inherits from (G3-31). */
+    private static function reachedAsCallable(DriftPair $pair, TestFidelityGraph $graph): bool
+    {
+        if (!TestFidelityGraph::isPhp($pair->target)) {
+            return false;
+        }
+        $classes = $graph->callableClasses($pair->stub->name);
+        foreach ($graph->lineage($pair->target) as $type) {
+            if (in_array(strtolower(ltrim($type->canonicalName, '\\')), $classes, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** A call matcher on the member lists a count the member cannot meet. */
-    private function calls(DriftPair $pair, SignatureShape $declared): ?TestFinding
+    private function calls(DriftPair $pair, SignatureShape $declared, bool $takesMore, bool $unbound): ?TestFinding
     {
-        $violation = CallArity::violation($pair->stub->calledWith, $declared, DriftText::clean($pair->stub->name), $pair->double->framework, TestFidelityGraph::isPython($pair->target));
+        $python = TestFidelityGraph::isPython($pair->target);
+        $matchers = $pair->stub->calledWith;
+        if ($unbound) {
+            // A matcher that binds once the receiver is counted fits a call made through the class.
+            $receiver = $declared->withReceiver();
+            $matchers = array_values(array_filter($matchers, static fn(CallMatcher $matcher): bool => CallArity::violation([$matcher], $receiver, '', $pair->double->framework, $python, $takesMore) !== null));
+        }
+        $violation = CallArity::violation($matchers, $declared, DriftText::clean($pair->stub->name), $pair->double->framework, $python, $takesMore);
 
         return $violation === null ? null : $pair->finding(
             FindingCategory::ArityMismatch,
@@ -77,10 +131,10 @@ final readonly class ArityMismatchRule extends DriftRule
     }
 
     /** The double declares more required parameters than the member takes. */
-    private function signature(DriftPair $pair, SignatureShape $declared): ?TestFinding
+    private function signature(DriftPair $pair, SignatureShape $declared, bool $takesMore, bool $unbound): ?TestFinding
     {
         $actual = SignatureShape::ofParams($pair->stub->params);
-        if ($actual === null || $declared->isVariadic() || $actual->requiredCount() <= count($declared->params)) {
+        if ($takesMore || $actual === null || $declared->isVariadic() || $actual->requiredCount() <= count($declared->params) + ($unbound ? 1 : 0)) {
             return null;
         }
 

@@ -64,7 +64,7 @@ final class IncrementalLanguageTest extends KnossosTestCase
             assertSame(1, $versionChange->data['parsed_files']);
             assertSame(1, $versionChange->data['unchanged_files']);
             // Stored as the worker's version plus a prefix of the hash of its own files.
-            assertSame(1, preg_match('/\A0\.9\.0\+[0-9a-f]{16}\z/', (string) $pdo->query(
+            assertSame(1, preg_match('/\A0\.9\.1\+[0-9a-f]{16}\z/', (string) $pdo->query(
                 "SELECT scanner_version FROM contribution_cache WHERE scanner_id = 'knossos.typescript'",
             )->fetchColumn()));
         } finally {

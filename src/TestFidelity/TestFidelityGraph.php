@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Knossos\TestFidelity;
 
+use Knossos\Classification\TestModuleRule;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\TestFidelity\Facts\TestCaseFact;
@@ -24,11 +25,13 @@ use Knossos\TestFidelity\Facts\TestDouble;
  * A PHP worker cannot know across files whether a name is a class, an
  * interface, a trait or an enum, so it names every double's target
  * `php:class:<FQCN>`; such a reference, and any PHP type reference, resolves
- * to the class-like node of that name, in any case, as PHP resolves names.
+ * to the class-like node of that name, in any case, as PHP resolves names,
+ * from the declaration `PhpTypeDeclarations` picks when several files hold one.
  *
  * A Python base outside the project is an unseen ancestor, whose names are
  * unknown, except `abc.ABC`, `typing.Protocol` and `typing.Generic`, which
- * are seen and add only their metaclass's names (`knownBaseNames()`).
+ * are seen and add only their metaclass's names (`knownBaseNames()`,
+ * `PythonBases`).
  */
 final readonly class TestFidelityGraph
 {
@@ -42,29 +45,6 @@ final readonly class TestFidelityGraph
     private const PHP_TYPE_REFERENCE = '/^php:(?:class|interface|trait|enum):\\\\?(.+)$/sD';
 
     /**
-     * The Python bases outside the project that add no member a double may
-     * stub but these (their metaclass's own on 3.14, the one version
-     * checked, with the pure-Python `_py_abc` caches added; a lookup on the
-     * class reaches them, so `patch.object(C, "register")` replaces one,
-     * though `dir(C)` and a `spec=C` list none),
-     * so a class inheriting from one keeps a complete name list:
-     * `abc.ABC`, `typing.Protocol` and `typing.Generic`, by qualified name.
-     * Every other base outside the project (`enum.Enum`, `typing.NamedTuple`,
-     * `typing.TypedDict`, `Exception`) is unseen, its names unknown.
-     */
-    private const PYTHON_KNOWN_BASES = [
-        'abc.ABC' => self::ABC_NAMES,
-        'typing.Protocol' => [...self::ABC_NAMES, '_is_protocol', '_is_runtime_protocol'],
-        'typing.Generic' => ['_is_protocol'],
-    ];
-
-    /** What `abc.ABCMeta` gives each class it makes, the pure-Python `_py_abc`'s caches included. */
-    private const ABC_NAMES = ['_abc_cache', '_abc_caches_clear', '_abc_impl', '_abc_negative_cache', '_abc_negative_cache_version', '_abc_registry', '_abc_registry_clear', '_dump_registry', 'register'];
-
-    /** A Python reference to a class outside the project: `py:external_symbol:<name>` (`from abc import ABC`) or `py:class:<name>` (`abc.ABC`), the name captured. */
-    private const PYTHON_BASE_REFERENCE = '/^py:(?:external_symbol|class):(.+)$/sD';
-
-    /**
      * @param array<string, NodeFact> $nodes every node by reference; the first contribution to emit one wins
      * @param array<string, NodeFact> $factNodes the test double and test case nodes, by canonical name
      * @param list<TestDouble> $doubles
@@ -75,6 +55,8 @@ final readonly class TestFidelityGraph
      * @param array<string, list<string>> $parents type reference => the types it extends, implements or uses, in edge order
      * @param array<string, string> $phpTypes lower-case FQCN => the reference of the PHP class-like node of that name
      * @param array<string, array<string, true>> $visibilityChanged type reference => lower-case names of the methods whose visibility a trait use there changes
+     * @param PhpCallableReach $callables the PHP methods production hands on as callable values
+     * @param array<string, array<string, true>> $imports file => the references its `imports` edges name
      */
     private function __construct(
         private array $nodes,
@@ -87,6 +69,8 @@ final readonly class TestFidelityGraph
         private array $parents,
         private array $phpTypes,
         private array $visibilityChanged,
+        private PhpCallableReach $callables,
+        private array $imports,
     ) {}
 
     /**
@@ -99,7 +83,8 @@ final readonly class TestFidelityGraph
      */
     public static function fromContributions(array $contributions): self
     {
-        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = $visibilityChanged = [];
+        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = $phpTypes = $visibilityChanged = $imports = [];
+        $contributions = PhpTypeDeclarations::preferred($contributions);
         foreach ($contributions as $contribution) {
             foreach ($contribution->nodes as $node) {
                 if (isset($nodes[$node->localId])) {
@@ -123,6 +108,8 @@ final readonly class TestFidelityGraph
             foreach ($contribution->edges as $edge) {
                 if ($edge->kind === 'doubles') {
                     $targets[$edge->sourceReference] ??= $edge->targetReference;
+                } elseif ($edge->kind === 'imports') {
+                    $imports[$edge->evidence->relativePath][$edge->targetReference] = true;
                 } elseif ($edge->kind === 'contains') {
                     $children[$edge->sourceReference][] = $edge->targetReference;
                 } elseif (in_array($edge->kind, self::INHERITANCE_KINDS, true)) {
@@ -133,6 +120,8 @@ final readonly class TestFidelityGraph
                 }
             }
         }
+        // G4-03: a Python list another file writes to is open in this view of it; G4-10: a method production calls through its class is marked.
+        $nodes = PythonUnboundCalls::applied($contributions, PythonForeignWrites::applied($contributions, $nodes, $children));
         ksort($doubles, SORT_STRING);
         ksort($testCases, SORT_STRING);
         $byFile = [];
@@ -140,7 +129,7 @@ final readonly class TestFidelityGraph
             $byFile[self::fileOf($case->canonicalName)][] = $case;
         }
 
-        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents, $phpTypes, $visibilityChanged);
+        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents, $phpTypes, $visibilityChanged, PhpCallableReach::of($contributions), $imports);
     }
 
     /**
@@ -242,6 +231,12 @@ final readonly class TestFidelityGraph
         return $reference === null ? null : $this->nodes[$reference];
     }
 
+    /** The lower-case classes through which production hands a PHP method of this name, in any case, on as a callable value (`[$repo, 'save']`). @return list<string> */
+    public function callableClasses(string $method): array
+    {
+        return $this->callables->classes($method);
+    }
+
     /** Whether a node came from the PHP worker, whose class and member names PHP matches in any case. */
     public static function isPhp(NodeFact $node): bool
     {
@@ -297,11 +292,7 @@ final readonly class TestFidelityGraph
      */
     private function knownBase(string $reference): ?array
     {
-        if (isset($this->nodes[$reference]) || preg_match(self::PYTHON_BASE_REFERENCE, $reference, $match) !== 1) {
-            return null;
-        }
-
-        return self::PYTHON_KNOWN_BASES[$match[1]] ?? null;
+        return isset($this->nodes[$reference]) ? null : PythonBases::knownNames($reference);
     }
 
     /**
@@ -490,8 +481,8 @@ final readonly class TestFidelityGraph
      * inherits (Ruling P21): it or an ancestor the scan holds carries
      * `methods_rewritable` (a project metaclass, an `__init_subclass__`, a
      * class decorator or call that may replace methods). A base outside the
-     * project is not taken to rewrite: a residual (G4-12), since its metaclass
-     * or hook cannot be read.
+     * project is not taken to rewrite, since its metaclass or hook cannot be
+     * read; an arity mismatch under one is a warning instead (G4-12, U1).
      */
     public function hasRewritableLineage(NodeFact $owner): bool
     {
@@ -547,6 +538,22 @@ final readonly class TestFidelityGraph
 
         return ($node->attributes['external'] ?? false) === true || str_starts_with($node->kind, 'external_') || str_starts_with($path, 'vendor/')
             || (self::isPython($node) && preg_match('#(?:^|/)site-packages/#', $path) === 1);
+    }
+
+    /** Whether a Python test calls into, or its file imports, a production module that may write a caller's frame locals (G4-08, `PythonResiduals`). */
+    public function reachesPythonFrameWriter(TestCaseFact $case): bool
+    {
+        $tests = new TestModuleRule();
+        $file = self::fileOf($case->canonicalName);
+        foreach ($this->nodes as $reference => $node) {
+            $reasons = $node->attributes['unfollowed_writes'] ?? null;
+            $reached = in_array($node->evidence->relativePath, $case->subjects, true) || isset($this->imports[$file][$reference]);
+            if ($reached && $node->kind === 'module' && self::isPython($node) && is_array($reasons) && in_array(PythonResiduals::FRAME_WRITE, $reasons, true) && $tests->classify($node) === []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Whether a node reference names a node some contribution of the scan emitted. */

@@ -106,6 +106,19 @@ final class TestCaseFactTest extends KnossosTestCase
         assertNull(TestCaseFact::fromNode(self::node('test_case', $attributes)));
     }
 
+    public function testReadsWhetherTheTestIsMeantToFail(): void
+    {
+        // G1-10: Vitest's `it.fails`.
+        $plain = TestCaseFact::fromNode(self::node('test_case', self::attributes()));
+        $fails = TestCaseFact::fromNode(self::node('test_case', ['fails' => true] + self::attributes()));
+        $not = TestCaseFact::fromNode(self::node('test_case', ['fails' => false] + self::attributes()));
+
+        assertSame([false, true, false], [$plain?->fails, $fails?->fails, $not?->fails]);
+        assertSame([1, 'totals the cart', null], [$fails?->productionCalls, $fails?->name, $fails?->shouldPanic]);
+        assertNull(TestCaseFact::fromNode(self::node('test_case', ['fails' => 'yes'] + self::attributes())));
+        assertNull(TestCaseFact::fromNode(self::node('test_case', ['fails' => 1] + self::attributes())));
+    }
+
     public function testReturnsNullForMalformedAssertionsAndOtherKinds(): void
     {
         assertNull(TestCaseFact::fromNode(self::node('test_case', ['assertions' => 'x'] + self::attributes())));

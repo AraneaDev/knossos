@@ -66,7 +66,7 @@ final readonly class PhpTemplate implements MockTemplate
             if ($written === null) {
                 $unknown[] = sprintf('param $%s: untyped', $name);
             }
-            $params[] = self::type($written ?? 'mixed') . ' ' . (($param['variadic'] ?? false) === true ? '...' : '') . '$' . $name . (($param['optional'] ?? false) === true ? ' = …' : '');
+            $params[] = self::type($written ?? 'mixed') . ' ' . (($param['by_ref'] ?? false) === true ? '&' : '') . (($param['variadic'] ?? false) === true ? '...' : '') . '$' . $name . (($param['optional'] ?? false) === true ? ' = …' : '');
         }
         $returns = $member->returns();
         if ($returns === null) {

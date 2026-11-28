@@ -186,7 +186,73 @@ describe("field visibility", () => {
     });
 });
 
-describe("field lists that are open", () => {
+describe("field lists a JS expando or a generic base opens", () => {
+    it("opens a JS class whose fields are this.x expandos, and keeps its list", () => {
+        // G6-08d: `this.x = …` in a JS file is an expando, typed by nothing and filled by any code path.
+        const nodes = scan({
+            "src/account.js":
+                "export class Account {\n" +
+                "  constructor(id) {\n" +
+                "    this.id = id;\n" +
+                "    this.balance = 0;\n" +
+                "  }\n" +
+                "}\n" +
+                "export class Plain {\n" +
+                "  name = 'x';\n" +
+                "}\n",
+            "tsconfig.json": JSON.stringify({
+                compilerOptions: { allowJs: true, checkJs: false },
+                include: ["src"],
+            }),
+        });
+
+        expect(nodes.Account.fields.map((field) => field.name)).toEqual([
+            "balance",
+            "id",
+        ]);
+        expect(nodes.Account.fields_open).toBe(true);
+        // A JS class whose fields are all declared in its body is read as any class is.
+        expect(nodes.Plain.fields).toEqual([
+            { name: "name", required: false, line: 8 },
+        ]);
+        expect(nodes.Plain.fields_open).toBeUndefined();
+    });
+
+    it("opens a list whose inherited field is typed by a generic base's parameter", () => {
+        // G6-08d: `NumGen extends Gen<number>` would read `value: T`; the
+        // argument is not substituted, so the list is sent open and never judged.
+        const nodes = scan({
+            "src/gen.ts":
+                "export class Gen<T> {\n" +
+                "  value!: T;\n" +
+                "  items: T[] = [];\n" +
+                "  label!: string;\n" +
+                "}\n" +
+                "export class NumGen extends Gen<number> {}\n" +
+                "export class Passed<U> extends Gen<U> {}\n" +
+                "export interface Box<T> { inner: T }\n" +
+                "export interface NumBox extends Box<number> { tag: string }\n" +
+                "export class Plain { label!: string }\n" +
+                "export class Sub extends Plain { id!: number }\n",
+        });
+
+        expect(
+            nodes.NumGen.fields.map((field) => [field.name, field.type]),
+        ).toEqual([
+            ["items", "T[]"],
+            ["label", "string"],
+            ["value", "T"],
+        ]);
+        expect(nodes.NumGen.fields_open).toBe(true);
+        expect(nodes.Passed.fields_open).toBe(true);
+        expect(nodes.NumBox.fields_open).toBe(true);
+        // The generic base's own list is its own, and a plain base's fields keep a list closed.
+        expect(nodes.Gen.fields_open).toBeUndefined();
+        expect(nodes.Sub.fields_open).toBeUndefined();
+    });
+});
+
+describe("field lists that are open in other ways", () => {
     it("an_unresolved_base_opens_the_list", () => {
         const nodes = scan({
             "src/dto.ts":

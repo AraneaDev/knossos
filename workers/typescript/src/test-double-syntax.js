@@ -9,6 +9,23 @@ import ts from "typescript";
 /** The calls that make a bare mock function. */
 export const MOCK_FACTORIES = new Set(["vi.fn", "jest.fn"]);
 
+/** The calls that replace one member of an object with a spy. */
+export const SPIES = new Set(["vi.spyOn", "jest.spyOn"]);
+
+/** The calls that type a value as a mock of what it holds. */
+export const MOCKED = new Set(["vi.mocked", "jest.mocked"]);
+
+/** The calls that replace a whole module, with a factory or as an automock. */
+export const MODULE_MOCKS = new Set(["vi.mock", "jest.mock", "jest.doMock"]);
+
+/** The calls that hand back an automock of a module. */
+export const MODULE_AUTOMOCKS = new Set([
+    "vi.importMock",
+    "jest.requireMock",
+    "jest.createMockFromModule",
+    "jest.genMockFromModule",
+]);
+
 /** The calls that pin what a double's member does, by the name they are called through. */
 export const PIN_APIS = new Set([
     "mockReturnValue",

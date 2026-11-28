@@ -191,8 +191,10 @@ fn walk_requested(
                     read: &*input_hashes,
                     // A file nothing loads compiles in no test run. With no
                     // manifest, no build is known, so no file is an orphan
-                    // of one (Momus's flat fixtures).
-                    skip_test_facts: !layout.packages.is_empty() && orphans.contains_key(&relative),
+                    // of one (Momus's flat fixtures). A file of a package
+                    // in another's module tree may be either's (G5-04).
+                    skip_test_facts: !layout.packages.is_empty()
+                        && (orphans.contains_key(&relative) || layout.in_nested_package(&relative)),
                 };
                 let (contribution, placed) =
                     walk_one(&relative, &module, &parsed, content_hash, &shared);

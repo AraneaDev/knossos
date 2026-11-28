@@ -2,7 +2,9 @@ name: Mutation
 
 # Mutation testing over all of src, so the floor in infection.json5 is exercised
 # against the full source tree rather than against a hand-picked sample. It is
-# not wired into the Quality workflow or any tools/quality profile.
+# not wired into the Quality workflow or any tools/quality profile. Beside it
+# run the slow halves of two local loops: cargo-mutants over the whole Rust
+# worker, and PropertyTest's full seed set.
 #
 # The run is sharded because it no longer fits in one job. Measured on
 # 2026-08-08 (run 31266003157, Infection 0.34, full src in a single job):
@@ -140,3 +142,68 @@ jobs:
         # tolerance in tools/mutation-population.json. The runner's own PHP is
         # enough: the script needs no vendor directory.
         run: php tools/mutation-gate --shards=shards --expected="$SHARD_COUNT"
+
+  # PropertyTest runs one seed of its incremental-scan edit sequences by
+  # default, the one that reaches every kind of edit, so a local run stays
+  # short. The full seed set runs here, weekly, beside the mutants.
+  property-seeds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build pinned quality image
+        run: docker build --target quality -t knossos:quality .
+      - name: Run every property seed
+        run: |
+          docker run --rm -e KNOSSOS_QUALITY_CONTAINER=1 -e KNOSSOS_PROPERTY_SEEDS_FULL=1 \
+            --entrypoint sh knossos:quality -c "vendor/bin/phpunit --group=property"
+
+  # cargo-mutants over the Rust worker, round-robin over the same number of
+  # shards. Its settings and its one exclusion are in
+  # workers/rust/.cargo/mutants.toml. It reports rather than gates, since the
+  # Rust worker has no mutation floor yet: a missed or timed-out mutant (exit 2
+  # or 3) is listed in the shard's uploaded mutants.out, and only a run that
+  # could not judge its mutants (a failing baseline, exit 4, or a usage error)
+  # fails the job. The full set (about 3,300 mutants on 2026-11-28) has not
+  # been timed on a runner yet, so the timeout sits near the 6-hour job limit.
+  cargo-mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    defaults:
+      run:
+        working-directory: workers/rust
+    env:
+      # cargo-mutants builds a copy of workers/rust alone, outside the
+      # checkout, so the tests that read the repository's tests/Fixtures find
+      # it through this variable instead of through ../.. from the crate.
+      KNOSSOS_REPOSITORY: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          cargo --version
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked --version 27.1.0
+      - name: Run cargo-mutants over shard ${{ matrix.shard }}
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          status=0
+          cargo mutants --sharding=round-robin --shard "$SHARD/$SHARD_COUNT" --output "$RUNNER_TEMP/cargo-mutants-$SHARD" || status=$?
+          case "$status" in
+            0 | 2 | 3) exit 0 ;;
+            *) exit "$status" ;;
+          esac
+      - name: Upload shard results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cargo-mutants-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/cargo-mutants-${{ matrix.shard }}/mutants.out
+          if-no-files-found: warn

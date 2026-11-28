@@ -44,7 +44,8 @@ final class PhpSignaturesTest extends KnossosTestCase
             ],
             'returns' => 'void',
         ], $signatures['App\Api::scan']);
-        assertSame(['params' => [['name' => 'a'], ['name' => 'b']]], $signatures['App\Api::untyped']);
+        // A parameter taken by reference says so (G6-08g).
+        assertSame(['params' => [['name' => 'a'], ['name' => 'b', 'by_ref' => true]]], $signatures['App\Api::untyped']);
         assertSame([
             'params' => [
                 ['name' => 'key', 'type' => 'int|string|null'],

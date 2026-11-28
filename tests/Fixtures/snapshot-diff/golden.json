@@ -228,6 +228,7 @@
     "bounds": {
         "max_changes": 100,
         "reported_changes": 7,
-        "total_changes": 7
+        "total_changes": 7,
+        "changes_truncated": false
     }
 }

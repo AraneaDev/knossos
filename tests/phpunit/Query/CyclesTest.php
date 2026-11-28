@@ -401,7 +401,7 @@ final class CyclesTest extends KnossosTestCase
     }
 
     /** More touching cycles than the limit: the largest is kept and the cut is said. */
-    #[Group('cycles')]
+    #[Group('cycles'), Group('slow')]
     #[RunInSeparateProcess]
     public function testTouchingIdsStillReportTheResultLimit(): void
     {
@@ -418,7 +418,7 @@ final class CyclesTest extends KnossosTestCase
      * which it used to run with its 10,000-node cap: on a graph past that size
      * the search was cut short and no participant was flagged.
      */
-    #[Group('cycles')]
+    #[Group('cycles'), Group('slow')]
     #[RunInSeparateProcess]
     public function testArchitectureHealthFlagsEveryCycleOfALargeGraph(): void
     {

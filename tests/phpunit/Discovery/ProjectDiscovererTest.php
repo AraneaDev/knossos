@@ -1255,7 +1255,7 @@ TXT);
     }
 
     // ── Cancellation ─────────────────────────────────────────────────
-
+    #[Group('slow')]
     public function testDiscoverObservesCancellationDuringWalk(): void
     {
         // The token is polled every 512 entries; create enough files to cross it.

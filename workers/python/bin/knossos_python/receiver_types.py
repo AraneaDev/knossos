@@ -246,6 +246,23 @@ class ReceiverTypeInference:
             held = self.named_class(receiver)
         return ref("method", f"{held}::{member}") if held else None
 
+    def unbound(self, name: str | None, target: str | None) -> dict[str, bool]:
+        """A ``calls`` edge's ``unbound``: a method called through its class, which takes the receiver as an argument.
+
+        ``Repo.save(repo, item)`` hands ``repo`` to ``self`` (G4-10); a call
+        through an instance, ``self`` or ``cls`` binds it. A static or class
+        method called through its class is marked too, as nothing here tells
+        it from a plain one.
+        """
+        if not name or "." not in name or not (target or "").startswith("py:method:"):
+            return {}
+        receiver, member = name.rsplit(".", 1)
+        parts = receiver.split(".")
+        typed = self.attribute_chain_class(parts) if len(parts) > (2 if parts[0] == "self" else 1) else None
+        held = None if typed is not None or parts[0] == "self" else self.receiver_class(receiver)
+        named = None if typed is not None or held is not None else self.named_class(receiver)
+        return {"unbound": True} if named is not None and target == ref("method", f"{named}::{member}") else {}
+
     def receiver_class(self, receiver: str) -> str | None:
         """The class ``self.<name>`` or a plain name holds, from the walk's tracking, if any."""
 

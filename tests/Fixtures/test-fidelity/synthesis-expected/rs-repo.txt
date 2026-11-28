@@ -2,6 +2,7 @@
 // 3 members; complete
 use mockall::mock;
 use synth::repo::Repo;
+use synth::repo::*;
 
 mock! {
     pub Repo {}

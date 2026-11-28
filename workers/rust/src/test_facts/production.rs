@@ -63,12 +63,16 @@ pub(super) fn of_case(
         nested: Vec::new(),
         method_calls: Vec::new(),
         on_doubles: BTreeSet::new(),
+        path_calls: BTreeSet::new(),
         mocks,
     };
     body.visit_signature(signature);
     body.visit_block(block);
     let mut reach = Reach::default();
     let mut named: BTreeSet<(usize, String)> = BTreeSet::new();
+    // How many edges of each (line, name) a call on a double shares the
+    // calls not on one have taken.
+    let mut taken: BTreeMap<(usize, String), usize> = BTreeMap::new();
     for edge in input.facts.edges_from(function) {
         let line = edge.evidence.start_line;
         if edge.kind != "calls" || body.nested(line) || mocks.configures(line) {
@@ -88,8 +92,15 @@ pub(super) fn of_case(
             .to_owned();
         // A call on a double the walk typed as what it stands in for (a
         // faux or mry mock is a value of the real struct) runs the double.
-        if kind != "method_of_return" && body.on_doubles.contains(&(line, name.clone())) {
-            continue;
+        // An edge names only a line, so where other calls of that name
+        // share it (`assert_eq!(mock.get(), real.get())`), as many edges
+        // as there are such calls count (G5-10 M3).
+        if kind != "method_of_return" && body.on_double(line, &name) {
+            let taken = taken.entry((line, name.clone())).or_default();
+            if *taken >= body.others(line, &name) {
+                continue;
+            }
+            *taken += 1;
         }
         named.insert((line, name.clone()));
         let landed = if kind == "method_of_return" {
@@ -178,14 +189,41 @@ struct Body<'m> {
     nested: Vec<(usize, usize)>,
     /// Each method call outside them, by the line of its method name.
     method_calls: Vec<(usize, String)>,
-    /// Each method call rooted at a double, by the line of its method name.
-    on_doubles: BTreeSet<(usize, String)>,
+    /// Each method call rooted at a double, by the span (line and column)
+    /// of its method name, with that name.
+    on_doubles: BTreeSet<(usize, usize, String)>,
+    /// Each call of a path, by the span of its last segment, with that
+    /// segment.
+    path_calls: BTreeSet<(usize, usize, String)>,
     /// The case's doubles: a call rooted at one, and the calls inside a
     /// configuration chain, are no production.
     mocks: &'m Handles,
 }
 
 impl Body<'_> {
+    /// Whether a call on a double is made by `name` on `line`.
+    fn on_double(&self, line: usize, name: &str) -> bool {
+        self.on_doubles
+            .iter()
+            .any(|(at, _, called)| *at == line && called == name)
+    }
+
+    /// How many calls not on a double are made by `name` on `line`: method
+    /// calls and path calls, each at its own span.
+    fn others(&self, line: usize, name: &str) -> usize {
+        let methods = self
+            .method_calls
+            .iter()
+            .filter(|(at, called)| *at == line && called == name)
+            .count();
+        let paths = self
+            .path_calls
+            .iter()
+            .filter(|(at, _, called)| *at == line && called == name)
+            .count();
+        methods + paths
+    }
+
     /// Whether `line` lies inside an item nested in the body.
     fn nested(&self, line: usize) -> bool {
         self.nested
@@ -202,8 +240,10 @@ impl Visit<'_> for Body<'_> {
 
     fn visit_expr_method_call(&mut self, node: &syn::ExprMethodCall) {
         if self.mocks.root_double(&node.receiver).is_some() {
-            let line = node.method.span().start().line;
-            self.on_doubles.insert((line, ident_name(&node.method)));
+            let start = node.method.span().start();
+            let line = start.line;
+            self.on_doubles
+                .insert((line, start.column, ident_name(&node.method)));
             if !self.mocks.configures(line) {
                 for argument in &node.args {
                     self.visit_expr(argument);
@@ -215,6 +255,17 @@ impl Visit<'_> for Body<'_> {
         self.method_calls
             .push((node.method.span().start().line, ident_name(&node.method)));
         syn::visit::visit_expr_method_call(self, node);
+    }
+
+    fn visit_expr_call(&mut self, node: &syn::ExprCall) {
+        if let syn::Expr::Path(func) = node.func.as_ref() {
+            if let Some(last) = func.path.segments.last() {
+                let start = last.ident.span().start();
+                self.path_calls
+                    .insert((start.line, start.column, ident_name(&last.ident)));
+            }
+        }
+        syn::visit::visit_expr_call(self, node);
     }
 
     fn visit_macro(&mut self, node: &syn::Macro) {

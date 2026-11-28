@@ -412,14 +412,19 @@ fn output_is_stable_across_runs() {
             .unwrap()
             .write_all(format!("{request}\n").as_bytes())
             .unwrap();
-        child.wait_with_output().unwrap().stdout
+        // A heartbeat goes out by the clock, so where one falls differs
+        // between runs under load (G5-09); everything else must not.
+        String::from_utf8(child.wait_with_output().unwrap().stdout)
+            .unwrap()
+            .lines()
+            .filter(|line| !line.contains("\"method\":\"scan/heartbeat\""))
+            .map(|line| format!("{line}\n"))
+            .collect::<String>()
     };
 
     let first = run();
     assert_eq!(first, run());
-    assert!(String::from_utf8(first)
-        .unwrap()
-        .contains("\"kind\":\"test_case\""));
+    assert!(first.contains("\"kind\":\"test_case\""));
 }
 
 /// Every `.rs` file below `directory`, relative to `root`.

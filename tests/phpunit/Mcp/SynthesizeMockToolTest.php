@@ -60,8 +60,10 @@ final class SynthesizeMockToolTest extends KnossosTestCase
                 // Several types share the name: each is listed, with its file and line (Momus took the first).
                 [['symbol' => 'Named'], '"Named" names 2 classes, interfaces or traits; name one by its canonical name: synth::focus::Named (rust/src/focus.rs:22), typescript/src/named.ts#Named (typescript/src/named.ts:5).'],
                 [['symbol' => 'Nope'], 'No class, interface or trait is named "Nope".'],
-                [['symbol' => 'helper'], 'No class, interface or trait is named "helper".'],
-                [['symbol' => 'App\FixturesEnum\Lane'], 'No class, interface or trait is named "App\FixturesEnum\Lane".'],
+                // G6-08g: a name another kind holds says what it names; a near name is offered when find_component has none.
+                [['symbol' => 'helper'], '"helper" names a function, which is no class, interface or trait.'],
+                [['symbol' => 'App\FixturesEnum\Lane'], '"App\FixturesEnum\Lane" names an enum, which is no class, interface or trait.'],
+                [['symbol' => 'Overlx'], 'No class, interface or trait is named "Overlx"; did you mean: typescript/src/focus.ts#Overloaded?'],
                 // A Rust or Python enum is a class node; its `cases` make it one (preflight F7).
                 [['symbol' => 'synth::focus::Mode'], '"synth::focus::Mode" names an enum, which is no class, interface or trait.'],
                 // A Rust enum that derives nothing sends no `cases`; its `rust_item` marks it, as it marks a union.
@@ -87,6 +89,7 @@ final class SynthesizeMockToolTest extends KnossosTestCase
         });
     }
 
+    #[Group('slow')]
     public function testFrameworkSources(): void
     {
         $this->withScan(function (ToolService $tools, string $projectId): void {

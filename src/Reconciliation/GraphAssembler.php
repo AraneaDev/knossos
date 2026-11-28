@@ -10,6 +10,7 @@ use Knossos\Scanner\Protocol\Origin;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Store\SharedNodeKinds;
 use Knossos\Store\StableId;
+use Knossos\TestFidelity\TestFinding;
 
 /**
  * Resolves a scan's contributions into the rows the graph transaction writes.
@@ -85,7 +86,7 @@ final readonly class GraphAssembler
      * follows from what it says, so an identical workspace stores the same
      * ids, and two rules reporting the same thing keep one row.
      *
-     * @param list<\Knossos\TestFidelity\TestFinding> $findings
+     * @param list<TestFinding> $findings
      * @param array<string, string> $nodeMap
      * @param array<string, string> $fileIds
      * @return array{0: list<array<string, mixed>>, 1: list<array<string, string|int>>} rows, and diagnostics for what was dropped or detached

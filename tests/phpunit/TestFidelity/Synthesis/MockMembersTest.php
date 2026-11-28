@@ -19,12 +19,15 @@ use function PHPUnit\Framework\assertFalse;
 use function PHPUnit\Framework\assertSame;
 use function PHPUnit\Framework\assertTrue;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * The members a mock renders (Decision 5): public instance methods, declared
  * and inherited nearest first; what cannot be rendered faithfully under
  * `omitted`; and `complete` only when nothing was left out and nothing may
  * come from elsewhere.
  */
+#[Group('test-fidelity')]
 final class MockMembersTest extends KnossosTestCase
 {
     /** @var list<NodeFact> */
@@ -247,16 +250,44 @@ final class MockMembersTest extends KnossosTestCase
         $engine = $this->members($struct, 'rust');
         assertSame(['start', 'tune'], self::names($engine->members));
         assertSame(["tune is pub(crate): it is kept, as the crate's own tests call it; a mock outside the crate cannot."], $engine->notes);
-        // An auto supertrait needs no impl; another one outside the scan does.
+        // An auto supertrait needs no impl; Display's the template spells (G6-03); another one outside the scan does.
         $sendable = $this->type('rust:interface:crate::Sendable', 'interface');
         $this->method($sendable, 'go', ['signature' => ['params' => [], 'receiver' => '&self']]);
         $this->edge('extends', $sendable, 'rust:interface:crate::Send');
         $this->edge('extends', $sendable, 'rust:interface:std::marker::Sync');
         assertTrue($this->members($sendable, 'rust')->complete);
+        assertSame([], $this->members($sendable, 'rust')->spelledSupertraits());
         $this->edge('extends', $sendable, 'rust:interface:std::fmt::Display');
+        assertTrue($this->members($sendable, 'rust')->complete);
+        assertSame(['Display'], $this->members($sendable, 'rust')->spelledSupertraits());
+        $this->edge('extends', $sendable, 'rust:interface:std::fmt::Debug');
         assertSame(['Sendable has a supertrait outside the scan: mock! needs its impl too, and its methods are not listed.'], $this->members($sendable, 'rust')->notes);
         $empty = $this->type('rust:class:crate::Empty', 'class');
         assertSame(['Empty has no member a mock can stand in for.'], $this->members($empty, 'rust')->notes);
+    }
+
+    public function testARustSupertraitMethodOfATraitMethodsNameIsOmittedAndNamed(): void
+    {
+        // G6-14: `trait Store: Base` with `fn get` in both. mockall gives one expect_get per mock,
+        // so the supertrait's is left out, named, and the list is not complete.
+        $base = $this->type('rust:interface:crate::Base', 'interface');
+        $this->method($base, 'get', ['signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'u8']]);
+        $this->method($base, 'id', ['signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'u8']]);
+        $store = $this->type('rust:interface:crate::Store', 'interface');
+        $this->method($store, 'get', ['signature' => ['params' => [], 'receiver' => '&self', 'returns' => 'u16']]);
+        $this->edge('extends', $store, $base->localId);
+
+        $members = $this->members($store, 'rust');
+        assertSame(['get', 'id'], self::names($members->members));
+        assertSame([['name' => 'Base::get', 'reason' => 'Store declares get too: mockall cannot mock one method name from two traits']], $members->omitted);
+        assertFalse($members->complete);
+        // Without the clash the supertrait's methods are all listed and the list is complete.
+        $other = $this->type('rust:interface:crate::Other', 'interface');
+        $this->method($other, 'put', ['signature' => ['params' => [], 'receiver' => '&self']]);
+        $this->edge('extends', $other, $base->localId);
+        $clean = $this->members($other, 'rust');
+        assertSame(['put', 'get', 'id'], self::names($clean->members));
+        assertTrue($clean->complete);
     }
 
     public function testARustStructsTraitImplsKeepTheirTrait(): void
@@ -395,9 +426,13 @@ final class MockMembersTest extends KnossosTestCase
             'Mk4 implements std::fmt::Debug, a trait outside the scan: its methods the impl does not write (defaults) are not listed.',
         ], $copy->notes);
         // An impl<T> cannot be written without its parameters.
-        $generic = $this->members($this->struct('Gen'), 'rust', [['type' => 'crate::Gen', 'trait' => 'From<T>', 'methods' => ['from'], 'generics' => true]]);
+        $gen = $this->struct('Gen');
+        // G6-08g: the omitted impl's own method is omitted with it, never rendered in a block of its own.
+        $this->method($gen, '<impl From<T>>::from', ['overrides' => true, 'impl_trait' => 'From<T>', 'signature' => ['params' => [['name' => 'value', 'type' => 'T']], 'returns' => 'Self']]);
+        $generic = $this->members($gen, 'rust', [['type' => 'crate::Gen', 'trait' => 'From<T>', 'methods' => ['from'], 'generics' => true]]);
         assertSame([[], false], [$generic->impls, $generic->complete]);
         assertSame([['name' => 'impl From<T>', 'reason' => 'a generic impl (impl<T>): its parameters are not recorded']], $generic->omitted);
+        assertSame(['go'], self::names($generic->members));
     }
 
     /** A marker trait or a generic impl is passed over, never the end of the list: the impls after it still count. */

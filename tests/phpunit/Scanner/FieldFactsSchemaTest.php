@@ -15,13 +15,17 @@ use Knossos\Tests\Phpunit\Support\SchemaSubset;
 use function PHPUnit\Framework\assertNotNull;
 use function PHPUnit\Framework\assertSame;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
  * Each worker's `fields` and `cases` fit the wire schema over the
  * fixture-drift tree, and the core reads each list it sends; an open list
  * reads as none.
  */
+#[Group('test-fidelity')]
 final class FieldFactsSchemaTest extends KnossosTestCase
 {
+    #[Group('slow')]
     public function testWorkerOutputOnTheFixturesValidates(): void
     {
         $lists = $this->lists(['ts', 'php', 'py']);
@@ -94,7 +98,7 @@ final class FieldFactsSchemaTest extends KnossosTestCase
             'Bundle' => [],
             'Carton' => [],
             'Dock' => ['North' => 'North', 'South' => 'South'],
-            'Pallet' => ['dock', 'id', 'layers', 'note'],
+            'Pallet' => ['dock', 'id', 'label', 'layers', 'note'],
             'Quote' => ['price', 'quantity'],
             'Tracking' => [],
         ], $this->lists(['rs']));

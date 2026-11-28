@@ -27,6 +27,7 @@ use PHPUnit\Framework\Attributes\Group;
  * judged by the core's tautology rule.
  */
 #[Group('php-scanner')]
+#[Group('test-fidelity')]
 final class PhpTestCasesTest extends KnossosTestCase
 {
     public function testTracesAStubEchoToItsMockConfig(): void
@@ -122,8 +123,8 @@ final class PhpTestCasesTest extends KnossosTestCase
         assertSame([0, 0, 1], [$doubles[14]->invocations, $doubles[20]->invocations, $doubles[27]->invocations]);
 
         assertSame([['charge', 'shouldHaveReceived']], array_map(static fn($member): array => [$member->name, $member->api], $doubles[14]->members), 'A spy assertion names the member it is about.');
-        self::assertEquals([new CallMatcher('with', 15, 1, false)], $doubles[14]->members[0]->calledWith);
-        self::assertEquals([new CallMatcher('with', 22, 2, false)], $doubles[20]->members[0]->calledWith, 'The argument list shouldNotHaveReceived() is given.');
+        self::assertEquals([new CallMatcher('with', 15, 1, false, literals: [['type' => 'int', 'value' => '100']])], $doubles[14]->members[0]->calledWith);
+        self::assertEquals([new CallMatcher('with', 22, 2, false, literals: [['type' => 'int', 'value' => '100'], ['type' => 'string', 'value' => 'EUR']])], $doubles[20]->members[0]->calledWith, 'The argument list shouldNotHaveReceived() is given.');
         assertSame('tests/SpyTest.php#test:12', $doubles[14]->testCase);
 
         $findings = self::tautologies([$test]);

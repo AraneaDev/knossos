@@ -858,6 +858,7 @@ final class DatabaseMaintenanceServiceTest extends \Knossos\Tests\Phpunit\Knosso
      * A reader holding the log open stops the checkpoint from truncating it,
      * and the result says so rather than claiming the space came back.
      */
+    #[Group('slow')]
     public function testAVacuumSaysSoWhenAReaderKeepsTheLogOpen(): void
     {
         $reader = SqliteConnection::open($this->dbPath);

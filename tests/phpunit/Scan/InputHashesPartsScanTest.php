@@ -146,6 +146,7 @@ final class InputHashesPartsScanTest extends KnossosTestCase
      * The PHP worker's map is bounded by its batch, which is 400 files, but
      * not by the line cap: paths long enough make 400 entries outgrow a frame.
      */
+    #[Group('slow')]
     public function testAPhpBatchWhoseMapOutgrowsOneFrameScansWithoutDegrading(): void
     {
         $directory = 'src/' . str_repeat('d', 250) . '/' . str_repeat('e', 250) . '/' . str_repeat('f', 250);

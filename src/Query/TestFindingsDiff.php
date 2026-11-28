@@ -23,13 +23,14 @@ final class TestFindingsDiff
      * {@see self::between()} of a project, read with the suppressions of its `knossos.json`.
      *
      * @param array<string, mixed> $project the project row
-     * @return array{section: array<string, mixed>, truncated: bool}
+     * @return array{section: array<string, mixed>, truncated: bool, suppressions_invalid: ?string}
      */
     public static function of(PDO $pdo, array $project, string $fromScan, string $toScan, int $limit): array
     {
         $suppressions = ActiveTestFindings::suppressionsOf((string) $project['root_realpath']);
 
-        return self::between(new SnapshotFindingsView($pdo, (string) $project['id'], (string) $project['active_scan_id'], $suppressions), $fromScan, $toScan, $limit);
+        return self::between(new SnapshotFindingsView($pdo, (string) $project['id'], (string) $project['active_scan_id'], $suppressions), $fromScan, $toScan, $limit)
+            + ['suppressions_invalid' => $suppressions->invalid()];
     }
 
     /**

@@ -12,6 +12,7 @@ final readonly class PinnedValue
     /**
      * @param bool|string $assignable true, false or "unknown": whether the pinned value fits the member's declared return type
      * @param string|null $type the pinned value's own type as the worker names it, null when it states none
+     * @param list<string> $typeAncestors for a class built into the language, the classes and interfaces it extends or implements, as the worker reflected them
      */
     public function __construct(
         public string $api,
@@ -20,6 +21,7 @@ final readonly class PinnedValue
         public bool|string $assignable,
         public bool $typed,
         public ?string $type = null,
+        public array $typeAncestors = [],
     ) {}
 
     /**
@@ -44,6 +46,25 @@ final readonly class PinnedValue
 
         $type = $raw['type'] ?? null;
 
-        return new self($api, $line, $once, $assignable, $typed, is_string($type) && $type !== '' ? $type : null);
+        return new self($api, $line, $once, $assignable, $typed, is_string($type) && $type !== '' ? $type : null, self::names($raw['type_ancestors'] ?? null));
+    }
+
+    /**
+     * A list of non-empty names; empty when it is anything else, so a malformed list says nothing.
+     *
+     * @return list<string>
+     */
+    private static function names(mixed $raw): array
+    {
+        if (!is_array($raw) || !array_is_list($raw)) {
+            return [];
+        }
+        foreach ($raw as $name) {
+            if (!is_string($name) || $name === '') {
+                return [];
+            }
+        }
+
+        return $raw;
     }
 }

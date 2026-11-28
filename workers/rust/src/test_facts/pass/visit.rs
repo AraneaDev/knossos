@@ -68,6 +68,7 @@ impl<'ast> Visit<'ast> for Pass<'_> {
             if func.qself.is_none() {
                 self.path_calls.push(frameworks::written(&func.path));
             }
+            self.visit_path_types(func);
         } else {
             // A callee that is no path, such as a closure called where it
             // stands, runs its body here.
@@ -158,6 +159,25 @@ impl<'ast> Visit<'ast> for Pass<'_> {
             // Moved, or read by value.
             self.hand_on(&name, true);
         }
+        self.visit_path_types(node);
+    }
+
+    fn visit_type_path(&mut self, node: &'ast syn::TypePath) {
+        // A fake named as a type (`read::<FakeClock>()`, `Vec<FakeClock>`)
+        // may be made and called out of the walk's sight: handed on
+        // (G5-10 M4).
+        if node.qself.is_none() {
+            let named = node.path.segments.last().and_then(|last| {
+                self.local_fakes
+                    .iter()
+                    .find(|(fake, _)| last.ident == fake.name)
+                    .map(|(_, first)| *first)
+            });
+            if let Some(first) = named {
+                self.invoke(first);
+            }
+        }
+        syn::visit::visit_type_path(self, node);
     }
 
     fn visit_expr_assign(&mut self, node: &'ast syn::ExprAssign) {
@@ -233,6 +253,17 @@ impl<'ast> Visit<'ast> for Pass<'_> {
 }
 
 impl Pass<'_> {
+    /// Visit the types a path expression names: its `<T as Trait>` and
+    /// each segment's generic arguments.
+    fn visit_path_types(&mut self, node: &syn::ExprPath) {
+        if let Some(qself) = &node.qself {
+            self.visit_type(&qself.ty);
+        }
+        for segment in &node.path.segments {
+            self.visit_path_arguments(&segment.arguments);
+        }
+    }
+
     /// Whether the double at `index` is of a framework whose clones may
     /// share its configuration: every one but mockall, whose mock clones
     /// only by a mocked `clone` (a fresh mock), and a fake, whose pins are

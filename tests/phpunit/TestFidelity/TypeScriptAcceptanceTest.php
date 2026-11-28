@@ -243,6 +243,7 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
         (new ProjectScanService($second, self::repositoryRoot(), [$root]))->scan($root);
 
         assertCount(count(self::findings($first)), $ids($first));
+        self::assertNotEmpty($ids($first), 'A determinism test over zero findings proves nothing.');
         assertSame($ids($first), $ids($second));
     }
 

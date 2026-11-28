@@ -90,19 +90,18 @@ final readonly class DoublesOfSymbol extends AbstractArchitectureQueryService
     }
 
     /**
-     * The stored findings of each of `$doubles`, as scan-tier items in the stored order.
+     * The stored findings of each of `$doubles`, as scan-tier items in the
+     * stored order; the store reads only theirs (G6-08c).
      *
      * @param list<mixed> $doubles the doubles' node ids
      * @return array<string, list<Item>>
      */
     private function findingsOf(string $root, string $projectId, array $doubles): array
     {
-        $wanted = array_fill_keys(array_map('strval', $doubles), true);
         $byDouble = [];
-        foreach ((new ActiveTestFindings($this->pdo, $projectId, ActiveTestFindings::suppressionsOf($root)))->find() as $finding) {
-            if (isset($wanted[$finding['double_id']])) {
-                $byDouble[$finding['double_id']][] = ScanTierItems::of([$finding])[0];
-            }
+        $wanted = ['doubles' => array_values(array_map('strval', $doubles))];
+        foreach ((new ActiveTestFindings($this->pdo, $projectId, ActiveTestFindings::suppressionsOf($root)))->find($wanted) as $finding) {
+            $byDouble[$finding['double_id']][] = ScanTierItems::of([$finding])[0];
         }
 
         return $byDouble;

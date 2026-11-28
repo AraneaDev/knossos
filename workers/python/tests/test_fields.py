@@ -429,6 +429,8 @@ def test_an_enum_with_a_value_that_is_not_a_literal_gives_none(project, scan_col
         ENUM + "class C(Enum):\n    if FLAG:\n        A = 1\n",
         ENUM + "class C(Enum):\n    __private = 1\n    A = 1\n",
         ENUM + "class C(Enum, boundary=1):\n    A = 1\n",
+        # Before 3.13 a nested class is a member, from 3.13 it is not (G6-08e).
+        ENUM + "class C(Enum):\n    A = 1\n    class Inner:\n        pass\n",
     ],
 )
 def test_an_enum_whose_members_may_differ_sends_no_cases(project, scan_collect, source: str) -> None:

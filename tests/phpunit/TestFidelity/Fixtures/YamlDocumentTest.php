@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\TestFidelity\Fixtures;
 use Knossos\TestFidelity\Fixtures\Value;
 use Knossos\TestFidelity\Fixtures\YamlDocument;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Core's YAML subset reader for fixture files (Q4(A)): block maps and
@@ -14,6 +15,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
  * What it does not read (an anchor, an alias, a tag, a merge key, a second
  * document) makes the file unparsable, never a guess.
  */
+#[Group('test-fidelity')]
 final class YamlDocumentTest extends KnossosTestCase
 {
     /** A value as plain PHP data, for comparing whole trees. */
@@ -111,6 +113,7 @@ final class YamlDocumentTest extends KnossosTestCase
         self::assertSame([Value::INT, Value::INT, Value::BOOL, Value::INT, Value::STRING, Value::STRING, Value::FLOAT, Value::FLOAT, Value::FLOAT, Value::FLOAT], array_map(static fn(string $key): ?string => $plain?->get($key)?->kind, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']));
     }
 
+    #[Group('slow')]
     public function testALongFlowCollectionIsReadInLinearTime(): void
     {
         // A flow sequence over 30,000 lines: each line's brackets are scanned once, not all the text so far.

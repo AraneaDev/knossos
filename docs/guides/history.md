@@ -78,6 +78,25 @@ navigation hints that assert no identity.
 
 ![The Changes tab after a turn edited hooks/lib/paths.ts: the file with its 16 dependents, the tests that reach it nearest first with the command to run them, and its detail with the diff since the session began](../images/claude-code/changes-diff.png)
 
+### Test findings in a diff
+
+A snapshot archives the test findings its scan judged, so the diff carries a
+`test_findings` section: the findings each side has that the other lacks,
+compared by key. A finding that only moved lines is neither added nor removed,
+and the project's `test_finding_suppressions` apply to both sides. A side
+archived before findings were stored has no record to compare, and the section
+says `not_recorded` and which side (`from` or `to`) rather than reporting every
+finding of the other side as new. The section spends what `max_changes` leaves
+after the graph's changes; `bounds.changes_truncated` says whether the graph's
+own changes were cut, apart from the findings. `suppressions_invalid` names
+why a malformed `knossos.json` suppressed nothing, and is null otherwise.
+
+The diff and the trends count distinct finding keys, so two doubles that say the
+same thing in one file count once, where the dashboard lists a row for each.
+Each trend point carries `definite_test_findings` and `stale_test_findings`
+(the definite findings that are stale mocks), null when that snapshot kept no
+record, which is not the same as zero.
+
 Only complete archives can be diffed. Oversized or unavailable retained facts
 return an explicit error instead of silently comparing partial data. Static
 facts may still miss runtime-generated architecture.
@@ -106,7 +125,8 @@ knossos architecture-trends project_... \
 
 Release notes include bounded structured change details alongside counts for
 components, relationships, moves, and confidence changes. When more than 100
-details exist, the Markdown explicitly reports truncation.
+details exist, the Markdown explicitly reports truncation. Only the change list
+counts: test findings are not part of the notes.
 
 The figures of each complete retained snapshot are computed once and cached
 in the graph database (`snapshot_metrics` rows, keyed by the archive and the

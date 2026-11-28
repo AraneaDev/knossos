@@ -38,6 +38,19 @@ final class ReturnDriftRuleTest extends KnossosTestCase
         assertSame(9, $findings[0]->evidence->startLine);
     }
 
+    public function testTheFirstPinRefusedOnDeclaredTypesIsReportedBeforeAnEarlierInferredOne(): void
+    {
+        // G1-15: `worst()` passes over a refusal resting on an inferred side for a later one on declared types.
+        $pin = static fn(int $line, bool $typed, bool|string $assignable = false): array => ['api' => 'mockReturnValueOnce', 'line' => $line, 'once' => true, 'assignable' => $assignable, 'typed' => $typed];
+        $judge = static fn(array $returns): array => array_map(
+            static fn($finding): array => [$finding->confidence, $finding->evidence->startLine],
+            [...(new ReturnDriftRule())->findings(DriftFixtures::graph([DriftFixtures::method('total', ['signature' => ['params' => [], 'returns' => 'number']])], [DriftFixtures::stub('total', null, $returns)]))],
+        );
+
+        assertSame([[FindingConfidence::Definite, 11]], $judge([$pin(9, false), $pin(10, true, true), $pin(11, true), $pin(12, true)]));
+        assertSame([[FindingConfidence::Warning, 9]], $judge([$pin(9, false), $pin(10, false), $pin(11, true, 'unknown')]));
+    }
+
     public function testACompileCheckedDoubleIsNeverJudged(): void
     {
         $methods = [DriftFixtures::method('total', ['signature' => ['params' => [], 'returns' => 'number']])];
@@ -122,6 +135,21 @@ final class ReturnDriftRuleTest extends KnossosTestCase
 
         assertCount(1, $findings);
         assertSame(FindingConfidence::Warning, $findings[0]->confidence);
+    }
+
+    /** The probe's healthy test: a built-in class pinned for a built-in interface it implements, as the worker reflected it, fits; `stdClass` still warns (G3-10). */
+    public function testABuiltInPinIsWhatTheWorkerReflected(): void
+    {
+        $pin = static fn(string $type, array $ancestors): array => [...(new ReturnDriftRule())->findings(DriftFixtures::phpGraph(
+            [['now', ['signature' => ['params' => [], 'returns' => 'DateTimeInterface']]]],
+            [['name' => 'now', 'line' => 14, 'api' => 'method', 'returns' => [['api' => 'willReturn', 'line' => 14, 'once' => false, 'assignable' => 'unknown', 'typed' => true, 'type' => $type, 'type_ancestors' => $ancestors]]]],
+        ))];
+        $plain = $pin('class:stdClass', []);
+
+        assertSame([], $pin('class:DateTimeImmutable', ['DateTimeInterface']));
+        assertCount(1, $plain);
+        assertSame(FindingConfidence::Warning, $plain[0]->confidence);
+        assertSame('now returns DateTimeInterface; the double pins a value it does not admit (willReturn)', $plain[0]->message);
     }
 
     public function testSelfInAPhpReturnTypeIsTheDeclaringClass(): void

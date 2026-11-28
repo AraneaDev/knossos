@@ -38,7 +38,7 @@ final readonly class TestDouble
     ) {}
 
     /**
-     * Read a `test_double` node; null for another kind of node or a malformed attribute block, never a throw.
+     * Read a `test_double` node; null for another kind of node, a malformed attribute block or one missing a schema-required key, never a throw.
      */
     public static function fromNode(NodeFact $node): ?self
     {
@@ -46,19 +46,24 @@ final readonly class TestDouble
             return null;
         }
         $attributes = $node->attributes;
+        foreach (['framework', 'pattern', 'target', 'automock', 'invocations', 'members'] as $required) {
+            if (!array_key_exists($required, $attributes)) {
+                return null;
+            }
+        }
         $framework = $attributes['framework'] ?? null;
         $pattern = $attributes['pattern'] ?? null;
-        $automock = $attributes['automock'] ?? false;
-        $invocations = $attributes['invocations'] ?? 0;
+        $automock = $attributes['automock'];
+        $invocations = $attributes['invocations'];
         $testCase = $attributes['test_case'] ?? null;
-        $rawMembers = $attributes['members'] ?? [];
+        $rawMembers = $attributes['members'];
         if (!is_string($framework) || !in_array($framework, self::FRAMEWORKS, true) || !is_string($pattern) || $pattern === '') {
             return null;
         }
         if (!is_bool($automock) || !is_int($invocations) || $invocations < 0 || ($testCase !== null && !is_string($testCase))) {
             return null;
         }
-        $target = self::target($attributes['target'] ?? null);
+        $target = self::target($attributes['target']);
         if ($target === null || !is_array($rawMembers) || !array_is_list($rawMembers)) {
             return null;
         }

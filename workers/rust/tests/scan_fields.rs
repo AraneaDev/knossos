@@ -72,6 +72,27 @@ fn an_option_field_is_not_required_under_serde() {
 }
 
 #[test]
+fn a_field_of_an_alias_of_option_is_not_required() {
+    // G6-08e: serde reads a missing key as `None` through the alias too.
+    let source = "type Maybe<T> = Option<T>;\ntype MaybeId = Box<Option<u64>>;\ntype Twice<T> = Maybe<T>;\n\
+        type Id = u64;\nmod wire {\n    pub type Nullable<T> = core::option::Option<T>;\n}\n\
+        #[derive(Deserialize)]\npub struct User {\n    a: Maybe<u8>,\n    b: MaybeId,\n    c: Twice<u8>,\n    \
+        d: wire::Nullable<u8>,\n    e: Id,\n    f: Vec<Maybe<u8>>,\n}\n";
+
+    assert_eq!(
+        pairs(&[
+            ("a", false),
+            ("b", false),
+            ("c", false),
+            ("d", false),
+            ("e", true),
+            ("f", true)
+        ]),
+        required(&class("User", source))
+    );
+}
+
+#[test]
 fn a_serde_default_skip_or_type_parameter_field_is_not_required() {
     let source = "#[derive(Deserialize)]\npub struct Page<T> {\n    #[serde(default)]\n    a: u8,\n    #[serde(default = \"seven\")]\n    b: u8,\n    #[serde(skip_deserializing)]\n    c: u8,\n    #[serde(skip)]\n    d: u8,\n    e: T,\n    #[serde(skip_serializing_if = \"Vec::is_empty\")]\n    f: Vec<T>,\n}\n";
     let attributes = class("Page", source);

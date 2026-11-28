@@ -2,6 +2,7 @@
 // 4 members; complete
 use mockall::mock;
 use synth::focus::Producer;
+use synth::focus::*;
 
 mock! {
     pub Producer {}

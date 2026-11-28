@@ -30,6 +30,15 @@ Seeds and case counts are checked in. A failure can therefore be reproduced by
 running the same command, while additions to a discovered corpus become normal
 reviewable regression cases.
 
+The seeded edit sequences run one seed by default, the one whose twelve steps
+reach every kind of edit, because each step scans the project twice through
+every worker. `KNOSSOS_PROPERTY_SEEDS_FULL=1` runs all three seeds; the weekly
+`Mutation` workflow's `property-seeds` job sets it:
+
+```sh
+KNOSSOS_PROPERTY_SEEDS_FULL=1 vendor/bin/phpunit --group=property
+```
+
 ## Mutation score
 
 [Infection](https://infection.github.io/) mutates all of `src` and judges each
@@ -98,3 +107,38 @@ the suite already kills. `phpunit.xml` therefore sets `failOnWarning="true"`,
 and `tests/phpunit/FailOnWarningTest.php` keeps it that way. A surviving mutant
 you cannot reproduce by hand is a signal to check this before writing a test
 for it.
+
+## Rust worker mutants
+
+[cargo-mutants](https://mutants.rs/) mutates the Rust worker and judges each
+mutant against its `cargo test` suite. Its settings live in
+`workers/rust/.cargo/mutants.toml`: a timeout of three times the unmutated test
+run, and one exclusion, the heartbeat's clock check, which no test can observe
+without waiting out real seconds. The worker has no logging code to exclude.
+Like Infection, it is in no `tools/quality` profile. The weekly `Mutation`
+workflow's `cargo-mutants` job runs every mutant in four round-robin shards and
+uploads each shard's `mutants.out`; it reports and does not gate, because the
+Rust worker has no floor yet.
+
+Locally, mutate only what your change touched. Write the diff relative to the
+crate, because cargo-mutants matches its paths against `src/...` and a plain
+`git diff` names them from the repository root, which matches nothing. Keep
+TMPDIR off `/tmp`, a small tmpfs, since cargo-mutants copies the crate into it
+for every build, and share one `CARGO_TARGET_DIR` across worktrees so each run
+reuses the dependency builds. Set `KNOSSOS_REPOSITORY` to the checkout: the
+copy cargo-mutants builds holds the crate alone, and the tests that read the
+repository's `tests/Fixtures` find it through that variable. Without it the
+unmutated baseline fails and no mutant is judged. The weekly job sets it to
+the workspace.
+
+```sh
+cd workers/rust
+git diff --relative origin/main > $HOME/.cache/knossos-rust.diff
+KNOSSOS_REPOSITORY=$(git rev-parse --show-toplevel) \
+TMPDIR=$HOME/.cache/knossos-tmp \
+CARGO_TARGET_DIR=$HOME/.cache/knossos-cargo-target \
+  cargo mutants --in-diff $HOME/.cache/knossos-rust.diff
+```
+
+Run it while no PHPUnit run is going: both lean on every core, and a mutant
+that times out under that load reads as a missed one.

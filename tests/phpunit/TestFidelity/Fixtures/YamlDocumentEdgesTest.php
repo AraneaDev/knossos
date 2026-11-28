@@ -7,6 +7,7 @@ namespace Knossos\Tests\Phpunit\TestFidelity\Fixtures;
 use Knossos\TestFidelity\Fixtures\Value;
 use Knossos\TestFidelity\Fixtures\YamlDocument;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * The YAML subset reader's edges, each pinned to its exact result: why a
@@ -14,6 +15,7 @@ use Knossos\Tests\Phpunit\KnossosTestCase;
  * headers, chomping and folding, quoted keys, comments beside quotes, and
  * quotes and nesting inside flow collections.
  */
+#[Group('test-fidelity')]
 final class YamlDocumentEdgesTest extends KnossosTestCase
 {
     /** A value as plain PHP data. */
@@ -132,6 +134,21 @@ final class YamlDocumentEdgesTest extends KnossosTestCase
         self::assertSame(['a' => [1, 2, 3], 'b' => 4], self::read("a: [1,\n     2,\n   3]   \nb: 4\n"));
         // A trailing tab on a continuation is trimmed too: the flow reader skips spaces only.
         self::assertSame(['a' => [1, 2]], self::read("a: [1,\n  2]\t\n"));
+        // G6-08f: a doubled single quote keeps its scalar open, so a bracket after it is the scalar's.
+        self::assertSame(['a' => ["x'[y", 'z']], self::read("a: ['x''[y', z]\n"));
+        self::assertSame(['a' => ["x'[y", 'z']], self::read("a: ['x''[y',\n  z]\n"));
+        self::assertSame(['a' => ['b' => "]'{"]], self::read("a: {b: ']''{'}\n"));
+    }
+
+    public function testATabAfterAColonOrACommaInAFlowCollectionIsRefused(): void
+    {
+        // G6-16: PyYAML refuses a tab where a flow token starts, so the project's loader may reject the file.
+        self::assertSame(['refused' => 'tab in a flow collection'], self::read("a: {b:\t1}\n"));
+        self::assertSame(['refused' => 'tab in a flow collection'], self::read("a: [b,\tc]\n"));
+        self::assertSame(['refused' => 'tab in a flow collection'], self::read("{a:\t1}\n"));
+        self::assertSame(['refused' => 'tab in a flow collection'], self::read("[a,\tb]\n"));
+        // A space there is read, and a tab inside a quoted scalar is the scalar's.
+        self::assertSame(['a' => ['b' => 1], 'c' => ["x\ty", 'z']], self::read("a: {b: 1}\nc: ['x\ty', z]\n"));
     }
 
     public function testAFlowCollectionIsNestedToItsBoundAndNoFurther(): void

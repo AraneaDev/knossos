@@ -23,6 +23,7 @@ use PHPUnit\Framework\Attributes\Group;
  * edges, so a parent outside the scan leaves the whole list unknown.
  */
 #[Group('php-scanner')]
+#[Group('test-fidelity')]
 final class PhpFieldsTest extends KnossosTestCase
 {
     public function testFieldsOfAClassWithNullableAndDefaultedMembers(): void
@@ -132,6 +133,7 @@ final class PhpFieldsTest extends KnossosTestCase
 
         assertSame([['name' => 'Fast', 'value' => 'fast'], ['name' => 'Slow', 'value' => 'slow']], $nodes['Fields\Lane']->attributes['cases']);
         assertSame([['name' => 'Low', 'value' => '1'], ['name' => 'Minus', 'value' => '-2']], $nodes['Fields\Code']->attributes['cases']);
+        assertSame(['string', 'int'], [$nodes['Fields\Lane']->attributes['backing'] ?? null, $nodes['Fields\Code']->attributes['backing'] ?? null]);
         assertSame(null, $nodes['Fields\Lane']->attributes['fields'] ?? null);
     }
 
@@ -141,6 +143,8 @@ final class PhpFieldsTest extends KnossosTestCase
 
         assertSame([['name' => 'Hearts'], ['name' => 'Spades']], $nodes['Fields\Suit']->attributes['cases']);
         assertSame([['name' => 'A'], ['name' => 'B']], $nodes['Fields\Computed']->attributes['cases']);
+        // A backed enum with a computed case sends no values, but still says it is backed, so it is never read as pure.
+        assertSame(['none', 'string'], [$nodes['Fields\Suit']->attributes['backing'] ?? null, $nodes['Fields\Computed']->attributes['backing'] ?? null]);
     }
 
     public function testA64FieldClassIsCutAndMarked(): void

@@ -285,6 +285,50 @@
       }
     },
     {
+      "fixture": "nemesis-experiments/enum-value",
+      "trees": {
+        "php/nemesis-experiments/enum-value": ""
+      },
+      "fixture_sha256": "aeaf05c446584358ab7e19e2742973a7ac83e67e8032fbffe32a5ec62ee6e363",
+      "command": "cd <copy> && node dist/cli/main.js audit . --strictness=all --json",
+      "exit": 1,
+      "output": {
+        "summary": {
+          "scanned_test_files": 1,
+          "doubles_inspected": 2,
+          "violations_count": 2,
+          "doubles_checked": 2,
+          "doubles_unresolved": 0,
+          "doubles_unknowable": 0,
+          "doubles_untargeted": 0
+        },
+        "violations": [
+          {
+            "file": "tests/ShipmentTest.php",
+            "line": 14,
+            "type": "RETURN_DRIFT",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\EnumValue\\Shipment::leg",
+            "message": "Stub returns 'rail' but that is not a case of Experiments\\EnumValue\\Leg. Did you mean 'air'?",
+            "suggestion": "air"
+          },
+          {
+            "file": "tests/ShipmentTest.php",
+            "line": 15,
+            "type": "ARITY_MISMATCH",
+            "confidence": "definite",
+            "evidence": "typed",
+            "double_type": "PHPUnit_MockObject",
+            "target": "Experiments\\EnumValue\\Shipment::reroute",
+            "message": "Argument 1 is 'rail' but that is not a case of Experiments\\EnumValue\\Leg. Did you mean 'air'?",
+            "suggestion": "air"
+          }
+        ]
+      }
+    },
+    {
       "fixture": "nemesis-experiments/final",
       "trees": {
         "php/nemesis-experiments/final": ""

@@ -5,9 +5,13 @@
  * comes from, for the core to find the assertions that cannot fail.
  *
  * Ported from Momus's assertion pass (`parser-typescript/src/dataflow.ts`).
- * A test is an `it`/`test` call, or its `.only`, `.skip` and `.each` forms,
- * with a function to run. The `beforeAll`/`beforeEach` setups that run
- * before it are the file's own and those of the `describe` blocks around it.
+ * A test is an `it`/`test` call with a function to run, through any of the
+ * modifiers `.only`, `.skip`, `.concurrent`, `.todo` and `.fails`, and the
+ * `.each(rows)`, `.skipIf(condition)` and `.runIf(condition)` forms. An
+ * `it.fails` test passes only when its body fails, so it says `fails` and no
+ * assertion of it is a tautology. The `beforeAll`/`beforeEach` setups that run
+ * before it are the file's own and those of the `describe` blocks around it,
+ * through the same modifiers.
  */
 
 import ts from "typescript";
@@ -17,15 +21,12 @@ import { EXPECTS, recordCallMatchers } from "./test-call-matchers.js";
 import { dottedName, stripCast } from "./test-double-syntax.js";
 import { reference } from "./typescript-fact-utils.js";
 
-const TESTS = new Set([
-    "it",
-    "test",
-    "it.only",
-    "it.skip",
-    "test.only",
-    "test.skip",
-]);
-const SUITES = new Set(["describe", "describe.only", "describe.skip"]);
+const TESTS = new Set(["it", "test"]);
+const SUITES = new Set(["describe"]);
+/** The links after `it`, `test` or `describe` that still define one. */
+const MODIFIERS = new Set(["only", "skip", "concurrent", "todo", "fails"]);
+/** The calls a definition is made through, its rows or condition aside: `it.skipIf(ci)('name', fn)`. */
+const TABLE_FORMS = [".each", ".skipIf", ".runIf"];
 const SETUPS = new Set(["beforeAll", "beforeEach"]);
 
 /**
@@ -99,9 +100,14 @@ class TestCaseFile {
     find(node) {
         if (ts.isCallExpression(node)) {
             const name = calledName(node);
-            if (TESTS.has(name)) {
+            if (defines(name, TESTS)) {
                 const fn = node.arguments.slice(1).find(isFunction);
-                if (fn !== undefined) this.tests.push({ call: node, fn });
+                if (fn !== undefined)
+                    this.tests.push({
+                        call: node,
+                        fn,
+                        fails: name.split(".").includes("fails"),
+                    });
             } else if (SETUPS.has(dottedName(node.expression))) {
                 const fn = node.arguments[0];
                 const suites = suitesAround(node);
@@ -136,12 +142,15 @@ class TestCaseFile {
 
     emit() {
         const context = this.context;
-        const emitted = new Set();
+        const onLine = new Map();
         recordCallMatchers(this);
         for (const test of this.tests) {
-            const canonical = `${context.relative}#test:${this.line(test.call)}`;
-            // Two tests that start on one line share a name: the first keeps it.
-            if (emitted.has(canonical)) continue;
+            // Two tests that start on one line: the first is `#test:<line>`,
+            // the next `#test:<line>.2`, and so on.
+            const line = this.line(test.call);
+            const nth = (onLine.get(line) ?? 0) + 1;
+            onLine.set(line, nth);
+            const canonical = `${context.relative}#test:${line}${nth === 1 ? "" : `.${nth}`}`;
             const id = reference("test_case", canonical);
             const name = testName(test.call, this.sourceFile);
             const kept = context.addNode(
@@ -155,7 +164,6 @@ class TestCaseFile {
                 this.attributes(test, name),
             );
             if (!kept) continue;
-            emitted.add(canonical);
             context.addEdge("contains", context.moduleId, id, test.call);
             this.claimDoubles(test, canonical);
         }
@@ -175,6 +183,7 @@ class TestCaseFile {
             name,
             production_calls: count,
             subjects,
+            ...(test.fails ? { fails: true } : {}),
             assertions: this.assertions(test.fn.body, scope),
         };
     }
@@ -208,22 +217,24 @@ class TestCaseFile {
 
     /** Name the test on each double made inside it. */
     claimDoubles(test, canonical) {
-        const nodes = this.context.accumulator.nodesById;
         for (const double of this.doubles) {
             if (
                 double.node.pos >= test.fn.pos &&
                 double.node.end <= test.fn.end
-            ) {
-                const fact = nodes.get(double.id);
-                if (fact !== undefined) fact.attributes.test_case = canonical;
-            }
+            )
+                this.context.accumulator.setAttribute(
+                    double.id,
+                    "test_case",
+                    canonical,
+                );
         }
     }
 }
 
 /**
- * The name a test-defining call is made through, its `.each` table aside:
- * `it.only` for `it.only.each(rows)('name', fn)`.
+ * The name a test-defining call is made through, its `.each` table or its
+ * `.skipIf`/`.runIf` condition aside: `it.only` for
+ * `it.only.each(rows)('name', fn)`, `it` for `it.skipIf(ci)('name', fn)`.
  */
 function calledName(call) {
     const direct = dottedName(call.expression);
@@ -233,8 +244,15 @@ function calledName(call) {
         : ts.isTaggedTemplateExpression(call.expression)
           ? call.expression.tag
           : undefined;
-    const each = table === undefined ? null : dottedName(table);
-    return each?.endsWith(".each") ? each.slice(0, -".each".length) : null;
+    const name = table === undefined ? null : dottedName(table);
+    const form = TABLE_FORMS.find((suffix) => name?.endsWith(suffix));
+    return form === undefined ? null : name.slice(0, -form.length);
+}
+
+/** Whether a called name defines one of `bases`: `it`, or `it.concurrent.only`. */
+function defines(name, bases) {
+    const [base, ...links] = name?.split(".") ?? [];
+    return bases.has(base) && links.every((link) => MODIFIERS.has(link));
 }
 
 /** The `describe` calls around a node, nearest first. */
@@ -245,7 +263,10 @@ function suitesAround(node) {
         current !== undefined;
         current = current.parent
     )
-        if (ts.isCallExpression(current) && SUITES.has(calledName(current)))
+        if (
+            ts.isCallExpression(current) &&
+            defines(calledName(current), SUITES)
+        )
             suites.push(current);
     return suites;
 }

@@ -13,6 +13,7 @@ use PHPUnit\Framework\Attributes\Group;
  * test-fidelity rules, and says when `__call` leaves its names open.
  */
 #[Group('php-scanner')]
+#[Group('test-fidelity')]
 final class PhpMemberNamesTest extends KnossosTestCase
 {
     public function testListsDeclaredAndDocblockMethods(): void

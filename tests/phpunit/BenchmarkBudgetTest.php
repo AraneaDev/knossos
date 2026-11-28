@@ -96,6 +96,7 @@ final class BenchmarkBudgetTest extends KnossosTestCase
     }
 
     /** A scenario runs its own corpus after the sizes and is held to its own limit. */
+    #[Group('slow')]
     public function testAScenarioOverItsLimitIsNamed(): void
     {
         [$exit, $output, $errors] = $this->benchmark([

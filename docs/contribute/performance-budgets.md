@@ -131,7 +131,13 @@ checkout does (the worker starts with `-B`, so it writes no bytecode). That is
 112.8% of base, which was accepted against the 110% the plan held it to
 (Ruling P22; gap G4-16). The difference is the worker's start: compiling the
 test-facts modules adds about 70ms, while scanning the six files in the worker
-takes less time than at base.
+takes less time than at base. Every install now compiles the worker's
+checked-hash bytecode with the host's `python3` (`PythonBytecode`, the user's
+decision U2), and the gap sweep measured it again on one machine, alternating
+three trees with their own dependencies, four runs each of five rounds:
+`9dd4b250` 0.753s, the sweep's head compiled from source 0.881s (117.0%), and
+the same head with its installed bytecode 0.758s, 100.6% of base. The Python
+worker's own stage (`scanner_python`) took 306ms, 400ms and 286ms.
 
 `test_fidelity_rescan_one_file_rust` measures the same for Rust, with
 `MockLedger` doubles that mockall's `#[automock]` generates for one trait,
@@ -199,6 +205,23 @@ files) cost each worker 100.7% (PHP), 100.5% (TypeScript), 103.5% (Python) and
 worker 96.4% and 96.2% (medians of 15 alternating scans). Each worker figure
 is a median of alternating scans, three per commit unless said, with ext-ffi
 loaded on both sides.
+
+The test-findings reads that `architecture_summary` makes (the snapshot facts'
+`NOT EXISTS` conditions) were measured on the `large` profile at `e9e156c2`, the
+commit before the test-fidelity sweep, and at the sweep's head, on one machine
+with ext-ffi loaded on both sides, alternating the two commits. Each figure is
+the whole `architecture-summary` command (`query_seconds` of the benchmark
+report), so it holds the process start as well as the query:
+
+| Commit              | Runs | `query_seconds` per run      | Median |
+| ------------------- | ---- | ---------------------------- | ------ |
+| `e9e156c2` (base)   | 4    | 0.102, 0.102, 0.1123, 0.1122 | 0.107s |
+| sweep head (Task 4) | 3    | 0.1021, 0.0917, 0.1121       | 0.102s |
+
+The head took 95% of the base, so the query is not slower. The same runs'
+cold scans took 23.5 to 23.9s on both sides. The `large` profile's graph is
+small (an 8 MB database), so this shows no regression at that size; it does not
+measure a graph near the 300,000-row archive cap.
 
 Timing and RSS values vary with hardware, load, filesystem, and cold runtime
 caches. Compare trends from equivalent pinned runners. Tightening a budget

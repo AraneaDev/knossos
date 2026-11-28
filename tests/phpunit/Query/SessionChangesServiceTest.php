@@ -395,6 +395,8 @@ final class SessionChangesServiceTest extends KnossosTestCase
             assertSame(['src/Core/Greeter.php' => 'changed', 'src/Core/Added.php' => 'added', 'src/Edge/Caller.php' => 'changed'], self::statusesOf($changes));
             assertCount(1, array_filter($git->commands, static fn(array $command): bool => in_array('ls-tree', $command, true)));
             assertCount(0, array_filter($git->commands, static fn(array $command): bool => in_array('cat-file', $command, true)));
+            // G6-08a: the work-tree check is the reader's, asked once.
+            assertCount(1, array_filter($git->commands, static fn(array $command): bool => in_array('--is-inside-work-tree', $command, true)));
         } finally {
             $this->removeTempTree($root);
         }

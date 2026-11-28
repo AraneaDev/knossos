@@ -144,7 +144,7 @@ describe('the Issues tab test findings', () => {
     expect(rawText(findRow(rows, 'tests-invalid')!)).toContain('suppressions unreadable: unexpected token at line 3')
   })
 
-  it('reads none when nothing is found, and draws no card text for a knossos that sends none', () => {
+  it('reads none when nothing is found, and says not reported, never zero, for a knossos that sends none', () => {
     expect(
       issueRows(issuesInput(dash([])), 0, 100)
         .map(plainText)
@@ -156,6 +156,13 @@ describe('the Issues tab test findings', () => {
     } as unknown as Dashboard
     expect(issuesInput(older).testFindings).toBeNull()
     expect(issueCount(issuesInput(older)).n).toBe(1)
+    const rows = issueRows(issuesInput(older), 0, 100)
+    expect(rows.length).toBeGreaterThan(0)
+    // The card is drawn like the policy and diagnostics cards for an older server: it says it is not reported, never a clean "0".
+    const card = rows.map(plainText).filter(t => t.includes('Test findings'))
+    expect(card).toHaveLength(1)
+    expect(card[0]).toMatch(/Test findings +not reported/)
+    expect(card[0]).not.toMatch(/✓ 0/)
   })
 
   it('fits every row to the pane at narrow widths', () => {

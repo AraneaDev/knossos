@@ -194,6 +194,7 @@ final class BranchDiffServiceTest extends KnossosTestCase
 
     /** A branch past the files it lists: each listed one counted in its boundary, the whole still counted, and said to be cut. */
     #[Group('query')]
+    #[Group('slow')]
     public function testABranchPastTheFilesItListsSaysSo(): void
     {
         [$pdo, $root] = $this->repository();

@@ -117,11 +117,12 @@ class Configuration:
     # -- one use of a handle ----------------------------------------------------------------------------------------
 
     def _use(self, handle: Handle, node: ast.AST) -> None:
-        self._held = handle.held
+        # Restored, not reset: a use read inside another hands the outer one back its own mark (G4-07).
+        outer, self._held = self._held, handle.held
         try:
             self._read_use(handle, node)
         finally:
-            self._held = False
+            self._held = outer
 
     def _read_use(self, handle: Handle, node: ast.AST) -> None:
         record = handle.record.resolved()

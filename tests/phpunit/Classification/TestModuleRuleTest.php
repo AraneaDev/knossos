@@ -358,6 +358,20 @@ final class TestModuleRuleTest extends TestCase
         assertSame([], (new TestModuleRule())->classify($this->makeNode('workers/rust/src/resolve.rs', ['test' => false])));
     }
 
+    /**
+     * The TypeScript worker reads only a test file's mocks as doubles, so it
+     * must call the same paths test code as this rule does (G1-04): one table
+     * holds the answers, and the worker's `test-module-paths.test.js` reads it too.
+     */
+    public function testAnswersTheSharedTableTheTypeScriptWorkerAnswersToo(): void
+    {
+        /** @var array{paths: list<array{string, bool}>} $table */
+        $table = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/Fixtures/test-module-paths.json'), true, flags: JSON_THROW_ON_ERROR);
+        $rule = new TestModuleRule();
+
+        assertSame($table['paths'], array_map(fn(array $row): array => [$row[0], $rule->classify($this->makeNode($row[0])) !== []], $table['paths']));
+    }
+
     /** @param array<string, scalar|null|array<mixed>> $attributes */
     private function makeNode(string $relativePath, array $attributes = []): NodeFact
     {

@@ -168,7 +168,7 @@ as the source writes it:
   that declares no return type has no `returns`. A signature therefore reads
   the same whether or not the project's dependencies are installed.
 - `optional` marks a parameter a caller may leave out, `variadic` one that
-  takes the rest. A signature may carry `"variadic": true` itself, beside
+  takes the rest, and `by_ref` (PHP only) one taken by reference (`&$out`). A signature may carry `"variadic": true` itself, beside
   `params`, when the function takes any number of arguments past them without
   a rest parameter (a PHP body that calls `func_get_args()`). A receiver the
   caller does not pass (`this`, `self`) is not listed. A destructured
@@ -246,7 +246,11 @@ type checker, so a core can tell a name that is gone from one that has no node
 of its own (`export const`, `export { a as b }`, accessors, constructor
 parameter properties, static members). `exports` names every export, the
 default export as `"default"`, and follows `export *` and aliases; `member_names`
-names every member the type declares or inherits. A list is sent only when the
+names every member the type declares or inherits. A class node may also carry
+`private_names`, those of its `member_names` that are ECMAScript private members
+(`#name`): a member named by the string `'#name'` is spelled the same but is
+public, so a reader takes a `#` name as private only when `private_names` lists
+it, and a class that sends none has none. A list is sent only when the
 worker could read it, and a list that cannot be complete says so with
 `exports_open: true` (an `export *` from a module that does not resolve, an
 `export =`) or `member_names_open: true` (a base type that does not resolve, an
@@ -286,6 +290,47 @@ declaration hands the module; `exports_open` is set for `import *`, a module
 package: a submodule becomes the package's attribute once imported, and is
 never listed. Neither list holds a dunder name (`__x__`).
 
+A Python worker reads one file at a time, so a write from another file adds a
+name neither list holds. A Python module node may carry `foreign_writes`, each
+name its file writes on a project module or class that another file declares,
+sorted: `{target, name?}`, where `target` is the module's or class's reference
+(`py:module:config`, `py:class:config.Settings`) and `name` the name written,
+absent for a `setattr` whose name no literal spells. Only a target the file
+reaches through an import counts, written as an attribute (`config.FLAG = 1`,
+`Settings.debug = True`, `config.Settings.debug = True`, `del`, `+=`) or by
+`setattr`; a target the worker cannot resolve to a project module or a class
+one declares (its own module, a class nested in another, a module outside the
+project), and a dunder name, give none. The writer's `reads` name the
+target's file, so a change to either rescans the writer. A reader opens the
+target's list on any entry, as a write in the target's own file does: no name
+on it is judged absent, and a subclass inherits the open list. The def a
+written name holds may be replaced, so its signature says nothing; an entry
+without `name` may replace any def of the class (as `methods_rewritable`) or
+of the module. An entry with `instance: true` writes an instance built right
+there (`Far().x = 1`), which a reader does not follow: the target's list
+stays as it is, and the target counts as naming `instance_write` below.
+
+A Python class or module node may carry `unfollowed_writes`, sorted: the
+patterns of a write the worker sees but does not follow, by the user's
+decision of 2026-11-27, so a list may lack a name, or a def its signature,
+without being marked open. On a class: `self_alias` (a method writes an
+attribute through another name it binds its receiver to,
+`me = self; me.x = 1`), `instance_write` (`C().x = 1` in its file),
+`nested_class_write` (`O.I.x = 1`), `default_holder` (a function writes
+through a parameter whose default holds the class, `def f(k=C): k.x = 1`),
+`rebound_builtin` (the class handed to a call named like a read-only builtin
+that the module binds to something else), `builtins_exec` (`builtins.exec` or
+`builtins.eval` in the module) and `assigned_frame_hack` (a class-body
+assignment that reaches a frame). On a module: `module_self_write`
+(`import m; m.x = 1` inside `m`), `builtins_exec`, and `frame_write` (code
+that may write a frame's `f_locals`, so a caller's locals: a store or `del`
+through a subscript of it, a writing method such as `update`, or the mapping
+bound to a name, handed to a call or returned; a read is none). A reader
+reports a ghost or an arity mismatch whose target's lineage names one, and a
+`constant` a test's local holds in a test that calls into, or whose file
+imports, a production module naming `frame_write`, as a warning only, never
+as a definite.
+
 A PHP class, interface, trait or enum node may carry `member_names` too: the
 methods it declares itself, its `@method` docblock names, its trait-use aliases
 and an enum's built-ins. Inherited names come from its `extends`, `implements`
@@ -306,7 +351,10 @@ field so declared, and absent (public) otherwise. A reader takes a non-public
 field as a known key, never as one a fixture must hold. A node that declares an enum (`enum` for TypeScript and PHP,
 `class` for Rust and Python) may carry `cases` instead, each `{name, value?}`
 sorted by name, where `value` is the backing literal as text, sent for every
-case or for none. A node carrying `cases` is an enum, whatever its kind.
+case or for none. A node carrying `cases` is an enum, whatever its kind. A PHP
+enum also carries `backing`: `string` or `int`, or `none` for a pure enum, so
+a backed enum with a computed case, which sends no values, is never taken for
+a pure one; a reader that finds no `backing` leaves it unknown.
 
 A list holds at most 64 entries. Past that it is cut and carries
 `fields_truncated: true` or `cases_truncated: true`, and a reader never judges
@@ -374,15 +422,19 @@ non-class symbol of another project module, or an unresolved name that is no
 builtin), and the causes that open `member_names`, but for `__getattr__` and
 `__getattribute__`. An `Enum` sends `cases`, with `value`
 when every case is a string or integer literal and no `_missing_`, `__new__`,
-`__init__` or `_generate_next_value_` in its same-file lineage may give another; an Enum whose members its body may not show sends none.
+`__init__` or `_generate_next_value_` in its same-file lineage may give another; an Enum whose members its body may not show sends none, and so does one with a nested class, a member before Python 3.13 and not after.
 
 A Rust named-field struct that derives `Deserialize` (directly or through
 `cfg_attr`) sends its fields, `type` as written; one without the derive sends
 none, and a reader gives no list for a type with an `implements` edge to
 `Deserialize`, whose hand-written impl may read another shape. A field is not
-required when it is an `Option`, a bare type parameter, or `#[serde(default)]`,
-`skip` or `skip_deserializing` on the field (`default` also on the struct). A
-field read `with` or `deserialize_with` sends no `type`. `fields_open` is set
+required when it is an `Option`, a `type` alias the same file declares of
+one (`type Maybe<T> = Option<T>`, through other such aliases too), a bare type
+parameter, or `#[serde(default)]`, `skip` or `skip_deserializing` on the
+field (`default` also on the struct). A field read `with` or
+`deserialize_with` sends no `type`. An `Option` field read
+`deserialize_with` is sent not required, although serde then requires its
+key: a reader stays silent on a missing one. `fields_open` is set
 for any `serde` key not known to keep the field names (`rename`, `rename_all`,
 `alias`, `flatten`, `tag`, `untagged`, `transparent`, `from` and the rest), a
 derive other than `Clone`, `Copy`, `Debug`, `Default`, `Eq`, `Hash`, `Ord`,
@@ -428,11 +480,12 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
 `schemas/scanner/v1/contribution.schema.json`.
 
 - `test_double`, named `<file>#double:<line>:<col>`: a mock, spy, stub or fake.
-  `framework` (`vitest`, `jest`, `phpunit`, `mockery`, `pest`, `prophecy`, `unittest`,
-  `pytest-mock`, `pytest`, and Rust's `mockall`, `faux`, `mry`, `mockers`,
-  `mockiato`, `mocktopus`, `mock_derive`, `galvanic` or `hand-written`), `pattern` (how it was made, such as
-  `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`; a Python worker
-  writes `<module>.<callable>`, such as `unittest.mock.patch.object` or
+  `framework` (`vitest`, `jest`, `phpunit`, `mockery`, `pest`, `prophecy`,
+  `unittest`, `pytest-mock`, `pytest`, and Rust's `mockall`, `faux`, `mry`,
+  `mockers`, `mockiato`, `mocktopus`, `mock_derive`, `galvanic` or
+  `hand-written`), `pattern` (how it was made, such as `vi.mock`,
+  `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`; a Python worker writes
+  `<module>.<callable>`, such as `unittest.mock.patch.object` or
   `pytest_mock.mocker.patch`), `target`
   (`{kind, specifier?, export?, member?}`, `kind` one of `module`, `class`,
   `instance-member`, `global`, `unknown`; a virtual module mock, made with
@@ -443,8 +496,10 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `{name, line, api, params?, returns}` where `api` is how the test names the
   member (`spyOn`, `mockFactoryKey`, `objectLiteralKey`, `instance-member`,
   PHPUnit's `method`, `configured`, `partial` and `addMethods` (a name the
-  double adds to its class, which is never a ghost), Mockery's `shouldReceive`
-  and, for a member a spy assertion names, `shouldHaveReceived`, `prophecy`, Python's `patch`, `patch.object`,
+  double adds to its class, which is never a ghost; PHPUnit 9's
+  `setMethods()` sends its names so, as it adds any the class lacks),
+  Mockery's `shouldReceive` and, for a member a spy assertion names,
+  `shouldHaveReceived`, `prophecy`, Python's `patch`, `patch.object`,
   `patch.multiple`, `patch.dict`, `spy` and `setattr` (the name the patch form
   or `monkeypatch.setattr` replaces), `attribute` (a name read through a
   spec'd handle) and `assigned` (`m.x = v`, `configure_mock` or a constructor
@@ -456,12 +511,30 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   above and each `returns` entry is `{api, line, once, assignable, typed}`
   (`assignable` is `true`, `false` or `"unknown"`). A member may also carry
   `called_with`, the argument-list assertions on it, each
-  `{api, line, count, spread, keywords?}` (`count` arguments listed, `spread` when one is a
+  `{api, line, count, spread, keywords?, negated?, literals?}` (`count` arguments listed, `spread` when one is a
   spread so the real count is open; `keywords`, the keyword names among them in
   source order, which Python sends. A reader that finds a malformed `keywords`
   keeps the matcher and takes it as `spread`, since a count holding unnamed
-  keywords cannot be bound), and a `returns` entry may carry `type`, the
-  pinned value's own type as the worker names it. A `test_double` may carry
+  keywords cannot be bound; `negated`, `true` when the matcher is called
+  through `.not`, which the TypeScript worker sends: a negated matcher that
+  lists fewer arguments than the member requires cannot fail, so a reader
+  takes it as a vacuous assertion, not as drift of the signature;
+  `literals`, which the PHP worker sends, one entry per listed argument in
+  order: `{type, value}` for a string or integer literal (`type` `string` or
+  `int`, `value` its text, a negative integer with its sign), null for any
+  other argument, sent only when one is a literal and never for a spread list;
+  a reader drops a `literals` of another length than `count` and keeps the
+  matcher), and a `returns` entry may carry `type`, the
+  pinned value's own type as the worker names it: a non-empty string, which
+  the PHP worker spells `int`, `float`, `string`, `bool`, `null`, `array`,
+  `closure`, `class:<FQCN>` or `unknown`, and the Python worker `int`,
+  `float`, `complex`, `str`, `bytes`, `bool`, `None`, `list`, `dict`, `set`,
+  `tuple`, `callable`, `class:<qualname>` or `unknown` (the TypeScript and
+  Rust workers send none). A reader takes a spelling it does not know as
+  unknown. For a class built into the language a `returns` entry may carry
+  `type_ancestors`, every class and interface it extends or implements as
+  the worker's runtime reflects them (the PHP worker runs Reflection on PHP's
+  own classes only, never on a project's). A `test_double` may carry
   `allows_protected` (`true` when the framework lets the double stub protected
   members, as Mockery's `shouldAllowMockingProtectedMethods()` does),
   `compile_checked` (`true` on a Rust double: a reader must not judge drift on
@@ -469,12 +542,17 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `also_implements`, the further classes and interfaces the double is made to
   be, fully qualified (Mockery's `mock(A::class, B::class)`), or
   `also_implements_open: true` when the worker could not name them all. A
-  reader drops a malformed `called_with` entry, `type`, `allows_protected` or
-  `compile_checked` (read as false) and keeps the double; a malformed `also_implements` leaves what the double
-  implements unknown.
-- `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
-  `subjects` (canonical names of the production modules those calls land in),
-  `should_panic` (optional) and `assertions`, each
+  reader drops a malformed `called_with` entry, `type`, `type_ancestors`,
+  `allows_protected` or `compile_checked` (read as false) and keeps the
+  double; a malformed `also_implements` leaves what the double implements
+  unknown.
+- `test_case`, named `<file>#test:<line>` (a second test that starts on the
+  same line `<file>#test:<line>.2`, a third `.3`, and so on): `name`,
+  `production_calls`, `subjects` (canonical names of the production modules
+  those calls land in), `should_panic` (optional), `fails` (optional, `true`
+  for a test the runner expects to fail, Vitest's `it.fails`: it passes only
+  when an assertion fails, so a reader judges none of its assertions, nor a
+  double it answers for, a tautology) and `assertions`, each
   `{api, line, negated?, operands}` (`api` is the matcher's name; `negated` is
   `true` when the matcher is called through `.not`) with operands
   `{source, text?, value?, double?, unconfigured_spy?}`, `source` one of
@@ -487,6 +565,28 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
 - `doubles` edge: from a `test_double` to the production class, interface,
   function, method or module it replaces, with the confidence the worker has in
   that link. A `contains` edge ties a module to its doubles and test cases.
+- `calls` edge: may carry `callable: true` when the code hands the target
+  method on as a callable value rather than calling it there (PHP's
+  `[$repo, 'save']`, `[Repo::class, 'save']`, `'App\Repo::save'`,
+  `Closure::fromCallable()` of one of those, or `$repo->save(...)`;
+  `callsAttributes` in the schema). Whatever it is handed to may call it with
+  more arguments than it takes, as `array_walk()` passes a third, so a reader
+  holds no count above the method's parameters against it, though a count
+  below what it requires still is. Only an edge from production counts: one
+  whose source node is test code (a data provider's row, an
+  `assertIsCallable()`) hands nothing to the code under test. The PHP worker
+  sends one, as a probable, speculative edge kept only when it resolves, for
+  an array callable passed straight to a function or method call, and for a
+  string callable passed to `Closure::fromCallable()` or to a PHP function
+  known to take a callback (`array_map()`, `usort()`, `call_user_func()` and
+  the rest); a value given to `new`, returned, yielded or assigned is none. A
+  Python `calls` edge to a method may carry `unbound: true` when the call
+  names the method through its class (`Repo.save(repo, x)`, `Base.save(self,
+x)`), which hands the receiver to `self` as an argument: a double that
+  replaces the method on the class records it, so a reader takes a matcher or
+  a `side_effect` that lists it as fitting, and one argument more as not. A
+  static or class method called through its class is marked too. Only an edge
+  from production counts.
 
 A fact whose attributes break the schema is dropped by the readers rather than
 failing the scan.

@@ -119,6 +119,7 @@ final class SnapshotTestFindingsTest extends KnossosTestCase
         assertSame([], (new SnapshotTestFindings($pdo))->forSnapshot($first->projectId, (string) $first->snapshotId));
     }
 
+    #[Group('slow')]
     public function testPruningASnapshotDropsItsFindings(): void
     {
         foreach ([true, false] as $enforced) {

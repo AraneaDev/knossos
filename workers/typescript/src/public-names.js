@@ -62,12 +62,20 @@ function unreadableHeritage(checker, node) {
     );
 }
 
+/** Whether a property is an ECMAScript private member (`#name`), not one named by the string `'#name'`. */
+function isPrivateIdentifier(property) {
+    const name = property.valueDeclaration?.name;
+    return name !== undefined && ts.isPrivateIdentifier(name);
+}
+
 /**
  * Every name a class or interface declares or inherits, on its instances and,
- * for a class, on the constructor (static members).
+ * for a class, on the constructor (static members), and of those the
+ * ECMAScript private members (`#name`): a member named by the string
+ * `'#name'` is spelled the same and is public.
  *
- * @returns {{members: string[], open: boolean} | null} null when the
- *   declaration has no symbol, or lists too many names
+ * @returns {{members: string[], privates: string[], open: boolean} | null}
+ *   null when the declaration has no symbol, or lists too many names
  */
 export function typeMembers(checker, node) {
     const symbol =
@@ -76,7 +84,7 @@ export function typeMembers(checker, node) {
             : checker.getSymbolAtLocation(node.name);
     if (symbol === undefined) return null;
     const instance = checker.getDeclaredTypeOfSymbol(symbol);
-    const names = checker.getPropertiesOfType(instance).map((p) => p.name);
+    const properties = [...checker.getPropertiesOfType(instance)];
     let open =
         checker.getIndexInfosOfType(instance).length > 0 ||
         unreadableHeritage(checker, node) ||
@@ -86,12 +94,19 @@ export function typeMembers(checker, node) {
     if (ts.isClassDeclaration(node)) {
         const constructorType = checker.getTypeOfSymbolAtLocation(symbol, node);
         for (const property of checker.getPropertiesOfType(constructorType)) {
-            if (property.name !== "prototype") names.push(property.name);
+            if (property.name !== "prototype") properties.push(property);
         }
         open = open || checker.getIndexInfosOfType(constructorType).length > 0;
     }
-    const list = sorted(names);
-    return list.length > MAX_NAMES ? null : { members: list, open };
+    const list = sorted(properties.map((p) => p.name));
+    if (list.length > MAX_NAMES) return null;
+    return {
+        members: list,
+        privates: sorted(
+            properties.filter(isPrivateIdentifier).map((p) => p.name),
+        ),
+        open,
+    };
 }
 
 /** The `exports` attributes of a module node: none for a file that lists none. */
@@ -104,7 +119,11 @@ export function exportAttributes(checker, sourceFile) {
     };
 }
 
-/** The `member_names` attributes of a class or interface node, none for another declaration. */
+/**
+ * The `member_names` attributes of a class or interface node, with
+ * `private_names` when some of them are `#private`; none for another
+ * declaration.
+ */
 export function memberAttributes(checker, node) {
     if (
         checker === undefined ||
@@ -116,6 +135,9 @@ export function memberAttributes(checker, node) {
     if (listed === null) return {};
     return {
         member_names: listed.members,
+        ...(listed.privates.length > 0
+            ? { private_names: listed.privates }
+            : {}),
         ...(listed.open ? { member_names_open: true } : {}),
     };
 }

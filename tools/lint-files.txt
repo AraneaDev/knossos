@@ -209,6 +209,7 @@ php	src/Git/GitOutputLimitExceeded.php
 php	src/Git/GitProcessRunner.php
 php	src/Git/GitProcessRunnerInterface.php
 php	src/Git/GitWorkingTreeProvider.php
+php	src/Git/NotAWorkTree.php
 php	src/Git/ProcessGitHistoryProvider.php
 php	src/Git/ProcessGitWorkingTreeProvider.php
 php	src/Install/GitHubReleaseSource.php
@@ -216,6 +217,7 @@ php	src/Install/InstallException.php
 php	src/Install/Installation.php
 php	src/Install/Launcher.php
 php	src/Install/ProcessReleaseProbe.php
+php	src/Install/PythonBytecode.php
 php	src/Install/ReleaseAsset.php
 php	src/Install/ReleaseProbe.php
 php	src/Install/ReleaseSource.php
@@ -583,9 +585,15 @@ php	src/TestFidelity/OnRequest/OnRequestInput.php
 php	src/TestFidelity/OnRequest/OverMocking.php
 php	src/TestFidelity/OnRequest/StaleSince.php
 php	src/TestFidelity/OnRequestCategory.php
+php	src/TestFidelity/PhpCallableReach.php
+php	src/TestFidelity/PhpTypeDeclarations.php
 php	src/TestFidelity/PhpTypeFit.php
 php	src/TestFidelity/PythonAnnotation.php
+php	src/TestFidelity/PythonBases.php
+php	src/TestFidelity/PythonForeignWrites.php
+php	src/TestFidelity/PythonResiduals.php
 php	src/TestFidelity/PythonTypeFit.php
+php	src/TestFidelity/PythonUnboundCalls.php
 php	src/TestFidelity/Rules/ArityMismatchRule.php
 php	src/TestFidelity/Rules/CallArity.php
 php	src/TestFidelity/Rules/DoubleTests.php
@@ -593,6 +601,7 @@ php	src/TestFidelity/Rules/DriftPair.php
 php	src/TestFidelity/Rules/DriftRule.php
 php	src/TestFidelity/Rules/DriftScope.php
 php	src/TestFidelity/Rules/DriftText.php
+php	src/TestFidelity/Rules/EnumCaseCheck.php
 php	src/TestFidelity/Rules/GhostMemberRule.php
 php	src/TestFidelity/Rules/MocksSubjectRule.php
 php	src/TestFidelity/Rules/PythonCallBinding.php
@@ -649,6 +658,7 @@ php	tests/phpunit/Bundle/BundleSchemaAgreementTest.php
 php	tests/phpunit/Bundle/BundleTest.php
 php	tests/phpunit/Bundle/GraphBundleDecoderTest.php
 php	tests/phpunit/Bundle/GraphBundleServiceTest.php
+php	tests/phpunit/Bundle/ImportedBundleScannerSetTest.php
 php	tests/phpunit/Bundle/PortableGraphImporterTest.php
 php	tests/phpunit/Bundle/RedactionMapTest.php
 php	tests/phpunit/Cancellation/CancellationTokenTest.php
@@ -806,6 +816,7 @@ php	tests/phpunit/Git/GitProcessRunnerHardeningTest.php
 php	tests/phpunit/Git/ProcessGitProviderLimitsTest.php
 php	tests/phpunit/Git/ProcessGitProviderTest.php
 php	tests/phpunit/Git/RecordingGitRunner.php
+php	tests/phpunit/Git/WorkTreeCheckTest.php
 php	tests/phpunit/InfectionExclusionsTest.php
 php	tests/phpunit/Install/FakeProbe.php
 php	tests/phpunit/Install/ForbiddenSource.php
@@ -815,6 +826,7 @@ php	tests/phpunit/Install/InstallFailurePathsTest.php
 php	tests/phpunit/Install/InstallFixtures.php
 php	tests/phpunit/Install/InstallationTest.php
 php	tests/phpunit/Install/ProcessReleaseProbeTest.php
+php	tests/phpunit/Install/PythonWorkerBytecodeTest.php
 php	tests/phpunit/Install/ReleaseAssetTest.php
 php	tests/phpunit/Install/ReleaseTarballSourcesTest.php
 php	tests/phpunit/Install/SelfUpdateRefreshTest.php
@@ -1208,6 +1220,7 @@ php	tests/phpunit/Scanner/LaravelExecutionFactsTest.php
 php	tests/phpunit/Scanner/LimitsTest.php
 php	tests/phpunit/Scanner/PackagedWorkerConformanceTest.php
 php	tests/phpunit/Scanner/PhpAuditFixturesTest.php
+php	tests/phpunit/Scanner/PhpCallableReachTest.php
 php	tests/phpunit/Scanner/PhpCommandDispatchFactsTest.php
 php	tests/phpunit/Scanner/PhpFieldsTest.php
 php	tests/phpunit/Scanner/PhpLivewireBladeTest.php
@@ -1310,6 +1323,7 @@ php	tests/phpunit/Store/ScanGitHeadTest.php
 php	tests/phpunit/Store/SnapshotArchiveFiguresTest.php
 php	tests/phpunit/Store/SnapshotArchiveMemoryTest.php
 php	tests/phpunit/Store/SnapshotCompressionTest.php
+php	tests/phpunit/Store/SnapshotFactsConditionTest.php
 php	tests/phpunit/Store/SnapshotPayloadBinaryTest.php
 php	tests/phpunit/Store/SnapshotPayloadTest.php
 php	tests/phpunit/Store/SqliteConnectionTest.php
@@ -1352,6 +1366,8 @@ php	tests/phpunit/Support/SyntheticGraph.php
 php	tests/phpunit/Support/TempRootGuard.php
 php	tests/phpunit/Support/TempTrees.php
 php	tests/phpunit/Support/WorkerClients.php
+php	tests/phpunit/TagSlowTestsTest.php
+php	tests/phpunit/TestFidelity/ActiveTestFindingsTest.php
 php	tests/phpunit/TestFidelity/DashboardTestFindingsTest.php
 php	tests/phpunit/TestFidelity/DriftEndToEndTest.php
 php	tests/phpunit/TestFidelity/Facts/FieldListTest.php
@@ -1374,18 +1390,24 @@ php	tests/phpunit/TestFidelity/PhpAcceptanceTest.php
 php	tests/phpunit/TestFidelity/PhpHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/PhpTypeFitTest.php
 php	tests/phpunit/TestFidelity/PythonAcceptanceTest.php
+php	tests/phpunit/TestFidelity/PythonForeignWritesTest.php
 php	tests/phpunit/TestFidelity/PythonHealthyIdiomsTest.php
+php	tests/phpunit/TestFidelity/PythonResidualsTest.php
 php	tests/phpunit/TestFidelity/PythonSelfScanTest.php
 php	tests/phpunit/TestFidelity/PythonTypeFitTest.php
+php	tests/phpunit/TestFidelity/PythonUnboundCallsTest.php
+php	tests/phpunit/TestFidelity/PythonUnfollowedWritesTest.php
 php	tests/phpunit/TestFidelity/ReusedContributionTest.php
 php	tests/phpunit/TestFidelity/Rules/ArityMismatchRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/CaseFixtures.php
 php	tests/phpunit/TestFidelity/Rules/DriftFixtures.php
+php	tests/phpunit/TestFidelity/Rules/EnumCaseCheckTest.php
 php	tests/phpunit/TestFidelity/Rules/GhostMemberRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/MocksSubjectRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/PythonFixtures.php
 php	tests/phpunit/TestFidelity/Rules/ReturnDriftRuleTest.php
 php	tests/phpunit/TestFidelity/Rules/TautologyRuleTest.php
+php	tests/phpunit/TestFidelity/Rules/VacuousNegationTest.php
 php	tests/phpunit/TestFidelity/Rules/VisibilityBreachRuleTest.php
 php	tests/phpunit/TestFidelity/RustAcceptanceTest.php
 php	tests/phpunit/TestFidelity/RustHealthyIdiomsTest.php
@@ -1400,6 +1422,7 @@ php	tests/phpunit/TestFidelity/Synthesis/ExampleValueTest.php
 php	tests/phpunit/TestFidelity/Synthesis/FrameworkChoiceTest.php
 php	tests/phpunit/TestFidelity/Synthesis/MockMembersTest.php
 php	tests/phpunit/TestFidelity/Synthesis/SynthesisGoldenTest.php
+php	tests/phpunit/TestFidelity/Synthesis/TemplateRenderingTest.php
 php	tests/phpunit/TestFidelity/Synthesis/TemplatesLintTest.php
 php	tests/phpunit/TestFidelity/TautologyEndToEndTest.php
 php	tests/phpunit/TestFidelity/TestFactsSearchTest.php
@@ -1411,6 +1434,7 @@ php	tests/phpunit/TestFidelity/TestFindingSuppressionsTest.php
 php	tests/phpunit/TestFidelity/TestRuleCatalogTest.php
 php	tests/phpunit/TestFidelity/TurnTestFindingsTest.php
 php	tests/phpunit/TestFidelity/TypeScriptAcceptanceTest.php
+php	tests/phpunit/TestFidelity/TypeScriptHealthyIdiomsTest.php
 php	tests/phpunit/TestFidelity/TypeScriptTestCaseFlowTest.php
 php	tests/phpunit/TestFidelity/TypeScriptTestFactsTest.php
 php	tests/phpunit/Watch/ExternalScanProbeTest.php
@@ -1427,6 +1451,7 @@ php	tools/api-documentation-check.php
 php	tools/benchmark.php
 php	tools/check-coverage-budgets.php
 php	tools/claude-code-types-check.php
+php	tools/compile-mock-goldens
 php	tools/coverage-merge.php
 php	tools/docstring-report.php
 php	tools/documentation-check.php
@@ -1461,10 +1486,12 @@ php	tools/scanner-conformance
 php	tools/skill-copies.php
 php	tools/skipped-tests.php
 php	tools/supply-chain-report.php
+php	tools/tag-slow-tests.php
 php	tools/trivy-allowlist.php
 php	tools/worker-constants.php
 php	workers/php/bin/worker
 php	workers/php/src/AstDepth.php
+php	workers/php/src/CallableReach.php
 php	workers/php/src/DocblockTypes.php
 php	workers/php/src/FactCollector.php
 php	workers/php/src/Fields.php
@@ -1882,6 +1909,7 @@ js	workers/typescript/src/__tests__/test-case-twins.test.js
 js	workers/typescript/src/__tests__/test-cases.test.js
 js	workers/typescript/src/__tests__/test-doubles.test.js
 js	workers/typescript/src/__tests__/test-facts-failure.test.js
+js	workers/typescript/src/__tests__/test-module-paths.test.js
 js	workers/typescript/src/__tests__/typescript-fact-utils.test.js
 js	workers/typescript/src/__tests__/untyped-member-calls.test.js
 js	workers/typescript/src/__tests__/worker-startup.test.js

@@ -209,6 +209,7 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
     }
 
     /** A ledger entry whose test baseline for the edited file was cut, or that read none (a writer from before them). */
+    #[Group('slow')]
     public function testACutOrMissingTestBaselineLeavesTestFindingsNotEvaluated(): void
     {
         foreach (['cut' => ['keys' => [], 'truncated' => true], 'missing' => null] as $case => $baseline) {
@@ -284,6 +285,7 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
     }
 
     /** R14: a model deletes through Bash, which reports nothing; the diff's deletion is the turn's. */
+    #[Group('slow')]
     public function testAnUnreportedDeletionIntroducesTheMockItStrands(): void
     {
         foreach (['fresh' => false, 'watcher' => true] as $case => $watcher) {
@@ -345,6 +347,7 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
     }
 
     /** A mock of a module that never existed stays out of the brief when another file goes; the overlap with the deleted path is pinned in TurnTestFindingsTest. */
+    #[Group('slow')]
     public function testAMissingModuleFromBeforeTheTurnIsNotIntroducedByDeletingAnotherFile(): void
     {
         foreach (['fresh' => false, 'watcher' => true] as $case => $watcher) {
@@ -366,6 +369,29 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
             } finally {
                 $this->removeTempTree($root);
             }
+        }
+    }
+
+    /**
+     * The overlap: a genuine missing_module finding (from a real scan) whose raw specifier also names the file
+     * the turn deletes, as when the module's old path was already unresolvable before the turn. The deletion
+     * strands nothing that was not already stranded. The scan resolves `.js` to `.ts`, so the specifier the
+     * finding stored is pointed at the indexed file to stand for such a scan.
+     */
+    public function testAModuleBothMissingAndDeletedIsNotIntroducedByTheDeletion(): void
+    {
+        [$pdo, , $root] = $this->project(healthy: true, extra: [self::MOCK => "import { it, vi } from 'vitest';\n\nvi.mock('../src/Legacy.js', () => ({}));\n\nit('runs', () => {});\n"]);
+        try {
+            assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM test_findings WHERE sub_rule = 'missing_module'")->fetchColumn(), 'the module was missing before the turn');
+            $pdo->exec("UPDATE test_findings SET attributes_json = json_set(attributes_json, '$.specifier', '../src/UserService.js') WHERE sub_rule = 'missing_module'");
+            unlink($root . '/' . self::SERVICE);
+
+            $brief = $this->brief($pdo, $root, [self::SERVICE]);
+
+            assertSame([self::SERVICE], $brief['deleted_files']);
+            assertSame(['ok', 0, []], [$brief['test_findings']['status'], $brief['test_findings']['total'], $brief['test_findings']['introduced']]);
+        } finally {
+            $this->removeTempTree($root);
         }
     }
 
@@ -445,6 +471,7 @@ final class TurnBriefTestFindingsTest extends KnossosTestCase
     }
 
     /** A database upgraded from before the test rules: its active scan has no findings because they never ran. */
+    #[Group('slow')]
     public function testABaselineFromAScanTheRulesNeverJudgedLeavesTestFindingsNotEvaluated(): void
     {
         foreach (['watcher' => true, 'fresh' => false] as $case => $watcher) {

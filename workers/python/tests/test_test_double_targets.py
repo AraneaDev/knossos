@@ -344,6 +344,25 @@ def test_a_patched_dunder_names_no_target(project, scan_collect) -> None:
     assert found["5:58"][1] == "py:class:repo.Repo"
 
 
+MODULE_DICT = """\
+from unittest.mock import patch
+
+
+def test_it():
+    with patch.dict("repo.__dict__", {"flag": 1}), patch.dict("repo.Repo.__dict__", {"x": 1}):
+        pass
+"""
+
+
+def test_a_patched_namespace_dict_names_its_owner(project, scan_collect) -> None:
+    found = scan_test(project, scan_collect, MODULE_DICT)
+
+    # G4-07: `__dict__` is the dict `patch.dict` patches, no member, so only a member target's dunder is unknown.
+    module, klass = found["5:10"], found["5:52"]
+    assert (module[0]["target"]["kind"], module[1], module[0]["members"]) == ("module", "py:module:repo", [])
+    assert (klass[0]["target"]["kind"], klass[1], klass[0]["members"]) == ("class", "py:class:repo.Repo", [])
+
+
 REBOUND_IMPORTS = {
     "arity.py": "def kw(a, b, *, c=0):\n    return a\n\n\ndef star(a, b):\n    return a\n\n\n"
     "def kept(a):\n    return a\n",

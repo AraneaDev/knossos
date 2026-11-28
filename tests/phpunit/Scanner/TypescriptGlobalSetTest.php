@@ -44,6 +44,7 @@ final class TypescriptGlobalSetTest extends KnossosTestCase
      * @param array<string, ?string> $edits what the edit writes, or null to delete
      */
     #[DataProvider('cases')]
+    #[Group('slow')]
     public function testAnEditThatChangesTheProgramsGlobalsMatchesAFullScan(string $tsconfig, array $files, array $edits, string $reader): void
     {
         $this->write('tsconfig.json', $tsconfig);

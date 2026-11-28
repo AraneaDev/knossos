@@ -74,6 +74,56 @@ final class MocksSubjectRuleTest extends KnossosTestCase
         assertSame([], self::judge([CaseFixtures::testCase([], 2, ['src/ledger.ts'], 10, $file)], CaseFixtures::double(3, 'vi.mock', self::MODULE_MOCK, file: $file), $db));
     }
 
+    public function testEachPieceOfTheMessageIsCleanedOnceAndTheWholeIsNotCutAgain(): void
+    {
+        // G1-18: a long test name keeps the module before it; each worker text is cut on its own.
+        $db = DriftFixtures::node('module', 'src/db.ts', 'src/db.ts');
+        $name = "checks\x1b " . str_repeat('x', 130);
+        $case = DriftFixtures::node('test_case', CaseFixtures::FILE . '#test:10', $name, ['name' => $name, 'production_calls' => 2, 'subjects' => ['src/db.ts'], 'assertions' => []], 10);
+
+        $message = self::judge([$case], CaseFixtures::double(3, 'vi.mock', self::MODULE_MOCK), $db)[0]->message;
+
+        assertSame("vi.mock replaces src/db.ts, which the test 'checks " . str_repeat('x', 112) . "…' exercises", $message);
+    }
+
+    public function testTheCapCountsCharactersNotBytes(): void
+    {
+        // 100 three-byte characters are 300 bytes and fit the 120-character cap.
+        $db = DriftFixtures::node('module', 'src/db.ts', 'src/db.ts');
+        $name = str_repeat('é', 100);
+        $case = DriftFixtures::node('test_case', CaseFixtures::FILE . '#test:10', $name, ['name' => $name, 'production_calls' => 2, 'subjects' => ['src/db.ts'], 'assertions' => []], 10);
+
+        assertSame("vi.mock replaces src/db.ts, which the test '" . $name . "' exercises", self::judge([$case], CaseFixtures::double(3, 'vi.mock', self::MODULE_MOCK), $db)[0]->message);
+        // 130 of them are cut at a character, never inside one.
+        $long = str_repeat('é', 130);
+        $cut = DriftFixtures::node('test_case', CaseFixtures::FILE . '#test:10', $long, ['name' => $long, 'production_calls' => 2, 'subjects' => ['src/db.ts'], 'assertions' => []], 10);
+        assertSame("vi.mock replaces src/db.ts, which the test '" . str_repeat('é', 119) . "…' exercises", self::judge([$cut], CaseFixtures::double(3, 'vi.mock', self::MODULE_MOCK), $db)[0]->message);
+    }
+
+    public function testANameTwoSubjectsShareNamesNeitherByItself(): void
+    {
+        // G1-19: `tests/db.test.ts` runs `src/db.ts` and `src/legacy/db.ts` and mocks the legacy one, a dependency.
+        $legacy = DriftFixtures::node('module', 'src/legacy/db.ts', 'src/legacy/db.ts');
+        $mock = ['kind' => 'module', 'specifier' => '../src/legacy/db'];
+        $subjects = ['src/db.ts', 'src/legacy/db.ts'];
+        $judge = static fn(string $file, array $subjects): array => array_map(
+            static fn(TestFinding $finding): string => $finding->attributes['module'] . ' ' . $finding->attributes['test_case'],
+            self::judge([CaseFixtures::testCase([], 2, $subjects, 10, $file)], CaseFixtures::double(3, 'vi.mock', $mock, file: $file), $legacy),
+        );
+
+        assertSame([], $judge('tests/db.test.ts', $subjects));
+        assertSame([], $judge('tests/db.test.ts', [...$subjects, 'src/other/db.ts']));
+        // The test's path names the legacy module more nearly than the other: it is the subject.
+        assertSame(['src/legacy/db.ts tests/legacy/db.test.ts#test:10'], $judge('tests/legacy/db.test.ts', $subjects));
+        assertSame(['src/legacy/db.ts src/legacy/db.test.ts#test:10'], $judge('src/legacy/db.test.ts', $subjects));
+        // The name alone, with no other subject of that name, still names it; a nearer path to the other does not.
+        assertSame(['src/legacy/db.ts tests/db.test.ts#test:10'], $judge('tests/db.test.ts', ['src/legacy/db.ts', 'src/ledger.ts']));
+        assertSame([], $judge('tests/main/db.test.ts', [...$subjects, 'src/main/db.ts']));
+        // A file named for another module, or for none, names no one among several subjects.
+        assertSame([], $judge('tests/cart.test.ts', ['src/legacy/db.ts', 'src/ledger.ts']));
+        assertSame([], $judge('tests/helpers.ts', ['src/legacy/db.ts', 'src/ledger.ts']));
+    }
+
     public function testAManualMockSubjectDoesNotCrowdTheRealOne(): void
     {
         $db = DriftFixtures::node('module', 'src/db.ts', 'src/db.ts');

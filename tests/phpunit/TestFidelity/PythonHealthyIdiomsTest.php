@@ -44,7 +44,11 @@ use PHPUnit\Framework\Attributes\Group;
  * `__eq__` under test compared with themselves, `parametrize` arguments, a
  * conditional and a `finally` binding, `side_effect` and `reset_mock` over a
  * pin, an `AsyncMock` member not awaited, and a pin read back through a
- * fixture and through `setUp`. Ruling P5: a false definite the rules give
+ * fixture and through `setUp`. Three more each guard one rule of a local's
+ * literal (G4-09): a nested reader run before its local is bound again (one
+ * binding), a binding in a branch read after it (the binding that reaches
+ * the use), and a pin read back in a nested helper (the same function).
+ * Ruling P5: a false definite the rules give
  * before Task 5's gates is listed here as "cleared by Task 5"; none is.
  *
  * Now the rules judge Python (Task 5), `tests/test_planted.py` sets each
@@ -67,6 +71,10 @@ use PHPUnit\Framework\Attributes\Group;
  * twin, a plain base whose subclass's mismatch stays definite.
  * `tests/test_allowed.py` holds the decorators and metaclasses that rewrite
  * nothing: `dataclass`, `total_ordering`, `abc.ABC`, `enum.unique`.
+ * `tests/test_foreign.py` patches a module global only another file writes
+ * (`flags.VERBOSE = True` in `boot.py`), which that write opens (G4-03), and
+ * `tests/test_unbound.py` a matcher that lists the receiver of a call
+ * production makes through the class, `Repo.method(repo, key)` (G4-10).
  *
  * `src/probes/` and the `tests/test_probe_*.py` files hold the final review's
  * probes, each passing under real pytest: a member Python's lookup answers
@@ -79,6 +87,16 @@ use PHPUnit\Framework\Attributes\Group;
  * `tests/test_probe_planted.py` holds their twins: an arity mismatch under one
  * base, one beside other `self` writes, and a ghost on a class only annotations
  * and an instance name.
+ *
+ * `tests/test_route.py` matches an `Enum` parameter by its case and by
+ * `Leg("air")`: silent, as the Python worker sends no matcher literals
+ * (G3-19).
+ *
+ * `tests/test_nested_writes.py` doubles a nested class (`Outer.Inner`) whose
+ * names are written outside its body, in its file and from another (G4-05's
+ * `nested_class_write`), through the outer class, a string target, an alias
+ * and `create_autospec`: silent, never a definite, as U1 binds, since a
+ * double of a nested class names no target the rules judge (W-3).
  */
 #[Group('test-fidelity')]
 #[Group('python-scanner')]

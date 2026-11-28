@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\TestFidelity\Rules;
 
+use Knossos\Scanner\Protocol\Confidence;
+use Knossos\Scanner\Protocol\EdgeFact;
+use Knossos\Scanner\Protocol\NodeFact;
+use Knossos\Scanner\Protocol\Origin;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\Rules\ArityMismatchRule;
 use Knossos\TestFidelity\TestFidelityGraph;
@@ -89,6 +93,47 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertSame(FindingConfidence::Definite, $findings[0]->confidence);
         assertSame('call_arity', $findings[0]->subRule);
         assertSame('find needs 2 argument(s); the matcher expects 1', $findings[0]->message);
+    }
+
+    public function testTooFewUnderNotIsNoArityDrift(): void
+    {
+        // G3-02: `.not.toHaveBeenCalledWith()` for `rate(x)` cannot fail; TautologyRule reports it, as vacuous.
+        $signature = ['params' => [['name' => 'id'], ['name' => 'patch']]];
+        $negated = static fn(int $count): array => ['negated' => true] + self::matcher($count);
+
+        assertSame([], self::judgeCalls($signature, [$negated(1)]));
+        assertSame([], self::judgeCalls($signature, [$negated(0), self::matcher(2)]));
+        assertSame(['find takes 2 argument(s); the matcher expects 3'], array_map(static fn($finding): string => $finding->message, self::judgeCalls($signature, [$negated(3)])), 'too many under .not is still drift');
+        assertSame(['find needs 2 argument(s); the matcher expects 1'], array_map(static fn($finding): string => $finding->message, self::judgeCalls($signature, [$negated(1), self::matcher(1)])), 'the control');
+    }
+
+    public function testAMatcherWithAMalformedNegationIsDropped(): void
+    {
+        assertSame([], self::judgeCalls(['params' => [['name' => 'id'], ['name' => 'patch']]], [['negated' => 'yes'] + self::matcher(1)]));
+    }
+
+    public function testAnOverloadedMemberIsSilentForAMatcher(): void
+    {
+        // G3-02: the node holds the first signature only, so no count can be held against it.
+        $graph = DriftFixtures::graph(
+            [DriftFixtures::method('find', ['signature' => ['params' => [['name' => 'id', 'type' => 'string']]], 'overloaded' => true])],
+            [DriftFixtures::stub('find', null, [], [self::matcher(3), self::matcher(0)])],
+        );
+
+        assertSame([], [...(new ArityMismatchRule())->findings($graph)]);
+    }
+
+    public function testAProphecyMatcherIsExact(): void
+    {
+        // G3-02: only PHPUnit's `with()` leaves the arguments it is not given open.
+        $signature = ['signature' => ['params' => [['name' => 'id', 'type' => 'string'], ['name' => 'deep', 'type' => 'bool']]]];
+        $findings = static fn(string $framework, string $api): array => array_map(
+            static fn($finding): string => $finding->message,
+            [...(new ArityMismatchRule())->findings(DriftFixtures::graph([DriftFixtures::method('find', $signature)], [DriftFixtures::stub('find', null, [], [self::matcher(1, $api)])], framework: $framework))],
+        );
+
+        assertSame(['find needs 2 argument(s); the matcher expects 1'], $findings('prophecy', 'with'));
+        assertSame([], $findings('phpunit', 'with'), 'the control');
     }
 
     public function testAnArgumentCountWithinTheSignatureIsSilent(): void
@@ -344,6 +389,7 @@ final class ArityMismatchRuleTest extends KnossosTestCase
         assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge([], ['py:class:app.repo.B'], [['B', [], null, ['py:class:app.repo.Base']], ['Base', ['run'], $two, []]]));
         // A def on the class itself answers first, whatever its bases.
         assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge(['run'], ['py:external_symbol:logging.Handler', 'py:class:app.repo.Base'], [['Base', ['other'], null, []]], [['run', PythonFixtures::signature($two)]]));
+        assertSame(['definite run needs 2 argument(s); the matcher expects 1'], $judge(['run'], ['py:class:app.repo.Base'], [['Base', ['other'], null, []]], [['run', PythonFixtures::signature($two)]]));
     }
 
     public function testTypeScriptArityIgnoresWhoElseListsTheName(): void
@@ -370,6 +416,43 @@ final class ArityMismatchRuleTest extends KnossosTestCase
 
         assertSame(['warning open takes 2 argument(s); the double passes 3'], self::messages($untyped));
         assertSame('signature', $untyped[0]->subRule);
+    }
+
+    /**
+     * A PHP method production hands on as a callable (`array_walk($xs, [$repo, 'save'], 7)`)
+     * may be called with more arguments than it takes, so neither a matcher
+     * nor a replacement listing more is held against it; fewer still is
+     * (G3-31). Reached through a type of the target's lineage it counts, through
+     * another class or for another name it does not.
+     */
+    public function testAPhpMethodReachedAsACallableMayTakeMoreArguments(): void
+    {
+        $save = ['signature' => ['params' => [['name' => 'name', 'type' => 'string'], ['name' => 'flags', 'type' => 'int']], 'returns' => 'bool']];
+        $tooMany = ['name' => 'save', 'line' => 15, 'api' => 'method', 'returns' => [], 'called_with' => [['api' => 'with', 'line' => 15, 'count' => 3, 'spread' => false]]];
+        $replacement = ['name' => 'save', 'line' => 15, 'api' => 'method', 'returns' => [], 'params' => [['name' => 'a', 'type' => 'string'], ['name' => 'b', 'type' => 'int'], ['name' => 'c', 'type' => 'int']]];
+        $tooFew = ['name' => 'save', 'line' => 15, 'api' => 'shouldReceive', 'returns' => [], 'called_with' => [['api' => 'with', 'line' => 15, 'count' => 1, 'spread' => false]]];
+        $walker = DriftFixtures::phpType('class', 'App\Walker', [], 'src/Walker.php');
+        $each = DriftFixtures::phpMethod($walker, 'each');
+        $provider = DriftFixtures::phpMethod(DriftFixtures::phpType('class', 'Tests\WalkerTest', [], 'tests/WalkerTest.php'), 'rows');
+        $reach = static fn(string $target, bool $callable = true, ?NodeFact $from = null): EdgeFact => new EdgeFact('calls', ($from ?? $each)->localId, $target, Origin::Ast, Confidence::Probable, ($from ?? $each)->evidence, $callable ? ['speculative' => true, 'callable' => true] : []);
+        $parent = DriftFixtures::phpType('interface', 'App\Saves', ['member_names' => []], 'src/Saves.php');
+        $lineage = [DriftFixtures::edge('implements', DriftFixtures::phpType('class', 'App\UserService'), $parent->localId)];
+        $graph = static fn(array $member, array $edges, array $extra = [], array $double = []): TestFidelityGraph => DriftFixtures::phpGraph([['save', $save]], [$member], $double, extra: [$walker, $each, $provider, ...$extra], extraEdges: $edges);
+
+        assertSame([], self::findings($graph($tooMany, [$reach('php:method:App\UserService::save')])));
+        assertSame([], self::findings($graph($tooMany, [$reach('php:method:\app\userservice::SAVE')])), 'PHP names match in any case.');
+        assertSame([], self::findings($graph($replacement, [$reach('php:method:App\UserService::save')])));
+        assertSame([], self::findings($graph($tooMany, [$reach('php:method:App\Saves::save'), ...$lineage], [$parent])), 'Reached through an interface the target implements.');
+        assertSame(['definite save needs 2 argument(s); the matcher expects 1'], self::messages(self::findings($graph($tooFew, [$reach('php:method:App\UserService::save')], [], ['framework' => 'mockery']))));
+        assertSame(['definite save takes 2 argument(s); the matcher expects 3'], self::messages(self::findings($graph($tooMany, []))), 'Called only directly, it takes no extra.');
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method:App\UserService::save', false)])));
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method:App\UserService::find')])));
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method:App\Other::save')])));
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method_of_property:App\UserService::save')])));
+        assertCount(1, self::findings($graph($replacement, [])));
+        assertCount(1, self::findings($graph($tooMany, [$reach('php:method:App\UserService::save', true, $provider)])), 'A test that lists the callable, a data provider, hands nothing to production.');
+        assertCount(1, self::findings($graph($tooMany, [new EdgeFact('calls', 'php:method:App\Gone::each', 'php:method:App\UserService::save', Origin::Ast, Confidence::Probable, $walker->evidence, ['callable' => true])])), 'A source the scan does not hold is no production.');
+        assertCount(1, self::findings($graph($tooMany, [new EdgeFact('references', $each->localId, 'php:method:App\UserService::save', Origin::Ast, Confidence::Probable, $each->evidence, ['callable' => true])])), 'Only a calls edge reaches a method.');
     }
 
     /** @return list<\Knossos\TestFidelity\TestFinding> */

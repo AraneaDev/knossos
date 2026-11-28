@@ -16,6 +16,12 @@ use PhpParser\Node\Scalar;
  * `closure` or `unknown`. The worker has no type checker, so a variable, a
  * call or anything else whose type takes inference is `unknown`, and core
  * stays silent about it.
+ *
+ * A class built into PHP also says what it is (`ancestors()`): the worker
+ * runs PHP, so Reflection on PHP's own classes names every class and
+ * interface one extends or implements (G3-10). Only an internal class the
+ * worker's PHP already holds is reflected, never a project class, which is
+ * neither loaded nor autoloaded.
  */
 final class PinnedType
 {
@@ -39,6 +45,25 @@ final class PinnedType
             $value instanceof Expr\UnaryMinus, $value instanceof Expr\UnaryPlus => self::signed($value->expr),
             default => self::UNKNOWN,
         };
+    }
+
+    /**
+     * For a `class:<FQCN>` type naming a class built into PHP, the classes
+     * and interfaces it extends or implements, sorted; empty for any other
+     * type or class.
+     *
+     * @return list<string>
+     */
+    public static function ancestors(string $type): array
+    {
+        $class = str_starts_with($type, 'class:') ? substr($type, strlen('class:')) : '';
+        if ($class === '' || !class_exists($class, false) || !(new \ReflectionClass($class))->isInternal()) {
+            return [];
+        }
+        $names = [...array_values(class_parents($class, false) ?: []), ...array_values(class_implements($class, false) ?: [])];
+        sort($names, SORT_STRING);
+
+        return $names;
     }
 
     /** `true`, `false` and `null` in any case; any other constant's value is not in the syntax. */

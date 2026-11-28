@@ -26,6 +26,7 @@ use PHPUnit\Framework\Attributes\Group;
 #[Group('python-scanner')]
 final class PythonSelfScanTest extends KnossosTestCase
 {
+    #[Group('slow')]
     public function testTheWorkersOwnSuiteGivesOnlyTrueDefinites(): void
     {
         $root = self::scratchPath('python-self-scan');

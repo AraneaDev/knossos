@@ -2,6 +2,7 @@
 // 2 members; complete
 use mockall::mock;
 use synth::focus::Mk3;
+use synth::focus::*;
 
 mock! {
     pub Mk3 {

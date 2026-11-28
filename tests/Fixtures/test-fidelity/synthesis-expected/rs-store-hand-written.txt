@@ -2,6 +2,7 @@
 // 9 members; complete
 use synth::focus::Store;
 use synth::focus::Payload;
+use synth::focus::*;
 
 pub struct FakeStore;
 

@@ -14,6 +14,7 @@ final readonly class TestCaseFact
     /**
      * @param list<string> $subjects canonical names of the production modules the test's production calls land in
      * @param list<Assertion> $assertions
+     * @param bool $fails whether the runner expects the test to fail (Vitest's `it.fails`), so it passes only when an assertion fails
      */
     public function __construct(
         public string $canonicalName,
@@ -22,6 +23,7 @@ final readonly class TestCaseFact
         public array $subjects,
         public ?bool $shouldPanic,
         public array $assertions,
+        public bool $fails,
     ) {}
 
     /**
@@ -38,7 +40,8 @@ final readonly class TestCaseFact
         $subjects = $attributes['subjects'] ?? null;
         $shouldPanic = $attributes['should_panic'] ?? null;
         $rawAssertions = $attributes['assertions'] ?? null;
-        if (!is_string($name) || !is_int($calls) || $calls < 0 || ($shouldPanic !== null && !is_bool($shouldPanic))) {
+        $fails = $attributes['fails'] ?? false;
+        if (!is_string($name) || !is_int($calls) || $calls < 0 || ($shouldPanic !== null && !is_bool($shouldPanic)) || !is_bool($fails)) {
             return null;
         }
         if (!is_array($subjects) || !array_is_list($subjects) || !is_array($rawAssertions) || !array_is_list($rawAssertions)) {
@@ -58,6 +61,6 @@ final readonly class TestCaseFact
             $assertions[] = $assertion;
         }
 
-        return new self($node->canonicalName, $name, $calls, $subjects, $shouldPanic, $assertions);
+        return new self($node->canonicalName, $name, $calls, $subjects, $shouldPanic, $assertions, $fails);
     }
 }

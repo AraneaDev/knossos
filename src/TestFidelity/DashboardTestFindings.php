@@ -46,9 +46,11 @@ final readonly class DashboardTestFindings
     {
         $suppressions = ActiveTestFindings::suppressionsOf($root);
         $findings = new ActiveTestFindings($pdo, $projectId, $suppressions);
-        $definite = $findings->count(['confidence' => FindingConfidence::Definite->value]);
-        $stale = array_sum(array_map(static fn(string $category): int => $findings->count(['confidence' => FindingConfidence::Definite->value, 'category' => $category]), StaleCategories::ALL));
-        $warning = $findings->count(['confidence' => FindingConfidence::Warning->value]);
+        $counts = $findings->countsByConfidenceAndCategory();
+        $byCategory = $counts[FindingConfidence::Definite->value] ?? [];
+        $definite = array_sum($byCategory);
+        $stale = array_sum(array_intersect_key($byCategory, array_flip(StaleCategories::ALL)));
+        $warning = array_sum($counts[FindingConfidence::Warning->value] ?? []);
         $definiteRows = $findings->find(['confidence' => FindingConfidence::Definite->value], self::GROUPED_LIMIT);
         $listed = array_slice($definiteRows, 0, self::LIST_LIMIT);
         if (count($listed) < self::LIST_LIMIT) {
@@ -92,7 +94,7 @@ final readonly class DashboardTestFindings
      * @param list<array<string, mixed>> $findings
      * @return array<string, array{doubles: int, target: string, reasons: list<string>, keys: list<string>}>
      */
-    public static function byProductionFile(array $findings): array
+    private static function byProductionFile(array $findings): array
     {
         $files = [];
         foreach ($findings as $finding) {

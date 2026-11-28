@@ -33,6 +33,9 @@ final class StaleSinceGitTest extends KnossosTestCase
 
     private const STALE = 'stale since HEAD: UserService changed, tests/ghost.test.ts untouched; review: getProfil';
 
+    /** `Wall`'s `impl`, in a file of its own, mocked by `automock` in a test build. */
+    private const WALL_IMPL = "#[cfg(test)]\nuse mockall::automock;\n\nuse crate::wall::Wall;\n\n#[cfg_attr(test, automock)]\nimpl Wall {\n    pub fn tick(&self) -> u64 {\n        1\n    }\n}\n";
+
     private const SERVICE = "export class UserService {\n  getProfile(id: string): string {\n    return id;\n  }\n\n  touched(): void {}\n}\n";
 
     public function testAChangedTargetFileWithAnUntouchedTestFires(): void
@@ -102,6 +105,7 @@ final class StaleSinceGitTest extends KnossosTestCase
         self::assertSame(1, $result->data['git']['changed_files']);
     }
 
+    #[Group('slow')]
     public function testGitDiffNarrowsScanItemsToChangedFiles(): void
     {
         $repo = $this->repository();
@@ -122,8 +126,14 @@ final class StaleSinceGitTest extends KnossosTestCase
         $all = $this->audit($repo, scope: 'git-diff', limit: 2, offset: 1);
         self::assertSame([[self::GHOST, 6, 'STALE_SINCE', 'warning'], ['tests/planted.test.ts', 4, 'TAUTOLOGY', 'definite']], self::positions($all));
         self::assertSame([4, 3], [$all->data['total'], $all->data['pagination']['next_offset']]);
+        // G6-08a: by_language counts what the scope holds, as total does.
+        foreach ([$narrowed, $both, $all] as $result) {
+            self::assertSame($result->data['total'], self::counted($result));
+        }
+        self::assertSame(3, self::counted($this->audit($repo, tier: 'scan')));
     }
 
+    #[Group('slow')]
     public function testWithoutGitDiffNoStaleSince(): void
     {
         $repo = $this->repository();
@@ -160,6 +170,54 @@ final class StaleSinceGitTest extends KnossosTestCase
         self::assertStringContainsString('knossos scan head: git could not answer', $logged);
     }
 
+    /** G6-08b: a Rust type whose `impl` lives in another file goes stale when only that file changed, through the real Rust worker. */
+    #[Group('rust-scanner')]
+    public function testARustImplInAnotherFileMakesItsMockStale(): void
+    {
+        if (!is_file(self::rustWorkerBinary())) {
+            self::markTestSkipped('The Rust worker binary is not built.');
+        }
+        $repo = $this->rustRepository();
+        // Only the impl's file changed; the struct's own file did not.
+        file_put_contents($repo . '/src/wall_impl.rs', str_replace('        1', '        2', self::WALL_IMPL));
+
+        $stale = 'stale since HEAD: Wall changed, src/wall_tests.rs untouched; review: tick';
+        self::assertSame([['src/wall_tests.rs', 5, 'STALE_SINCE', 'warning', $stale]], self::stale($this->audit($repo, scope: 'git-diff')));
+        // The impl's file as committed: nothing changed, nothing stale.
+        file_put_contents($repo . '/src/wall_impl.rs', self::WALL_IMPL);
+        $committed = $this->audit($repo, scope: 'git-diff');
+        self::assertSame([], self::stale($committed));
+        // The test file changed with the impl: reviewed, so silent.
+        file_put_contents($repo . '/src/wall_impl.rs', str_replace('        1', '        3', self::WALL_IMPL));
+        file_put_contents($repo . '/src/wall_tests.rs', "// reviewed\n", FILE_APPEND);
+        $reviewed = $this->audit($repo, scope: 'git-diff');
+        self::assertSame([], self::stale($reviewed));
+    }
+
+    public function testAStaleDoubleOnABranchWithNoCommitIsStaleSinceTheEmptyTree(): void
+    {
+        // G6-08a: with HEAD naming no commit, the changed set is read against the empty tree, and the message says so.
+        $repo = $this->repository();
+        $pdo = $this->freshTestDatabase();
+        $projectId = (new ProjectScanService($pdo, self::repositoryRoot(), [$repo]))->scan($repo)->projectId;
+        $reader = new class implements GitWorkingTreeProvider {
+            public bool $born = false;
+
+            public function changes(string $projectRoot, ?string $baseRef, int $maxFiles, int $timeoutMs): array
+            {
+                return ['paths' => ['src/UserService.ts'], 'renames' => [], 'truncated' => false, 'born' => $this->born];
+            }
+        };
+        $service = ArchitectureQueryService::forDatabase($pdo, gitWorkingTree: $reader)->services()->testFidelityQueries;
+
+        $unborn = $service->auditTests($projectId, scope: 'git-diff');
+        self::assertSame([[self::GHOST, 6, 'STALE_SINCE', 'warning', str_replace('since HEAD', 'since the empty tree', self::STALE)]], self::stale($unborn));
+        self::assertSame(['base_ref' => 'HEAD', 'changed_files' => 1], $unborn->data['git']);
+        $reader->born = true;
+        self::assertSame([[self::GHOST, 6, 'STALE_SINCE', 'warning', self::STALE]], self::stale($service->auditTests($projectId, scope: 'git-diff')));
+    }
+
+    #[Group('slow')]
     public function testABadBaseRefIsAnError(): void
     {
         $repo = $this->repository();
@@ -278,6 +336,29 @@ final class StaleSinceGitTest extends KnossosTestCase
     }
 
     /**
+     * A committed scratch crate: `Wall` in `src/wall.rs`, its `automock`ed
+     * `impl` in `src/wall_impl.rs`, and a test doubling it at `src/wall_tests.rs:5`.
+     */
+    private function rustRepository(): string
+    {
+        if (self::locateGit() === null) {
+            self::markTestSkipped('git is not available on this host.');
+        }
+        $repo = self::scratchPath('knossos-stale-rust');
+        mkdir($repo . '/src', 0o777, true);
+        file_put_contents($repo . '/Cargo.toml', "[package]\nname = \"walls\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dev-dependencies]\nmockall = \"0.13\"\n");
+        file_put_contents($repo . '/src/lib.rs', "pub mod wall;\nmod wall_impl;\n#[cfg(test)]\nmod wall_tests;\n");
+        file_put_contents($repo . '/src/wall.rs', "pub struct Wall;\n");
+        file_put_contents($repo . '/src/wall_impl.rs', self::WALL_IMPL);
+        file_put_contents($repo . '/src/wall_tests.rs', "use crate::wall_impl::MockWall;\n\n#[test]\nfn ticks() {\n    let mut wall = MockWall::new();\n    wall.expect_tick().returning(|| 1);\n    assert_eq!(wall.tick(), 1);\n}\n");
+        $this->git($repo, ['init', '--quiet']);
+        $this->git($repo, ['add', '-A']);
+        $this->git($repo, ['commit', '--quiet', '-m', 'base']);
+
+        return (string) realpath($repo);
+    }
+
+    /**
      * Scan `$root` afresh and ask `audit_tests` with a git reader.
      *
      * @param mixed ...$arguments named arguments of {@see TestFidelityQueryService::auditTests()}
@@ -330,6 +411,12 @@ final class StaleSinceGitTest extends KnossosTestCase
             static fn(array $item): array => [$item['file'], $item['line'], $item['category'], $item['confidence'], $item['message']],
             array_filter($result->data['items'], static fn(array $item): bool => $item['category'] === 'STALE_SINCE'),
         ));
+    }
+
+    /** The findings `summary.by_language` counts, every language and confidence. */
+    private static function counted(ResultEnvelope $result): int
+    {
+        return array_sum(array_map(static fn(array $counts): int => (int) ($counts['definite'] ?? 0) + (int) ($counts['warning'] ?? 0), $result->data['summary']['by_language']));
     }
 
     /**

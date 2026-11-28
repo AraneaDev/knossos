@@ -21,6 +21,7 @@ use PHPUnit\Framework\Attributes\Group;
  * readers without loss.
  */
 #[Group('php-scanner')]
+#[Group('test-fidelity')]
 final class PhpTestDoublesTest extends KnossosTestCase
 {
     public function testRecordsAPhpunitDoubleWithMemberPinAndEdge(): void
@@ -90,7 +91,7 @@ final class PhpTestDoublesTest extends KnossosTestCase
 
         assertSame(['prophecy', 'prophesize', ['kind' => 'class', 'export' => 'App\Billing\Foo'], false], [$double->framework, $double->pattern, $double->target, $double->automock]);
         assertSame([['charge', 17, 'prophecy'], ['audit', 19, 'prophecy']], array_map(static fn(StubbedMember $member): array => [$member->name, $member->line, $member->api], $double->members));
-        self::assertEquals([new CallMatcher('prophecy', 17, 2, false), new CallMatcher('prophecy', 18, 1, true)], $double->members[0]->calledWith);
+        self::assertEquals([new CallMatcher('prophecy', 17, 2, false, literals: [['type' => 'int', 'value' => '100'], ['type' => 'string', 'value' => 'EUR']]), new CallMatcher('prophecy', 18, 1, true)], $double->members[0]->calledWith);
         self::assertEquals([new CallMatcher('prophecy', 19, 0, false)], $double->members[1]->calledWith);
         assertSame([[17, 'int'], [18, 'string']], array_map(static fn(PinnedValue $pin): array => [$pin->line, $pin->type], $double->members[0]->returns));
         assertSame(2, $double->invocations, 'The revealed object handed off twice, once through a variable.');
@@ -194,7 +195,7 @@ final class PhpTestDoublesTest extends KnossosTestCase
 
         assertSame(['mockery', 'Facade::shouldReceive', ['kind' => 'unknown']], [$facade->framework, $facade->pattern, $facade->target]);
         assertSame([['get', 24], ['put', 25]], array_map(static fn(StubbedMember $member): array => [$member->name, $member->line], $facade->members));
-        self::assertEquals([new CallMatcher('with', 24, 1, false)], $facade->members[0]->calledWith);
+        self::assertEquals([new CallMatcher('with', 24, 1, false, literals: [['type' => 'string', 'value' => 'key']])], $facade->members[0]->calledWith);
         assertSame('string', $facade->members[0]->returns[0]->type);
         assertSame(false, isset($doubles[25]), 'Every call on one facade configures the one double.');
         $edges = array_filter(self::edges($test), static fn(array $edge): bool => $edge[0] === 'doubles' && $edge[1] === 'php:test_double:' . $facade->canonicalName);
@@ -220,15 +221,33 @@ final class PhpTestDoublesTest extends KnossosTestCase
         [$test] = $this->scan('doubles', ['tests/MatchersTest.php']);
         $doubles = $this->doubles($test);
 
-        self::assertEquals([new CallMatcher('with', 13, 3, false), new CallMatcher('with', 14, 1, true)], $doubles[12]->members[0]->calledWith);
+        self::assertEquals([new CallMatcher('with', 13, 3, false, literals: [['type' => 'int', 'value' => '100'], ['type' => 'string', 'value' => 'EUR'], ['type' => 'string', 'value' => 'extra']]), new CallMatcher('with', 14, 1, true)], $doubles[12]->members[0]->calledWith);
         self::assertEquals([
-            new CallMatcher('with', 20, 1, false),
-            new CallMatcher('withArgs', 21, 2, false),
+            new CallMatcher('with', 20, 1, false, literals: [['type' => 'int', 'value' => '100']]),
+            new CallMatcher('withArgs', 21, 2, false, literals: [['type' => 'int', 'value' => '100'], ['type' => 'string', 'value' => 'EUR']]),
             new CallMatcher('withArgs', 22, 0, true),
             new CallMatcher('withArgs', 23, 0, true),
             new CallMatcher('withNoArgs', 24, 0, false),
         ], $doubles[19]->members[0]->calledWith);
         assertSame([1, 1], [count($doubles[12]->members), count($doubles[19]->members)]);
+    }
+
+    /**
+     * A matcher sends the literal of each argument it lists, a string or an
+     * integer, positional and unspread; null for any other (G3-19).
+     */
+    public function testAMatcherSendsTheLiteralsItLists(): void
+    {
+        [$test] = $this->scan('doubles', ['tests/MatchersTest.php']);
+        $doubles = $this->doubles($test);
+        $literals = static fn(int $line): array => array_map(static fn(CallMatcher $matcher): array => [$matcher->line, $matcher->literals], $doubles[$line]->members[0]->calledWith);
+        $string = static fn(string $value): array => ['type' => 'string', 'value' => $value];
+        $int = static fn(string $value): array => ['type' => 'int', 'value' => $value];
+
+        assertSame([[13, [$int('100'), $string('EUR'), $string('extra')]], [14, []]], $literals(12));
+        assertSame([[20, [$int('100')]], [21, [$int('100'), $string('EUR')]], [22, []], [23, []], [24, []]], $literals(19));
+        assertSame([[30, [$int('-5'), null, null, null, null, null, $string('EUR'), null]], [31, []]], $literals(29));
+        assertSame([[33, [$string('rail'), $int('3')]]], $literals(32));
     }
 
     public function testTypesPinnedLiterals(): void
@@ -265,6 +284,32 @@ final class PhpTestDoublesTest extends KnossosTestCase
         assertSame(['createPartialMock', false, [['charge', 33, 'partial', []]]], $summary($doubles[33]));
         assertSame(['createStub', true, []], $summary($doubles[34]));
         assertSame(['getMockForAbstractClass', false, []], $summary($doubles[35]));
+    }
+
+    /**
+     * A pinned class built into PHP carries the classes and interfaces it
+     * extends or implements, read by Reflection from PHP itself; `stdClass`,
+     * which has none, and a project class, never reflected, carry none (G3-10).
+     */
+    public function testABuiltInPinCarriesWhatItIs(): void
+    {
+        [$clock] = $this->scan('healthy-idioms', ['tests/ClockTest.php']);
+        [$pins] = $this->scan('doubles', ['tests/PinsTest.php']);
+        $ancestors = static fn(array $doubles): array => array_merge(...array_map(static fn(TestDouble $double): array => array_merge(...array_map(static fn(StubbedMember $member): array => array_map(static fn(PinnedValue $pin): array => [$pin->type, $pin->typeAncestors], $member->returns), $double->members)), array_values($doubles)));
+
+        assertSame([['class:DateTimeImmutable', ['DateTimeInterface']], ['class:stdClass', []]], $ancestors($this->doubles($clock)));
+        assertSame([['class:App\Invoice', []], ['class:App\Billing\Foo', []]], array_values(array_filter($ancestors($this->doubles($pins)), static fn(array $pin): bool => str_starts_with((string) $pin[0], 'class:'))));
+    }
+
+    /** PHPUnit 9's `setMethods()` adds a method the class lacks, as `addMethods()` does, so its names go under that api; `onlyMethods()` keeps `partial` (G3-37). */
+    public function testSetMethodsNamesAreAddedMethods(): void
+    {
+        [$test] = $this->scan('healthy-idioms', ['tests/OldTest.php']);
+        $apis = static fn(TestDouble $double): array => array_map(static fn(StubbedMember $member): array => [$member->name, $member->api], $double->members);
+        $doubles = $this->doubles($test);
+
+        assertSame([['find', 'addMethods'], ['legacy', 'addMethods']], $apis($doubles[12]));
+        assertSame([['find', 'partial'], ['legacy', 'partial']], $apis($doubles[26]));
     }
 
     /**
@@ -379,8 +424,8 @@ final class PhpTestDoublesTest extends KnossosTestCase
                 'line' => $member->line,
                 'api' => $member->api,
                 'params' => $member->params,
-                'called_with' => $member->calledWith === [] ? null : array_map(static fn(CallMatcher $matcher): array => ['api' => $matcher->api, 'line' => $matcher->line, 'count' => $matcher->count, 'spread' => $matcher->spread], $member->calledWith),
-                'returns' => array_map(static fn(PinnedValue $pin): array => array_filter(['api' => $pin->api, 'line' => $pin->line, 'once' => $pin->once, 'assignable' => $pin->assignable, 'typed' => $pin->typed, 'type' => $pin->type], $present), $member->returns),
+                'called_with' => $member->calledWith === [] ? null : array_map(static fn(CallMatcher $matcher): array => ['api' => $matcher->api, 'line' => $matcher->line, 'count' => $matcher->count, 'spread' => $matcher->spread, ...($matcher->literals === [] ? [] : ['literals' => $matcher->literals])], $member->calledWith),
+                'returns' => array_map(static fn(PinnedValue $pin): array => array_filter(['api' => $pin->api, 'line' => $pin->line, 'once' => $pin->once, 'assignable' => $pin->assignable, 'typed' => $pin->typed, 'type' => $pin->type, 'type_ancestors' => $pin->typeAncestors === [] ? null : $pin->typeAncestors], $present), $member->returns),
             ], $present), $double->members),
         ], $present);
     }

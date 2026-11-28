@@ -508,9 +508,16 @@ fn pretty_assertions_compare_as_the_standard_macros_do() {
                 "",
                 "assert_eq!(LIMIT, 20);\n        assert_ne!(LIMIT, 20);",
             );
-        first_operands("macros-pretty", &[("src/lib.rs", &lib)])
+        // The real crate under its name (G5-07).
+        let manifest =
+            "[package]\nname = \"probe\"\n\n[dev-dependencies]\npretty_assertions = \"1\"\n";
+        operands_with(
+            "macros-pretty",
+            &[("Cargo.toml", manifest), ("src/lib.rs", &lib)],
+            &["Cargo.toml"],
+        )
     };
-    let read = vec![("tests::case".to_owned(), literal("10"))];
+    let read = vec![("src/lib.rs tests::case".to_owned(), literal("10"))];
 
     assert_eq!(read, cases("use pretty_assertions::assert_eq;"));
     assert_eq!(
@@ -524,7 +531,7 @@ fn pretty_assertions_compare_as_the_standard_macros_do() {
     // Another crate's, or another name's: not the standard comparison. The
     // `assert_eq!` is then no assertion, and as a statement it may declare
     // `LIMIT`, so the `assert_ne!` left reads it as unknown.
-    let open = vec![("tests::case".to_owned(), unknown())];
+    let open = vec![("src/lib.rs tests::case".to_owned(), unknown())];
     assert_eq!(
         open,
         cases("use pretty_assertions::assert_ne as assert_eq;")

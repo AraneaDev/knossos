@@ -7,6 +7,7 @@ namespace Knossos\TestFidelity\Rules;
 use Knossos\Scanner\Protocol\NodeFact;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
+use Knossos\TestFidelity\PythonResiduals;
 use Knossos\TestFidelity\TestFidelityGraph;
 use Knossos\TestFidelity\TestFinding;
 
@@ -18,7 +19,8 @@ use Knossos\TestFidelity\TestFinding;
  * whose ancestor's list is open or missing, a member found through
  * inheritance, a name a further type of the double may offer (Mockery's
  * `mock(A::class, B::class)`). A name PHPUnit's `addMethods()` adds is the
- * double's own and never a ghost. A PHP name is matched in any case, as PHP
+ * double's own and never a ghost; the worker sends PHPUnit 9's `setMethods()`
+ * names so too, since it adds any the class lacks. A PHP name is matched in any case, as PHP
  * matches method names.
  *
  * A Python dunder (`__x__`) is never judged, on a class or a module: it is a
@@ -30,12 +32,14 @@ use Knossos\TestFidelity\TestFinding;
  * whose list is open (a metaclass, `__init_subclass__`, a dynamic base) leaves
  * every subclass open, however closed its own list.
  *
- * Accepted residual: a write from another file (`C.x = 1` in another module,
- * `m.FLAG = 1` from outside `m`) adds a name no worker sees, so a double of
- * that name reads as a ghost. The worker sees only writes in the class's or
- * the module's own file. The same residual reaches ARITY_MISMATCH: a rebind
- * from another file (`Repo.save = wrap(Repo.save)`) leaves the def's signature
- * standing for a name that now holds another.
+ * A write from another file (`C.x = 1` in another module, `m.FLAG = 1` from
+ * outside `m`) adds a name no worker lists: the writer names it in
+ * `foreign_writes`, and the graph's view of the target is open
+ * (`PythonForeignWrites`, G4-03), so a double of that name is no ghost.
+ * A write the worker sees but does not follow (`unfollowed_writes`: an alias
+ * of `self`, an instance written, a nested class written, and the rest of
+ * `PythonResiduals`) leaves the list closed, so a ghost on a target whose
+ * lineage names one is a warning with that `residual` (U1, G4-02, G4-05).
  */
 final readonly class GhostMemberRule extends DriftRule
 {
@@ -102,21 +106,24 @@ final readonly class GhostMemberRule extends DriftRule
             return null;
         }
         $suggestion = self::suggestion($pair->stub->name, $names);
+        // The suggestion is the point of the message, so the cap cuts the head, never it (G1-14).
+        $suffix = $suggestion === null ? '' : '; did you mean ' . DriftText::clean($suggestion) . '?';
+        $head = DriftText::clean(sprintf(
+            '%s stubs %s, which %s no longer has',
+            DriftText::clean($pair->doubleNode->displayName),
+            DriftText::clean($pair->stub->name),
+            DriftText::clean($pair->target->displayName),
+        ), DriftText::MAX_LENGTH - mb_strlen($suffix));
 
-        return $pair->finding(
+        // U1: a list a write the worker does not follow may lack the name, so the ghost is a warning.
+        return PythonResiduals::downgraded($pair->finding(
             FindingCategory::GhostMember,
             FindingConfidence::Definite,
             self::ID,
             $pair->target->kind === 'module' ? 'missing_export' : 'missing_member',
-            sprintf(
-                '%s stubs %s, which %s no longer has%s',
-                DriftText::clean($pair->doubleNode->displayName),
-                DriftText::clean($pair->stub->name),
-                DriftText::clean($pair->target->displayName),
-                $suggestion === null ? '' : '; did you mean ' . DriftText::clean($suggestion) . '?',
-            ),
+            $head . $suffix,
             $suggestion === null ? [] : ['suggestion' => DriftText::clean($suggestion)],
-        );
+        ), $python ? PythonResiduals::unfollowed($pair->target, $graph) : null);
     }
 
     /**
@@ -216,7 +223,8 @@ final readonly class GhostMemberRule extends DriftRule
                 continue;
             }
             $distance = levenshtein($missing, $name);
-            if ($distance > 0 && $distance < $bestDistance) {
+            // A lineage's names come unsorted, so a tie goes to the alphabet, not to the order (G1-15).
+            if ($distance > 0 && ($distance < $bestDistance || ($best !== null && $distance === $bestDistance && strcmp($name, $best) < 0))) {
                 $best = $name;
                 $bestDistance = $distance;
             }

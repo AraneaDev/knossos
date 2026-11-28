@@ -34,9 +34,13 @@ import {
     factoryObject,
     functionArgument,
     isMockFactory,
+    MOCKED,
+    MODULE_AUTOMOCKS,
+    MODULE_MOCKS,
     objectKey,
     PIN_APIS,
     rootIdentifier,
+    SPIES,
     staticName,
     stripCast,
     writtenTypeReference,
@@ -49,16 +53,6 @@ import {
     pinnedValue,
 } from "./test-double-types.js";
 import { reference } from "./typescript-fact-utils.js";
-
-const MODULE_MOCKS = new Set(["vi.mock", "jest.mock", "jest.doMock"]);
-const MODULE_AUTOMOCKS = new Set([
-    "vi.importMock",
-    "jest.requireMock",
-    "jest.createMockFromModule",
-    "jest.genMockFromModule",
-]);
-const SPIES = new Set(["vi.spyOn", "jest.spyOn"]);
-const MOCKED = new Set(["vi.mocked", "jest.mocked"]);
 
 /**
  * Emit the test doubles of `sourceFile` through `emit`, the file's fact

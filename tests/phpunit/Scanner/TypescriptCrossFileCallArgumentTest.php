@@ -88,6 +88,7 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
      * rebuilds the callee and moves the edge, deleting it drops the edge, and
      * each step ends with the graph a full scan of the same bytes gives.
      */
+    #[Group('slow')]
     public function testEditingOrDeletingTheCallerRecomputesTheCalleesInferredCall(): void
     {
         if (trim((string) @shell_exec('command -v node 2>/dev/null')) === '') {
@@ -125,6 +126,7 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
      * one that starts to changes the program's environment instead, and every
      * file of the program is rebuilt.
      */
+    #[Group('slow')]
     public function testAFileThatStartsHandingTheCalleeALiteralRebuildsTheProgram(): void
     {
         if (trim((string) @shell_exec('command -v node 2>/dev/null')) === '') {
@@ -157,6 +159,7 @@ final class TypescriptCrossFileCallArgumentTest extends KnossosTestCase
      * the callee, deleting it drops the edge, and each step ends with the
      * graph a full scan of the same bytes gives.
      */
+    #[Group('slow')]
     public function testACommonJsCallerKeepsTheCalleesInferredCallCurrent(): void
     {
         $this->makeRoot();

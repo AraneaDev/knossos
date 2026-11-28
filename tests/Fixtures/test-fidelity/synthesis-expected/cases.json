@@ -117,6 +117,10 @@
     "rs-named": {
         "symbol": "synth::focus::Named"
     },
+    "rs-named-hand-written": {
+        "symbol": "synth::focus::Named",
+        "framework": "hand-written"
+    },
     "rs-engine": {
         "symbol": "Engine"
     },

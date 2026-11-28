@@ -22,6 +22,7 @@ final class GateScaleTest extends KnossosTestCase
 {
     #[Group('query')]
     #[RunInSeparateProcess]
+    #[Group('slow')]
     public function testTheGateComparesTwoGraphsAtTheRowLimitInside768Megabytes(): void
     {
         ini_set('memory_limit', '768M');

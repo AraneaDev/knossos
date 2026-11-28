@@ -27,7 +27,8 @@ use Knossos\TestFidelity\TestFidelityGraph;
  *
  * The list is not complete when a member is omitted, when an ancestor or a
  * supertrait is outside the scan (but an auto trait, `Send`, `Sync`,
- * `Unpin` or `Sized`, which every mock is or needs no impl of), when a type of the lineage has an open or
+ * `Unpin` or `Sized`, which every mock is or needs no impl of, or a std
+ * trait whose methods the template spells itself, `Display`), when a type of the lineage has an open or
  * no complete name list, when Python methods may be rewritten, or when a
  * PHP `__call` answers any name.
  */
@@ -52,6 +53,35 @@ final readonly class MockMembers
 
     /** The auto and marker traits a mock has, or needs no impl of, by name. */
     private const MARKER_TRAITS = ['Send', 'Sync', 'Unpin', 'Sized', 'UnwindSafe', 'RefUnwindSafe'];
+
+    /** A Rust supertrait outside the scan whose one method the template writes out (`Display::fmt`), by the parent reference's pattern. */
+    private const SPELLED_SUPERTRAIT = '/(?:^|:)Display$/';
+
+    /**
+     * The std supertraits of a Rust trait target the template spells itself:
+     * `Display` when the target names it as a supertrait; empty otherwise.
+     *
+     * @return list<string>
+     */
+    public function spelledSupertraits(): array
+    {
+        if ($this->language !== 'rust' || $this->target->kind !== 'interface') {
+            return [];
+        }
+        $found = [];
+        $this->graph->lineageThrough($this->target, static function (string $parent) use (&$found): bool {
+            if (preg_match(self::SPELLED_SUPERTRAIT, $parent) === 1) {
+                $found['Display'] = true;
+            }
+
+            return true;
+        });
+
+        return array_keys($found);
+    }
+
+    /** Why a generic impl is omitted, with every method it writes. */
+    private const GENERIC_IMPL = 'a generic impl (impl<T>): its parameters are not recorded';
 
     /**
      * The members of `$target` over `$graph`, which holds its lineage.
@@ -86,9 +116,17 @@ final readonly class MockMembers
                     default => $node->displayName,
                 };
                 if (isset($seen[$key])) {
+                    // A supertrait's method is not an override: mockall gives one expect_name() per mock (G6-14).
+                    if ($language === 'rust' && !$struct && $seen[$key] !== $declarer) {
+                        $omitted[] = ['name' => $declarer->displayName . '::' . $node->displayName, 'reason' => sprintf('%s declares %s too: mockall cannot mock one method name from two traits', $seen[$key]->displayName, $node->displayName)];
+                    }
                     continue;
                 }
-                $seen[$key] = true;
+                $seen[$key] = $declarer;
+                // A method of a generic impl goes with its impl, which is omitted: no block may render it (G6-08g).
+                if ($struct && is_string($node->attributes['impl_trait'] ?? null) && in_array(['name' => 'impl ' . $node->attributes['impl_trait'], 'reason' => self::GENERIC_IMPL], $implOmitted, true)) {
+                    continue;
+                }
                 $member = self::member($graph, $target, $declarer, $node, $language, $fields);
                 if ($member instanceof MockMember && $language === 'rust' && $target->kind !== 'interface') {
                     // mockall makes one expect_name() per struct, whichever impl declares the name.
@@ -291,7 +329,7 @@ final readonly class MockMembers
                 continue;
             }
             if (($entry['generics'] ?? false) === true) {
-                $omitted[] = ['name' => 'impl ' . $trait, 'reason' => 'a generic impl (impl<T>): its parameters are not recorded'];
+                $omitted[] = ['name' => 'impl ' . $trait, 'reason' => self::GENERIC_IMPL];
                 continue;
             }
             if (!isset($inScan[$name])) {
@@ -397,7 +435,7 @@ final readonly class MockMembers
      * type checker reads without a node. A Python list also names data
      * attributes, which a mock built from the class has, so it is not read.
      *
-     * @param array<string, true> $seen
+     * @param array<string, NodeFact> $seen
      * @param array<string, mixed> $fields
      * @return list<string>
      */
@@ -441,7 +479,7 @@ final readonly class MockMembers
         }
         // A Rust auto trait needs no impl: every mock is Send, Sync, Unpin and Sized as its fields are.
         $unseen = $language === 'rust'
-            ? $graph->lineageThrough($target, static fn(string $parent): bool => preg_match('/(?:^|:)(?:Send|Sync|Unpin|Sized)$/', $parent) !== 1)[1]
+            ? $graph->lineageThrough($target, static fn(string $parent): bool => preg_match('/(?:^|:)(?:Send|Sync|Unpin|Sized)$/', $parent) !== 1 && ($target->kind !== 'interface' || preg_match(self::SPELLED_SUPERTRAIT, $parent) !== 1))[1]
             : $graph->hasUnseenAncestor($target);
         if ($unseen) {
             $why[] = $language === 'rust'

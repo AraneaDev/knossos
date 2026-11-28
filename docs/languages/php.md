@@ -129,16 +129,26 @@ values `willReturn()` and `andReturn()` pin them to and the argument counts
 `with()` expects. Mockery's `anyArgs()`, `noArgs()`, `andAnyOtherArgs()` and
 `andAnyOthers()`, and Prophecy's `Argument::cetera()`, leave the count open.
 The names PHPUnit's `addMethods()` lists are the double's own and never a
-ghost. `willReturnSelf()` and `andReturnSelf()` pin an instance of the class
-the double stands in for, and a function written in place for
+ghost, and so are those of PHPUnit 9's `setMethods()`, which adds any the
+class lacks; a name `onlyMethods()` lists must be the class's.
+`willReturnSelf()` and `andReturnSelf()` pin an instance of the class the
+double stands in for, and a function written in place for
 `willReturnCallback()` or `andReturnUsing()` gives the member its
 parameters. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
 `m`, and the arguments it is given or `->with()` lists after it are counted the
 same way. A member whose name is computed, such as `method($name)`, is left
 out. A method whose own body calls `func_get_args()`, `func_num_args()` or
 `func_get_arg()` takes any number of arguments, and its signature says
-`"variadic": true`. In a Pest file, a double that `beforeEach()` assigns to a
-`$this` property serves every test of the file.
+`"variadic": true`. A method production hands to a call as a
+callable argument (`array_walk($xs, [$repo, 'save'], 7)`,
+`[Repo::class, 'save']`, `$repo->save(...)`, or `'App\Repo::save'` given to
+`Closure::fromCallable()` or to a PHP function known to take a callback) is
+reached through a `calls` edge marked `callable`, since what it is handed to
+may pass it more arguments than it takes. A value given to `new` (an
+exception's message), returned, yielded or assigned hands nothing on, nor
+does a test file's; a class a string names must be qualified, as a list of
+two bare words is more often data. In a Pest file, a double that `beforeEach()` assigns
+to a `$this` property serves every test of the file.
 
 ## Test cases
 
@@ -212,14 +222,33 @@ own semantics:
   warning. `self` and `static` declared in a trait stand for the class using
   it.
 - A class the scan does not hold, or a relation that could live in `vendor/` or
-  PHP itself, makes drift a warning at most. A facade double names no class,
+  PHP itself, makes drift a warning at most. A class built into PHP and pinned
+  with `new` is what PHP's own Reflection, run in the worker, says it extends
+  and implements, so `new \DateTimeImmutable()` fits `\DateTimeInterface`;
+  a project class is never loaded to ask. A class, interface, trait or enum
+  several files declare is read from the project's declaration rather than a
+  `vendor/` copy; two project declarations that differ leave it unknown, so
+  nothing is held against it. A facade double names no class,
   so nothing it stubs is held against one.
+- A matcher's literal is held against an enum parameter's cases
+  (`ARITY_MISMATCH/enum_case`). `with('rail')` for `reroute(Leg $to)`, when
+  `Leg`'s cases are `air` and `sea`, is definite: the string is the enum's
+  backing type and the list is closed, so the case is surely gone. A string
+  naming no case of a pure enum is definite too. A literal of another type
+  than the backing (an integer for a string-backed enum) is only a warning.
+  Nothing is judged where the evidence runs out: an argument that is no
+  string or integer literal (`Leg::Air`, `Leg::from('air')`, `$leg`), a
+  parameter typed by anything but the enum alone (`?Leg`, `Leg|string`), a
+  spread or negated matcher, or an enum whose case list is cut short or holds
+  a computed case. A pin on the return side stays `RETURN_DRIFT`, since no
+  literal is an enum instance.
 
 ## Field facts
 
 A class, interface or trait sends the fields it declares, instance properties
 and promoted constructor properties alike, and a backed enum sends its cases
-with their values. `type` holds the class name fully qualified, as the scanner
+with their values. Every enum also sends its `backing`: `string`, `int`, or
+`none` for a pure enum. `type` holds the class name fully qualified, as the scanner
 resolves it. A field with a default is optional, and so is an untyped one,
 which defaults to null; a nullable type alone keeps the key required.
 Inherited fields come from `extends` and `uses_trait`, so a list is whole only

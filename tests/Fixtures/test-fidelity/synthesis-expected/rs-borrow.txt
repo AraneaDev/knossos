@@ -2,6 +2,7 @@
 // 2 members; complete
 use mockall::mock;
 use synth::focus::Borrow;
+use synth::focus::*;
 
 mock! {
     pub Borrow {}

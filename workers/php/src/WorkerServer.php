@@ -14,7 +14,7 @@ use Throwable;
  */
 final class WorkerServer
 {
-    public const VERSION = '0.8.2';
+    public const VERSION = '0.8.8';
 
     /** The refusal of a request whose limits are missing or malformed, worded alike by every worker. */
     // BEGIN GENERATED worker-constants:invalid_limits

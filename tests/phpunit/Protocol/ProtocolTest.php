@@ -19,6 +19,7 @@ use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Tests\Phpunit\KnossosTestCase;
 use Knossos\Tests\Phpunit\Support\SchemaSubset;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 final class ProtocolTest extends KnossosTestCase
@@ -368,9 +369,11 @@ final class ProtocolTest extends KnossosTestCase
                 'line' => 8,
                 'api' => 'instance-member',
                 'called_with' => [['api' => 'toHaveBeenCalledWith', 'line' => 29, 'count' => 3, 'spread' => false]],
-                'returns' => [['api' => 'andReturn', 'line' => 9, 'once' => false, 'assignable' => true, 'typed' => true, 'type' => 'string']],
+                'returns' => [['api' => 'andReturn', 'line' => 9, 'once' => false, 'assignable' => true, 'typed' => true, 'type' => 'class:DateTimeImmutable', 'type_ancestors' => ['DateTimeInterface']]],
             ]],
         ]);
+        $badAncestors = $double;
+        $badAncestors['attributes']['members'][0]['returns'][0]['type_ancestors'] = ['DateTimeInterface', ''];
         $badMatcher = $double;
         $badMatcher['attributes']['members'][0]['called_with'][0]['count'] = -1;
         $badProtected = $double;
@@ -379,6 +382,22 @@ final class ProtocolTest extends KnossosTestCase
         assertSame([], $this->nodeSchemaErrors($double));
         assertSame(1, count($this->nodeSchemaErrors($badMatcher)));
         assertSame(1, count($this->nodeSchemaErrors($badProtected)));
+        assertSame(1, count($this->nodeSchemaErrors($badAncestors)), 'G3-10: a built-in pin names each type it is.');
+    }
+
+    /** A pinned value's `type` is a non-empty string; anything else breaks the schema (G3-01). */
+    #[Group('protocol')]
+    public function testContributionSchemaRejectsAPinTypeThatIsNoName(): void
+    {
+        $pinned = static fn(mixed $type): array => self::wireNode('test_double', [
+            'framework' => 'phpunit', 'pattern' => 'createMock', 'target' => ['kind' => 'class', 'export' => 'App\\Cart'], 'automock' => false, 'invocations' => 0,
+            'members' => [['name' => 'total', 'line' => 8, 'api' => 'method', 'returns' => [['api' => 'willReturn', 'line' => 9, 'once' => false, 'assignable' => 'unknown', 'typed' => true, 'type' => $type]]]],
+        ]);
+
+        assertSame([], $this->nodeSchemaErrors($pinned('class:App\\Money')));
+        foreach ([5, true, null, ['int'], ''] as $type) {
+            assertSame(1, count($this->nodeSchemaErrors($pinned($type))), (string) json_encode($type));
+        }
     }
 
     #[Group('protocol')]
@@ -454,7 +473,7 @@ final class ProtocolTest extends KnossosTestCase
         $badMember = self::wireNode('test_case', ['name' => 'x', 'production_calls' => 0, 'subjects' => [], 'assertions' => [['api' => 'toBe', 'line' => 1, 'operands' => [['source' => 'telepathy']]]]]);
 
         assertSame(['$.attributes: missing target'], $this->nodeSchemaErrors($double));
-        assertSame(1, count($this->nodeSchemaErrors($badMember)));
+        assertSame(['$.attributes.assertions[0].operands[0].source: not one of ["mock-config","mock-call","production","literal","parameter","unknown"]'], $this->nodeSchemaErrors($badMember));
     }
 
     #[Group('protocol')]
@@ -469,7 +488,31 @@ final class ProtocolTest extends KnossosTestCase
             'members' => [['line' => 8, 'api' => 'spyOn', 'returns' => []]],
         ]);
 
-        assertSame(1, count($this->nodeSchemaErrors($double)));
+        assertSame(['$.attributes.members[0]: missing name'], $this->nodeSchemaErrors($double));
+    }
+
+    /**
+     * @return array<string, array{mixed, list<string>}>
+     */
+    public static function malformedMembers(): array
+    {
+        return [
+            'a string' => ['x', ['$.attributes.members[0]: expected object']],
+            'null' => [null, ['$.attributes.members[0]: expected object']],
+            'an empty object' => [[], ['$.attributes.members[0]: missing name', '$.attributes.members[0]: missing line', '$.attributes.members[0]: missing api', '$.attributes.members[0]: missing returns']],
+            'line zero' => [['name' => 'a', 'line' => 0, 'api' => 'spyOn', 'returns' => []], ['$.attributes.members[0].line: below 1']],
+            'no returns' => [['name' => 'a', 'line' => 1, 'api' => 'spyOn'], ['$.attributes.members[0]: missing returns']],
+            'returns not a list' => [['name' => 'a', 'line' => 1, 'api' => 'spyOn', 'returns' => 'x'], ['$.attributes.members[0].returns: expected array']],
+        ];
+    }
+
+    #[Group('protocol')]
+    #[DataProvider('malformedMembers')]
+    public function testAMalformedStubbedMemberIsAnExactSchemaErrorAndNeverAThrow(mixed $member, array $errors): void
+    {
+        $double = self::wireNode('test_double', ['framework' => 'vitest', 'pattern' => 'vi.spyOn', 'target' => ['kind' => 'class'], 'automock' => false, 'invocations' => 0, 'members' => [$member]]);
+
+        assertSame($errors, $this->nodeSchemaErrors($double));
     }
 
     #[Group('protocol')]
@@ -497,5 +540,21 @@ final class ProtocolTest extends KnossosTestCase
         foreach ($bad as $attributes) {
             assertSame(1, count($this->nodeSchemaErrors(self::wireNode('class', $attributes))), (string) json_encode($attributes));
         }
+    }
+
+    /** A `calls` edge may say it hands its target on as a callable value, as a boolean only (G3-31). */
+    #[Group('protocol')]
+    public function testContributionSchemaReadsACallableCallsEdge(): void
+    {
+        $schema = json_decode((string) file_get_contents(self::repositoryRoot() . '/schemas/scanner/v1/contribution.schema.json'), true, 512, JSON_THROW_ON_ERROR);
+        $edge = static fn(string $kind, array $attributes): array => [
+            'kind' => $kind, 'source' => 'php:method:App\\Walker::each', 'target' => 'php:method:App\\Repo::save', 'origin' => 'ast', 'confidence' => 'probable',
+            'evidence' => ['path' => 'src/Walker.php', 'start_line' => 9, 'end_line' => 9], 'attributes' => $attributes,
+        ];
+        $errors = static fn(array $wire): array => SchemaSubset::errors(['$ref' => '#/$defs/edge'], $wire, $schema);
+
+        assertSame([], $errors($edge('calls', ['speculative' => true, 'callable' => true])));
+        assertSame([], $errors($edge('references', ['callable' => 'any'])), 'Only a calls edge reads it.');
+        assertSame(1, count($errors($edge('calls', ['callable' => 'yes']))));
     }
 }

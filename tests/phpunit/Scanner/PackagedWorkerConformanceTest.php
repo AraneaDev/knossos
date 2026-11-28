@@ -29,6 +29,7 @@ final class PackagedWorkerConformanceTest extends KnossosTestCase
     }
 
     #[DataProvider('languages')]
+    #[Group('slow')]
     public function testThePackagedWorkerConforms(string $language): void
     {
         if ($language === 'rust' && !is_executable(self::rustWorkerBinary())) {

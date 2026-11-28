@@ -112,11 +112,13 @@ impl<'p> Pass<'p> {
             syn::visit::visit_local(self, node);
             return;
         };
-        self.visit_pat(&node.pat);
         let pattern = match &node.pat {
             syn::Pat::Type(typed) => typed.pat.as_ref(),
             other => other,
         };
+        // The type a binding of the value is annotated with names the
+        // fake, but hands nothing on.
+        self.visit_pat(pattern);
         match pattern {
             syn::Pat::Ident(ident) if ident.by_ref.is_none() && ident.subpat.is_none() => {
                 self.bind_fake(&ident_name(&ident.ident), fake, first);

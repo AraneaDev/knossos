@@ -18,12 +18,22 @@ use Knossos\Scanner\Protocol\NodeFact;
  * where clause as written; a trait's associated function is declared and
  * set through its context, a borrowed return through `return_const`, and an
  * associated type or const gets a placeholder (`type Output = ();`), listed
- * in `unknown`. A supertrait in the project gets an `impl` of its own; one
- * outside the scan leaves the template incomplete. A struct's inherent
+ * in `unknown`. A supertrait in the project gets an `impl` of its own, and
+ * so does `std::fmt::Display`, whose one method is known; any other outside
+ * the scan leaves the template incomplete. A struct's inherent
  * methods go in its own block, and each trait it implements gets the `impl`
  * the source writes (`impl Repo<String> for Store`). A generic trait keeps
  * its parameters on the mock, its bounds as written, and each method naming
  * one lists it in `unknown`.
+ *
+ * Each declaring item's module is glob-imported beside its own `use`, so a
+ * type or trait a signature or impl header names resolves as it does there;
+ * a trait's own associated type is written `<Self as Trait>::X` in mock!; a
+ * generic mock's `new()` binds each type parameter to a marked `()`; and a
+ * trait method whose type parameter is not `'static`, which mockall cannot
+ * mock in a trait impl, makes the template say it is incomplete (G6-03),
+ * and so does a method returning `!`, whose mockall expansion needs the
+ * never type, unstable before Rust 1.100 (E0658).
  *
  * A hand-written fake of a struct, or of a generic trait, is refused: a
  * struct has no trait to implement, and a fake of a generic trait needs a
@@ -53,25 +63,33 @@ final readonly class RustTemplate implements MockTemplate
         $declarers = [$target->localId => $target];
         $groups = [];
         $imports = [];
+        // Each member rendered once: its imports and its expectation come from the one rendering (G6-08g).
+        $parts = [];
         foreach ($members->members as $member) {
             $declarers[$member->declarer->localId] = $member->declarer;
             $groups[self::group($member)][] = $member;
-            $imports = [...$imports, ...$this->member($members, $member, $framework, $values)['imports']];
+            $parts[spl_object_id($member)] = $this->member($members, $member, $framework, $values);
+            $imports = [...$imports, ...$parts[spl_object_id($member)]['imports']];
         }
-        $uses = [...($framework === 'mockall' ? ['use mockall::mock;'] : []), ...array_map(static fn(NodeFact $declarer): string => sprintf('use %s;', $declarer->canonicalName), $declarers), ...$imports];
+        $uses = [...($framework === 'mockall' ? ['use mockall::mock;'] : []), ...array_map(static fn(NodeFact $declarer): string => sprintf('use %s;', $declarer->canonicalName), $declarers), ...$imports, ...self::moduleGlobs($declarers)];
         $uses = array_values(array_unique($uses));
+        $unmockable = $framework === 'mockall' ? self::unmockable($members) : [];
         $lines = [
             sprintf('// knossos synthesize_mock: %s (%s), from %s:%d', $target->canonicalName, $framework, $target->evidence->relativePath, $target->evidence->startLine),
-            '// ' . $members->summary(),
+            '// ' . ($unmockable === [] ? $members->summary() : str_replace('; complete', '; incomplete: see omitted and notes', $members->summary())),
             ...$uses,
             '',
         ];
         if ($framework === 'hand-written') {
             $lines[] = sprintf('pub struct Fake%s;', $name);
+            foreach ($members->spelledSupertraits() as $_) {
+                $lines = [...$lines, '', sprintf('impl std::fmt::Display for Fake%s {', $name), "    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {", '        Ok(())', '    }', '}'];
+            }
             foreach ($declarers as $id => $declarer) {
                 $lines[] = '';
                 $lines[] = sprintf('impl %s for Fake%s {', $declarer->displayName, $name);
-                $bodies = array_map(fn(MockMember $member): string => $this->fake($member, $values)['rendered'], $groups[$id] ?? []);
+                // A method's fake is its rendering; an associated item sits one level shallower in a fake's impl than in mock!.
+                $bodies = array_map(fn(MockMember $member): string => $member->kind === 'method' ? $parts[spl_object_id($member)]['rendered'] : $this->fake($member, $values)['rendered'], $groups[$id] ?? []);
                 $lines[] = implode("\n\n", $bodies);
                 $lines[] = '}';
             }
@@ -90,6 +108,10 @@ final readonly class RustTemplate implements MockTemplate
                 $lines = [...$lines, ...self::declarations($groups[$id] ?? [])];
                 $lines[] = '    }';
             }
+            // A std supertrait outside the scan whose method is known: mock! needs its impl too.
+            foreach ($members->spelledSupertraits() as $_) {
+                $lines = [...$lines, sprintf('    impl%s std::fmt::Display for %s%s {', $generics, $name, $arguments), "        fn fmt<'a>(&self, f: &mut std::fmt::Formatter<'a>) -> std::fmt::Result;", '    }'];
+            }
         } else {
             // A struct's inherent methods go in its own block; each trait it implements gets the impl it writes.
             $inherent = self::declarations($groups[''] ?? []);
@@ -107,11 +129,14 @@ final readonly class RustTemplate implements MockTemplate
                 $lines = [...$lines, ...($body === [] ? [$header . '}'] : [$header, ...$body, '    }'])];
             }
         }
-        $lines = [...$lines, '}', '', '#[test]', sprintf('fn %s_mock() {', TypeText::snake($name)), sprintf('    let mut mock = Mock%s::new();', $name)];
+        $lines = [...$lines, '}', '', '#[test]', sprintf('fn %s_mock() {', TypeText::snake($name)), sprintf('    let mut mock = Mock%s%s::new();', $name, self::boundArguments($params))];
         foreach ($members->members as $member) {
             if ($member->kind === 'method') {
-                $lines[] = $this->member($members, $member, $framework, $values)['rendered'];
+                $lines[] = $parts[spl_object_id($member)]['rendered'];
             }
+        }
+        if ($trait && $members->spelledSupertraits() !== []) {
+            $lines[] = '    mock.expect_fmt().returning(|_f| Ok(()));';
         }
         $lines[] = '}';
 
@@ -127,7 +152,7 @@ final readonly class RustTemplate implements MockTemplate
         if ($framework === 'hand-written') {
             return $this->fake($member, $values);
         }
-        $unknown = [...self::typeParameterUnknowns($member), ...self::traitParameterUnknowns($members, $member)];
+        $unknown = [...(self::isUnmockable($members, $member) ? [self::unmockableUnknown($members, $member)] : self::typeParameterUnknowns($member)), ...self::traitParameterUnknowns($members, $member)];
         $returns = (string) $member->returns();
         if (!$member->associated && str_starts_with($returns, '&')) {
             // mockall gives a borrowed return through return_const, from the owned value it lends.
@@ -155,7 +180,12 @@ final readonly class RustTemplate implements MockTemplate
         return ['rendered' => sprintf('    mock.expect_%s().returning(%s);', $member->name, $closure), 'unknown' => $unknown, 'imports' => $example['imports']];
     }
 
-    /** The owned zero a borrowed return lends from: `String::new()` for `&str` or `&String`, `Vec::new()` for `&[T]` or `&Vec<T>`; null for any other. */
+    /**
+     * The owned zero a borrowed return lends from: `String::new()` for `&str`
+     * or `&String`, `Vec::new()` for `&[T]` or `&Vec<T>`; null for any other.
+     * mockall 0.13.1 compiles `return_const(Vec::new())` for a `&[u8]` return
+     * and lends the slice (checked offline, G6-08g).
+     */
     private static function ownedZero(string $returns): ?string
     {
         $lent = trim((string) preg_replace("/^&(?:'\\w+\\s+)?(?:mut\\s+)?/", '', $returns));
@@ -181,7 +211,109 @@ final readonly class RustTemplate implements MockTemplate
      */
     private static function declarations(array $members): array
     {
-        return array_map(static fn(MockMember $member): string => '        ' . ($member->kind === 'method' ? self::declaration($member) . ';' : self::associatedItem($member)), $members);
+        return array_map(static fn(MockMember $member): string => '        ' . ($member->kind === 'method' ? self::qualified(self::declaration($member), $member) . ';' : self::associatedItem($member)), $members);
+    }
+
+    /**
+     * A trait method's declaration with each `Self::X` written `<Self as
+     * Trait>::X`, which mock! needs to tell the trait's associated type from
+     * one of the mock struct's own (E0223 otherwise, G6-03).
+     */
+    private static function qualified(string $declaration, MockMember $member): string
+    {
+        if ($member->declarer->kind !== 'interface') {
+            return $declaration;
+        }
+
+        return (string) preg_replace('/(?<![\w:>])Self::(?=[A-Za-z_])/', '<Self as ' . $member->declarer->displayName . '>::', $declaration);
+    }
+
+    /**
+     * A glob import of each declaring item's module, so the project types
+     * and traits the template's signatures and impl headers name resolve as
+     * they do beside the declaration (`Record`, `Into2<Aa>`, G6-03).
+     *
+     * @param array<string, NodeFact> $declarers
+     * @return list<string>
+     */
+    private static function moduleGlobs(array $declarers): array
+    {
+        $globs = [];
+        foreach ($declarers as $declarer) {
+            $cut = strrpos($declarer->canonicalName, '::');
+            if ($cut !== false) {
+                $globs[] = sprintf('use %s::*;', substr($declarer->canonicalName, 0, $cut));
+            }
+        }
+
+        return $globs;
+    }
+
+    /**
+     * The turbofish a generic mock's `new()` needs to bind its type
+     * parameters, each a `()` placeholder marked with a `knossos: bind T` comment;
+     * empty for a mock with none, or with lifetimes only.
+     *
+     * @param list<string> $params
+     */
+    private static function boundArguments(array $params): string
+    {
+        $bound = array_map(static fn(string $param): string => str_starts_with($param, "'") ? "'_" : sprintf('() /* knossos: bind %s */', TypeText::parameterName($param)), $params);
+
+        return array_filter($params, static fn(string $param): bool => !str_starts_with($param, "'")) === [] ? '' : '::<' . implode(', ', $bound) . '>';
+    }
+
+    /**
+     * The methods mockall cannot mock: a trait's with a type parameter not
+     * bound `'static`, which mockall needs while the trait's impl may not
+     * add it (E0310, and E0276 when added, G6-03); and any returning `!`,
+     * which mockall's expansion names as a type, unstable before Rust 1.100
+     * (E0658), below the Rust worker's `rust-version`.
+     *
+     * @return list<MockMember>
+     */
+    private static function unmockable(MockMembers $members): array
+    {
+        return array_values(array_filter($members->members, static fn(MockMember $member): bool => self::isUnmockable($members, $member)));
+    }
+
+    /** Whether mockall cannot mock a method: it returns `!`, or a trait's has a type parameter without a `'static` bound (G6-03). */
+    private static function isUnmockable(MockMembers $members, MockMember $member): bool
+    {
+        if ($member->kind !== 'method') {
+            return false;
+        }
+        if (self::returnsNever($member)) {
+            return true;
+        }
+        if ($members->target->kind !== 'interface') {
+            return false;
+        }
+        foreach ($member->typeParams() as $param) {
+            if (!str_starts_with($param, "'") && preg_match("/:\s*(?:.*\+\s*)?'static\b/", $param) !== 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether a method returns the never type `!`. */
+    private static function returnsNever(MockMember $member): bool
+    {
+        return trim((string) $member->returns()) === '!';
+    }
+
+    /** The member's unknown note: why mockall cannot mock it, and that a trait needs a hand-written fake (G6-03). */
+    private static function unmockableUnknown(MockMembers $members, MockMember $member): string
+    {
+        if (self::returnsNever($member)) {
+            $trait = $members->target->kind === 'interface';
+
+            return sprintf('%s: mockall cannot mock a method returning ! (the never type is unstable before Rust 1.100) %s %s; this mock does not compile until it is removed%s', $member->name, $trait ? 'in an impl of' : 'in', $members->target->displayName, $trait ? ', so fake the trait by hand (framework hand-written)' : '');
+        }
+
+        return sprintf("%s: mockall cannot mock a generic method whose type parameter is not 'static in an impl of %s; this mock does not compile until it is removed, so fake the trait by hand (framework hand-written)", $member->name, $members->target->displayName);
     }
 
     /** An associated type or const as an impl gives it, a placeholder: `type Output = ();`, `const LIMIT: usize = 0;`. */

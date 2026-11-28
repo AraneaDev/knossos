@@ -137,7 +137,12 @@ fails, because a count taken from a partial scan is only a lower bound. A
 `new_definite_test_findings` check against a baseline archived before test
 findings were stored is `indeterminate` with reason
 `baseline_has_no_test_findings` and fails, because there is nothing to compare
-with; gate against a snapshot scanned since.
+with; gate against a snapshot scanned since. Without that budget, the
+`metrics.new_definite_test_findings` figure is `null` for such a baseline
+rather than a count of every finding as new. The result's `suppressions_invalid`
+says why a malformed `knossos.json` suppressed nothing, and is null otherwise.
+The gate counts distinct finding keys, where the dashboard lists a row for each
+finding.
 
 `--sarif` embeds SARIF 2.1.0
 for findings with sound file mappings: boundary-policy evidence, test findings
