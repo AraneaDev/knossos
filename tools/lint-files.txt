@@ -1366,6 +1366,7 @@ php	tests/phpunit/Support/SyntheticGraph.php
 php	tests/phpunit/Support/TempRootGuard.php
 php	tests/phpunit/Support/TempTrees.php
 php	tests/phpunit/Support/WorkerClients.php
+php	tests/phpunit/TagSlowTestsTest.php
 php	tests/phpunit/TestFidelity/ActiveTestFindingsTest.php
 php	tests/phpunit/TestFidelity/DashboardTestFindingsTest.php
 php	tests/phpunit/TestFidelity/DriftEndToEndTest.php
@@ -1485,6 +1486,7 @@ php	tools/scanner-conformance
 php	tools/skill-copies.php
 php	tools/skipped-tests.php
 php	tools/supply-chain-report.php
+php	tools/tag-slow-tests.php
 php	tools/trivy-allowlist.php
 php	tools/worker-constants.php
 php	workers/php/bin/worker
