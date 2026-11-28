@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.51.0](https://github.com/AraneaDev/knossos/compare/v0.50.1...v0.51.0) (2026-11-28)
+
+
+### Features
+
+* on-request test fidelity tools (phase 6) ([#533](https://github.com/AraneaDev/knossos/issues/533)) ([51205a3](https://github.com/AraneaDev/knossos/commit/51205a38975bfe8a161fb710fee5c9a2ac016a04))
+* Rust test fidelity (phase 5) ([#532](https://github.com/AraneaDev/knossos/issues/532)) ([6662378](https://github.com/AraneaDev/knossos/commit/666237854640c76b768b88625fa12fcd168caa28))
+* surface test-fidelity findings in the gate, dashboard, brief and mod ([#529](https://github.com/AraneaDev/knossos/issues/529)) ([29a3694](https://github.com/AraneaDev/knossos/commit/29a369485c7092d8c827239f10fbd3bedf4c84e3))
+* test fidelity for TypeScript (Momus/Nemesis checks in Knossos, phase 1) ([#528](https://github.com/AraneaDev/knossos/issues/528)) ([bf14e0c](https://github.com/AraneaDev/knossos/commit/bf14e0cca63ae2722cb977d45e345916128c71a5))
+* **test-fidelity:** PHP test facts and rules (phase 3) ([#530](https://github.com/AraneaDev/knossos/issues/530)) ([49809e4](https://github.com/AraneaDev/knossos/commit/49809e4de68a5c2854fe80b05501208544e1699a))
+* **test-fidelity:** Python test facts and rules (phase 4) ([#531](https://github.com/AraneaDev/knossos/issues/531)) ([f5fb4ae](https://github.com/AraneaDev/knossos/commit/f5fb4aee545744b688c53c977393b29bfd9c3933))
+
+
+### Fixes
+
+* test-fidelity gap sweep before Momus/Nemesis retire ([#534](https://github.com/AraneaDev/knossos/issues/534)) ([e14aad7](https://github.com/AraneaDev/knossos/commit/e14aad73f16c90056145499259ef792636719c2f))
+
 ## [0.50.1](https://github.com/AraneaDev/knossos/compare/v0.50.0...v0.50.1) (2026-11-16)
 
 
