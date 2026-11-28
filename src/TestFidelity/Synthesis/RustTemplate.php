@@ -31,7 +31,9 @@ use Knossos\Scanner\Protocol\NodeFact;
  * a trait's own associated type is written `<Self as Trait>::X` in mock!; a
  * generic mock's `new()` binds each type parameter to a marked `()`; and a
  * trait method whose type parameter is not `'static`, which mockall cannot
- * mock in a trait impl, makes the template say it is incomplete (G6-03).
+ * mock in a trait impl, makes the template say it is incomplete (G6-03),
+ * and so does a method returning `!`, whose mockall expansion needs the
+ * never type, unstable before Rust 1.100 (E0658).
  *
  * A hand-written fake of a struct, or of a generic trait, is refused: a
  * struct has no trait to implement, and a fake of a generic trait needs a
@@ -71,7 +73,7 @@ final readonly class RustTemplate implements MockTemplate
         }
         $uses = [...($framework === 'mockall' ? ['use mockall::mock;'] : []), ...array_map(static fn(NodeFact $declarer): string => sprintf('use %s;', $declarer->canonicalName), $declarers), ...$imports, ...self::moduleGlobs($declarers)];
         $uses = array_values(array_unique($uses));
-        $unmockable = $framework === 'mockall' && $trait ? self::unmockable($members) : [];
+        $unmockable = $framework === 'mockall' ? self::unmockable($members) : [];
         $lines = [
             sprintf('// knossos synthesize_mock: %s (%s), from %s:%d', $target->canonicalName, $framework, $target->evidence->relativePath, $target->evidence->startLine),
             '// ' . ($unmockable === [] ? $members->summary() : str_replace('; complete', '; incomplete: see omitted and notes', $members->summary())),
@@ -262,9 +264,11 @@ final readonly class RustTemplate implements MockTemplate
     }
 
     /**
-     * The trait's methods mockall cannot mock: a type parameter not bound
-     * `'static`, which mockall needs while the trait's impl may not add it
-     * (E0310, and E0276 when added, G6-03).
+     * The methods mockall cannot mock: a trait's with a type parameter not
+     * bound `'static`, which mockall needs while the trait's impl may not
+     * add it (E0310, and E0276 when added, G6-03); and any returning `!`,
+     * which mockall's expansion names as a type, unstable before Rust 1.100
+     * (E0658), below the Rust worker's `rust-version`.
      *
      * @return list<MockMember>
      */
@@ -273,10 +277,16 @@ final readonly class RustTemplate implements MockTemplate
         return array_values(array_filter($members->members, static fn(MockMember $member): bool => self::isUnmockable($members, $member)));
     }
 
-    /** Whether a trait method has a type parameter without a `'static` bound, which mockall cannot mock (G6-03). */
+    /** Whether mockall cannot mock a method: it returns `!`, or a trait's has a type parameter without a `'static` bound (G6-03). */
     private static function isUnmockable(MockMembers $members, MockMember $member): bool
     {
-        if ($member->kind !== 'method' || $members->target->kind !== 'interface') {
+        if ($member->kind !== 'method') {
+            return false;
+        }
+        if (self::returnsNever($member)) {
+            return true;
+        }
+        if ($members->target->kind !== 'interface') {
             return false;
         }
         foreach ($member->typeParams() as $param) {
@@ -288,9 +298,21 @@ final readonly class RustTemplate implements MockTemplate
         return false;
     }
 
-    /** The member's unknown note: why mockall cannot mock it, and that the trait needs a hand-written fake (G6-03). */
+    /** Whether a method returns the never type `!`. */
+    private static function returnsNever(MockMember $member): bool
+    {
+        return trim((string) $member->returns()) === '!';
+    }
+
+    /** The member's unknown note: why mockall cannot mock it, and that a trait needs a hand-written fake (G6-03). */
     private static function unmockableUnknown(MockMembers $members, MockMember $member): string
     {
+        if (self::returnsNever($member)) {
+            $trait = $members->target->kind === 'interface';
+
+            return sprintf('%s: mockall cannot mock a method returning ! (the never type is unstable before Rust 1.100) %s %s; this mock does not compile until it is removed%s', $member->name, $trait ? 'in an impl of' : 'in', $members->target->displayName, $trait ? ', so fake the trait by hand (framework hand-written)' : '');
+        }
+
         return sprintf("%s: mockall cannot mock a generic method whose type parameter is not 'static in an impl of %s; this mock does not compile until it is removed, so fake the trait by hand (framework hand-written)", $member->name, $members->target->displayName);
     }
 

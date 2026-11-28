@@ -48,6 +48,27 @@ final class TemplateRenderingTest extends KnossosTestCase
         assertSame(count($members->members), count($asked));
     }
 
+    public function testAMethodReturningNeverLeavesTheMockallMockIncomplete(): void
+    {
+        // mockall's expansion of `-> !` needs the never type, stable only from Rust 1.100 (E0658 before).
+        $signatures = ['label' => ['params' => [], 'receiver' => '&self', 'returns' => 'String'], 'never' => ['params' => [], 'receiver' => '&self', 'returns' => '!']];
+        $trait = self::members('rust', 'rust:interface:crate::Widget', 'interface', 'crate::Widget', $signatures);
+        $template = new RustTemplate(static fn(string $name, string $file): null => null);
+
+        $text = $template->render($trait, 'mockall', true);
+        assertSame('// 2 members; incomplete: see omitted and notes', explode("\n", $text)[1]);
+        assertSame(['never: mockall cannot mock a method returning ! (the never type is unstable before Rust 1.100) in an impl of Widget; this mock does not compile until it is removed, so fake the trait by hand (framework hand-written)'], $template->member($trait, $trait->members[1], 'mockall', true)['unknown']);
+        assertSame([], $template->member($trait, $trait->members[0], 'mockall', true)['unknown']);
+        // A struct's inherent `-> !` fails in mock! the same way; it has no trait to fake.
+        $struct = self::members('rust', 'rust:class:crate::Gadget', 'class', 'crate::Gadget', $signatures);
+        assertSame('// 2 members; incomplete: see omitted and notes', explode("\n", $template->render($struct, 'mockall', true))[1]);
+        assertSame(['never: mockall cannot mock a method returning ! (the never type is unstable before Rust 1.100) in Gadget; this mock does not compile until it is removed'], $template->member($struct, $struct->members[1], 'mockall', true)['unknown']);
+        // A hand-written fake's body diverges on stable Rust, so the fake is complete.
+        $fake = $template->render($trait, 'hand-written', true);
+        assertSame('// 2 members; complete', explode("\n", $fake)[1]);
+        assertStringContainsString("    fn never(&self) -> ! {\n        panic!()\n    }", $fake);
+    }
+
     public function testAPhpParameterByReferenceKeepsItsAmpersand(): void
     {
         $members = self::members('php', 'php:class:App\\Swap', 'class', 'App\\Swap', ['swap' => ['params' => [['name' => 'left', 'type' => 'int', 'by_ref' => true], ['name' => 'rest', 'type' => 'int', 'by_ref' => true, 'variadic' => true], ['name' => 'plain', 'type' => 'int']], 'returns' => 'void']]);

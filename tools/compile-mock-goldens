@@ -30,7 +30,10 @@ declare(strict_types=1);
  *
  * A Rust golden whose template says it is incomplete for a reason no
  * template can mend is listed in RUST_INCOMPLETE: it must fail, and say
- * `incomplete` in its header, and every other golden must build.
+ * `incomplete` in its header, and every other golden must build. One whose
+ * reason holds only below a Rust version (the never type `!`, stable from
+ * 1.100) is listed in RUST_INCOMPLETE_BEFORE: it must fail below that
+ * version, build from it, and say `incomplete` on every toolchain.
  *
  * Exits 0 when every golden compiles but those, 1 with the compiler's output
  * when that does not hold, 2 on a usage or setup error.
@@ -49,6 +52,17 @@ const SERDE = '1.0.219';
 const RUST_INCOMPLETE = [
     'rs-store' => "Store::convert<T> has a type parameter that is not 'static, which mockall cannot mock in a trait impl (E0310; E0276 if the bound is added)",
     'rs-store-no-values' => 'the same Store::convert<T> as rs-store',
+];
+
+/**
+ * The Rust goldens that cannot compile before a toolchain version, each
+ * because its template says it is incomplete for that reason: below it
+ * they must fail as RUST_INCOMPLETE's do, from it they must build. The
+ * template says incomplete on every toolchain, since the Rust worker's
+ * `rust-version` is below that version.
+ */
+const RUST_INCOMPLETE_BEFORE = [
+    'rs-widget' => ['1.100.0', 'Widget::never returns !, which mockall names as a type, and the never type is unstable before Rust 1.100 (E0658)'],
 ];
 
 $root = dirname(__DIR__);
@@ -154,15 +168,23 @@ function rust(string $dir, string $fixture, array $goldens): bool
     preg_match_all('/could not compile `synth` \(test "(rs_[a-z0-9_]+)"\)/', (string) $output, $matches);
     $failed = array_map(static fn(string $test): string => str_replace('_', '-', $test), $matches[1]);
     sort($failed);
-    $expected = array_keys(RUST_INCOMPLETE);
+    run(sprintf('cd %s && %s rustc --version', escapeshellarg($crate), $env), $version);
+    if (preg_match('/^rustc (\d+\.\d+\.\d+)/', (string) $version, $match) !== 1) {
+        return report('rust', false, "rustc --version said no version:\n" . $version);
+    }
+    $toolchain = $match[1];
+    $before = array_keys(array_filter(RUST_INCOMPLETE_BEFORE, static fn(array $entry): bool => version_compare($toolchain, $entry[0], '<')));
+    $expected = [...array_keys(RUST_INCOMPLETE), ...$before];
     sort($expected);
-    $unmarked = array_filter($expected, static fn(string $case): bool => !str_contains(explode("\n", $templates[$case] ?? '')[1] ?? '', 'incomplete'));
+    $listed = [...array_keys(RUST_INCOMPLETE), ...array_keys(RUST_INCOMPLETE_BEFORE)];
+    sort($listed);
+    $unmarked = array_filter($listed, static fn(string $case): bool => !str_contains(explode("\n", $templates[$case] ?? '')[1] ?? '', 'incomplete'));
     $built = array_diff(array_keys($templates), $failed);
     if ($failed !== $expected || $unmarked !== [] || str_contains((string) $output, 'error: could not compile `synth` (lib')) {
-        return report('rust', false, sprintf("failing: %s; expected to fail: %s; listed but not marked incomplete: %s\n%s", implode(', ', $failed) ?: 'none', implode(', ', $expected), implode(', ', $unmarked) ?: 'none', $output));
+        return report('rust', false, sprintf("rustc %s; failing: %s; expected to fail: %s; listed but not marked incomplete: %s\n%s", $toolchain, implode(', ', $failed) ?: 'none', implode(', ', $expected), implode(', ', $unmarked) ?: 'none', $output));
     }
 
-    return report('rust', true, count($built) . ' Rust golden(s) build: ' . implode(', ', $built) . '; incomplete as their templates say: ' . implode(', ', $expected));
+    return report('rust', true, 'rustc ' . $toolchain . ': ' . count($built) . ' Rust golden(s) build: ' . implode(', ', $built) . '; incomplete as their templates say: ' . implode(', ', $expected));
 }
 
 /**

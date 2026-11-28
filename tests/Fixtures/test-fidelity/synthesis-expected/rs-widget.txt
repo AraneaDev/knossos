@@ -1,5 +1,5 @@
 // knossos synthesize_mock: synth::types::Widget (mockall), from rust/src/types.rs:2
-// 7 members; complete
+// 7 members; incomplete: see omitted and notes
 use mockall::mock;
 use synth::types::Widget;
 use synth::types::*;
