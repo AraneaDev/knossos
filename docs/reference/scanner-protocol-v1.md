@@ -168,8 +168,11 @@ as the source writes it:
   that declares no return type has no `returns`. A signature therefore reads
   the same whether or not the project's dependencies are installed.
 - `optional` marks a parameter a caller may leave out, `variadic` one that
-  takes the rest. A receiver the caller does not pass (`this`, `self`) is not
-  listed. A destructured parameter is named by its shape, `{…}` or `[…]`.
+  takes the rest. A signature may carry `"variadic": true` itself, beside
+  `params`, when the function takes any number of arguments past them without
+  a rest parameter (a PHP body that calls `func_get_args()`). A receiver the
+  caller does not pass (`this`, `self`) is not listed. A destructured
+  parameter is named by its shape, `{…}` or `[…]`.
 - At most 12 parameters are listed and a type's text is at most 80 characters.
   A signature that lost a parameter or part of a type says `"truncated": true`.
 - Control characters and line separators in a type are replaced by a space:
@@ -200,6 +203,14 @@ worker could read it, and a list that cannot be complete says so with
 `export =`) or `member_names_open: true` (a base type that does not resolve, an
 index signature). A reader judges a name absent only from a list that is
 present, complete and not open; a node without one says nothing.
+
+A PHP class, interface, trait or enum node may carry `member_names` too: the
+methods it declares itself, its `@method` docblock names, its trait-use aliases
+and an enum's built-ins. Inherited names come from its `extends`, `implements`
+and `uses_trait` edges. A `uses_trait` edge may carry `visibility_changed`, the
+method names whose visibility the trait use changes in place
+(`use T { load as public; }`), omitted when there are none; a reader takes
+those members' visibility as unknown.
 
 #### Repeated edges
 
@@ -236,7 +247,7 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
 `schemas/scanner/v1/contribution.schema.json`.
 
 - `test_double`, named `<file>#double:<line>:<col>`: a mock, spy, stub or fake.
-  `framework` (`vitest` or `jest`), `pattern` (how it was made, such as
+  `framework` (`vitest`, `jest`, `phpunit`, `mockery`, `pest` or `prophecy`), `pattern` (how it was made, such as
   `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`), `target`
   (`{kind, specifier?, export?, member?}`, `kind` one of `module`, `class`,
   `instance-member`, `global`, `unknown`; a virtual module mock, made with
@@ -244,9 +255,26 @@ know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
   `invocations` (call sites of the double in its file), `test_case` (canonical
   name of the enclosing test, optional) and `members`: the members the test
   configures, each
-  `{name, line, api, params?, returns}` where `params` is the signature shape
+  `{name, line, api, params?, returns}` where `api` is how the test names the
+  member (`spyOn`, `mockFactoryKey`, `objectLiteralKey`, `instance-member`,
+  PHPUnit's `method`, `configured`, `partial` and `addMethods` (a name the
+  double adds to its class, which is never a ghost), Mockery's `shouldReceive`
+  and, for a member a spy assertion names, `shouldHaveReceived`, `prophecy`, or
+  `unknown`), `params` is the signature shape
   above and each `returns` entry is `{api, line, once, assignable, typed}`
-  (`assignable` is `true`, `false` or `"unknown"`).
+  (`assignable` is `true`, `false` or `"unknown"`). A member may also carry
+  `called_with`, the argument-list assertions on it, each
+  `{api, line, count, spread}` (`count` arguments listed, `spread` when one is a
+  spread so the real count is open), and a `returns` entry may carry `type`, the
+  pinned value's own type as the worker names it. A `test_double` may carry
+  `allows_protected` (`true` when the framework lets the double stub protected
+  members, as Mockery's `shouldAllowMockingProtectedMethods()` does), and
+  `also_implements`, the further classes and interfaces the double is made to
+  be, fully qualified (Mockery's `mock(A::class, B::class)`), or
+  `also_implements_open: true` when the worker could not name them all. A
+  reader drops a malformed `called_with` entry, `type` or `allows_protected`
+  and keeps the double; a malformed `also_implements` leaves what the double
+  implements unknown.
 - `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
   `subjects` (canonical names of the production modules those calls land in),
   `should_panic` (optional) and `assertions`, each

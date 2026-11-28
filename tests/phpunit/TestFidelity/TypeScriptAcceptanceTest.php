@@ -42,16 +42,12 @@ use PHPUnit\Framework\Attributes\Group;
  *    visibility breach, Momus nothing; Nemesis's outcome is expected. Nemesis
  *    gives one return-drift warning per missing field (two), Knossos one per
  *    pinned value.
- * 6. `UserService.spec.ts:29`: Nemesis reports ARITY_MISMATCH (definite) from
- *    `(spy as any).toHaveBeenCalledWith('1', {}, 'extra')`, a call vitest has
- *    no such method for. Knossos records no call-matcher arity on a double, so
- *    it is silent; open, not expected here.
- * 7. `packageMock.spec.ts:11`: both tools are silent on a spy of `node:fs`;
+ * 6. `packageMock.spec.ts:11`: both tools are silent on a spy of `node:fs`;
  *    Knossos is too, as code outside the project may reach a package's double.
- * 8. `dogfood-clean/tests/catalog.test.ts:1`: Momus reports MOCK-001
+ * 7. `dogfood-clean/tests/catalog.test.ts:1`: Momus reports MOCK-001
  *    (over-mocked), Nemesis nothing; Nemesis's silence is expected, and
  *    Knossos's MOCKS_SUBJECT fires only on a mocked sole or named-for subject.
- * 9. `UserService.spec.ts:23`: Nemesis reports the spy on a `private` method
+ * 8. `UserService.spec.ts:23`: Nemesis reports the spy on a `private` method
  *    as a definite visibility breach, and the spec maps VISIBILITY_BREACH to
  *    definite. TypeScript's `private` and `protected` hold at compile time
  *    only, so `vi.spyOn(s as any, 'secret')` does replace the method; Knossos
@@ -152,6 +148,7 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
             'GHOST_MEMBER/missing_member/definite@tests/UserService.spec.ts:7',
             'RETURN_DRIFT/return_type/warning@tests/UserService.spec.ts:17',
             'VISIBILITY_BREACH/visibility/warning@tests/UserService.spec.ts:23',
+            'ARITY_MISMATCH/call_arity/definite@tests/UserService.spec.ts:29',
             'TAUTOLOGY/self_comparison/definite@tests/UserService.spec.ts:32',
         ]), self::findings($pdo));
     }
@@ -220,7 +217,7 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
         assertSame($before, self::findings($pdo));
     }
 
-    /** A member renamed in the target makes its double a ghost, and renaming it back clears it. */
+    /** A member renamed in the target makes its double a ghost, and renaming it back leaves the arity finding the spec holds there. */
     public function testAGhostFollowsARenameOfTheTargetInBothDirections(): void
     {
         [$pdo, $service, $root] = $this->scanned(self::NEMESIS);
@@ -234,6 +231,6 @@ final class TypeScriptAcceptanceTest extends KnossosTestCase
 
         file_put_contents($production, $original);
         $service->scan($root);
-        assertSame([], $at29());
+        assertSame(['ARITY_MISMATCH/call_arity/definite@tests/UserService.spec.ts:29'], $at29());
     }
 }

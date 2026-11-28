@@ -72,9 +72,10 @@ file and scans again, five times, and holds the median incremental scan to
 reaches fails the run, so a scenario cannot pass by timing a smaller rescan.
 The report lists each round under `scenarios`.
 
-| scenario                        | corpus                                                      | incremental scan |
-| ------------------------------- | ----------------------------------------------------------- | ---------------: |
-| `test_fidelity_rescan_one_file` | one TypeScript class, five test files with 20 doubles of it |               8s |
+| scenario                            | corpus                                                      | incremental scan |
+| ----------------------------------- | ----------------------------------------------------------- | ---------------: |
+| `test_fidelity_rescan_one_file`     | one TypeScript class, five test files with 20 doubles of it |               8s |
+| `test_fidelity_rescan_one_file_php` | one PHP class, five test files with 20 doubles of it        |               2s |
 
 `test_fidelity_rescan_one_file` measures what test fidelity adds to a rescan:
 the edit makes the production file and all five test files parse again
@@ -94,6 +95,17 @@ it, within the 110% of base (2.079s) it was held to. Each of those two figures i
 median of three benchmark runs, and each run's figure is itself the median of
 its five rounds. That comparison was a one-off acceptance measurement and is
 not enforced; the 8s limit is.
+
+`test_fidelity_rescan_one_file_php` measures the same for PHP, with PHPUnit
+and Mockery doubles. The PHP worker parses the edited class alone
+(`parsed_files` is 1 in every round): the five test files are reused, and
+their twenty doubles are judged again against the changed class. Its limit
+follows the same headroom: in one run `small` measured 2.68s against its 10s
+(3.73 times) and the scenario 0.49s, so 0.49s × 3.73 = 1.83s, rounded up: 2s.
+It was accepted against commit `de719356`, the base of PHP test facts, where
+the PHP worker reported none: 0.492s there and 0.508s with them, within the
+110% of base (0.541s) it was held to, each figure a median of three runs of
+five rounds.
 
 Timing and RSS values vary with hardware, load, filesystem, and cold runtime
 caches. Compare trends from equivalent pinned runners. Tightening a budget

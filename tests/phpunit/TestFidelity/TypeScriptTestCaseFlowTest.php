@@ -222,4 +222,62 @@ final class TypeScriptTestCaseFlowTest extends KnossosTestCase
         // A property read with no matcher called is no assertion.
         assertSame([16 => true, 17 => false, 18 => true], $negated);
     }
+
+    /** The call matchers of each double of a test file, by the line the double is made on, as `api:line:count[:spread]`. */
+    public function testACallMatcherIsReadOnTheMemberItIsAboutAndOnNoOther(): void
+    {
+        $path = 'tests/matchers.test.ts';
+        $lines = [
+            "import { expect, it, vi } from 'vitest';",
+            "import { Engine } from '../src/engine';",
+            "it('matchers', async () => {",
+            '  const engine = new Engine();',
+            "  const spy = vi.spyOn(engine, 'run');",
+            '  const port = { send: vi.fn() };',
+            '  const mocked = vi.mocked(new Engine());',
+            '  mocked.run.mockReturnValue(1);',
+            "  expect(spy).toHaveBeenCalledWith('a', 1);",
+            "  expect(spy).not.toHaveBeenNthCalledWith(2, 'a');",
+            '  expect(spy).lastCalledWith(...[1, 2]);',
+            '  expect(engine.run).toBeCalledWith();',
+            "  (spy as any).nthCalledWith(1, 'x', 'y');",
+            "  expect(port.send).resolves.toHaveBeenCalledWith('a');",
+            "  expect(mocked.run).toHaveBeenCalledWith('a', 'b');",
+            '  expect(mocked.other).toHaveBeenCalledWith(1);',
+            '  expect(engine.start).toHaveBeenCalledWith(1);',
+            '  expect(spy.name).toHaveBeenCalledWith(1);',
+            '  expect(vi.fn()).toHaveBeenCalledWith(1);',
+            '  expect().toHaveBeenCalledWith(1);',
+            '  expect(spy).toHaveBeenCalledTimes(1);',
+            '});',
+        ];
+        $nodes = array_merge([], ...array_map(
+            static fn(ScanContribution $c): array => $c->nodes,
+            $this->scanTypeScript(self::PRODUCT + [$path => implode("\n", $lines) . "\n"]),
+        ));
+        $matchers = [];
+        foreach ($nodes as $node) {
+            if ($node->kind !== 'test_double' || $node->evidence->relativePath !== $path) {
+                continue;
+            }
+            $members = $node->attributes['members'];
+            assert(is_array($members));
+            foreach ($members as $member) {
+                assert(is_array($member) && is_string($member['name']));
+                $listed = $member['called_with'] ?? [];
+                assert(is_array($listed));
+                $matchers[$node->evidence->startLine . ':' . $member['name']] = array_map(static function (mixed $matcher): string {
+                    assert(is_array($matcher));
+
+                    return sprintf('%s:%s:%s%s', $matcher['api'], $matcher['line'], $matcher['count'], $matcher['spread'] === true ? ':spread' : '');
+                }, $listed);
+            }
+        }
+
+        assertSame([
+            '5:run' => ['toHaveBeenCalledWith:9:2', 'toHaveBeenNthCalledWith:10:1', 'lastCalledWith:11:1:spread', 'toBeCalledWith:12:0', 'nthCalledWith:13:2'],
+            '6:send' => ['toHaveBeenCalledWith:14:1'],
+            '7:run' => ['toHaveBeenCalledWith:15:2'],
+        ], $matchers);
+    }
 }

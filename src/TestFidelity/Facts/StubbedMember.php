@@ -9,11 +9,13 @@ namespace Knossos\TestFidelity\Facts;
  */
 final readonly class StubbedMember
 {
-    private const APIS = ['spyOn', 'mockFactoryKey', 'objectLiteralKey', 'instance-member', 'unknown'];
+    /** How the test named the member: the TypeScript worker's forms, then PHPUnit's, Mockery's and Prophecy's. */
+    private const APIS = ['spyOn', 'mockFactoryKey', 'objectLiteralKey', 'instance-member', 'method', 'shouldReceive', 'configured', 'partial', 'addMethods', 'prophecy', 'shouldHaveReceived', 'unknown'];
 
     /**
      * @param list<mixed>|null $params the member's signature parameters as the wire states them
      * @param list<PinnedValue> $returns
+     * @param list<CallMatcher> $calledWith the argument-list assertions on the member, empty when the wire states none
      */
     public function __construct(
         public string $name,
@@ -21,6 +23,7 @@ final readonly class StubbedMember
         public string $api,
         public ?array $params,
         public array $returns,
+        public array $calledWith = [],
     ) {}
 
     /**
@@ -51,6 +54,27 @@ final readonly class StubbedMember
             $returns[] = $pinned;
         }
 
-        return new self($name, $line, $api, $params, $returns);
+        return new self($name, $line, $api, $params, $returns, self::calledWith($raw['called_with'] ?? null));
+    }
+
+    /**
+     * Read the matchers, dropping any that is malformed so one bad entry never costs the double.
+     *
+     * @return list<CallMatcher>
+     */
+    private static function calledWith(mixed $raw): array
+    {
+        if (!is_array($raw) || !array_is_list($raw)) {
+            return [];
+        }
+        $matchers = [];
+        foreach ($raw as $rawMatcher) {
+            $matcher = CallMatcher::fromArray($rawMatcher);
+            if ($matcher !== null) {
+                $matchers[] = $matcher;
+            }
+        }
+
+        return $matchers;
     }
 }

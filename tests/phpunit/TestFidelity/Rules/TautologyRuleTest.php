@@ -120,6 +120,14 @@ final class TautologyRuleTest extends KnossosTestCase
         ], 1))));
     }
 
+    public function testPhpAssertionsOfOneValueAreNotConstant(): void
+    {
+        foreach (['assertNull', 'assertInstanceOf', 'assertCount', 'toHaveCount'] as $api) {
+            assertSame([], self::subRules(self::judge(CaseFixtures::testCase([CaseFixtures::assertion($api, [CaseFixtures::operand('literal', ['text' => '2']), CaseFixtures::operand('literal', ['text' => '[1, 2]'])])], 1))), $api);
+        }
+        assertSame(['constant'], self::subRules(self::judge(CaseFixtures::testCase([CaseFixtures::assertion('assertSame', [CaseFixtures::operand('literal', ['text' => '2']), CaseFixtures::operand('literal', ['text' => '[1, 2]'])])], 1))));
+    }
+
     public function testNegatedConstantIsStillConstant(): void
     {
         $findings = self::judge(CaseFixtures::testCase([CaseFixtures::assertion('toBe', [
@@ -182,6 +190,18 @@ final class TautologyRuleTest extends KnossosTestCase
         assertSame(['mock_only'], self::subRules(self::judge(CaseFixtures::testCase([CaseFixtures::assertion('toHaveBeenCalled', [CaseFixtures::operand('mock-call', ['double' => self::SPY])])]), $spy)));
         // Not a call matcher.
         assertSame(['mock_only'], self::subRules(self::judge(CaseFixtures::testCase([CaseFixtures::assertion('toBeDefined', [CaseFixtures::operand('mock-call', ['double' => self::SPY, 'unconfigured_spy' => true])])]), $spy)));
+    }
+
+    public function testAMockerySpyAssertionOnAnUnconfiguredSpyIsWarning(): void
+    {
+        $spy = CaseFixtures::double(6, members: [CaseFixtures::member('charge', 0)]);
+        $operand = CaseFixtures::operand('mock-call', ['text' => '$spy', 'double' => self::SPY, 'unconfigured_spy' => true]);
+
+        foreach (['shouldHaveReceived', 'shouldNotHaveReceived'] as $api) {
+            $findings = self::judge(CaseFixtures::testCase([CaseFixtures::assertion($api, [$operand])]), $spy);
+            assertSame(['unconfigured_spy'], self::subRules($findings), $api);
+            assertSame(['api' => $api, 'double' => self::SPY], $findings[0]->attributes);
+        }
     }
 
     public function testSelfComparisonOutranksUnconfiguredSpy(): void

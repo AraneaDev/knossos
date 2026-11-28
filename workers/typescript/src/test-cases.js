@@ -13,6 +13,7 @@
 import ts from "typescript";
 import { TestScope } from "./test-case-flow.js";
 import { ProductionRoots, productionCalls } from "./test-case-production.js";
+import { EXPECTS, recordCallMatchers } from "./test-call-matchers.js";
 import { dottedName, stripCast } from "./test-double-syntax.js";
 import { reference } from "./typescript-fact-utils.js";
 
@@ -26,7 +27,6 @@ const TESTS = new Set([
 ]);
 const SUITES = new Set(["describe", "describe.only", "describe.skip"]);
 const SETUPS = new Set(["beforeAll", "beforeEach"]);
-const EXPECTS = new Set(["expect", "expect.soft", "vi.expect"]);
 
 /**
  * Emit the tests of `sourceFile` through `emit`, the file's fact collector,
@@ -137,6 +137,7 @@ class TestCaseFile {
     emit() {
         const context = this.context;
         const emitted = new Set();
+        recordCallMatchers(this);
         for (const test of this.tests) {
             const canonical = `${context.relative}#test:${this.line(test.call)}`;
             // Two tests that start on one line share a name: the first keeps it.

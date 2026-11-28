@@ -34,6 +34,7 @@ import {
     factoryObject,
     functionArgument,
     isMockFactory,
+    objectKey,
     PIN_APIS,
     rootIdentifier,
     staticName,
@@ -162,12 +163,7 @@ class TestDoubleFile {
 
     /** What names a spied-on object: its variable's symbol, else its text. */
     objectKey(expression) {
-        const value = stripCast(expression);
-        return (
-            (ts.isIdentifier(value) &&
-                this.checker.getSymbolAtLocation(value)) ||
-            value.getText(this.sourceFile)
-        );
+        return objectKey(this.checker, this.sourceFile, expression);
     }
 
     call(node) {
@@ -256,6 +252,8 @@ class TestDoubleFile {
                           ...memberTarget,
                       },
             owner,
+            // What names the spied-on object, for a matcher on its member.
+            spiedKey: this.objectKey(object),
             edge:
                 namespace !== null
                     ? this.context.moduleTarget(

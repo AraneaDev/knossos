@@ -100,3 +100,117 @@ inherits, so the visitor's hooks have the code that wires them as a caller.
 The visitor's class must be known: `new Visitor()`, a typed variable, a
 property whose declared type is a class (`$traverser->addVisitor($this->collector)`),
 or the class itself handing over `$this`.
+
+## Test doubles
+
+In a test file (one under `tests/`, or named like `FooTest.php`), the worker
+reports each mock, stub and spy as a `test_double` fact, which the
+test-fidelity rules hold against the class it stands in for. It reads
+PHPUnit's `createMock()`, `createStub()`, `createConfiguredMock()`,
+`createPartialMock()`, `getMockForAbstractClass()`, `getMockForTrait()` and
+`getMockBuilder()`,
+Mockery's `Mockery::mock()` and `Mockery::spy()` under any alias, Pest's
+`mock()`, Laravel's `$this->mock()`, `$this->partialMock()` and
+`$this->spy()`, and Prophecy's `$this->prophesize()`. A Laravel facade's
+`Cache::shouldReceive()` is one Mockery double per facade, with no class to
+hold it against.
+
+The class is the one a `Foo::class` constant names, through the file's
+namespace and imports, or a string such as `'App\Foo'`. A class name held in a
+variable or built at runtime names nothing. A Mockery double made to be
+several types, `Mockery::mock(Foo::class, Bar::class)` or
+`Mockery::mock('Foo, Bar')`, keeps every one, so a member of `Bar` is no
+ghost; when a further argument may name a type the code does not show (a
+variable), the double's members are not judged as ghosts at all. A double
+assigned to a variable serves the rest of its method; assigned to a `$this`
+property in `setUp()`, it serves every test of the class. Its members are the
+names `method()`, `shouldReceive()` and Prophecy's calls configure, with the
+values `willReturn()` and `andReturn()` pin them to and the argument counts
+`with()` expects. Mockery's `anyArgs()`, `noArgs()`, `andAnyOtherArgs()` and
+`andAnyOthers()`, and Prophecy's `Argument::cetera()`, leave the count open.
+The names PHPUnit's `addMethods()` lists are the double's own and never a
+ghost. `willReturnSelf()` and `andReturnSelf()` pin an instance of the class
+the double stands in for, and a function written in place for
+`willReturnCallback()` or `andReturnUsing()` gives the member its
+parameters. A spy assertion, `$spy->shouldHaveReceived('m')`, names the member
+`m`, and the arguments it is given or `->with()` lists after it are counted the
+same way. A member whose name is computed, such as `method($name)`, is left
+out. A method whose own body calls `func_get_args()`, `func_num_args()` or
+`func_get_arg()` takes any number of arguments, and its signature says
+`"variadic": true`. In a Pest file, a double that `beforeEach()` assigns to a
+`$this` property serves every test of the file.
+
+## Test cases
+
+The same test files report each test as a `test_case` fact. A test is a public
+method of a class whose name ends in `Test`, when it is named `test*`, marked
+`#[Test]` or documented `@test`, or a closure handed to Pest's `it()` or
+`test()`. Each one lists:
+
+- its assertions: PHPUnit's `assertSame()`, `assertEquals()`,
+  `assertNotSame()`, `assertNotEquals()`, `assertTrue()`, `assertFalse()`,
+  `assertNull()`, `assertCount()` and `assertInstanceOf()`; Pest's
+  `expect($x)->toBe(...)` and every other `to*` matcher, through `->not` and
+  `->and()`; and Mockery's `shouldHaveReceived()` and `shouldNotHaveReceived()`.
+- where each operand's value comes from: a stub's pinned value, a double,
+  the code under test, a literal, a parameter of the test (a data provider's or
+  dataset's row), or unknown.
+- its production calls and the project files they land in.
+
+A local variable is followed to its value only when it is assigned once and
+nothing else changes it: no `++` or `.=`, no write to an element or property of
+it (`$x[] = 1`, `unset($x['k'])`), no destructuring at any depth (`[[$x]] =`,
+`foreach ($rows as [$x])`), no reference, and no call it is handed to, inside
+a double's configuration too (`->with(Mockery::capture($x))`); the value a
+link such as `willReturn($x)` pins is only read.
+The rule is coarse on purpose. A function that may write its locals indirectly
+(`global`, `extract()`, `get_defined_vars()`, a one-argument `parse_str()`, a
+variable variable, an `include` or `require`, `eval()`) proves no local's value. A `$this` property, in a PHPUnit
+class or a Pest file, and a static property are never a literal: code the file
+does not show (a parent class, a trait's hook, `__set()`, a helper handed
+Pest's `test()`) may write them at any time. A property holding a double is
+that double, for its identity (`mock-call`), but a call on it never gives the
+value pinned on it: a helper or hook may have swapped it for something else.
+Only a double held in a local variable, or used inline, gives its pin
+(`mock-config`). Any other property assigned code under test in the test or in `setUp()` / `beforeEach()` is
+production; any other is unknown. A call on a stub gives its pinned value
+only when exactly one way the member answers is set in the test or its setup,
+and that is one value for any call: not a value for some arguments only
+(`with()`), one of several in turn, or a callback's. A one-value assertion such
+as `assertTrue()` has one operand; its failure message is never one. A call counts as production when it constructs a class, calls a
+static method of one, or calls a method on a variable bound to `new X()`. It
+also counts when it is a method the test case inherits, such as Laravel's
+`$this->get('/')`, or a function that is not PHP's own. A class of PHP or of a
+test framework, one the test file declares, and one in a test module run no
+code under test. The file a counted class lives in comes from composer's PSR-4
+maps, read from the nearest `composer.json`; no autoloader is run.
+
+A test file whose doubles or tests cannot be read reports the warning
+`PHP_TEST_FACTS_FAILED` and keeps every other fact.
+
+## How the rules judge PHP tests
+
+The test-fidelity rules read these facts as they read TypeScript's, with PHP's
+own semantics:
+
+- Names are matched without regard to case, as PHP calls methods. A class
+  that declares `__call()` or `__callStatic()`, or forwards with `@mixin`, may
+  answer any name, so no stubbed name on it is a ghost; nor is one on a class
+  whose parent or trait does. A parent's, interface's or trait's `@method`
+  names count as the class's own.
+- Visibility holds at run time. Stubbing a `private` method is a definite
+  breach. A `protected` one is definite only under `createMock()` or
+  `createStub()` for a method that is not abstract, or under Mockery, Pest or
+  Prophecy without `shouldAllowMockingProtectedMethods()`: PHPUnit's other
+  doubles reach protected methods.
+- A pinned value is held against the native return type only; a docblock's
+  `@return` is not read. PHPUnit checks the value strictly, so `null` for a
+  `void` method is drift. Mockery, Pest and Prophecy let PHP coerce one scalar
+  into another, turn a `Stringable` object into a `string` and drop a `null`
+  given to `void`, so those fits are unknown. The double itself pinned on a
+  `void` method (`willReturnSelf()`) breaks nothing at run time, so it is a
+  warning. `self` and `static` declared in a trait stand for the class using
+  it.
+- A class the scan does not hold, or a relation that could live in `vendor/` or
+  PHP itself, makes drift a warning at most. A facade double names no class,
+  so nothing it stubs is held against one.

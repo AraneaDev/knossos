@@ -421,9 +421,9 @@ final class FactCollector extends NodeVisitorAbstract
             'abstract' => $node instanceof Stmt\Class_ && $node->isAbstract(),
             'final' => $node instanceof Stmt\Class_ && $node->isFinal(),
             'readonly' => $node instanceof Stmt\Class_ && $node->isReadonly(),
-            'extends' => $parent,
-            'implements' => $interfaces,
+            'extends' => $parent, 'implements' => $interfaces,
             'php_attributes' => $this->attributeNames($node->attrGroups),
+            ...MemberNames::of($node),
         ]);
 
         if ($node instanceof Stmt\Class_ && $node->extends instanceof Name) {
@@ -680,7 +680,7 @@ final class FactCollector extends NodeVisitorAbstract
             return;
         }
         foreach ($node->traits as $trait) {
-            $this->addEdge('uses_trait', $class['id'], self::reference('trait', $this->name($trait)), $trait);
+            $this->addEdge('uses_trait', $class['id'], self::reference('trait', $this->name($trait)), $trait, attributes: array_filter(['visibility_changed' => TraitUseVisibility::changed($node, $this->name($trait), $this->name(...))]));
         }
     }
 

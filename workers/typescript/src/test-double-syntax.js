@@ -48,6 +48,18 @@ export function stripCast(expression) {
     return current;
 }
 
+/**
+ * What names an object: its variable's symbol, else its text. Two
+ * expressions with the same key are the same object to a test.
+ */
+export function objectKey(checker, sourceFile, expression) {
+    const value = stripCast(expression);
+    return (
+        (ts.isIdentifier(value) && checker.getSymbolAtLocation(value)) ||
+        value.getText(sourceFile)
+    );
+}
+
 /** Whether a call makes a bare mock function. */
 export function isMockFactory(node) {
     return (

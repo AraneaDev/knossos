@@ -202,4 +202,83 @@ final class TestFidelityGraphTest extends KnossosTestCase
 
         assertSame('src/inner.ts#helper', $graph->member($facade, 'helper')?->canonicalName);
     }
+
+    /**
+     * PHP doubles as the PHP worker emits them: every `doubles` edge names
+     * `php:class:<FQCN>`, whatever the target's kind, in the case the test wrote.
+     *
+     * @return array{TestFidelityGraph, NodeFact}
+     */
+    private static function phpGraph(string ...$references): array
+    {
+        $file = 'src/Contracts/PaymentGateway.php';
+        $gateway = new NodeFact('php:interface:App\\Contracts\\PaymentGateway', 'interface', 'App\\Contracts\\PaymentGateway', 'PaymentGateway', Origin::Ast, Confidence::Certain, new Evidence($file, 5, 10), ['member_names' => ['chargeToken']]);
+        $charge = new NodeFact('php:method:App\\Contracts\\PaymentGateway::chargeToken', 'method', 'App\\Contracts\\PaymentGateway::chargeToken', 'chargeToken', Origin::Ast, Confidence::Certain, new Evidence($file, 7, 7), []);
+        $vendored = new NodeFact('php:class:Monolog\\Logger', 'class', 'Monolog\\Logger', 'Logger', Origin::Ast, Confidence::Certain, new Evidence('vendor/monolog/monolog/src/Logger.php', 1, 1), []);
+        $doubles = $edges = [];
+        foreach ($references as $i => $reference) {
+            $doubles[] = $double = new NodeFact('php:test_double:tests/PayTest.php#double:' . ($i + 1) . ':1', 'test_double', 'tests/PayTest.php#double:' . ($i + 1) . ':1', 'createMock', Origin::Ast, Confidence::Certain, new Evidence('tests/PayTest.php', $i + 1, $i + 1), [
+                'framework' => 'phpunit', 'pattern' => 'createMock', 'target' => ['kind' => 'class', 'export' => substr($reference, strlen('php:class:'))], 'automock' => false, 'invocations' => 0, 'members' => [],
+            ]);
+            $edges[] = self::edge('doubles', $double, $reference);
+        }
+
+        return [TestFidelityGraph::fromContributions([
+            new ScanContribution('knossos.php:file:src', [$gateway, $charge, $vendored], [self::edge('contains', $gateway, $charge->localId)]),
+            new ScanContribution('knossos.php:file:tests/PayTest.php', $doubles, $edges),
+        ]), $gateway];
+    }
+
+    public function testAPhpClassReferenceResolvesToTheTypeOfThatName(): void
+    {
+        [$graph, $gateway] = self::phpGraph('php:class:App\\Contracts\\PaymentGateway', 'php:class:app\\contracts\\PAYMENTGATEWAY', 'php:class:App\\Contracts\\Gone');
+        [$exact, $anyCase, $gone] = $graph->doubles();
+
+        assertSame($gateway, $graph->target($exact), 'An interface, reached through the class reference the worker writes for every double.');
+        assertSame($gateway, $graph->target($anyCase), 'PHP class names are case-insensitive.');
+        assertNull($graph->target($gone));
+        assertSame('App\\Contracts\\PaymentGateway::chargeToken', $graph->member($gateway, 'CHARGETOKEN')?->canonicalName, 'So are PHP method names.');
+    }
+
+    public function testATypeScriptReferenceMatchesOnlyInItsOwnCase(): void
+    {
+        $graph = TestFidelityGraph::fromContributions(self::contributions());
+        $class = $graph->target($graph->doubles()[4]);
+        assertNotNull($class);
+
+        assertNull($graph->member($class, 'GetProfile'));
+        $double = self::double('tests/a.test.ts#double:8:1', ['kind' => 'class', 'export' => 'UserService']);
+        $lower = TestFidelityGraph::fromContributions([...self::contributions(), new ScanContribution('knossos.typescript:file:tests/b.test.ts', [$double], [self::edge('doubles', $double, 'ts:class:src/userservice.ts#userservice')])]);
+        assertNull($lower->target($lower->doubles()[5]));
+    }
+
+    public function testAPhpClassOutsideTheProjectIsExternal(): void
+    {
+        [$graph] = self::phpGraph('php:class:App\\Contracts\\PaymentGateway', 'php:class:Psr\\Log\\LoggerInterface', 'php:class:Monolog\\Logger');
+        [$project, $unscanned, $vendored] = $graph->doubles();
+
+        assertFalse($graph->isExternal($project));
+        assertTrue($graph->isExternal($unscanned), 'A class the scan does not hold lives outside the project, in vendor/ or PHP itself.');
+        assertTrue($graph->isExternal($vendored), 'A class declared under vendor/.');
+    }
+
+    public function testAPhpTypeReachesWhatItExtendsAndImplements(): void
+    {
+        $node = static fn(string $kind, string $name, string $file = 'src/a.php'): NodeFact => new NodeFact('php:' . $kind . ':' . $name, $kind, $name, $name, Origin::Ast, Confidence::Certain, new Evidence($file, 1, 1), []);
+        $types = [$node('class', 'App\\Visa'), $node('class', 'App\\Card'), $node('interface', 'App\\Payable'), $node('trait', 'App\\Logs'), $node('class', 'App\\FileLog')];
+        $graph = TestFidelityGraph::fromContributions([new ScanContribution('knossos.php:file:src', $types, [
+            self::edge('extends', $types[0], 'php:class:APP\\CARD'),
+            self::edge('uses_trait', $types[0], 'php:trait:App\\Logs'),
+            self::edge('implements', $types[1], 'php:interface:App\\Payable'),
+            self::edge('extends', $types[4], 'php:class:Monolog\\Logger'),
+        ])]);
+
+        assertTrue($graph->phpIsA('App\\Visa', 'App\\Payable'));
+        assertTrue($graph->phpIsA('app\\visa', 'App\\Visa'));
+        assertFalse($graph->phpIsA('App\\Card', 'App\\Visa'));
+        assertFalse($graph->phpIsA('App\\Visa', 'App\\Logs'), 'A trait a class uses is no type it is.');
+        assertNull($graph->phpIsA('App\\FileLog', 'App\\Payable'), 'A parent only vendor/ holds may implement anything.');
+        assertNull($graph->phpIsA('App\\Card', 'Psr\\Log\\LoggerInterface'), 'A type only vendor/ holds.');
+        assertNull($graph->phpIsA('Monolog\\Logger', 'App\\Payable'));
+    }
 }
