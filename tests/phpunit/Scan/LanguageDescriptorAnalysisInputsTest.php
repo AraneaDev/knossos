@@ -60,14 +60,41 @@ final class LanguageDescriptorAnalysisInputsTest extends KnossosTestCase
         assertSame($before, AnalysisHash::of($this->root, $inputs));
     }
 
+    /**
+     * The TypeScript worker's output changes with its modules, not its
+     * version: the test-double collector added modules without a bump, and
+     * contributions cached before it must miss so that test files are read
+     * again for their test facts.
+     */
+    public function testAnEditToAnyTypeScriptWorkerModuleChangesItsAnalysisHash(): void
+    {
+        $this->copyTree(self::repositoryRoot() . '/workers/typescript/src', $this->root . '/workers/typescript/src');
+        $inputs = $this->inputs('typescript');
+        $modules = glob($this->root . '/workers/typescript/src/*.js') ?: [];
+        self::assertContains($this->root . '/workers/typescript/src/test-doubles.js', $modules);
+
+        foreach ($modules as $module) {
+            $before = AnalysisHash::of($this->root, $inputs);
+            file_put_contents($module, "\n// edited\n", FILE_APPEND);
+
+            self::assertNotSame($before, AnalysisHash::of($this->root, $inputs), basename($module));
+        }
+    }
+
     /** @return list<string> */
     private function pythonInputs(): array
     {
+        return $this->inputs('python');
+    }
+
+    /** @return list<string> */
+    private function inputs(string $language): array
+    {
         foreach (LanguageDescriptor::defaults(self::repositoryRoot()) as $descriptor) {
-            if ($descriptor->key === 'python') {
+            if ($descriptor->key === $language) {
                 return $descriptor->analysisInputs;
             }
         }
-        self::fail('No Python descriptor.');
+        self::fail("No {$language} descriptor.");
     }
 }

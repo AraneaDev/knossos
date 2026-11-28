@@ -51,6 +51,13 @@ final class SqliteGraphRepository implements GraphRepository
         'files', 'nodes', 'edges', 'classifications', 'boundaries', 'boundary_memberships', 'diagnostics',
     ];
 
+    /**
+     * What a scan writes beyond the snapshot's tables, checked with them
+     * before a bulk rewrite commits. Test findings are judged again by every
+     * scan that rebuilds the graph and are not part of the snapshot record yet.
+     */
+    private const CHECKED_TABLES = [...self::SCAN_OWNED_TABLES, 'test_findings'];
+
     public function __construct(PDO $pdo)
     {
         $this->statements = new SqliteStatementCache($pdo);
@@ -82,7 +89,7 @@ final class SqliteGraphRepository implements GraphRepository
      */
     public function bulkTransaction(callable $operation, ?string $projectId = null): mixed
     {
-        return $this->transactions->runBulk(fn(): mixed => $operation($this), self::SCAN_OWNED_TABLES, $projectId);
+        return $this->transactions->runBulk(fn(): mixed => $operation($this), self::CHECKED_TABLES, $projectId);
     }
 
     /** Upsert by id: a rescan of the same root updates the name/config rather than creating a second project. */
@@ -334,6 +341,12 @@ final class SqliteGraphRepository implements GraphRepository
     public function saveClassifications(array $classifications, string $projectId, string $scanId): void
     {
         $this->writer->saveClassifications($classifications, $projectId, $scanId);
+    }
+
+    /** {@inheritDoc} */
+    public function saveTestFindings(array $findings, string $projectId, string $scanId): void
+    {
+        $this->writer->saveTestFindings($findings, $projectId, $scanId);
     }
 
     /**

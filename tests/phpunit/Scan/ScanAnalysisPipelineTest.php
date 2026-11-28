@@ -328,6 +328,18 @@ final class ScanAnalysisPipelineTest extends TestCase
         assertSame(['bin/tool.js', 'scripts/build.mjs'], array_keys($paths));
     }
 
+    public function testRunsTheDriftTautologyAndMocksSubjectRulesByDefault(): void
+    {
+        assertSame([
+            'test.fidelity.arity_mismatch.v1',
+            'test.fidelity.ghost_member.v1',
+            'test.fidelity.mocks_subject.v1',
+            'test.fidelity.return_drift.v1',
+            'test.fidelity.tautology.v1',
+            'test.fidelity.visibility_breach.v1',
+        ], (new ScanAnalysisPipeline())->testFidelityRuleIds());
+    }
+
     private function makeModuleNode(string $relativePath): NodeFact
     {
         return new NodeFact(

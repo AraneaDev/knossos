@@ -18,6 +18,7 @@ use Knossos\Scanner\Protocol\Protocol;
 use Knossos\Scanner\Protocol\ScanContribution;
 use Knossos\Scanner\Protocol\ScannerManifest;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\Tests\Phpunit\Support\SchemaSubset;
 use PHPUnit\Framework\Attributes\Group;
 
 final class ProtocolTest extends KnossosTestCase
@@ -289,5 +290,91 @@ final class ProtocolTest extends KnossosTestCase
         assertSame(10, count($out['evidence']));
         assertSame('full', $out['meta']['verbosity']);
         assertSame(false, array_key_exists('next_steps', $out)); // summary has no suggestions
+    }
+
+    /**
+     * A raw wire node of one kind, as the contribution schema reads it.
+     *
+     * @param array<string, mixed> $attributes
+     * @return array<string, mixed>
+     */
+    private static function wireNode(string $kind, array $attributes): array
+    {
+        return [
+            'local_id' => 'n1',
+            'kind' => $kind,
+            'canonical_name' => 'src/a.test.ts#' . $kind,
+            'display_name' => $kind,
+            'origin' => 'ast',
+            'confidence' => 'certain',
+            'evidence' => ['path' => 'src/a.test.ts', 'start_line' => 1, 'end_line' => 2],
+            'attributes' => $attributes,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function nodeSchemaErrors(array $node): array
+    {
+        $schema = json_decode((string) file_get_contents(self::repositoryRoot() . '/schemas/scanner/v1/contribution.schema.json'), true, 512, JSON_THROW_ON_ERROR);
+
+        return SchemaSubset::errors(['$ref' => '#/$defs/node'], $node, $schema);
+    }
+
+    #[Group('protocol')]
+    public function testContributionSchemaAcceptsTestFacts(): void
+    {
+        $double = self::wireNode('test_double', [
+            'framework' => 'vitest',
+            'pattern' => 'vi.spyOn',
+            'target' => ['kind' => 'instance-member', 'member' => 'totalForX'],
+            'automock' => false,
+            'invocations' => 1,
+            'test_case' => 'src/a.test.ts#test:3',
+            'members' => [[
+                'name' => 'totalForX',
+                'line' => 8,
+                'api' => 'spyOn',
+                'params' => [['name' => 'x', 'type' => 'number']],
+                'returns' => [['api' => 'mockReturnValue', 'line' => 9, 'once' => false, 'assignable' => 'unknown', 'typed' => true]],
+            ]],
+        ]);
+        $case = self::wireNode('test_case', [
+            'name' => 'totals the cart',
+            'production_calls' => 1,
+            'subjects' => ['src/cart.ts'],
+            'should_panic' => false,
+            'assertions' => [['api' => 'toBe', 'line' => 9, 'operands' => [['source' => 'mock-config', 'double' => 'src/a.test.ts#double:4:2'], ['source' => 'literal', 'text' => '42']]]],
+        ]);
+
+        assertSame([], $this->nodeSchemaErrors($double));
+        assertSame([], $this->nodeSchemaErrors($case));
+        assertSame([], $this->nodeSchemaErrors(self::wireNode('class', [])));
+    }
+
+    #[Group('protocol')]
+    public function testContributionSchemaRejectsTestDoubleWithoutTarget(): void
+    {
+        $double = self::wireNode('test_double', ['framework' => 'vitest', 'pattern' => 'vi.fn', 'automock' => false, 'invocations' => 0, 'members' => []]);
+        $badMember = self::wireNode('test_case', ['name' => 'x', 'production_calls' => 0, 'subjects' => [], 'assertions' => [['api' => 'toBe', 'line' => 1, 'operands' => [['source' => 'telepathy']]]]]);
+
+        assertSame(['$.attributes: missing target'], $this->nodeSchemaErrors($double));
+        assertSame(1, count($this->nodeSchemaErrors($badMember)));
+    }
+
+    #[Group('protocol')]
+    public function testContributionSchemaRejectsAMalformedStubbedMember(): void
+    {
+        $double = self::wireNode('test_double', [
+            'framework' => 'vitest',
+            'pattern' => 'vi.spyOn',
+            'target' => ['kind' => 'class'],
+            'automock' => false,
+            'invocations' => 0,
+            'members' => [['line' => 8, 'api' => 'spyOn', 'returns' => []]],
+        ]);
+
+        assertSame(1, count($this->nodeSchemaErrors($double)));
     }
 }

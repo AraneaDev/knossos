@@ -174,6 +174,9 @@ as the source writes it:
   A signature that lost a parameter or part of a type says `"truncated": true`.
 - Control characters and line separators in a type are replaced by a space:
   the text is shown to an agent as one line.
+- A TypeScript function or method declared with overload signatures keeps the
+  first signature on its one node and carries `"overloaded": true` beside it;
+  a reader must not judge a call against that signature alone.
 
 Every packaged worker sends it. TypeScript and Rust types are the text as
 written; PHP types are the native declarations with class names resolved
@@ -182,6 +185,21 @@ annotations as written, and `*args` and `**kwargs` keep their stars in `name`.
 A Rust parameter bound by a pattern rather than a name is listed as `_`. A node
 whose function cannot be read, such as a property assigned the result of a
 call, has no `signature`.
+
+#### Complete name lists
+
+All of it optional. A TypeScript module node may carry `exports` and a class
+or interface node `member_names`: the sorted names the worker read through its
+type checker, so a core can tell a name that is gone from one that has no node
+of its own (`export const`, `export { a as b }`, accessors, constructor
+parameter properties, static members). `exports` names every export, the
+default export as `"default"`, and follows `export *` and aliases; `member_names`
+names every member the type declares or inherits. A list is sent only when the
+worker could read it, and a list that cannot be complete says so with
+`exports_open: true` (an `export *` from a module that does not resolve, an
+`export =`) or `member_names_open: true` (a base type that does not resolve, an
+index signature). A reader judges a name absent only from a list that is
+present, complete and not open; a node without one says nothing.
 
 #### Repeated edges
 
@@ -208,6 +226,44 @@ prefixes answers both). Within a group:
 The rule does not depend on the order facts arrive in, so a worker need not
 sort or merge its edges, and an incremental scan collapses exactly as a full
 scan does.
+
+#### Test facts
+
+A worker that reads test files may send `test_double` and `test_case` nodes and
+the `doubles` edge. All of it is optional: the protocol stays at `1.0`, a
+worker that sends none of it stays valid, and the core ignores what it does not
+know. The attributes are `testDoubleAttributes` and `testCaseAttributes` in
+`schemas/scanner/v1/contribution.schema.json`.
+
+- `test_double`, named `<file>#double:<line>:<col>`: a mock, spy, stub or fake.
+  `framework` (`vitest` or `jest`), `pattern` (how it was made, such as
+  `vi.mock`, `vi.spyOn`, `vi.fn`, `object-literal`, `proxy`), `target`
+  (`{kind, specifier?, export?, member?}`, `kind` one of `module`, `class`,
+  `instance-member`, `global`, `unknown`; a virtual module mock, made with
+  `{ virtual: true }`, names no file and carries no `specifier`), `automock`,
+  `invocations` (call sites of the double in its file), `test_case` (canonical
+  name of the enclosing test, optional) and `members`: the members the test
+  configures, each
+  `{name, line, api, params?, returns}` where `params` is the signature shape
+  above and each `returns` entry is `{api, line, once, assignable, typed}`
+  (`assignable` is `true`, `false` or `"unknown"`).
+- `test_case`, named `<file>#test:<line>`: `name`, `production_calls`,
+  `subjects` (canonical names of the production modules those calls land in),
+  `should_panic` (optional) and `assertions`, each
+  `{api, line, negated?, operands}` (`api` is the matcher's name; `negated` is
+  `true` when the matcher is called through `.not`) with operands
+  `{source, text?, value?, double?, unconfigured_spy?}`, `source` one of
+  `mock-config`, `mock-call`, `production`, `literal`, `parameter`, `unknown`.
+  `text` is the operand's own source text, left out when evaluating it again
+  could give another value: when any part of it is a call, a `new` or a tagged
+  template. `value` is, for a stubbed operand, the source text of the value the
+  stub was configured to return.
+- `doubles` edge: from a `test_double` to the production class, interface,
+  function, method or module it replaces, with the confidence the worker has in
+  that link. A `contains` edge ties a module to its doubles and test cases.
+
+A fact whose attributes break the schema is dropped by the readers rather than
+failing the scan.
 
 #### Route nodes
 

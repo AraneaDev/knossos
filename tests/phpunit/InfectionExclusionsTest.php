@@ -61,7 +61,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
             ],
             '.*bindValue\\(\':limit\', \\$\\w+ \\+ 1, PDO::PARAM_INT\\).*' => [
                 'src/Query/ComponentQueryService.php:198',
-                'src/Query/GraphSummaryQuery.php:81',
+                'src/Query/GraphSummaryQuery.php:83',
                 'src/Query/LocationSuggestionService.php:142',
                 'src/Query/ProjectCatalogQueryService.php:141',
                 'src/Store/ProjectRepository.php:234',
@@ -108,7 +108,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Store/EdgeQueries.php:87',
                 'src/Store/SqliteGraphPruner.php:113',
                 'src/Store/SqliteGraphPruner.php:132',
-                'src/Store/SqliteGraphWriter.php:217',
+                'src/Store/SqliteGraphWriter.php:238',
                 'src/Store/Upsert.php:28',
             ],
             '.*array_chunk\\(\\$\\w+, \\d+\\).*' => [
@@ -116,8 +116,8 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Scan/ScanLedger.php:308',
                 'src/Store/SqliteGraphPruner.php:90',
                 'src/Store/SqliteGraphPruner.php:131',
-                'src/Store/SqliteGraphWriter.php:203',
-                'src/Store/SqliteGraphWriter.php:216',
+                'src/Store/SqliteGraphWriter.php:224',
+                'src/Store/SqliteGraphWriter.php:237',
             ],
         ],
         'DecrementInteger' => [
@@ -162,7 +162,7 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Store/EdgeQueries.php:87',
                 'src/Store/SqliteGraphPruner.php:113',
                 'src/Store/SqliteGraphPruner.php:132',
-                'src/Store/SqliteGraphWriter.php:217',
+                'src/Store/SqliteGraphWriter.php:238',
                 'src/Store/Upsert.php:28',
             ],
             '.*array_chunk\\(\\$\\w+, \\d+\\).*' => [
@@ -170,8 +170,8 @@ final class InfectionExclusionsTest extends KnossosTestCase
                 'src/Scan/ScanLedger.php:308',
                 'src/Store/SqliteGraphPruner.php:90',
                 'src/Store/SqliteGraphPruner.php:131',
-                'src/Store/SqliteGraphWriter.php:203',
-                'src/Store/SqliteGraphWriter.php:216',
+                'src/Store/SqliteGraphWriter.php:224',
+                'src/Store/SqliteGraphWriter.php:237',
             ],
         ],
         'FunctionCallRemoval' => [

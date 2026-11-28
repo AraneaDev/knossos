@@ -244,6 +244,24 @@ What a file about to be created should look like: the boundary it lands in and w
 
 Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
 
+## `audit_tests`
+
+List test doubles that no longer match the code they replace and assertions that cannot fail. Use before trusting a green suite, or after changing a signature.
+
+| Input | Type | Required | Constraints/default | Description |
+| --- | --- | --- | --- | --- |
+| `verbosity` | string | no | default="compact"; enum=compact, full | full returns all evidence; compact a preview. |
+| `max_chars` | integer | no | minimum=4000; maximum=100000; default=30000 | Result size budget; evidence is trimmed first. |
+| `refresh_if_stale` | boolean | no | default=true | Rescan a stale graph first when it fits the latency budget. |
+| `project_id` | string | yes | minLength=1 | none |
+| `path_prefix` | string | no | minLength=1 | none |
+| `confidence` | string | no | enum=definite, warning | none |
+| `category` | string | no | enum=GHOST_MEMBER, ARITY_MISMATCH, RETURN_DRIFT, VISIBILITY_BREACH, TAUTOLOGY, MOCKS_SUBJECT | none |
+| `offset` | integer | no | minimum=0; maximum=100000; default=0 | none |
+| `limit` | integer | no | minimum=1; maximum=200; default=50 | none |
+
+Annotations: read-only `no`; destructive `no`; idempotent `yes`; open-world `no`.
+
 ## `file_context`
 
 One file's architectural context in one short answer: its boundary and the declared rules that bind it, how many files depend on it (and the closest few), the tests that reach it, and its latest commits. Call it before editing a file you have not read about, instead of grepping for its callers.

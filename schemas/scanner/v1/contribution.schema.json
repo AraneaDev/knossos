@@ -46,7 +46,33 @@
         },
         "confidence": { "enum": ["certain", "probable", "possible"] },
         "evidence": { "$ref": "#/$defs/evidence" },
-        "attributes": { "type": "object" }
+        "attributes": {
+          "type": "object",
+          "properties": {
+            "exports": {
+              "description": "A module node: every name it exports, sorted ('default' for the default export). Sent only when the worker could read the whole list.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "exports_open": {
+              "description": "True when exports cannot be complete (an `export *` from a module that does not resolve, an `export =`).",
+              "type": "boolean"
+            },
+            "member_names": {
+              "description": "A class or interface node: every member it declares or inherits, sorted, static members included.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "member_names_open": {
+              "description": "True when members cannot be complete (a base type that does not resolve, an index signature).",
+              "type": "boolean"
+            },
+            "overloaded": {
+              "description": "A function or method node declared with overload signatures: its signature attribute is the first one only.",
+              "type": "boolean"
+            }
+          }
+        }
       }
     },
     "node": {
@@ -86,6 +112,28 @@
               "attributes": { "$ref": "#/$defs/routeAttributes" }
             }
           }
+        },
+        {
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "test_double" } }
+          },
+          "then": {
+            "properties": {
+              "attributes": { "$ref": "#/$defs/testDoubleAttributes" }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["kind"],
+            "properties": { "kind": { "const": "test_case" } }
+          },
+          "then": {
+            "properties": {
+              "attributes": { "$ref": "#/$defs/testCaseAttributes" }
+            }
+          }
         }
       ]
     },
@@ -102,6 +150,131 @@
           "items": { "type": "string", "pattern": "^[A-Z]+$" }
         },
         "path": { "type": "string" }
+      }
+    },
+    "testDoubleAttributes": {
+      "description": "What a test_double node carries: the mocking framework, the pattern that made the double, what it replaces, whether it is an automock, how often its file calls it, the test_case it belongs to and the members the test configures. Optional: a worker that does not read tests emits none of these nodes.",
+      "type": "object",
+      "required": [
+        "framework",
+        "pattern",
+        "target",
+        "automock",
+        "invocations",
+        "members"
+      ],
+      "properties": {
+        "framework": { "enum": ["vitest", "jest"] },
+        "pattern": { "type": "string", "minLength": 1 },
+        "target": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "enum": [
+                "module",
+                "class",
+                "instance-member",
+                "global",
+                "unknown"
+              ]
+            },
+            "specifier": { "type": "string" },
+            "export": { "type": "string" },
+            "member": { "type": "string" }
+          }
+        },
+        "automock": { "type": "boolean" },
+        "invocations": { "type": "integer", "minimum": 0 },
+        "test_case": { "type": "string", "minLength": 1 },
+        "members": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stubbedMember" }
+        }
+      }
+    },
+    "stubbedMember": {
+      "type": "object",
+      "required": ["name", "line", "api", "returns"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "api": {
+          "enum": [
+            "spyOn",
+            "mockFactoryKey",
+            "objectLiteralKey",
+            "instance-member",
+            "unknown"
+          ]
+        },
+        "params": { "type": "array" },
+        "returns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pinnedValue" }
+        }
+      }
+    },
+    "pinnedValue": {
+      "type": "object",
+      "required": ["api", "line", "once", "assignable", "typed"],
+      "properties": {
+        "api": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "once": { "type": "boolean" },
+        "assignable": { "enum": [true, false, "unknown"] },
+        "typed": { "type": "boolean" }
+      }
+    },
+    "testCaseAttributes": {
+      "description": "What a test_case node carries: its name, how many production calls it makes, the production modules those calls land in, whether it expects a panic and its assertions with the source of each operand.",
+      "type": "object",
+      "required": ["name", "production_calls", "subjects", "assertions"],
+      "properties": {
+        "name": { "type": "string" },
+        "production_calls": { "type": "integer", "minimum": 0 },
+        "subjects": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "should_panic": { "type": "boolean" },
+        "assertions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/testAssertion" }
+        }
+      }
+    },
+    "testAssertion": {
+      "type": "object",
+      "required": ["api", "line", "operands"],
+      "properties": {
+        "api": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "negated": { "type": "boolean" },
+        "operands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/testOperand" }
+        }
+      }
+    },
+    "testOperand": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "enum": [
+            "mock-config",
+            "mock-call",
+            "production",
+            "literal",
+            "parameter",
+            "unknown"
+          ]
+        },
+        "text": { "type": "string" },
+        "value": { "type": "string" },
+        "double": { "type": "string" },
+        "unconfigured_spy": { "type": "boolean" }
       }
     },
     "edge": {

@@ -40,7 +40,7 @@ final class QueryCommand implements CliCommand
         'find-component', 'inspect-component', 'list-usages', 'architecture-summary', 'file-metrics', 'untested-code', 'explain-flow', 'impact-analysis',
         'dependency-cycles', 'architecture-health', 'check-architecture', 'suggest-location', 'change-impact',
         'changed-files-impact', 'test-impact', 'review-diff', 'architecture-context', 'export-diagram', 'export-agent-brief', 'list-boundaries',
-        'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief',
+        'search-architecture', 'annotate-component', 'list-annotations', 'creation-brief', 'audit-tests',
     ];
 
     /**
@@ -181,6 +181,7 @@ final class QueryCommand implements CliCommand
         $text = match ($command) {
             'list-projects' => self::projectLines($result),
             'untested-code' => self::untestedLines($result),
+            'audit-tests' => self::auditLines($result),
             'creation-brief' => $json ? '' : CreationBriefRenderer::lines($result->data, (new StalenessProbe($context->database()))->probe($result->projectId)),
             'architecture-trends' => $result->data['release_notes']['markdown'] ?? $result->summary,
             'export-diagram' => $result->data['diagram'],
@@ -214,6 +215,18 @@ final class QueryCommand implements CliCommand
         }
         foreach ($result->data['components'] ?? [] as $component) {
             $lines[] = sprintf('%-9s %s  %s:%s%s', $component['kind'], $component['canonical_name'], $component['path'], $component['line'] ?? '?', $component['no_inbound_edge'] ? '  (no inbound edge)' : '');
+        }
+        $lines[] = $result->summary;
+
+        return implode("\n", $lines);
+    }
+
+    /** audit-tests' text: one line per finding, then the summary. */
+    private static function auditLines(ResultEnvelope $result): string
+    {
+        $lines = [];
+        foreach ($result->data['items'] as $item) {
+            $lines[] = sprintf('%s:%s  %s %s  %s', $item['file'] ?? '?', $item['line'] ?? '?', $item['category'], $item['confidence'], $item['message']);
         }
         $lines[] = $result->summary;
 

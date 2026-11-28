@@ -24,6 +24,8 @@ final class SqliteGraphWriter
 
     private const CLASSIFICATION_COLUMNS = ['id', 'project_id', 'node_id', 'role', 'origin', 'confidence', 'rule_id', 'file_id', 'start_line', 'end_line', 'attributes_json', 'last_scan_id'];
 
+    private const TEST_FINDING_COLUMNS = ['id', 'project_id', 'node_id', 'target_node_id', 'category', 'origin', 'confidence', 'rule_id', 'sub_rule', 'message', 'file_id', 'start_line', 'end_line', 'attributes_json', 'last_scan_id'];
+
     private const BOUNDARY_COLUMNS = ['id', 'project_id', 'name', 'matcher_json', 'source', 'last_scan_id'];
 
     public function __construct(private readonly SqliteStatementCache $statements) {}
@@ -187,6 +189,25 @@ final class SqliteGraphWriter
             $classification['confidence'], $classification['rule_id'], $classification['file_id'], $classification['start_line'],
             $classification['end_line'], SqliteValues::json($classification['attributes']), $scanId,
         ], $classifications));
+    }
+
+    /**
+     * Replace a project's test-fidelity findings with one scan's.
+     *
+     * Wholesale rather than diffed like classifications: findings are few, and
+     * rewriting them keeps every row on the scan that last judged it, so no
+     * finding holds an older scan's row alive.
+     *
+     * @param list<array<string, mixed>> $findings each shaped as a GraphAssembler test-finding record
+     */
+    public function saveTestFindings(array $findings, string $projectId, string $scanId): void
+    {
+        $this->statements->prepare('DELETE FROM test_findings WHERE project_id = :project')->execute(['project' => $projectId]);
+        $this->upsert('test_findings', self::TEST_FINDING_COLUMNS, ['id'], array_map(static fn(array $finding): array => [
+            $finding['id'], $projectId, $finding['node_id'], $finding['target_node_id'], $finding['category'], $finding['origin'],
+            $finding['confidence'], $finding['rule_id'], $finding['sub_rule'], $finding['message'], $finding['file_id'],
+            $finding['start_line'], $finding['end_line'], SqliteValues::json($finding['attributes']), $scanId,
+        ], $findings));
     }
 
     /**

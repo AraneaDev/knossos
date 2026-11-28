@@ -63,6 +63,38 @@ are intentionally high enough for shared CI runners but low enough to catch
 hangs, lost incremental behavior, runaway workers, and gross storage
 regressions. They are regression limits, not expected performance.
 
+## Scenarios
+
+A scenario is a fixed corpus of its own with one limit, under `scenarios` in
+the same file. After a cold scan the runner edits the corpus's one production
+file and scans again, five times, and holds the median incremental scan to
+`incremental_scan_seconds`. A round that did not parse the files the edit
+reaches fails the run, so a scenario cannot pass by timing a smaller rescan.
+The report lists each round under `scenarios`.
+
+| scenario                        | corpus                                                      | incremental scan |
+| ------------------------------- | ----------------------------------------------------------- | ---------------: |
+| `test_fidelity_rescan_one_file` | one TypeScript class, five test files with 20 doubles of it |               8s |
+
+`test_fidelity_rescan_one_file` measures what test fidelity adds to a rescan:
+the edit makes the production file and all five test files parse again
+(`parsed_files` is 6 in every round) and every double judged.
+
+Its enforced limit follows the size profiles' headroom, because the runner
+that enforces it is a shared CI runner, not the machine it was first measured
+on. `small` is the profile nearest the scenario's corpus (18 files against 6),
+and its incremental limit is 3.89 times what one development machine measured
+for it (10s against 2.57s). The scenario measured 1.91s in the same run, so its
+limit is 1.91s × 3.89 = 7.43s, rounded up to a whole second as the size limits
+are: 8s.
+
+When test fidelity was added, it was accepted against the scenario on commit
+`e9e156c2`, the commit before it, on one machine: 1.89s there and 1.90s with
+it, within the 110% of base (2.079s) it was held to. Each of those two figures is the
+median of three benchmark runs, and each run's figure is itself the median of
+its five rounds. That comparison was a one-off acceptance measurement and is
+not enforced; the 8s limit is.
+
 Timing and RSS values vary with hardware, load, filesystem, and cold runtime
 caches. Compare trends from equivalent pinned runners. Tightening a budget
 requires a successful report from representative CI; relaxing one requires the

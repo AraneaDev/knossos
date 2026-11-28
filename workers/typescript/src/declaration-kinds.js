@@ -22,7 +22,10 @@ import {
 } from "./typescript-fact-utils.js";
 import { signatureOf } from "./signatures.js";
 
-export function declarationDescriptor(node, sourceFile) {
+import { memberAttributes } from "./public-names.js";
+
+/** @param {{sourceFile: ts.SourceFile, checker: ts.TypeChecker}} context */
+export function declarationDescriptor(node, { sourceFile, checker }) {
     const name = declarationName(node, sourceFile);
     if (name === null) return null;
     const kind = declarationKind(node, "class");
@@ -48,6 +51,7 @@ export function declarationDescriptor(node, sourceFile) {
                 : {}),
             ...visibilityOf(modifiers),
             ...signatureAttribute(kind, node, sourceFile),
+            ...memberAttributes(checker, node),
         },
     };
 }

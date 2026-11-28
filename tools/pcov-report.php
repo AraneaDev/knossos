@@ -44,6 +44,7 @@ const SOURCE_COMPONENTS = [
     'Scan' => 'scanner-runtime',
     'Scanner' => 'scanner-runtime',
     'Store' => 'storage',
+    'TestFidelity' => 'query-analysis',
     'Watch' => 'bundle-git-watch',
 ];
 

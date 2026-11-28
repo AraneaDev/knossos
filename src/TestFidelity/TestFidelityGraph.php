@@ -1,0 +1,275 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Knossos\TestFidelity;
+
+use Knossos\Scanner\Protocol\NodeFact;
+use Knossos\Scanner\Protocol\ScanContribution;
+use Knossos\TestFidelity\Facts\TestCaseFact;
+use Knossos\TestFidelity\Facts\TestDouble;
+
+/**
+ * The part of a scan's facts the test-fidelity rules read: every test double
+ * and test case, the production node each double replaces, and what that node
+ * contains.
+ *
+ * Built once per scan from the whole set of contributions, cached ones
+ * included, so a double in a test file the scan did not reparse is judged
+ * against its target as the target is now. Edges are matched by the node
+ * references the worker emitted, before reconciliation resolves them: a
+ * `doubles` edge whose target is not among the contributions has no target
+ * here.
+ */
+final readonly class TestFidelityGraph
+{
+    /** Edge kinds that put another node's members in scope on the source: a type's parents, and what a module re-exports. */
+    private const INHERITANCE_KINDS = ['uses_trait', 'extends', 'implements', 're_exports'];
+
+    /**
+     * @param array<string, NodeFact> $nodes every node by reference; the first contribution to emit one wins
+     * @param array<string, NodeFact> $factNodes the test double and test case nodes, by canonical name
+     * @param list<TestDouble> $doubles
+     * @param array<string, TestCaseFact> $testCases by canonical name, in canonical-name order
+     * @param array<string, list<TestCaseFact>> $testCasesByFile the same, by the file each is in
+     * @param array<string, string> $targets double reference => target reference
+     * @param array<string, list<string>> $children container reference => contained references
+     * @param array<string, list<string>> $parents type reference => the types it extends, implements or uses, in edge order
+     */
+    private function __construct(
+        private array $nodes,
+        private array $factNodes,
+        private array $doubles,
+        private array $testCases,
+        private array $testCasesByFile,
+        private array $targets,
+        private array $children,
+        private array $parents,
+    ) {}
+
+    /**
+     * Index a scan's contributions.
+     *
+     * A malformed test fact is left out rather than thrown on: one worker's
+     * bad fact must not fail a scan.
+     *
+     * @param list<ScanContribution> $contributions
+     */
+    public static function fromContributions(array $contributions): self
+    {
+        $nodes = $factNodes = $doubles = $testCases = $targets = $children = $parents = [];
+        foreach ($contributions as $contribution) {
+            foreach ($contribution->nodes as $node) {
+                if (isset($nodes[$node->localId])) {
+                    continue;
+                }
+                $nodes[$node->localId] = $node;
+                if (isset($factNodes[$node->canonicalName])) {
+                    continue;
+                }
+                if (($double = TestDouble::fromNode($node)) !== null) {
+                    $doubles[$node->canonicalName] = $double;
+                    $factNodes[$node->canonicalName] = $node;
+                } elseif (($case = TestCaseFact::fromNode($node)) !== null) {
+                    $testCases[$node->canonicalName] = $case;
+                    $factNodes[$node->canonicalName] = $node;
+                }
+            }
+            foreach ($contribution->edges as $edge) {
+                if ($edge->kind === 'doubles') {
+                    $targets[$edge->sourceReference] ??= $edge->targetReference;
+                } elseif ($edge->kind === 'contains') {
+                    $children[$edge->sourceReference][] = $edge->targetReference;
+                } elseif (in_array($edge->kind, self::INHERITANCE_KINDS, true)) {
+                    $parents[$edge->sourceReference][] = $edge->targetReference;
+                }
+            }
+        }
+        ksort($doubles, SORT_STRING);
+        ksort($testCases, SORT_STRING);
+        $byFile = [];
+        foreach ($testCases as $case) {
+            $byFile[self::fileOf($case->canonicalName)][] = $case;
+        }
+
+        return new self($nodes, $factNodes, array_values($doubles), $testCases, $byFile, $targets, $children, $parents);
+    }
+
+    /**
+     * Every test double, by canonical name.
+     *
+     * @return list<TestDouble>
+     */
+    public function doubles(): array
+    {
+        return $this->doubles;
+    }
+
+    /**
+     * Every test case, by canonical name.
+     *
+     * @return list<TestCaseFact>
+     */
+    public function testCases(): array
+    {
+        return array_values($this->testCases);
+    }
+
+    /** The test case of that canonical name, or null when the scan holds none. */
+    public function testCase(string $canonicalName): ?TestCaseFact
+    {
+        return $this->testCases[$canonicalName] ?? null;
+    }
+
+    /**
+     * Every test case of one file, by canonical name.
+     *
+     * @return list<TestCaseFact>
+     */
+    public function testCasesIn(string $file): array
+    {
+        return $this->testCasesByFile[$file] ?? [];
+    }
+
+    /** The file a test fact's canonical name is in: what comes before its `#`. */
+    public static function fileOf(string $canonicalName): string
+    {
+        return explode('#', $canonicalName)[0];
+    }
+
+    /** The node a double or test case was read from: its reference, display name and evidence. */
+    public function nodeOf(TestDouble|TestCaseFact $fact): NodeFact
+    {
+        return $this->factNodes[$fact->canonicalName];
+    }
+
+    /** The production node a double's `doubles` edge points at, or null when it has none in this scan. */
+    public function target(TestDouble $double): ?NodeFact
+    {
+        $reference = $this->targets[$this->nodeOf($double)->localId] ?? null;
+
+        return $reference === null ? null : ($this->nodes[$reference] ?? null);
+    }
+
+    /** Whether the double has a `doubles` edge at all, to a node the scan holds or not. */
+    public function hasTarget(TestDouble $double): bool
+    {
+        return isset($this->targets[$this->nodeOf($double)->localId]);
+    }
+
+    /**
+     * The node `$owner` declares or inherits under `$name`: a class's method
+     * or property, an interface's, a module's declaration.
+     *
+     * Walks `uses_trait`, `extends` and `implements` edges breadth first, so
+     * the nearest declaration wins, and visits each type once, so a cyclic
+     * hierarchy (which a malformed contribution can carry) terminates.
+     */
+    public function member(NodeFact $owner, string $name): ?NodeFact
+    {
+        $queue = [$owner->localId];
+        $visited = [$owner->localId => true];
+        while ($queue !== []) {
+            $type = array_shift($queue);
+            foreach ($this->children[$type] ?? [] as $reference) {
+                $child = $this->nodes[$reference] ?? null;
+                if ($child !== null && $child->displayName === $name) {
+                    return $child;
+                }
+            }
+            foreach ($this->parents[$type] ?? [] as $parent) {
+                if (!isset($visited[$parent])) {
+                    $visited[$parent] = true;
+                    $queue[] = $parent;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every name `$owner` declares or inherits, sorted, for a suggestion.
+     *
+     * @return list<string>
+     */
+    public function memberNames(NodeFact $owner): array
+    {
+        $names = [];
+        foreach ($this->reachable($owner)[0] as $type) {
+            foreach ($this->children[$type] ?? [] as $reference) {
+                if (isset($this->nodes[$reference])) {
+                    $names[$this->nodes[$reference]->displayName] = true;
+                }
+            }
+        }
+        $names = array_map(strval(...), array_keys($names));
+        sort($names, SORT_STRING);
+
+        return $names;
+    }
+
+    /**
+     * Whether `$owner` has an ancestor, or a re-exported module, that the scan
+     * does not hold or that lies outside the project: a name it lacks may
+     * still be inherited from there, so its absence proves nothing.
+     */
+    public function hasUnseenAncestor(NodeFact $owner): bool
+    {
+        return $this->reachable($owner)[1];
+    }
+
+    /**
+     * The references reachable from `$owner` through inheritance edges, itself
+     * first and nearest first, and whether one of them is unseen or external.
+     *
+     * @return array{list<string>, bool}
+     */
+    private function reachable(NodeFact $owner): array
+    {
+        $queue = [$owner->localId];
+        $visited = [$owner->localId => true];
+        $unseen = false;
+        for ($i = 0; $i < count($queue); $i++) {
+            foreach ($this->parents[$queue[$i]] ?? [] as $parent) {
+                $node = $this->nodes[$parent] ?? null;
+                if ($node === null || ($node->attributes['external'] ?? false) === true || str_starts_with($node->kind, 'external_')) {
+                    $unseen = true;
+                }
+                if (!isset($visited[$parent]) && $node !== null) {
+                    $visited[$parent] = true;
+                    $queue[] = $parent;
+                }
+            }
+        }
+
+        return [$queue, $unseen];
+    }
+
+    /** Whether a node reference names a node some contribution of the scan emitted. */
+    public function has(string $reference): bool
+    {
+        return isset($this->nodes[$reference]);
+    }
+
+    /**
+     * Whether what a double replaces lies outside the project, where its
+     * members cannot be checked.
+     *
+     * True when the target node is marked external, or when the double has
+     * no target and names a bare package specifier (`axios`, `@scope/pkg`,
+     * `node:fs`). A relative or absolute path, or a path alias (`@/…`, `~/…`,
+     * `#…`), is inside the project even when it does not resolve, which is
+     * what makes an unresolved one a ghost rather than a package.
+     */
+    public function isExternal(TestDouble $double): bool
+    {
+        $target = $this->target($double);
+        if ($target !== null) {
+            return ($target->attributes['external'] ?? false) === true || str_starts_with($target->kind, 'external_');
+        }
+        $specifier = $double->target['specifier'] ?? '';
+
+        return $specifier !== '' && preg_match('#^(?:\.|/|@/|~/|\#)#', $specifier) !== 1;
+    }
+}

@@ -95,6 +95,63 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         assertSame('', $output);
     }
 
+    /** A scenario runs its own corpus after the sizes and is held to its own limit. */
+    public function testAScenarioOverItsLimitIsNamed(): void
+    {
+        [$exit, $output, $errors] = $this->benchmark([
+            'schema_version' => 1,
+            'sizes' => ['tiny' => self::GENEROUS],
+            'scenarios' => ['test_fidelity_rescan_one_file' => ['incremental_scan_seconds' => 0]],
+        ]);
+
+        assertSame(1, $exit, $output . $errors);
+        assertContains('test_fidelity_rescan_one_file: cold=', $output);
+        assertSame(1, preg_match('/^scenarios\.test_fidelity_rescan_one_file\.incremental_scan_seconds \d+\.\d\d exceeds 0\.00$/m', $errors), $errors);
+        $actual = $this->report()['scenarios']['test_fidelity_rescan_one_file']['actual'];
+        assertSame(5, count($actual['incremental_rounds_seconds']));
+        // Every round parsed the production file and its five test files again.
+        assertSame(6, $actual['incremental_parsed_files']);
+        assertSame(true, in_array($actual['incremental_scan_seconds'], $actual['incremental_rounds_seconds'], true));
+    }
+
+    /** @return iterable<string, array{mixed, string}> */
+    public static function invalidScenarios(): iterable
+    {
+        yield 'an unknown scenario' => [['rescan_everything' => ['incremental_scan_seconds' => 1]], 'scenarios.rescan_everything is not a scenario the benchmark runs (test_fidelity_rescan_one_file).'];
+        yield 'a missing limit' => [['test_fidelity_rescan_one_file' => []], 'scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds is missing.'];
+        yield 'a quoted limit' => [['test_fidelity_rescan_one_file' => ['incremental_scan_seconds' => '2']], 'scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds is "2"; it must be a number.'];
+        yield 'a list' => [[['incremental_scan_seconds' => 1]], 'scenarios must be an object of scenarios.'];
+    }
+
+    #[DataProvider('invalidScenarios')]
+    public function testAScenarioWhoseLimitCannotActIsRefused(mixed $scenarios, string $error): void
+    {
+        assertSame([$error], \benchmarkBudgetErrors(['schema_version' => 1, 'sizes' => ['tiny' => self::GENEROUS], 'scenarios' => $scenarios]));
+    }
+
+    public function testAScenarioWithinItsLimitBreaksNothing(): void
+    {
+        assertSame([], \benchmarkScenarioViolations('test_fidelity_rescan_one_file', 2.07, 2.07));
+        assertSame(
+            ['scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds 2.08 exceeds 2.07'],
+            \benchmarkScenarioViolations('test_fidelity_rescan_one_file', 2.07, 2.08),
+        );
+    }
+
+    /** A rescan that parsed fewer files than its edit reaches would time something else, and pass for it. */
+    public function testAScenarioRoundParsingOtherFilesIsRefused(): void
+    {
+        assertSame(null, \benchmarkScenarioParseError('test_fidelity_rescan_one_file', 0, 6, 6));
+        assertSame(
+            'scenarios.test_fidelity_rescan_one_file round 2 parsed 1 files, not the 6 its edit reaches; it would not measure the rescan it is for.',
+            \benchmarkScenarioParseError('test_fidelity_rescan_one_file', 1, 6, 1),
+        );
+        assertSame(
+            'scenarios.test_fidelity_rescan_one_file round 1 parsed an unknown number of files, not the 6 its edit reaches; it would not measure the rescan it is for.',
+            \benchmarkScenarioParseError('test_fidelity_rescan_one_file', 0, 6, null),
+        );
+    }
+
     public function testMeasurementsWithinTheirLimitsBreakNone(): void
     {
         assertSame([], \benchmarkViolations('tiny', self::GENEROUS, $this->measured(['peak_rss_mb' => 300.5]), true));

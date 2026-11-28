@@ -324,7 +324,7 @@ final readonly class ToolCatalog
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false],
             ],
             self::fileMetricsDefinition(), self::untestedCodeDefinition(),
-            CreationBriefToolDefinition::definition(),
+            CreationBriefToolDefinition::definition(), AuditTestsToolDefinition::definition(),
             [
                 'name' => 'file_context',
                 'title' => 'File context',

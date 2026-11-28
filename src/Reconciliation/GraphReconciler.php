@@ -173,7 +173,7 @@ final readonly class GraphReconciler
     }
 
     /**
-     * Write the prepared files, nodes, edges, classifications and boundaries.
+     * Write the prepared files, nodes, edges, classifications, test findings and boundaries.
      *
      * @return list<array{boundary_id: string, node_id: string}> the boundary memberships written
      */
@@ -192,6 +192,8 @@ final readonly class GraphReconciler
 
         $this->repository->saveClassifications($graph->classifications, $projectId, $scanId);
         $timer->mark('save_classifications');
+        $this->repository->saveTestFindings($graph->testFindings, $projectId, $scanId);
+        $timer->mark('save_test_findings');
 
         $memberships = [];
         foreach ($graph->boundaries as $boundary) {
