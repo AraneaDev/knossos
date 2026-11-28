@@ -125,11 +125,16 @@ crate, because cargo-mutants matches its paths against `src/...` and a plain
 `git diff` names them from the repository root, which matches nothing. Keep
 TMPDIR off `/tmp`, a small tmpfs, since cargo-mutants copies the crate into it
 for every build, and share one `CARGO_TARGET_DIR` across worktrees so each run
-reuses the dependency builds:
+reuses the dependency builds. Set `KNOSSOS_REPOSITORY` to the checkout: the
+copy cargo-mutants builds holds the crate alone, and the tests that read the
+repository's `tests/Fixtures` find it through that variable. Without it the
+unmutated baseline fails and no mutant is judged. The weekly job sets it to
+the workspace.
 
 ```sh
 cd workers/rust
 git diff --relative origin/main > $HOME/.cache/knossos-rust.diff
+KNOSSOS_REPOSITORY=$(git rev-parse --show-toplevel) \
 TMPDIR=$HOME/.cache/knossos-tmp \
 CARGO_TARGET_DIR=$HOME/.cache/knossos-cargo-target \
   cargo mutants --in-diff $HOME/.cache/knossos-rust.diff

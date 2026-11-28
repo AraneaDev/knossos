@@ -5,9 +5,15 @@
 #
 #   cd workers/rust
 #   git diff --relative origin/main > $HOME/.cache/knossos-rust.diff
+#   KNOSSOS_REPOSITORY=$(git rev-parse --show-toplevel) \
 #   TMPDIR=$HOME/.cache/knossos-tmp \
 #   CARGO_TARGET_DIR=$HOME/.cache/knossos-cargo-target \
 #     cargo mutants --in-diff $HOME/.cache/knossos-rust.diff
+#
+# KNOSSOS_REPOSITORY matters too: cargo-mutants builds a copy of this crate
+# alone, and the tests that read the repository's tests/Fixtures find it
+# through that variable, not through ../.. from the copy. Without it the
+# unmutated baseline fails and no mutant is judged.
 #
 # `--relative` matters: cargo-mutants matches the diff's paths against the
 # crate's own (`src/...`), and a plain `git diff` names them from the

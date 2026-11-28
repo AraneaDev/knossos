@@ -10,9 +10,15 @@ fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// The repository the worker sits in, or `KNOSSOS_REPOSITORY` (`cargo
+/// mutants` builds a copy of this crate alone, outside the repository).
+fn repository() -> PathBuf {
+    std::env::var("KNOSSOS_REPOSITORY").map_or_else(|_| crate_root().join("../.."), Into::into)
+}
+
 /// The fixture tree and golden value the core's PHP test reads as well.
 fn fixture() -> (PathBuf, String) {
-    let fixtures = crate_root().join("../../tests/Fixtures");
+    let fixtures = repository().join("tests/Fixtures");
     let expected = std::fs::read_to_string(fixtures.join("worker-source-hash.sha256"))
         .expect("golden source hash is missing");
     (

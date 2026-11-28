@@ -176,8 +176,18 @@ jobs:
     defaults:
       run:
         working-directory: workers/rust
+    env:
+      # cargo-mutants builds a copy of workers/rust alone, outside the
+      # checkout, so the tests that read the repository's tests/Fixtures find
+      # it through this variable instead of through ../.. from the crate.
+      KNOSSOS_REPOSITORY: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          cargo --version
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked --version 27.1.0
       - name: Run cargo-mutants over shard ${{ matrix.shard }}
