@@ -112,7 +112,12 @@ final class EnumCaseCheck
         return $literal['type'] === $backing ? FindingConfidence::Definite : FindingConfidence::Warning;
     }
 
-    /** @param array{type: string, value: string} $literal */
+    /**
+     * The finding for a pinned literal that is none of the enum's cases, naming
+     * the stub, the enum, the argument position and the matcher (G3-19).
+     *
+     * @param array{type: string, value: string} $literal
+     */
     private static function report(DriftPair $pair, CallMatcher $matcher, int $index, array $literal, string $enum, FindingConfidence $confidence, string $ruleId): ?TestFinding
     {
         $shown = $literal['type'] === 'string' ? "'" . $literal['value'] . "'" : $literal['value'];

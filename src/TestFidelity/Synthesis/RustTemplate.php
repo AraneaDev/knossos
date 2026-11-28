@@ -273,6 +273,7 @@ final readonly class RustTemplate implements MockTemplate
         return array_values(array_filter($members->members, static fn(MockMember $member): bool => self::isUnmockable($members, $member)));
     }
 
+    /** Whether a trait method has a type parameter without a `'static` bound, which mockall cannot mock (G6-03). */
     private static function isUnmockable(MockMembers $members, MockMember $member): bool
     {
         if ($member->kind !== 'method' || $members->target->kind !== 'interface') {
@@ -287,6 +288,7 @@ final readonly class RustTemplate implements MockTemplate
         return false;
     }
 
+    /** The member's unknown note: why mockall cannot mock it, and that the trait needs a hand-written fake (G6-03). */
     private static function unmockableUnknown(MockMembers $members, MockMember $member): string
     {
         return sprintf("%s: mockall cannot mock a generic method whose type parameter is not 'static in an impl of %s; this mock does not compile until it is removed, so fake the trait by hand (framework hand-written)", $member->name, $members->target->displayName);
