@@ -114,6 +114,8 @@ final class VerifyTestDoublesToolTest extends KnossosTestCase
                 'getProfile' => '"getProfile" names a method, which is no class, interface or trait.',
                 // A typo find_component does not match is offered its near name.
                 'UserServce' => 'No class, interface or trait is named "UserServce"; did you mean: src/UserService.ts#UserService?',
+                // Under four characters no near name is offered, though "us" begins UserService.
+                'Usr' => 'No class, interface or trait is named "Usr".',
                 'Nowhere' => 'No class, interface or trait is named "Nowhere".',
             ] as $symbol => $message) {
                 try {
