@@ -97,8 +97,8 @@ function typescript(string $root, string $dir, string $fixture, array $goldens):
         return report('typescript', false, 'no jest golden found');
     }
     $project = $dir . '/project';
-    removeTree($project . '/src');
-    removeTree($project . '/lint');
+    removeScratchTree($project . '/src');
+    removeScratchTree($project . '/lint');
     copyTree($fixture . '/src', $project . '/src');
     mkdir($project . '/lint', 0o777, true);
     $package = ['private' => true, 'devDependencies' => ['@jest/globals' => JEST_GLOBALS, '@types/jest' => TYPES_JEST]];
@@ -137,8 +137,8 @@ function rust(string $dir, string $fixture, array $goldens): bool
         return report('rust', false, 'no Rust golden found');
     }
     $crate = $dir . '/synth';
-    removeTree($crate . '/src');
-    removeTree($crate . '/tests');
+    removeScratchTree($crate . '/src');
+    removeScratchTree($crate . '/tests');
     copyTree($fixture . '/src', $crate . '/src');
     mkdir($crate . '/tests', 0o777, true);
     $manifest = (string) file_get_contents($fixture . '/Cargo.toml');
@@ -229,7 +229,7 @@ function copyTree(string $from, string $to): void
     }
 }
 
-function removeTree(string $path): void
+function removeScratchTree(string $path): void
 {
     if (!is_dir($path)) {
         return;
