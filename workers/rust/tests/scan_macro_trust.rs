@@ -195,3 +195,57 @@ fn a_workspace_dependency_is_the_workspace_s() {
     );
     assert_eq!(Value::Null, member("[workspace]\nmembers = [\"member\"]\n"));
 }
+
+/// Every case's first operand in a workspace whose root package holds a
+/// member under its `examples/` (the sqlx layout), the member's manifest
+/// `member`: the root compares `LIMIT` with std's `assert_eq!`, the member
+/// through `pretty_assertions`.
+fn example_member(name: &str, member: &str) -> Vec<(String, Value)> {
+    let root = "pub const LIMIT: u32 = 10;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn case() {\n        assert_eq!(LIMIT, 20);\n    }\n}\n";
+    let lib = "pub const LIMIT: u32 = 10;\n#[cfg(test)]\nmod tests {\n    use super::*;\n    use pretty_assertions::assert_eq;\n    #[test]\n    fn case() {\n        assert_eq!(LIMIT, 20);\n    }\n}\n";
+    operands_with(
+        name,
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"outer\"\n\n[workspace]\nmembers = [\"examples/foo\"]\n",
+            ),
+            ("src/lib.rs", root),
+            ("examples/foo/Cargo.toml", member),
+            ("examples/foo/src/lib.rs", lib),
+        ],
+        &["Cargo.toml", "examples/foo/Cargo.toml"],
+    )
+}
+
+#[test]
+fn a_workspace_member_under_the_root_s_examples_is_its_own_package() {
+    // Cargo compiles no `examples/foo/src/*.rs` as one of the root's
+    // example targets, so the member keeps its test facts, and its
+    // `pretty_assertions` is judged by its own manifest alone.
+    assert_eq!(
+        vec![
+            (
+                "examples/foo/src/lib.rs tests::case".to_owned(),
+                literal("10")
+            ),
+            ("src/lib.rs tests::case".to_owned(), literal("10")),
+        ],
+        example_member(
+            "trust-example-real",
+            "[package]\nname = \"foo\"\n\n[dev-dependencies]\npretty_assertions = \"1\"\n"
+        )
+    );
+    // Without the dependency the member's comparison is not read, and the
+    // root's std `assert_eq!` still is: the member keys to its package.
+    assert_eq!(
+        vec![
+            (
+                "examples/foo/src/lib.rs tests::case".to_owned(),
+                Value::Null
+            ),
+            ("src/lib.rs tests::case".to_owned(), literal("10")),
+        ],
+        example_member("trust-example-none", "[package]\nname = \"foo\"\n")
+    );
+}

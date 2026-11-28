@@ -582,10 +582,13 @@ the deferred-gaps tracker's:
 - **Drift the compiler rejects** (Decision 1, user decision Q1). The cases in
   the table above report nothing.
 - **A package inside another's module tree** (G5-04). A file of a package
-  whose `Cargo.toml` sits below another package's `src/`, `tests/`,
-  `examples/` or `benches/` may be compiled by either crate, so it gives no
-  test facts, and the macros it defines shadow the standard ones for every
-  package. `cargo package` leaves such a manifest out.
+  whose `Cargo.toml` sits below another package's `src/` may be compiled by
+  either crate, so it gives no test facts, and the macros it defines shadow
+  the standard ones for every package. `cargo package` leaves such a
+  manifest out. A workspace member under the root package's `examples/`,
+  `benches/` or `tests/` (`examples/foo/Cargo.toml`, as sqlx lays them out)
+  is its own package: Cargo compiles no `examples/foo/src/*.rs` as one of
+  the root's targets.
 - **`pretty_assertions` read only from the real crate** (G5-07). Its
   `assert_eq!` and `assert_ne!` are not read as assertions where the
   package's `Cargo.toml` names no dependency of it (a tree with no manifest
