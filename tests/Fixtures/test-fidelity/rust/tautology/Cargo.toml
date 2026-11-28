@@ -1,0 +1,8 @@
+[package]
+name = "tautology"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+mockall = "0.13"

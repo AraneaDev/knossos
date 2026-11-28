@@ -289,7 +289,7 @@ pub(super) fn item_attrs(item: &Item) -> &[syn::Attribute] {
 /// "x"))` also compiles outside tests. A false positive here silently removes
 /// production code from the dead-code and hub budgets; a false negative puts
 /// test code back in them.
-pub(super) fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
+pub(crate) fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.path().is_ident("cfg")
             && attr
@@ -303,7 +303,7 @@ pub(super) fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
 
 /// Whether a `cfg` predicate can hold only when `test` is set (see
 /// [`test_gate`]).
-fn requires_test(predicate: &syn::Meta) -> bool {
+pub(crate) fn requires_test(predicate: &syn::Meta) -> bool {
     test_gate(predicate).0
 }
 
@@ -400,7 +400,7 @@ fn cfg_parts(list: &syn::MetaList) -> Vec<syn::Meta> {
 ///
 /// Covers the bare `#[test]` and the framework spellings that wrap it
 /// (`#[tokio::test]`, `#[async_std::test]`), which all end in a `test` segment.
-pub(super) fn is_test_attribute(attrs: &[syn::Attribute]) -> bool {
+pub(crate) fn is_test_attribute(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.path()
             .segments

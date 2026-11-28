@@ -140,6 +140,11 @@ final class WalkDriftOracleAdditionsTest extends KnossosTestCase
      * enumerated in full. With as many unsupported names as trackable ones
      * in one directory, the budget is spent on both, so fewer than 500
      * trackable entries can be asked about.
+     *
+     * The two kinds are created in turn, since a filesystem may list a
+     * directory in creation order (btrfs, ext4 without hashed indexes) or in
+     * its reverse (tmpfs): created in two runs, 500 trackable names could be
+     * read before the first unsupported one, and the bound would go unseen.
      */
     #[Group('query')]
     public function testUnsupportedNamesCountTowardThePerDirectoryBound(): void
@@ -148,8 +153,6 @@ final class WalkDriftOracleAdditionsTest extends KnossosTestCase
         try {
             for ($index = 0; $index < 600; ++$index) {
                 file_put_contents($root . '/src/noise' . $index . '.log', 'x');
-            }
-            for ($index = 0; $index < 600; ++$index) {
                 file_put_contents($root . "/src/bad\n" . $index . '.log', 'x');
             }
             touch($root . '/src', time() + 60);

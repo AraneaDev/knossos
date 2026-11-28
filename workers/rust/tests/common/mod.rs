@@ -8,6 +8,8 @@ use std::io::Cursor;
 use knossos_rust_worker::server::run;
 use serde_json::Value;
 
+pub mod frameworks;
+
 /// Write `files` (raw bytes) into a fresh temporary root and run a scan
 /// request with `params` merged over the base (`root`, `files`), returning
 /// contributions. The byte-oriented base every other fixture helper here
@@ -106,6 +108,69 @@ pub fn scan_fixture_with(name: &str, files: &[(&str, &str)], params: &Value) -> 
 /// Write `files` into a fresh temporary root and scan them, returning contributions.
 pub fn scan_fixture(name: &str, files: &[(&str, &str)]) -> Vec<Value> {
     scan_fixture_with(name, files, &serde_json::json!({}))
+}
+
+/// Scan a copy of the repository's fixture `tests/Fixtures/<fixture>`, its
+/// `Cargo.toml` files as the manifests. The repository is the one the
+/// worker sits in, or `KNOSSOS_REPOSITORY` (`cargo mutants` builds a copy
+/// of this crate alone).
+pub fn scan_repository_fixture(fixture: &str) -> Vec<Value> {
+    let repository = std::env::var("KNOSSOS_REPOSITORY").map_or_else(
+        |_| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        Into::into,
+    );
+    let root = repository.join("tests/Fixtures").join(fixture);
+    let mut files: Vec<(String, String)> = Vec::new();
+    let mut pending = vec![root.clone()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                let relative = path
+                    .strip_prefix(&root)
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned();
+                files.push((relative, std::fs::read_to_string(&path).unwrap()));
+            }
+        }
+    }
+    files.sort();
+    let configs: Vec<&str> = files
+        .iter()
+        .map(|(relative, _)| relative.as_str())
+        .filter(|relative| relative.ends_with("Cargo.toml"))
+        .collect();
+    let borrowed: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(relative, source)| (relative.as_str(), source.as_str()))
+        .collect();
+    // A root of its own per scan: two tests may scan one fixture at once.
+    static SCANS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let scan = SCANS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    scan_fixture_with(
+        &format!("{}-{scan}", fixture.replace('/', "-")),
+        &borrowed,
+        &serde_json::json!({ "config_files": configs }),
+    )
+}
+
+/// Every node of `kind` across the contributions, by canonical name.
+pub fn nodes_of(contributions: &[Value], kind: &str) -> BTreeMap<String, Value> {
+    contributions
+        .iter()
+        .flat_map(|contribution| contribution["nodes"].as_array().unwrap().iter())
+        .filter(|node| node["kind"] == kind)
+        .map(|node| {
+            (
+                node["canonical_name"].as_str().unwrap().to_owned(),
+                node.clone(),
+            )
+        })
+        .collect()
 }
 
 /// The `calls` edges from `source` into a `::<method>` target, as
@@ -268,4 +333,51 @@ pub fn method_targets(contributions: &[Value], source: &str) -> Vec<String> {
         .map(|(target, _)| target)
         .filter(|target| target.starts_with("rust:method:"))
         .collect()
+}
+
+/// Scan `src/lib.rs` (and any other `files`) beside a manifest, returning
+/// the first operand of every case's first assertion, by case name.
+pub fn first_operands(name: &str, files: &[(&str, &str)]) -> Vec<(String, Value)> {
+    let mut all = vec![("Cargo.toml", "[package]\nname = \"probe\"\n")];
+    all.extend_from_slice(files);
+    let contributions = scan_fixture_with(
+        name,
+        &all,
+        &serde_json::json!({"config_files": ["Cargo.toml"]}),
+    );
+    let mut found: Vec<(String, Value)> = contributions
+        .iter()
+        .flat_map(|contribution| contribution["nodes"].as_array().unwrap().clone())
+        .filter(|node| node["kind"] == "test_case")
+        .map(|node| {
+            (
+                node["attributes"]["name"].as_str().unwrap().to_owned(),
+                node["attributes"]["assertions"][0]["operands"][0].clone(),
+            )
+        })
+        .collect();
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+/// A `mod tests` holding one case per `(name, body)`.
+pub fn tests_module(cases: &[(&str, &str)]) -> String {
+    let mut source = String::from("#[cfg(test)]\nmod tests {\n    use super::*;\n");
+    for (name, body) in cases {
+        source.push_str(&format!(
+            "    #[test]\n    fn {name}() {{\n        {body}\n    }}\n"
+        ));
+    }
+    source.push_str("}\n");
+    source
+}
+
+/// The literal operand with this text.
+pub fn literal(text: &str) -> Value {
+    serde_json::json!({"source": "literal", "text": text})
+}
+
+/// The operand whose source is unknown.
+pub fn unknown() -> Value {
+    serde_json::json!({"source": "unknown"})
 }

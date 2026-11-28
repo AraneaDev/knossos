@@ -133,8 +133,8 @@ const SCENARIO_ROUNDS = 5;
 /**
  * Run a test-fidelity scenario under `$directory`: a cold scan of its corpus,
  * then rounds of editing the one production file and scanning again. Each
- * round judges every one of the twenty doubles again; the TypeScript and
- * Python corpora read their five test files again, the PHP one reuses them.
+ * round judges every one of the twenty doubles again; the TypeScript, Python
+ * and Rust corpora read their five test files again, the PHP one reuses them.
  * A round that parsed any other number of files than the corpus says fails
  * the run; the median round is the measurement.
  *
@@ -153,7 +153,7 @@ function runTestFidelityScenario(string $scenario, string $directory, float $lim
     jsonObject($cold);
     $rounds = [];
     $stages = [];
-    // The files the edit reaches: the production file, and for TypeScript and Python every test file of its doubles.
+    // The files the edit reaches: the production file, and for TypeScript, Python and Rust every test file of its doubles.
     $reached = (int) $generation['parsed_files'];
     for ($round = 0; $round < SCENARIO_ROUNDS; ++$round) {
         $production = $corpus . '/' . $generation['production_file'];

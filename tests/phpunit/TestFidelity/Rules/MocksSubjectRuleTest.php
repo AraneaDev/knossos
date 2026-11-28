@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Knossos\Tests\Phpunit\TestFidelity\Rules;
 
+use Knossos\Scanner\Protocol\Confidence;
+use Knossos\Scanner\Protocol\Evidence;
 use Knossos\Scanner\Protocol\NodeFact;
+use Knossos\Scanner\Protocol\Origin;
 use Knossos\TestFidelity\FindingCategory;
 use Knossos\TestFidelity\FindingConfidence;
 use Knossos\TestFidelity\Rules\MocksSubjectRule;
@@ -201,6 +204,23 @@ final class MocksSubjectRuleTest extends KnossosTestCase
         // A patch of one member is a partial mock; a double that names no test would answer to every test of its file.
         assertSame([], $judge(['src/app/repo.py'], ['kind' => 'class', 'export' => 'app.repo.Repo', 'member' => 'save']));
         assertSame([], $judge(['src/app/repo.py'], testCase: null));
+    }
+
+    public function testARustDoubleIsNeverJudged(): void
+    {
+        $judge = static function (string $prefix): array {
+            $node = static fn(string $kind, string $canonical, array $attributes): NodeFact => new NodeFact($prefix . ':' . $kind . ':' . $canonical, $kind, $canonical, $canonical, Origin::Ast, Confidence::Certain, new Evidence(explode('#', $canonical)[0], 1, 1), $attributes);
+            $repo = $node('module', 'src/repo.rs', ['exports' => []]);
+            $case = $node('test_case', 'src/repo.rs#test:10', ['name' => 'saves', 'production_calls' => 1, 'subjects' => ['src/repo.rs'], 'assertions' => []]);
+            $double = $node('test_double', 'src/repo.rs#double:12:5', [
+                'framework' => 'unittest', 'pattern' => 'p', 'target' => ['kind' => 'module', 'specifier' => 'src/repo.rs'], 'automock' => false, 'invocations' => 1, 'members' => [], 'test_case' => 'src/repo.rs#test:10',
+            ]);
+
+            return [...(new MocksSubjectRule())->findings(CaseFixtures::graph([$case, $double], [$repo], [DriftFixtures::edge('doubles', $double, $repo->localId)]))];
+        };
+
+        assertCount(1, $judge('py'), 'the control: the same shape on a Python target warns');
+        assertSame([], $judge('rust'));
     }
 
     public function testIdNamesTheCategory(): void

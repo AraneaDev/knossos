@@ -215,6 +215,44 @@ fn impl_target_name(ty: &Type) -> Option<String> {
         .map(|segment| ident_name(&segment.ident))
 }
 
+/// The canonical path of every trait the items of `module` declare, inline
+/// modules included, with every module of them where a macro stands where
+/// an item may (`make_trait!();`, `include!(…)`): what it declares there
+/// is not known, and may be a trait.
+#[must_use]
+pub fn trait_paths(module: &str, items: &[Item]) -> (BTreeSet<String>, BTreeSet<String>) {
+    let mut traits = BTreeSet::new();
+    let mut opaque = BTreeSet::new();
+    collect_trait_paths(module, items, &mut traits, &mut opaque);
+
+    (traits, opaque)
+}
+
+/// [`trait_paths`] for the items of `module`.
+fn collect_trait_paths(
+    module: &str,
+    items: &[Item],
+    traits: &mut BTreeSet<String>,
+    opaque: &mut BTreeSet<String>,
+) {
+    for item in items {
+        match item {
+            Item::Trait(node) => record(traits, module, &ident_name(&node.ident)),
+            // A `macro_rules!` definition declares no item.
+            Item::Macro(node) if node.ident.is_none() => {
+                opaque.insert(module.to_owned());
+            }
+            Item::Mod(node) => {
+                if let Some((_, inner)) = &node.content {
+                    let nested = format!("{module}::{}", ident_name(&node.ident));
+                    collect_trait_paths(&nested, inner, traits, opaque);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Note one canonical path one file declares.
 fn record(out: &mut BTreeSet<String>, module: &str, name: &str) {
     out.insert(format!("{module}::{name}"));

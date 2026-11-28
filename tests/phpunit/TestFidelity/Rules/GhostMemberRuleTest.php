@@ -130,6 +130,21 @@ final class GhostMemberRuleTest extends KnossosTestCase
         );
     }
 
+    public function testACompileCheckedDoubleIsNeverAGhost(): void
+    {
+        $methods = [DriftFixtures::method('totalCents')];
+        $members = [DriftFixtures::stub('refund')];
+
+        assertCount(1, self::judge(DriftFixtures::graph($methods, $members)), 'the control: without the flag the stub is a ghost');
+        assertSame([], self::judge(DriftFixtures::graph($methods, $members, doubleAttributes: ['compile_checked' => true])));
+    }
+
+    public function testACompileCheckedModuleDoubleIsNeverAMissingModule(): void
+    {
+        assertCount(1, self::judge(DriftFixtures::moduleGraph('./gone')), 'the control');
+        assertSame([], self::judge(DriftFixtures::moduleGraph('./gone', ['compile_checked' => true])));
+    }
+
     public function testModuleTargetIsAMissingExport(): void
     {
         $graph = DriftFixtures::graph([], [DriftFixtures::stub('gone')], ['kind' => 'module', 'specifier' => './UserService'], targetKind: 'module');

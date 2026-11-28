@@ -138,7 +138,27 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
         }
     }
 
-    public function testReportsLanguagesWithoutTestFacts(): void
+    public function testAnImportedRustLabelIsCountedAsRust(): void
+    {
+        // An imported bundle labels Rust nodes `rs` (PortableGraphImporter); they must not open a language of their own.
+        [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
+        try {
+            $service = ArchitectureQueryService::forDatabase($pdo)->services()->testFidelityQueries;
+            $typescript = $service->auditTests($projectId)->data['summary']['by_language']['typescript'];
+            $pdo->exec("UPDATE nodes SET language = 'rs'");
+
+            $byLanguage = $service->auditTests($projectId)->data['summary']['by_language'];
+
+            assertSame(['php', 'python', 'rust', 'typescript'], array_keys($byLanguage));
+            self::assertGreaterThan(0, $typescript['definite']);
+            assertSame($typescript, $byLanguage['rust']);
+            assertSame(['definite' => 0, 'warning' => 0], $byLanguage['typescript']);
+        } finally {
+            $this->removeTempTree($root);
+        }
+    }
+
+    public function testCountsZerosForLanguagesWithoutFindings(): void
     {
         [$pdo, $projectId, $root] = $this->scanTempFixture('test-fidelity/ts-audit');
         try {
@@ -147,7 +167,7 @@ final class TestFidelityQueryServiceTest extends KnossosTestCase
 
             assertSame(['definite' => 0, 'warning' => 0], $byLanguage['php'], 'The PHP worker emits test facts; this project has no PHP findings.');
             assertSame(['definite' => 0, 'warning' => 0], $byLanguage['python'], 'The Python worker emits test facts; this project has no Python findings.');
-            assertSame('no test facts', $byLanguage['rust']);
+            assertSame(['definite' => 0, 'warning' => 0], $byLanguage['rust'], 'The Rust worker emits test facts; this project has no Rust findings.');
             assertSame(['definite', 'warning'], array_keys($byLanguage['typescript']));
             self::assertGreaterThan(0, $byLanguage['typescript']['definite']);
             self::assertGreaterThan(0, $byLanguage['typescript']['warning']);

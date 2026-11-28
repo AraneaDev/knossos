@@ -26,6 +26,18 @@ final class DriftFixtures
         return new NodeFact('ts:' . $kind . ':' . $canonical, $kind, $canonical, $display, Origin::Ast, Confidence::Certain, new Evidence($file, $line, $line), $attributes);
     }
 
+    /**
+     * A Rust node, `rust:<kind>:<canonical>`, in the file the canonical name starts with.
+     *
+     * @param array<string, mixed> $attributes
+     */
+    public static function rustNode(string $kind, string $canonical, array $attributes = []): NodeFact
+    {
+        $file = explode('#', $canonical)[0];
+
+        return new NodeFact('rust:' . $kind . ':' . $canonical, $kind, $canonical, $canonical, Origin::Ast, Confidence::Certain, new Evidence($file, 1, 1), $attributes);
+    }
+
     public static function edge(string $kind, NodeFact $source, string $target): EdgeFact
     {
         return new EdgeFact($kind, $source->localId, $target, Origin::Ast, Confidence::Certain, $source->evidence);
@@ -41,15 +53,16 @@ final class DriftFixtures
      * @param list<EdgeFact> $extraEdges
      * @param array<string, mixed>|null $targetAttributes the target node's attributes; by default the complete name list of what it contains
      * @param string $framework the framework the double is of
+     * @param array<string, mixed> $doubleAttributes overrides of the double's attributes
      */
-    public static function graph(array $methods, array $members, array $target = ['kind' => 'class', 'export' => 'UserService'], array $extra = [], array $extraEdges = [], string $targetKind = 'class', ?array $targetAttributes = null, string $framework = 'vitest'): TestFidelityGraph
+    public static function graph(array $methods, array $members, array $target = ['kind' => 'class', 'export' => 'UserService'], array $extra = [], array $extraEdges = [], string $targetKind = 'class', ?array $targetAttributes = null, string $framework = 'vitest', array $doubleAttributes = []): TestFidelityGraph
     {
         $names = array_map(static fn(NodeFact $method): string => $method->displayName, $methods);
         sort($names, SORT_STRING);
         $class = self::node($targetKind, 'src/UserService.ts#UserService', 'UserService', $targetAttributes ?? [$targetKind === 'module' ? 'exports' : 'member_names' => $names]);
         $edges = array_map(static fn(NodeFact $method): EdgeFact => self::edge('contains', $class, $method->localId), $methods);
         $double = self::node('test_double', 'tests/a.test.ts#double:6:3', 'vi.spyOn', [
-            'framework' => $framework, 'pattern' => 'vi.spyOn', 'target' => $target, 'automock' => false, 'invocations' => 0, 'members' => $members,
+            'framework' => $framework, 'pattern' => 'vi.spyOn', 'target' => $target, 'automock' => false, 'invocations' => 0, 'members' => $members, ...$doubleAttributes,
         ], 6);
 
         return TestFidelityGraph::fromContributions([
@@ -104,11 +117,15 @@ final class DriftFixtures
         ]);
     }
 
-    /** A double with no `doubles` edge, replacing a module by specifier. */
-    public static function moduleGraph(string $specifier): TestFidelityGraph
+    /**
+     * A double with no `doubles` edge, replacing a module by specifier.
+     *
+     * @param array<string, mixed> $doubleAttributes overrides of the double's attributes
+     */
+    public static function moduleGraph(string $specifier, array $doubleAttributes = []): TestFidelityGraph
     {
         $double = self::node('test_double', 'tests/a.test.ts#double:2:1', 'vi.mock', [
-            'framework' => 'vitest', 'pattern' => 'vi.mock', 'target' => ['kind' => 'module', 'specifier' => $specifier], 'automock' => true, 'invocations' => 0, 'members' => [],
+            'framework' => 'vitest', 'pattern' => 'vi.mock', 'target' => ['kind' => 'module', 'specifier' => $specifier], 'automock' => true, 'invocations' => 0, 'members' => [], ...$doubleAttributes,
         ], 2);
 
         return TestFidelityGraph::fromContributions([new ScanContribution('knossos.typescript:file:tests/a.test.ts', [$double], [])]);

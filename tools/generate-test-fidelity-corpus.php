@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
- *   generate-test-fidelity-corpus.php OUTPUT [typescript|php|python]
+ *   generate-test-fidelity-corpus.php OUTPUT [typescript|php|python|rust]
  *
  * The corpus of a test-fidelity benchmark scenario: one production class and
  * five test files that hold twenty doubles of it, four each, so editing the
@@ -12,18 +12,20 @@ declare(strict_types=1);
  * again; PHP (`test_fidelity_rescan_one_file_php`) reuses them and judges
  * their doubles against the changed class. Python
  * (`test_fidelity_rescan_one_file_python`) reads all five again too, as each
- * test file reads the class's module to resolve what it patches. Prints the
- * production file's path, relative to OUTPUT, the files each rescan parses,
- * the edit to append (a format taking the round), and a SHA-256 digest of the
- * corpus as JSON.
+ * test file reads the class's module to resolve what it patches. Rust
+ * (`test_fidelity_rescan_one_file_rust`) reads all five again as well: each
+ * test file imports its mock from the trait's module, and reads every file
+ * of its package besides (G5-05). Prints the production file's path,
+ * relative to OUTPUT, the files each rescan parses, the edit to append (a
+ * format taking the round), and a SHA-256 digest of the corpus as JSON.
  */
 
 require_once __DIR__ . '/lib/cli-arguments.php';
 // $argv is only a global where register_argc_argv is on (see tools/lib/cli-arguments.php).
 $argv = cliArguments();
 $language = $argv[2] ?? 'typescript';
-if (count($argv) < 2 || count($argv) > 3 || !in_array($language, ['typescript', 'php', 'python'], true)) {
-    fwrite(STDERR, "usage: generate-test-fidelity-corpus.php OUTPUT [typescript|php|python]\n");
+if (count($argv) < 2 || count($argv) > 3 || !in_array($language, ['typescript', 'php', 'python', 'rust'], true)) {
+    fwrite(STDERR, "usage: generate-test-fidelity-corpus.php OUTPUT [typescript|php|python|rust]\n");
     exit(2);
 }
 $root = rtrim($argv[1], '/');
@@ -217,10 +219,93 @@ function pythonCorpus(): array
     return $files;
 }
 
+/**
+ * The Rust corpus, by path: `MockLedger` doubles that mockall's
+ * `#[automock]` generates for one trait, each test handing them to code that
+ * takes a `Ledger` and asserting on `Book`, the trait's production
+ * implementation, as a healthy suite does. Like the Python one, it sits at
+ * OUTPUT itself, where the Rust worker finds its Cargo manifest.
+ *
+ * @return array<string, string>
+ */
+function rustCorpus(): array
+{
+    $files = [
+        'Cargo.toml' => "[package]\nname = \"knossos-benchmark-test-fidelity\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\nmockall = \"0.13\"\n",
+        'src/lib.rs' => "pub mod ledger;\n",
+        'src/ledger.rs' => <<<'RS'
+            use mockall::automock;
+
+            #[automock]
+            pub trait Ledger {
+                fn total(&self) -> u32;
+                fn label(&self) -> String;
+                fn load(&self, id: &str) -> u32;
+                fn reset(&self);
+            }
+
+            pub struct Book;
+
+            impl Ledger for Book {
+                fn total(&self) -> u32 {
+                    1
+                }
+
+                fn label(&self) -> String {
+                    "ledger".to_owned()
+                }
+
+                fn load(&self, id: &str) -> u32 {
+                    id.len() as u32
+                }
+
+                fn reset(&self) {}
+            }
+
+            RS,
+    ];
+    for ($index = 0; $index < 5; ++$index) {
+        $files[sprintf('tests/ledger_%d.rs', $index)] = sprintf(<<<'RS'
+            use knossos_benchmark_test_fidelity::ledger::{Book, Ledger, MockLedger};
+
+            /// What a caller reads from a ledger, beside the book's own total.
+            fn audit(ledger: &dyn Ledger, book: &Book) -> u32 {
+                ledger.total() + ledger.load("id") + book.total()
+            }
+
+            #[test]
+            fn stubs_every_member_%1$d() {
+                let mut total = MockLedger::new();
+                total.expect_total().returning(|| %1$d);
+                total.expect_load().returning(|_| 0);
+                let mut label = MockLedger::new();
+                label.expect_label().returning(|| "ledger %1$d".to_owned());
+                let mut load = MockLedger::new();
+                load.expect_total().returning(|| 0);
+                load.expect_load().returning(|id| id.len() as u32);
+                let mut reset = MockLedger::new();
+                reset.expect_reset().returning(|| ());
+                let book = Book;
+                audit(&total, &book);
+                audit(&load, &book);
+                label.label();
+                reset.reset();
+                assert_eq!(book.total(), 1);
+                assert_eq!(book.load("id"), 2);
+                assert_eq!(book.label(), "ledger");
+            }
+
+            RS, $index);
+    }
+
+    return $files;
+}
+
 $corpora = [
     'typescript' => ['files' => typescriptCorpus(), 'production' => 'typescript/src/ledger.ts', 'parsed' => 6, 'edit' => "\nexport const benchmarkChange%d = true;\n"],
     'php' => ['files' => phpCorpus(), 'production' => 'php/src/Ledger.php', 'parsed' => 1, 'edit' => "\nfunction benchmarkChange%d(): bool\n{\n    return true;\n}\n"],
     'python' => ['files' => pythonCorpus(), 'production' => 'src/ledger.py', 'parsed' => 6, 'edit' => "\n\ndef benchmark_change_%d():\n    return True\n"],
+    'rust' => ['files' => rustCorpus(), 'production' => 'src/ledger.rs', 'parsed' => 6, 'edit' => "\npub fn benchmark_change_%d() -> bool { true }\n"],
 ];
 $corpus = $corpora[$language];
 $files = $corpus['files'];

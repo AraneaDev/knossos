@@ -21,6 +21,10 @@ use crate::reads::{read_safely, record_read};
 use crate::source_hash::sha256_hex;
 use crate::visit::{Declarations, ModuleGates};
 
+mod neighbours;
+
+use neighbours::{included_files, orphan_neighbours};
+
 /// What one file gives the declaration index.
 #[derive(Clone, Debug)]
 struct FileIndex {
@@ -54,6 +58,13 @@ struct FileIndex {
     globs: crate::visit::GlobImports,
     /// The names only a private `use` of the file binds.
     private_exports: BTreeSet<String>,
+    /// What the file may shadow a standard macro with, indexed or not.
+    macro_shadows: crate::test_facts::MacroShadows,
+    /// The mocks the file generates, see [`crate::visit::GeneratedMock`].
+    generated_mocks: BTreeMap<String, crate::visit::GeneratedMock>,
+    /// The traits the file declares, and its modules a macro may declare
+    /// one in, see [`crate::visit::trait_paths`].
+    traits: (BTreeSet<String>, BTreeSet<String>),
 }
 
 impl FileIndex {
@@ -66,6 +77,8 @@ impl FileIndex {
         crate::visit::collect_test_modules(relative, module, items, layout, &mut test_modules);
         let indexed = layout.is_indexed(relative, module);
         let crate::visit::IndexFacts {
+            traits,
+            opaque_modules,
             impl_methods,
             gated_impl_methods,
             private_exports,
@@ -75,6 +88,7 @@ impl FileIndex {
             aliases,
             export_alternatives,
             globs,
+            generated_mocks,
         } = if indexed {
             crate::visit::index_facts(relative, module, items, layout)
         } else {
@@ -103,6 +117,9 @@ impl FileIndex {
             export_alternatives,
             globs,
             private_exports,
+            macro_shadows: crate::test_facts::MacroShadows::of(items),
+            generated_mocks,
+            traits: (traits, opaque_modules),
         }
     }
 }
@@ -265,7 +282,12 @@ pub(crate) fn index_project(
         .map(|entry| (entry.relative.clone(), entry.mods.clone()))
         .collect();
     let placed = layout.place_path_modules(&mods);
-    let included = included_files(&pending, &mods);
+    let included = included_files(
+        pending
+            .iter()
+            .map(|entry| (entry.relative.as_str(), entry.includes.as_slice())),
+        &mods,
+    );
     let mut orphans = orphan_neighbours(&placed, &mods);
     // A file `include!` pulls in is compiled as part of the file writing
     // it, which decides whether it is test code: it reads that file.
@@ -325,11 +347,25 @@ pub(crate) fn index_project(
         }
     }
     let mut declarations = Declarations::new();
+    let elsewhere = crate::test_facts::compiled_elsewhere(&placed, &mods, included.keys());
     for (relative, module, index) in &indexed {
         if let Some(index) = index {
             let file_gated = test_modules.gate_of_file(relative, module).is_some();
             declarations.absorb(index, file_gated);
         }
+        // A file that does not parse is still one of its package's, which
+        // may define a macro once it does.
+        let shadows = index.as_ref().map(|index| index.macro_shadows.clone());
+        let shadows = shadows.unwrap_or_default();
+        let declared = mods.get(relative).map_or(&[][..], Vec::as_slice);
+        declarations.add_macro_shadows(
+            relative,
+            &crate::test_facts::macro_package(&placed, relative, &elsewhere),
+            &crate::test_facts::macro_modules(module, declared),
+            &shadows.names,
+            shadows.opens_all
+                || crate::test_facts::loads_unseen_file(&placed, relative, declared, &mods),
+        );
     }
     // Only what this request indexed is kept, so the memo follows the
     // project rather than every version of it this process has seen.
@@ -342,88 +378,6 @@ pub(crate) fn index_project(
         layout: placed,
         orphans,
     }
-}
-
-/// Each project file an `include!("path")` of another file pulls in, with
-/// the files that include it and whether every one of them does so only for
-/// the tests (under `#[cfg(test)]`). The path is relative to the including
-/// file's directory.
-fn included_files(
-    pending: &[Pending],
-    mods: &BTreeMap<String, Vec<ModDeclaration>>,
-) -> BTreeMap<String, (Vec<String>, bool)> {
-    let mut included: BTreeMap<String, (Vec<String>, bool)> = BTreeMap::new();
-    for entry in pending {
-        let directory = entry.relative.rsplit_once('/').map_or("", |(dir, _)| dir);
-        for (written, test) in &entry.includes {
-            if written.starts_with('/') || written.contains('\\') {
-                continue;
-            }
-            let mut segments: Vec<&str> = directory.split('/').filter(|s| !s.is_empty()).collect();
-            let mut escaped = false;
-            for part in written.split('/') {
-                match part {
-                    "" | "." => {}
-                    ".." => escaped |= segments.pop().is_none(),
-                    part => segments.push(part),
-                }
-            }
-            let target = segments.join("/");
-            if escaped || target == entry.relative || !mods.contains_key(&target) {
-                continue;
-            }
-            let (includers, all_test) = included.entry(target).or_insert((Vec::new(), true));
-            includers.push(entry.relative.clone());
-            *all_test &= *test;
-        }
-    }
-
-    included
-}
-
-/// Each project file no `mod` declaration loads (and no crate root), with
-/// the project's other files in its own directory and the one above it: the
-/// files a `#[path]` declaration that loads it is most likely written in,
-/// since such a path is relative to the declaring file's directory. An edit
-/// to one of them may place the file in a module, so the file reads them.
-fn orphan_neighbours(
-    layout: &Layout,
-    mods: &BTreeMap<String, Vec<ModDeclaration>>,
-) -> BTreeMap<String, Vec<String>> {
-    let mut loaded = BTreeSet::new();
-    for (file, list) in mods {
-        for declaration in list {
-            if let Some(child) = layout.child_file(
-                file,
-                &declaration.inline,
-                &declaration.name,
-                declaration.path.as_deref(),
-            ) {
-                loaded.insert(child);
-            }
-        }
-    }
-    let directory = |file: &str| file.rsplit_once('/').map_or("", |(dir, _)| dir).to_owned();
-    let mut orphans = BTreeMap::new();
-    for file in mods.keys() {
-        if loaded.contains(file) || layout.is_crate_root(file) {
-            continue;
-        }
-        let own = directory(file);
-        let parent = directory(&own);
-        let neighbours: Vec<String> = mods
-            .keys()
-            .filter(|other| *other != file)
-            .filter(|other| {
-                let theirs = directory(other);
-                theirs == own || (!own.is_empty() && theirs == parent)
-            })
-            .cloned()
-            .collect();
-        orphans.insert(file.clone(), neighbours);
-    }
-
-    orphans
 }
 
 /// An unrequested file read and hashed, with its `mod` declarations and its
@@ -504,6 +458,8 @@ impl Declarations {
         self.add_export_alternatives(&index.export_alternatives);
         self.add_globs(&index.globs);
         self.add_private_exports(&index.private_exports);
+        self.add_generated_mocks(&index.generated_mocks);
+        self.add_traits(&index.traits.0, &index.traits.1);
     }
 }
 

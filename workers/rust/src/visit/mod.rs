@@ -21,6 +21,8 @@ mod cfg;
 mod declaration_paths;
 mod declarations;
 mod fields;
+mod generated;
+mod generated_mock;
 mod globs;
 mod impls;
 mod item_types;
@@ -31,6 +33,7 @@ mod paths;
 mod placement;
 mod receivers;
 mod routes;
+mod scope;
 mod signatures;
 mod state;
 mod types;
@@ -38,22 +41,27 @@ mod uses;
 
 use calls::{is_foreign_export, is_wasm_bindgen};
 pub use cfg::include_sites;
-use cfg::{cfg_predicate, is_cfg_test, is_cfg_test_support, is_test_attribute, item_attrs};
+use cfg::{cfg_predicate, is_cfg_test_support, item_attrs};
 pub use cfg::{
     collect_test_modules, is_test_module_path, is_test_support_module_path, ModuleGates,
 };
-pub use declaration_paths::{declaration_paths, declared_renames, indexed_item_paths};
+pub(crate) use cfg::{is_cfg_test, is_test_attribute};
+pub use declaration_paths::{declaration_paths, declared_renames, indexed_item_paths, trait_paths};
 pub use declarations::{
     Declarations, ExportAlternatives, ExportedNames, FieldType, FunctionReturns, GlobImports,
-    StructFields, TypeAliases,
+    StructFields, TypeAliases, ANY_PACKAGE,
 };
+pub use generated::generated_mocks;
+pub use generated_mock::{GeneratedMock, AUTOMOCK, MOCK_MACRO};
 use labels::{path_label, type_label};
 use placement::mod_child;
 pub use placement::mod_declarations;
+pub(crate) use scope::FileScope;
 use state::Walk;
 
 /// Walk every item in a parsed file, attributing each to `module`, and
-/// return the files its `mod` declarations load (see [`mod_child`]).
+/// return the files its `mod` declarations load (see [`mod_child`]) with the
+/// names the file brought into scope (see [`FileScope`]).
 pub fn walk(
     facts: &mut Facts,
     module: &str,
@@ -62,7 +70,7 @@ pub fn walk(
     declarations: &Declarations,
     test_modules: &ModuleGates,
     layout: &Layout,
-) -> BTreeSet<String> {
+) -> (BTreeSet<String>, FileScope) {
     // A file that IS an out-of-line test module is test code in its entirety,
     // and so is anything nested below it, so the scope opens around the whole
     // walk rather than around a single item.
@@ -83,13 +91,14 @@ pub fn walk(
     walker.walk_items(module, "module", &file.items);
     walker.flush_routes();
     let placed = std::mem::take(&mut walker.placed);
+    let scope = walker.take_scope();
     facts.exit_support_scope(file_support);
     facts.exit_cfg_scope(file_gate);
     if file_is_test {
         facts.exit_test_scope();
     }
 
-    placed
+    (placed, scope)
 }
 
 /// What one file tells the declaration index beyond the paths it declares:
@@ -133,6 +142,8 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
         &mut impl_methods,
         &mut gated_impl_methods,
     );
+    let mut generated_mocks = BTreeMap::new();
+    walker.collect_generated_mocks(module, items, false, &mut generated_mocks);
     let mut globs = GlobImports::new();
     for (container, source) in std::mem::take(&mut walker.globs) {
         let private = walker
@@ -147,7 +158,11 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
         .cloned()
         .collect();
 
+    let (traits, opaque_modules) = trait_paths(module, items);
+
     IndexFacts {
+        traits,
+        opaque_modules,
         impl_methods,
         gated_impl_methods,
         private_exports,
@@ -157,12 +172,18 @@ pub fn index_facts(relative: &str, module: &str, items: &[Item], layout: &Layout
         aliases,
         export_alternatives: alternatives,
         globs,
+        generated_mocks,
     }
 }
 
 /// What [`index_facts`] reads from one file for the declaration index.
 #[derive(Clone, Debug, Default)]
 pub struct IndexFacts {
+    /// The path of every trait the file declares, see [`trait_paths`].
+    pub traits: BTreeSet<String>,
+    /// The modules of the file where a macro stands where an item may, see
+    /// [`trait_paths`].
+    pub opaque_modules: BTreeSet<String>,
     /// The path of every method the file's `impl` blocks declare, under the
     /// type the file's own imports resolve the block's to (`impl
     /// BrokerState` beside `use super::BrokerState;` declares its methods on
@@ -186,6 +207,8 @@ pub struct IndexFacts {
     pub export_alternatives: ExportAlternatives,
     /// See [`GlobImports`].
     pub globs: GlobImports,
+    /// The mocks the file generates, see [`GeneratedMock`].
+    pub generated_mocks: BTreeMap<String, GeneratedMock>,
 }
 
 impl<'a> Walk<'a> {

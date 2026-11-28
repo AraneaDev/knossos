@@ -11,12 +11,13 @@ use Knossos\Scanner\Protocol\NodeFact;
  */
 final readonly class TestDouble
 {
-    private const FRAMEWORKS = ['vitest', 'jest', 'phpunit', 'mockery', 'pest', 'prophecy', 'unittest', 'pytest-mock', 'pytest'];
+    private const FRAMEWORKS = ['vitest', 'jest', 'phpunit', 'mockery', 'pest', 'prophecy', 'unittest', 'pytest-mock', 'pytest', 'mockall', 'faux', 'mry', 'mockers', 'mockiato', 'mocktopus', 'mock_derive', 'galvanic', 'hand-written'];
     private const TARGET_KINDS = ['module', 'class', 'instance-member', 'global', 'unknown'];
 
     /**
      * @param array<string, string> $target what the double replaces: `kind`, and when stated `specifier`, `export` and `member`
      * @param list<StubbedMember> $members
+     * @param bool $compileChecked true when the language's compiler rejects any mismatch between the double and what it stands in for (Rust); a drift rule must not judge such a double
      * @param list<string>|null $alsoImplements the further classes and interfaces the double is made to be, fully qualified (Mockery's `mock(A::class, B::class)`); null when the wire names some the reader could not read
      */
     public function __construct(
@@ -30,6 +31,7 @@ final readonly class TestDouble
         public array $members,
         public bool $allowsProtected = false,
         public ?array $alsoImplements = [],
+        public bool $compileChecked = false,
     ) {}
 
     /**
@@ -66,7 +68,7 @@ final readonly class TestDouble
             $members[] = $member;
         }
 
-        return new self($node->canonicalName, $framework, $pattern, $target, $automock, $invocations, $testCase, $members, ($attributes['allows_protected'] ?? false) === true, self::alsoImplements($attributes));
+        return new self($node->canonicalName, $framework, $pattern, $target, $automock, $invocations, $testCase, $members, ($attributes['allows_protected'] ?? false) === true, self::alsoImplements($attributes), ($attributes['compile_checked'] ?? false) === true);
     }
 
     /**

@@ -77,6 +77,7 @@ The report lists each round under `scenarios`.
 | `test_fidelity_rescan_one_file`        | one TypeScript class, five test files with 20 doubles of it |               8s |
 | `test_fidelity_rescan_one_file_php`    | one PHP class, five test files with 20 doubles of it        |               2s |
 | `test_fidelity_rescan_one_file_python` | one Python class, five test files with 20 doubles of it     |               4s |
+| `test_fidelity_rescan_one_file_rust`   | one Rust trait, five test files with 20 mocks of it         |               3s |
 
 `test_fidelity_rescan_one_file` measures what test fidelity adds to a rescan:
 the edit makes the production file and all five test files parse again
@@ -124,6 +125,31 @@ checkout does (the worker starts with `-B`, so it writes no bytecode). That is
 (Ruling P22; gap G4-16). The difference is the worker's start: compiling the
 test-facts modules adds about 70ms, while scanning the six files in the worker
 takes less time than at base.
+
+`test_fidelity_rescan_one_file_rust` measures the same for Rust, with
+`MockLedger` doubles that mockall's `#[automock]` generates for one trait,
+configured through `expect_*` and `returning`. Like the Python corpus it sits
+at the corpus root, where the Rust worker finds its Cargo manifest. Each test
+file imports its mock from the trait's module, so the edit parses that module
+and all five test files again (`parsed_files` is 6 in every round). A Rust
+test file also reads every file of its package, for the macro-shadow check
+(gap G5-05); here that adds no file, as `src/lib.rs` reads nothing the edit
+changes. Its limit follows the same headroom: in one run `small` measured
+2.75s against its 10s (3.64 times) and the scenario 0.68s, so
+0.68s × 3.64 = 2.47s, rounded up: 3s. Against commit `8e91b83a`, the base of
+Rust test facts, where the Rust worker reported none, two batches measured
+0.670s there and 0.685s with them (102%), and 0.662s and 0.692s (104.5%);
+with the macro-shadow answers memoised per file, 0.674s and 0.703s (104.3%).
+Each is within the 110% of base it was held to, and each figure is a median
+of three runs of five rounds, with each commit's worker built by
+`cargo build --release --locked` on the same toolchain.
+
+A cold scan by the Rust worker alone, over three Cargo projects of 106, 27
+and 33 files, took 1.42s at that base and 1.70s with test facts (120%; the
+106-file single package 0.69s and 0.85s). Before the macro-shadow answers
+were memoised it took 2.16s: each standard assertion macro a test called
+recorded every module and file of its package as a read again, so the cost
+grew with calls times package files.
 
 Timing and RSS values vary with hardware, load, filesystem, and cold runtime
 caches. Compare trends from equivalent pinned runners. Tightening a budget

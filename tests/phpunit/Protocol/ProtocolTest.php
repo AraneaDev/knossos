@@ -412,6 +412,42 @@ final class ProtocolTest extends KnossosTestCase
     }
 
     #[Group('protocol')]
+    public function testContributionSchemaAcceptsRustTestFacts(): void
+    {
+        $double = self::wireNode('test_double', [
+            'framework' => 'mockall',
+            'pattern' => 'mockall::automock',
+            'target' => ['kind' => 'class', 'export' => 'Store'],
+            'automock' => false,
+            'invocations' => 0,
+            'compile_checked' => true,
+            'members' => [['name' => 'get', 'line' => 8, 'api' => 'expect', 'returns' => []]],
+        ]);
+        $fake = $double;
+        $fake['attributes']['framework'] = 'hand-written';
+        $fake['attributes']['members'][0]['api'] = 'impl';
+        $badFlag = $double;
+        $badFlag['attributes']['compile_checked'] = 'yes';
+        $badFramework = $double;
+        $badFramework['attributes']['framework'] = 'mockito';
+
+        assertSame([], $this->nodeSchemaErrors($double));
+        assertSame([], $this->nodeSchemaErrors($fake));
+        foreach (['faux', 'mry', 'mockers', 'mockiato', 'mocktopus', 'mock_derive', 'galvanic'] as $framework) {
+            $other = $double;
+            $other['attributes']['framework'] = $framework;
+            assertSame([], $this->nodeSchemaErrors($other));
+        }
+        foreach (['context', 'when', 'mock', 'mock_fn', 'given'] as $api) {
+            $other = $double;
+            $other['attributes']['members'][0]['api'] = $api;
+            assertSame([], $this->nodeSchemaErrors($other));
+        }
+        assertSame(1, count($this->nodeSchemaErrors($badFlag)));
+        assertSame(1, count($this->nodeSchemaErrors($badFramework)));
+    }
+
+    #[Group('protocol')]
     public function testContributionSchemaRejectsTestDoubleWithoutTarget(): void
     {
         $double = self::wireNode('test_double', ['framework' => 'vitest', 'pattern' => 'vi.fn', 'automock' => false, 'invocations' => 0, 'members' => []]);

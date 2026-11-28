@@ -82,7 +82,7 @@ final readonly class TautologyRule implements TestFidelityRule
                         $asserted[$operand->double] = true;
                     }
                 }
-                $finding = self::judge($assertion, $case, $node, $doubles, TestFidelityGraph::isPython($node));
+                $finding = self::judge($assertion, $case, $node, $doubles, TestFidelityGraph::isPython($node), TestFidelityGraph::isRust($node));
                 if ($finding !== null) {
                     yield $finding;
                 }
@@ -101,10 +101,10 @@ final readonly class TautologyRule implements TestFidelityRule
      *
      * @param array<string, TestDouble> $doubles by canonical name
      */
-    private static function judge(Assertion $assertion, TestCaseFact $case, NodeFact $node, array $doubles, bool $python): ?TestFinding
+    private static function judge(Assertion $assertion, TestCaseFact $case, NodeFact $node, array $doubles, bool $python, bool $rust): ?TestFinding
     {
         [$left, $right] = $assertion->operands + [null, null];
-        $verdict = self::compared($assertion, $left, $right, $python)
+        $verdict = self::compared($assertion, $left, $right, $python, $rust)
             ?? self::unconfiguredSpy($assertion, $case, $doubles, $python)
             ?? self::mockOnly($assertion, $case);
         if ($verdict === null) {
@@ -122,12 +122,12 @@ final readonly class TautologyRule implements TestFidelityRule
      *
      * @return array{string, FindingConfidence, string, array<string, string>}|null
      */
-    private static function compared(Assertion $assertion, ?Operand $left, ?Operand $right, bool $python): ?array
+    private static function compared(Assertion $assertion, ?Operand $left, ?Operand $right, bool $python, bool $rust): ?array
     {
         if ($left === null || $right === null) {
             return null;
         }
-        if (!$assertion->negated && $left->text !== null && $left->text === $right->text && (!$python || self::isPythonSelfSame($assertion, $left, $right))) {
+        if (!$assertion->negated && $left->text !== null && $left->text === $right->text && self::selfSameNeedsLiterals($assertion, $left, $right, $python, $rust)) {
             return ['self_comparison', FindingConfidence::Definite, DriftText::clean($left->text) . ' is compared with itself; the assertion cannot fail', []];
         }
         $echoed = $assertion->negated ? null : (self::echo($left, $right) ?? self::echo($right, $left));
@@ -142,13 +142,20 @@ final readonly class TautologyRule implements TestFidelityRule
     }
 
     /**
-     * Whether a Python comparison of two operands of the same text cannot
-     * fail: by identity, or between two literals, which no `__eq__` of the
-     * test's and no NaN can make unequal (Ruling P20).
+     * Whether two operands of the same text cannot differ. Outside Python and
+     * Rust the text alone decides. Python's `==` need not hold of a name
+     * (NaN, an `__eq__` under test), so it takes identity or two literals
+     * (Ruling P20). Rust's `PartialEq` need not be reflexive either, and it has
+     * no identity matcher, so it takes two literals.
      */
-    private static function isPythonSelfSame(Assertion $assertion, Operand $left, Operand $right): bool
+    private static function selfSameNeedsLiterals(Assertion $assertion, Operand $left, Operand $right, bool $python, bool $rust): bool
     {
-        return in_array($assertion->api, self::PYTHON_IDENTITY_APIS, true) || ($left->source === 'literal' && $right->source === 'literal');
+        $literals = $left->source === 'literal' && $right->source === 'literal';
+        if ($rust) {
+            return $literals;
+        }
+
+        return !$python || $literals || in_array($assertion->api, self::PYTHON_IDENTITY_APIS, true);
     }
 
     /** The value a stub was pinned to, when the other operand is that same literal, written or held by a local (its `value`). */

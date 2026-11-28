@@ -174,7 +174,16 @@
             "prophecy",
             "unittest",
             "pytest-mock",
-            "pytest"
+            "pytest",
+            "mockall",
+            "faux",
+            "mry",
+            "mockers",
+            "mockiato",
+            "mocktopus",
+            "mock_derive",
+            "galvanic",
+            "hand-written"
           ]
         },
         "pattern": { "type": "string", "minLength": 1 },
@@ -199,6 +208,10 @@
         "automock": { "type": "boolean" },
         "invocations": { "type": "integer", "minimum": 0 },
         "allows_protected": { "type": "boolean" },
+        "compile_checked": {
+          "type": "boolean",
+          "description": "true on a Rust double: a reader must not judge drift on it, the language's compiler rejects any mismatch."
+        },
         "also_implements": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
@@ -238,6 +251,13 @@
             "setattr",
             "attribute",
             "assigned",
+            "expect",
+            "context",
+            "when",
+            "mock",
+            "mock_fn",
+            "given",
+            "impl",
             "unknown"
           ]
         },

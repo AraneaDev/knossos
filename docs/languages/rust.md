@@ -363,6 +363,264 @@ no file's facts depend on what another file read. A name followed through a
 re-export or a field type is a lookup like any other, so the file declaring it
 is read.
 
+## Test doubles
+
+A file holds test code when the walk marked any of its items as a test (see
+[Code nothing calls by name](#code-nothing-calls-by-name)), or when it sits
+under a Cargo `tests/` directory. In such a file the worker reports each mock
+or fake as a `test_double` fact. In a Cargo package, a file that no `mod`
+declaration loads is compiled by no test run, so it reports none. Without
+`#[path]`, `mod name;` loads `name/mod.rs` as much as `name.rs`, so neither is
+such a file. A tree with no `Cargo.toml` has no build to leave a file out of:
+every `.rs` file in it that holds test code reports its tests and doubles,
+stray fixtures included. Adding any manifest makes the files no `mod` loads
+report none.
+
+These are the frameworks it reads, without compiling anything:
+
+| Crate        | Double made by                                                                                                 | Member api          | Pins                                        | `mock-config` value                                               |
+| ------------ | -------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------- | ----------------------------------------------------------------- |
+| mockall      | `MockS::new()`, `MockS::default()` or `Default::default()` of a mock `#[automock]` or `mock!` generates        | `expect`, `context` | `return_const`, `returning`, `return_once`¹ | yes                                                               |
+| hand-written | an `impl T for Fake` in test code, for a project trait `T`                                                     | `impl`              | a method whose body is one literal          | yes                                                               |
+| faux         | `Foo::faux()`                                                                                                  | `when`              | `then_return`                               | yes, for one `when!` chain whose only value verb is `then_return` |
+| mry          | `mry::new!(S { … })`, a `#[mry::mry]` struct or trait's constructor; `S::mock_m(…)` and `mock_f(…)` as statics | `mock`              | `returns`                                   | yes, when every matcher is `mry::Any`                             |
+| mockiato     | `XMock::new()` or `default()` of the file's `#[mockable]` trait                                                | `expect`            | `returns`, `returns_once`                   | yes                                                               |
+| mockers      | `scenario.create_mock::<…>()` and its `_for`, `named` forms                                                    | `expect`            | `and_return`                                | never                                                             |
+| mocktopus    | `f.mock_safe(…)` or `f.mock_raw(…)`                                                                            | `mock_fn`           | `MockResult::Return`                        | never                                                             |
+| mock_derive  | `MockT::new()` of the file's `#[mock]` trait; `Extern<Abi>Mocks::method_f()` as statics                        | `method`            | `set_result`, `return_result_of`            | never                                                             |
+| galvanic     | `new_mock!(Trait)`                                                                                             | `given`             | `then_return`                               | never                                                             |
+
+¹ And their `_st` forms; `return_once` pins once.
+
+A mockall double is one mock instance, made by its constructor, never by the
+generating attribute or macro. `#[automock]` on a trait `T`, or on an impl of
+`S`, generates `MockT` or `MockS` in the generator's module, and so does
+`mock! { S … }`; `#[automock] mod m` generates `mock_m`, whose functions are
+static contexts. A mock's name resolves as a type path does, through the
+file's own module, its `use` items and its globs. Under a `cfg` that requires
+`test` it is visible only inside its own crate, so a `tests/` target that names
+it gets no double. A name no generator makes (a `MockRepo` by convention only)
+makes no double. Each double has a `doubles` edge to the trait or type its
+generator names; a `mock!` block has one only when it holds exactly one
+`impl T for S` section.
+
+A static context (`MockS::m_context()`) is shared by every test of a process,
+so it gives the double's identity and never a value. Each `expect_*` chain
+gives the member it configures, and each value verb of the chain a pin. A
+double's `invocations` count the calls made on its handle and the places it is
+handed on: as an argument, borrowed, moved into a struct, a `Box`, an `Arc` or
+an `Rc`, or returned.
+
+A hand-written fake is a struct or enum declared in test code with an
+`impl T for Fake` block, where `T` is a trait the project declares. Each block
+is a double of its own, at its `impl` token, whose members are its `fn` items.
+A member pins its value only when nothing could give the fake another answer
+for that name: its body is one literal or `return LIT;`, no attribute sits on
+the method, the block or (other than docs, lints, `repr` and the standard
+derives) the fake, the fake is private and declared once in a module with no
+child module, no other impl in the file declares the name for it, no macro in
+the file could declare one, and no other trait in scope may take the call.
+
+HTTP server mocks (mockito, wiremock, httpmock) give no facts. They stand in
+for a remote service, not for a symbol of the project.
+
+## Test cases
+
+The same files report each test as a `test_case` fact: a `fn` with an
+attribute whose path ends in `test` (`#[test]`, `#[tokio::test]`,
+`#[async_std::test]`, `#[sqlx::test]`, …), `#[rstest]`, `#[test_case(…)]`
+(one fact per `fn`, not per case) or `#[wasm_bindgen_test]`. Its `name` is
+the module path from the file's module (`tests::adds`), and
+`#[should_panic]` marks it as expecting a failure. Each lists:
+
+- its assertions: `assert_eq!` and `assert_ne!` with two operands, `assert!`
+  on one comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`) or one value, and
+  `assert!(matches!(x, P))` as `matches`, each in its `debug_` form too.
+  Message arguments are never operands. `pretty_assertions`' `assert_eq!` and
+  `assert_ne!` count as the standard ones. mockall's `.times(…)`, `.once()`
+  and `.never()` assert the double they configure, since mockall checks them
+  when the mock is dropped;
+- where each operand's value comes from: a literal, a call on a double
+  (`mock-call`), the value a double was pinned to (`mock-config`), the code
+  under test (`production`), a parameter of the case (`rstest`, `test_case`,
+  `sqlx::test`), or unknown;
+- its production calls and the project files they land in.
+
+An assertion macro is read only while its name is the standard one. A
+`macro_rules!` of that name anywhere in the package, a glob or import that can
+bring one in, `#[macro_use] extern crate`, a local `mod core` or a `#[path]`
+to a file the scan does not read leaves it an ordinary macro, which asserts
+nothing. To know that, a test file reads every file of its package (G5-05).
+
+A literal is a Rust literal token, a negated number, or a tuple or array of
+them; a number is compared by its value (`42u32`, `0x2a` and `42` are one
+literal). A local name is followed to a literal only when the test binds it
+once, with no `mut`, as a top-level `let` before the assertion, no `unsafe`
+block sits in the function, and no macro other than an assertion is handed the
+name. A `const` or non-`mut` `static` of the same file whose initializer is a
+literal is followed too. A `static mut`, a field and every call are unknown.
+
+A call on a double gives its pinned value (`mock-config` with `value`) only
+for a handle bound once to its constructor, with exactly one `expect_*` chain
+for that member, before the assertion, that carries one literal value verb,
+and nothing that could change what the double answers: a `&mut` borrow, an
+assignment, a move, a closure capture, a shared borrow handed on or a clone
+(for the frameworks other than mockall and a hand-written fake), a macro naming
+the handle, `checkpoint()`, a call of a member it did not configure, an
+`unsafe` block, or a macro in item or statement position.
+
+A framework's mock gives no value for a member when another trait in scope may
+take the call. A blanket `impl<X> Ext for X` with `fn m(self)` takes `mock.m()`
+by value before any `m(&self)` is tried, the mocked trait's or an inherent one
+alike, so the assertion checks `Ext::m`, not the stub. This holds for every
+mock: an `#[automock]` trait, trait impl or inherent impl, both sections of a
+`mock!`, faux, mry and mockiato. The traits the mock implements are ruled out;
+a mock of inherent methods (faux, an mry struct, an `#[automock] impl S`)
+implements none to rule out. The value is dropped when any of these holds:
+
+- the member is named like a standard blanket method (`into`, `to_string`,
+  `borrow`, …);
+- the file declares another trait with a method of that name;
+- a `use` inside a function body leaves the standard crates;
+- a macro other than `macro_rules!`, `thread_local!` and mockall's `mock!`
+  stands where an item may in a module of the file that holds a test or that
+  the file globs, or inside a trait of the file, since it may declare a trait
+  or a method;
+- the file imports a name the declaration index holds as a trait other than
+  a mocked one, or one outside the standard crates the index cannot place;
+- it globs a module, other than one of its own, that declares or re-exports
+  such a trait, or that the index does not know, or where a macro stands
+  where an item may.
+
+mockall's macros, `Sequence` and predicate module, `mockiato::mockable`,
+`mry::mry`, `mry::new`, `mry::m`, `mry::Any`, faux's `create`, `methods` and
+`when`, and `async_trait::async_trait` are known to be no trait. Each lookup is
+a read of the file that could declare the name, so adding a trait to an
+imported file judges the value again. A hand-written fake has its own rule (see
+[Test doubles](#test-doubles)).
+
+A call counts as production when the walk resolved it to a project declaration
+outside test code, or when it is a method call on a receiver the walk could not
+type (`thing.go()`, `"1".parse()`), unless it is a call on a double or a
+framework verb. A path call the walk did not resolve to the project
+(`String::from`) and a macro count for nothing. Calls inside a double's
+configuration (`eq(1)`, `MockResult::Return(v)`) never count.
+
+A test file whose doubles or tests cannot be read reports the warning
+`RS_TEST_FACTS_FAILED` and keeps every other fact.
+
+## How the rules judge Rust tests
+
+Rust checks a test double against the code it replaces when it compiles the
+test (`cargo test`). So every Rust double carries `compile_checked: true`,
+and the drift rules skip it (user decision Q1): a finding would repeat the
+compiler's error, and would be false wherever Knossos misread a macro or a
+`cfg`.
+
+| Category            | Rust construct                                                                  | Compiler      |
+| ------------------- | ------------------------------------------------------------------------------- | ------------- |
+| `GHOST_MEMBER`      | `expect_foo()` on an `#[automock]` or `mock!` double after the trait lost `foo` | E0599         |
+| `GHOST_MEMBER`      | a fake's `impl T for Fake { fn gone() }`                                        | E0407         |
+| `GHOST_MEMBER`      | the proc-macro crates' `when!`, `mock_<m>` and `expect_<m>` of a lost member    | E0599         |
+| `ARITY_MISMATCH`    | `.with(p1, p2)` on a one-parameter method                                       | E0061         |
+| `ARITY_MISMATCH`    | a `.returning(\|a, b\| …)` closure of the wrong arity                           | E0593         |
+| `ARITY_MISMATCH`    | a fake method of the wrong arity                                                | E0050         |
+| `RETURN_DRIFT`      | `.return_const("x")` for `-> u32`, a fake returning the wrong type              | E0308 / E0277 |
+| `VISIBILITY_BREACH` | a mock of a private trait, or of a method from another module                   | E0603 / E0624 |
+
+The assertion rules judge Rust tests as they judge the other languages':
+
+| Category                    | Rust construct                                              | Confidence |
+| --------------------------- | ----------------------------------------------------------- | ---------- |
+| `TAUTOLOGY/self_comparison` | two equal literals compared (`assert_eq!(7, 7)`)            | definite   |
+| `TAUTOLOGY/constant`        | an assertion on literals only                               | definite   |
+| `TAUTOLOGY/mock_echo`       | a double's pinned value compared with itself                | definite   |
+| `TAUTOLOGY/mock_only`       | a test that checks only doubles and runs no production code | warning    |
+| `TAUTOLOGY/zero_reach`      | a pinned double nothing invokes or asserts                  | warning    |
+
+Every Rust comparison goes through `PartialEq`, which need not be reflexive
+(a NaN, a custom `eq`), so `assert_eq!(x, x)` is a self-comparison only when
+both sides are the same literal. `unconfigured_spy` does not apply, since no
+Rust framework makes a spy: mockall panics on a call it has no expectation
+for. A `times` assertion counts as asserting its double, so such a double is
+never `zero_reach`.
+
+### Known false definites
+
+A healthy test should give no definite finding. These cases still can, and
+each is accepted as contrived. The IDs are the deferred-gaps tracker's:
+
+- **A nested `Cargo.toml`** (G5-04). A manifest inside another package's
+  module tree, reached by a plain `mod`, keys the files below it to its own
+  package while the outer crate compiles them, so a macro of the outer
+  package that shadows `assert_eq!` there goes unseen. `cargo package` leaves
+  such a manifest out.
+- **A renamed assertion crate** (G5-07). `extern crate x as
+pretty_assertions`, or a Cargo `package =` rename to `pretty_assertions`,
+  is trusted as `pretty_assertions`, whose `assert_eq!` compares. A crate
+  renamed to `mockall`, `mockiato`, `mry`, `faux` or `async_trait` is trusted
+  in the same way, as holding no trait that could take a mock's call.
+
+### What the Rust rules do not see
+
+These are accepted, and each costs a missed finding, as stated. The IDs are
+the deferred-gaps tracker's:
+
+- **Drift the compiler rejects** (Decision 1, user decision Q1). The cases in
+  the table above report nothing.
+- **A `mock!` struct section whose namesake lost a member** (G5-01, user
+  decision Q2). `mock! { pub Store { fn purge(&self); } }` compiles after
+  `Store` loses `purge`, since `purge` is the mock's own. Judging it needs a
+  complete member list of a Rust type, and Rust nodes send none.
+- **Drift in code the default build skips** (G5-13): a test under a feature
+  that is off by default, or for another target, which `cargo test` never
+  compiles locally.
+- **`MOCKS_SUBJECT`** (G5-11). Rust doubles carry their `test_case`, but the
+  rule that a test replaces its own subject does not run for Rust.
+- **HTTP server mocks** (G5-12, user decision Q3): mockito, wiremock and
+  httpmock give no facts.
+- **Tests inside macros and doctests** (G5-14): a test in `proptest! {}`,
+  `quickcheck!` or a project macro, and every doctest, are not read.
+- **Signatures for synthesis** (G5-15): Rust signatures carry no visibility,
+  receiver, `static` or `async`.
+- **A `const` from another file** (G5-16) is unknown to literal tracing.
+- **A mock reached through a re-export** (G5-17, `pub use inner::MockFoo`)
+  that the walk does not follow makes no double.
+- **Generators outside the walked file** (G5-08). Outside mockall, a
+  generator (`#[faux::create]`, `#[mry::mry]`, `#[mockable]`, `#[mock]`) is
+  seen only in the file the double is made in. One in another file gives the
+  double no target, and makes no mockiato or mock_derive double at all.
+  mockall's generated names are found across files.
+- **Fake pins near other files** (G5-10). A hand-written fake keeps no pin in
+  a file that imports from another project file or has a glob from one, since
+  a trait there could answer the call (a `src/tests.rs` with
+  `use crate::*;` gives no echo).
+- **Borrowed mocks** (G5-10). Any `&mock` handed on, of a faux, mry, mockiato
+  or other double that is neither mockall's nor a hand-written fake, drops its
+  value, and so does `(&mock).get()`. A hand-written fake keeps its pins when
+  borrowed: they are its own code.
+- **Mocks near other traits.** A mock gives no value in a file that brings in
+  any trait other than the ones it implements, whatever that trait's methods
+  are called: the index holds no trait's methods. A test that imports two
+  mocked traits gives neither mock a value, a faux or mry struct mock gives
+  none beside any imported trait, and neither does a mock in a test with
+  `use mockall::*;` or an import from a crate other than the standard and
+  mocking ones.
+- **Frameworks that pin no value.** mockers, mock_derive and galvanic give a
+  double's identity and pins only, never a `mock-config` value, and mocktopus
+  gives a pin with no value: each configures through a second handle or a
+  macro the worker does not trace.
+- **Assertion macros outside the prelude** (G5-06). `prop_assert*!` and
+  `assert_matches!` are never read as assertions, and `#[macro_use] extern
+crate`, a local `mod core` or an unseen `#[path]` leaves every assertion of
+  the package unread.
+- **Literals near macros** (G5-03). A statement-position macro other than a
+  standard one, a glob or nested `fn` in the body, and a `cfg`-gated file or
+  module (`mod tests` included) leave the names they touch unknown.
+- **Coarse incremental reuse** (G5-05). A test file reads every file of its
+  package to know that no macro shadows a standard assertion, so an edit to
+  any file of the package rescans its test files.
+
 ## Limits
 
 - Macro bodies are not expanded. A path written as a call in a `macro_rules!`

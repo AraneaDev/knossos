@@ -101,7 +101,7 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         [$exit, $output, $errors] = $this->benchmark([
             'schema_version' => 1,
             'sizes' => ['tiny' => self::GENEROUS],
-            'scenarios' => ['test_fidelity_rescan_one_file' => ['incremental_scan_seconds' => 0], 'test_fidelity_rescan_one_file_php' => ['incremental_scan_seconds' => 0], 'test_fidelity_rescan_one_file_python' => ['incremental_scan_seconds' => 0]],
+            'scenarios' => ['test_fidelity_rescan_one_file' => ['incremental_scan_seconds' => 0], 'test_fidelity_rescan_one_file_php' => ['incremental_scan_seconds' => 0], 'test_fidelity_rescan_one_file_python' => ['incremental_scan_seconds' => 0], 'test_fidelity_rescan_one_file_rust' => ['incremental_scan_seconds' => 0]],
         ]);
 
         assertSame(1, $exit, $output . $errors);
@@ -109,6 +109,7 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         assertSame(1, preg_match('/^scenarios\.test_fidelity_rescan_one_file\.incremental_scan_seconds \d+\.\d\d exceeds 0\.00$/m', $errors), $errors);
         assertSame(1, preg_match('/^scenarios\.test_fidelity_rescan_one_file_php\.incremental_scan_seconds \d+\.\d\d exceeds 0\.00$/m', $errors), $errors);
         assertSame(1, preg_match('/^scenarios\.test_fidelity_rescan_one_file_python\.incremental_scan_seconds \d+\.\d\d exceeds 0\.00$/m', $errors), $errors);
+        assertSame(1, preg_match('/^scenarios\.test_fidelity_rescan_one_file_rust\.incremental_scan_seconds \d+\.\d\d exceeds 0\.00$/m', $errors), $errors);
         $scenarios = $this->report()['scenarios'];
         $actual = $scenarios['test_fidelity_rescan_one_file']['actual'];
         assertSame(5, count($actual['incremental_rounds_seconds']));
@@ -119,12 +120,14 @@ final class BenchmarkBudgetTest extends KnossosTestCase
         assertSame([5, 1], [count($scenarios['test_fidelity_rescan_one_file_php']['actual']['incremental_rounds_seconds']), $scenarios['test_fidelity_rescan_one_file_php']['actual']['incremental_parsed_files']]);
         // A Python round parses the class and its five test files again, as each reads the class's module to resolve its patches.
         assertSame([5, 6], [count($scenarios['test_fidelity_rescan_one_file_python']['actual']['incremental_rounds_seconds']), $scenarios['test_fidelity_rescan_one_file_python']['actual']['incremental_parsed_files']]);
+        // A Rust round parses the trait's module and its five test files again, as each imports its mock from that module.
+        assertSame([5, 6], [count($scenarios['test_fidelity_rescan_one_file_rust']['actual']['incremental_rounds_seconds']), $scenarios['test_fidelity_rescan_one_file_rust']['actual']['incremental_parsed_files']]);
     }
 
     /** @return iterable<string, array{mixed, string}> */
     public static function invalidScenarios(): iterable
     {
-        yield 'an unknown scenario' => [['rescan_everything' => ['incremental_scan_seconds' => 1]], 'scenarios.rescan_everything is not a scenario the benchmark runs (test_fidelity_rescan_one_file, test_fidelity_rescan_one_file_php, test_fidelity_rescan_one_file_python).'];
+        yield 'an unknown scenario' => [['rescan_everything' => ['incremental_scan_seconds' => 1]], 'scenarios.rescan_everything is not a scenario the benchmark runs (test_fidelity_rescan_one_file, test_fidelity_rescan_one_file_php, test_fidelity_rescan_one_file_python, test_fidelity_rescan_one_file_rust).'];
         yield 'a missing limit' => [['test_fidelity_rescan_one_file' => []], 'scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds is missing.'];
         yield 'a quoted limit' => [['test_fidelity_rescan_one_file' => ['incremental_scan_seconds' => '2']], 'scenarios.test_fidelity_rescan_one_file.incremental_scan_seconds is "2"; it must be a number.'];
         yield 'a list' => [[['incremental_scan_seconds' => 1]], 'scenarios must be an object of scenarios.'];

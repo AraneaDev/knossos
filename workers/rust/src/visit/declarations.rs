@@ -9,6 +9,9 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::declaration_paths::merge_rename;
+use super::generated_mock::GeneratedMock;
+
+mod traits;
 
 /// Canonical name of every top-level and inline-module declaration of the
 /// project's Rust files, mapped to how many files declared it. The crate-wide
@@ -30,6 +33,14 @@ pub struct Declarations {
     gated_only: BTreeSet<String>,
     /// Every name asked about since the last [`Declarations::take_lookups`].
     lookups: RefCell<BTreeSet<String>>,
+    /// Every file an answer depended on since the last
+    /// [`Declarations::take_file_reads`], by its path rather than a module.
+    file_reads: RefCell<BTreeSet<String>>,
+    /// Each `(file, macro)` whose frozen answer has put its reads in
+    /// `lookups` and `file_reads` since either was last taken: asked
+    /// again, it would only insert them again (see
+    /// [`Declarations::may_shadow_macro`]).
+    macro_reads_recorded: RefCell<BTreeSet<(String, String)>>,
     /// Each `mod name;` whose module is not the path it is declared at
     /// (`#[path]`, a binary root's children), by that declared path; `None`
     /// when two declarations send one path to two modules. See
@@ -57,6 +68,39 @@ pub struct Declarations {
     globs: BTreeMap<String, Vec<(String, bool)>>,
     /// The names of `exports` only a private `use` binds.
     private_exports: BTreeSet<String>,
+    /// What may shadow a standard macro in each package, by its key (see
+    /// [`Declarations::add_macro_shadows`]); see
+    /// [`Declarations::may_shadow_macro`].
+    macro_shadows: BTreeMap<String, MacroShadows>,
+    /// The package key of every file added to `macro_shadows`.
+    macro_keys: BTreeMap<String, String>,
+    /// Every mock a generator makes, by its canonical path; `None` for a
+    /// path two files generate apart. Apart from `counts`: a generated
+    /// name is no declaration (see [`Declarations::generated_mock`]).
+    generated: BTreeMap<String, Option<GeneratedMock>>,
+    /// The project's traits, see [`traits`].
+    traits: traits::TraitIndex,
+}
+
+/// The package key of a file no package can be shown to own: what it
+/// brings in may reach any package, and any package's may reach it.
+pub const ANY_PACKAGE: &str = "*";
+
+/// What the files of one package bring in that may shadow a standard macro.
+#[derive(Debug, Default)]
+struct MacroShadows {
+    /// The module of every file of the package, and every module a `mod`
+    /// declaration of one names, whether or not its file exists.
+    modules: BTreeSet<String>,
+    /// Every file of the package, wherever it sits: one a `#[path]` places
+    /// outside the module tree is in no module's files.
+    files: BTreeSet<String>,
+    /// Every `macro_rules!` name, and every leaf or rename of a `use`, any
+    /// file of the package defines or binds.
+    names: BTreeSet<String>,
+    /// Whether some file opens the package to another crate's macros by any
+    /// name (`#[macro_use] extern crate`, `extern crate … as core`).
+    opens_all: bool,
 }
 
 /// The modules each module of one file imports every name of with a glob
@@ -146,6 +190,116 @@ impl Declarations {
     pub fn get(&self, name: &str) -> Option<&usize> {
         self.lookups.borrow_mut().insert(name.to_owned());
         self.counts.get(name)
+    }
+
+    /// Add what the file `relative` may shadow a standard macro with to the
+    /// package `key` (the owning manifest's directory, or [`ANY_PACKAGE`]):
+    /// `modules`, its own module and those its `mod` declarations name, the
+    /// `macro_rules!` names it defines and the names its `use` items bind
+    /// (`names`), and whether it opens the package to another crate's
+    /// macros by any name (`opens_all`).
+    pub fn add_macro_shadows(
+        &mut self,
+        relative: &str,
+        key: &str,
+        modules: &BTreeSet<String>,
+        names: &BTreeSet<String>,
+        opens_all: bool,
+    ) {
+        self.macro_keys.insert(relative.to_owned(), key.to_owned());
+        let shadows = self.macro_shadows.entry(key.to_owned()).or_default();
+        shadows.files.insert(relative.to_owned());
+        shadows.modules.extend(modules.iter().cloned());
+        shadows.names.extend(names.iter().cloned());
+        shadows.opens_all |= opens_all;
+    }
+
+    /// Whether the macro `name`, written bare in the file `relative`, may be
+    /// other than the standard one: some file of its package, or one no
+    /// package owns, defines a `macro_rules!` of that name, binds it with a
+    /// `use`, or opens the package to another crate's macros. A file no
+    /// package owns asks every package.
+    ///
+    /// Any of those files may start to, so when the answer is no, the
+    /// module of every one is remembered as a lookup, and its files are
+    /// read, and so is every one of those files by its own path (see
+    /// [`Declarations::take_file_reads`]), since a `#[path]` may place it
+    /// where no module's files are. A yes is not: when it goes stale, the
+    /// name only stays unknown.
+    pub fn may_shadow_macro(&self, relative: &str, name: &str) -> bool {
+        let key = self
+            .macro_keys
+            .get(relative)
+            .map_or(ANY_PACKAGE, String::as_str);
+        let asked: Vec<&MacroShadows> = self
+            .macro_shadows
+            .iter()
+            .filter(|(other, _)| key == ANY_PACKAGE || *other == key || *other == ANY_PACKAGE)
+            .map(|(_, shadows)| shadows)
+            .collect();
+        let shadowed = asked
+            .iter()
+            .any(|shadows| shadows.opens_all || shadows.names.contains(name));
+        // A file asks of one macro name once per call of it; its reads are
+        // the same each time, and a package's are every module and file of
+        // it, so they are recorded once until they are taken.
+        if !shadowed
+            && self
+                .macro_reads_recorded
+                .borrow_mut()
+                .insert((relative.to_owned(), name.to_owned()))
+        {
+            let mut lookups = self.lookups.borrow_mut();
+            for module in asked.iter().flat_map(|shadows| &shadows.modules) {
+                lookups.insert(format!("{module}::{name}!"));
+            }
+            let mut files = self.file_reads.borrow_mut();
+            files.extend(
+                asked
+                    .iter()
+                    .flat_map(|shadows| shadows.files.iter().cloned()),
+            );
+        }
+        shadowed
+    }
+
+    /// Every file an answer depended on since the last call, by its path,
+    /// leaving the set empty: the files [`Declarations::take_lookups`]
+    /// cannot name through a module.
+    pub fn take_file_reads(&self) -> BTreeSet<String> {
+        self.macro_reads_recorded.borrow_mut().clear();
+        std::mem::take(&mut *self.file_reads.borrow_mut())
+    }
+
+    /// Record one file's generated mocks (see [`GeneratedMock`]); a path
+    /// two files generate apart is no one mock.
+    pub fn add_generated_mocks(&mut self, mocks: &BTreeMap<String, GeneratedMock>) {
+        for (path, mock) in mocks {
+            let merged = match self.generated.get(path) {
+                Some(known) if known.as_ref() != Some(mock) => None,
+                _ => Some(mock.clone()),
+            };
+            self.generated.insert(path.clone(), merged);
+        }
+    }
+
+    /// The mock a generator makes at `path`, remembering that `path` was
+    /// asked about: the generating file sits in a module above it, so an
+    /// edit there (removing `#[automock]`) reaches the asking file.
+    pub fn generated_mock(&self, path: &str) -> Option<&GeneratedMock> {
+        self.lookups.borrow_mut().insert(path.to_owned());
+        self.generated.get(path)?.as_ref()
+    }
+
+    /// Whether some file declares `name`, without remembering the question.
+    ///
+    /// Only for a reader of the walk's own edges (`crate::test_facts`): the
+    /// walk asked about each target it emitted, so the files that could
+    /// declare it are already among the file's reads, and asking again here
+    /// must not change them.
+    #[must_use]
+    pub fn declares_quietly(&self, name: &str) -> bool {
+        self.counts.contains_key(name)
     }
 
     /// Count one file's declarations, of which the ones in `gated` (see
@@ -402,6 +556,7 @@ impl Declarations {
 
     /// Every name asked about since the last call, leaving the set empty.
     pub fn take_lookups(&self) -> BTreeSet<String> {
+        self.macro_reads_recorded.borrow_mut().clear();
         std::mem::take(&mut *self.lookups.borrow_mut())
     }
 }
