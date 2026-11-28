@@ -452,12 +452,22 @@ leftover-file check (`Support\TempRootGuard`) does not run, because no single
 process sees the whole run, so a plain PHPUnit run is still the one that
 proves a test cleans up after itself.
 
-A few slow tests compare timings and can fail under the load of a parallel
-run, though they pass on their own:
-`YamlDocumentTest::testALongFlowCollectionIsReadInLinearTime` measured a ratio
-of 60.3 against its 55 under `vendor/bin/paratest --group test-fidelity` on
-2026-11-28. Add `--exclude-group slow` to a ParaTest run, and run the slow
-tests with `vendor/bin/phpunit --group slow`, which runs them one at a time.
+A few tests hold the code to a time budget and can fail under the load of a
+parallel run, though they pass on their own. On 2026-11-28, with eight
+ParaTest processes:
+
+- `YamlDocumentTest::testALongFlowCollectionIsReadInLinearTime` (slow) measured
+  a ratio of 60.3 against its 55 under `--group test-fidelity`;
+- under `--exclude-group slow`, `FolderFactsBuilderTest::testRowsForARealisticGraphAreBuiltQuickly`
+  took 1,819 ms against its 1,500, and the cycle scan of
+  `CyclesTest::testTouchingIdsStillReportTheResultLimit` and
+  `CyclesTest::testArchitectureHealthFlagsEveryCycleOfALargeGraph` ran out of
+  its budget and truncated.
+
+Add `--exclude-group slow` to a ParaTest run, run the slow tests with
+`vendor/bin/phpunit --group slow`, which runs them one at a time, and re-run
+a budget failure on its own with `vendor/bin/phpunit --filter` before taking
+it for a regression.
 
 A test that takes more than five seconds carries `#[Group('slow')]`, on its
 method. `php tools/tag-slow-tests.php` lists the slow tests from the times
