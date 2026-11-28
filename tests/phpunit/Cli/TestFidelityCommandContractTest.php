@@ -163,7 +163,7 @@ final class TestFidelityCommandContractTest extends KnossosTestCase
 
             $rules = TestRuleCatalog::all();
             self::assertCount(count($rules) + 2, $lines);
-            self::assertSame('test.fidelity.ghost_member.v1  GHOST_MEMBER  scan  definite  missing_member,missing_export,missing_module  A double stubs a member, export or module its target does not have.', $lines[0]);
+            self::assertSame('test.fidelity.ghost_member.v1  GHOST_MEMBER  scan  definite,warning  missing_member,missing_export,missing_module  A double stubs a member, export or module its target does not have.', $lines[0]);
             self::assertSame('test.fidelity.over_mocking.v1  OVER_MOCKING  on_request  warning  saturation  ' . $rules[6]['description'], $lines[6]);
             foreach ($rules as $at => $rule) {
                 self::assertStringStartsWith($rule['id'] . '  ' . $rule['category'] . '  ' . $rule['tier'] . '  ' . implode(',', $rule['confidences']) . '  ', $lines[$at]);

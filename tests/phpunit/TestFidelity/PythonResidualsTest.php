@@ -6,8 +6,10 @@ namespace Knossos\Tests\Phpunit\TestFidelity;
 
 use Knossos\Scan\ProjectScanService;
 use Knossos\Tests\Phpunit\KnossosTestCase;
+use Knossos\TestFidelity\TestRuleCatalog;
 use PDO;
 
+use function PHPUnit\Framework\assertContains;
 use function PHPUnit\Framework\assertSame;
 
 use PHPUnit\Framework\Attributes\Group;
@@ -112,6 +114,30 @@ final class PythonResidualsTest extends KnossosTestCase
             'GHOST_MEMBER/missing_member/warning@tests/test_unfollowed.py:49 assigned_frame_hack',
             'TAUTOLOGY/constant/warning@tests/test_unfollowed.py:62 frame_write',
         ], self::findingsIn($pdo, 'tests/test_unfollowed.py'));
+    }
+
+    /**
+     * `list_test_rules` publishes the confidences each rule reports at: every
+     * confidence the U1 residuals give (a ghost, an arity and a constant that
+     * rest on a write not followed are warnings) is in its rule's entry.
+     */
+    public function testTheCatalogListsEveryConfidenceTheResidualsReport(): void
+    {
+        [$pdo] = $this->scanned();
+        $listed = array_column(TestRuleCatalog::all(), 'confidences', 'category');
+        $reported = [];
+        foreach ($pdo->query('SELECT DISTINCT category, confidence FROM test_findings')->fetchAll(PDO::FETCH_NUM) as [$category, $confidence]) {
+            $reported[$category][] = $confidence;
+        }
+
+        foreach (['GHOST_MEMBER', 'ARITY_MISMATCH', 'TAUTOLOGY'] as $category) {
+            assertContains('warning', $reported[$category] ?? [], $category);
+        }
+        foreach ($reported as $category => $confidences) {
+            foreach ($confidences as $confidence) {
+                assertContains($confidence, $listed[$category], $category);
+            }
+        }
     }
 
     /**

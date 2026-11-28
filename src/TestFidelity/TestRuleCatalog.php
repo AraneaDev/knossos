@@ -37,12 +37,11 @@ final class TestRuleCatalog
      */
     public static function all(): array
     {
-        $definite = [FindingConfidence::Definite];
         $either = [FindingConfidence::Definite, FindingConfidence::Warning];
         $warning = [FindingConfidence::Warning];
 
         return [
-            self::rule(GhostMemberRule::ID, FindingCategory::GhostMember, $definite, ['missing_member', 'missing_export', 'missing_module'], 'A double stubs a member, export or module its target does not have.'),
+            self::rule(GhostMemberRule::ID, FindingCategory::GhostMember, $either, ['missing_member', 'missing_export', 'missing_module'], 'A double stubs a member, export or module its target does not have.'),
             self::rule(ArityMismatchRule::ID, FindingCategory::ArityMismatch, $either, ['call_arity', 'signature', EnumCaseCheck::SUB_RULE], 'A double\'s member takes a different number of arguments than the member it replaces, or a matcher lists a literal that is none of an enum parameter\'s cases.'),
             self::rule(ReturnDriftRule::ID, FindingCategory::ReturnDrift, $either, ['return_type'], 'A double pins a value the replaced member\'s declared return type does not admit.'),
             self::rule(VisibilityBreachRule::ID, FindingCategory::VisibilityBreach, $either, ['visibility'], 'A double replaces a member that is not visible to it.'),

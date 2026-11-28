@@ -57,7 +57,7 @@ final class TestRuleCatalogTest extends TestCase
                 self::assertSame(['warning'], $rule['confidences'], $rule['id']);
             }
         }
-        self::assertSame(['definite'], $rules['test.fidelity.ghost_member.v1']['confidences']);
+        self::assertSame(['definite', 'warning'], $rules['test.fidelity.ghost_member.v1']['confidences']);
         self::assertSame(['missing_member', 'missing_export', 'missing_module'], $rules['test.fidelity.ghost_member.v1']['sub_rules']);
         self::assertSame(['warning'], $rules['test.fidelity.mocks_subject.v1']['confidences']);
         self::assertSame(['self_comparison', 'mock_echo', 'constant', 'zero_reach', 'unconfigured_spy', 'mock_only', 'vacuous_negation'], $rules['test.fidelity.tautology.v1']['sub_rules']);
